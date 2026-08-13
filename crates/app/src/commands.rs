@@ -26,14 +26,25 @@ pub fn get_status(state: State<AppState>) -> StatusDto {
 
 /// Opens the native folder picker. Returns `None` if the user cancels --
 /// that is not an error, it just means nothing changes.
+///
+/// Uses the plugin's async callback API, not `blocking_pick_folder`.
+/// Blocking a command thread on the dialog result ties this to whatever
+/// thread that command happened to run on, and on Linux the dialog goes
+/// through GTK's main loop / xdg-desktop-portal -- a context blocking
+/// doesn't reliably mesh with. The callback form is the one path the
+/// plugin runs through the right thread on every platform; we just await
+/// it instead of blocking for it.
 #[tauri::command]
-pub fn pick_log_directory(app: AppHandle) -> Option<String> {
+pub async fn pick_log_directory(app: AppHandle) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
+    let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
         .set_title("Select your EverQuest Legends Logs folder")
-        .blocking_pick_folder()
-        .map(|p| p.to_string())
+        .pick_folder(move |folder| {
+            let _ = tx.send(folder);
+        });
+    rx.await.ok().flatten().map(|p| p.to_string())
 }
 
 /// Commits to a directory: persists it, then (re)starts the tail worker.
