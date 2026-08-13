@@ -1,0 +1,568 @@
+# EverQuest Legends rule pack.
+#
+# Every pattern here was derived from an actual 1.83M-line log
+# (eqlog_Manipulator_rivervale.txt, Jul 28 - Aug 09 2026) via `eqlp shapes`.
+# No line format in this file is guessed. Where classic-EQ intuition and the
+# log disagreed, the log won -- notably:
+#
+#   * XP is "You gain experience! (11.000%)", not the classic "experience!!",
+#     and it carries a percentage.
+#   * There is no "was hit by non-melee" line at all in EQL. Spell damage is
+#     "<src> hit <dst> for N points of <type> damage by <spell>."
+#   * Heals are "<src> healed <dst> for N hit points by <spell>.", with an
+#     optional "(M)" giving the uncapped amount.
+#   * Loot names the corpse: "--You have looted a X from a Y's corpse.--"
+#
+# Regenerate the backlog after any patch with:
+#   eqlp coverage --pack packs/eql.toml yourlog.txt --top 40
+
+name = "eql"
+version = 1
+header = "bracket-ctime"
+
+# ============================================================ chat
+# High priority: chat text can contain literally any other line as a quote,
+# so these must win before combat rules get a look.
+
+[[rule]]
+id = "chat.channel"
+kind = "chat"
+priority = 100
+anchors = [" tells "]
+pattern = '''^(?P<who>.+?) tells (?P<chan>[A-Za-z0-9_]+):(?P<num>[0-9]+), '(?P<text>.*)'$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Moosey tells NewPlayers:1, 'sneak is critical to most spell acquisition at this point'"]
+
+[[rule]]
+id = "chat.directed"
+kind = "chat"
+priority = 90
+anchors = ["'"]
+pattern = '''^(?P<who>.+?) (?P<chan>tells you|tells the guild|tells the group|tell your party|tell the guild|tell the group|says out of character|say out of character|auctions|auction|shouts|shout|says|say), '(?P<text>.*)'$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Kaeus tells you, 'I'm busy right now.'",
+  "[Tue Jul 28 15:02:15 2026] You tell your party, 'yo'",
+  "[Tue Jul 28 15:02:15 2026] Honeybadger says out of character, 'where can i buy pet supplies'",
+  "[Tue Jul 28 15:02:15 2026] Biscuits auctions, 'wtb thumper +4'",
+  "[Tue Jul 28 15:02:15 2026] You say, 'send'",
+  "[Tue Jul 28 15:02:15 2026] Dead Doug says, 'Ahh Dougrick, I knew him well'",
+]
+
+# ============================================================ combat
+
+[[rule]]
+id = "melee.hit"
+kind = "damage"
+priority = 30
+# Anchor is " of damage." rather than "points of damage." because 30,164 lines
+# in the reference log use the singular "1 point of damage" -- anchoring on
+# the plural silently dropped every one of them.
+anchors = [" of damage."]
+pattern = '''^(?P<src>.+?) (?P<verb>slashes|slash|bashes|bash|kicks|kick|hits|hit|cleaves|cleave|punches|punch|crushes|crush|pierces|pierce|strikes|strike|bites|bite|frenzies|frenzy|backstabs|backstab|reaves|reave|smites|smite|shoots|shoot|slices|slice|claws|claw|smashes|smash|mauls|maul|gores|gore) (?P<dst>.+?) for (?P<amt>[0-9,]+) points? of damage\.(?: \((?P<flag>[^()]+)\))?$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Bouncer Krik slashes Beba for 59 points of damage.",
+  "[Tue Jul 28 15:02:15 2026] Morbes bashes Pandos Flintside for 1 point of damage.",
+  "[Tue Jul 28 15:02:15 2026] Eckson slashes Splitpaw Sentry for 45 points of damage. (Critical)",
+  "[Tue Jul 28 15:02:15 2026] Bravesirrobin slashes Footman of V`Zher for 36 points of damage.",
+  "[Tue Jul 28 15:02:15 2026] Luld slashes a rock golem for 128 points of damage.",
+  "[Tue Jul 28 15:02:15 2026] Kabann slashes Innoruuk, the Prince of Hate for 43 points of damage.",
+]
+counterexamples = [
+  "[Tue Jul 28 15:02:15 2026] Vhenwheel hit an armadillo for 4 points of magic damage by Lifetap.",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+amount = { from = "amt", as = "u64" }
+# Critical / Riposte / Rampage / Strikethrough / Slay Undead / Finishing Blow /
+# Crippling Blow / Double Bow Shot, and combinations of them. Left as a free
+# string: enumerating the set here would be an assumption the log does not
+# license, and a new one shipping in a patch must not drop the line.
+flag = { from = "flag", as = "str" }
+
+[[rule]]
+id = "melee.miss"
+kind = "miss"
+priority = 30
+anchors = ["but miss"]
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but miss(?:es)?!$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Abes tries to slash Bouncer Krik, but misses!",
+  "[Tue Jul 28 15:02:15 2026] Bravesirrobin tries to slash Footman of V`Zher, but misses!",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+
+[[rule]]
+id = "spell.damage"
+kind = "damage"
+priority = 40
+anchors = [" damage by "]
+pattern = '''^(?P<src>.+?) hit (?P<dst>.+?) for (?P<amt>[0-9,]+) points of (?P<dtype>[a-z]+) damage by (?P<spell>.+?)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Vhenwheel hit an armadillo for 4 points of magic damage by Lifetap.",
+  "[Tue Jul 28 15:02:15 2026] You hit a fragile pet for 3 points of fire damage by Burst of Flame.",
+  "[Tue Jul 28 15:02:15 2026] a rattlesnake hit you for 3 points of poison damage by Feeble Poison.",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+amount = { from = "amt", as = "u64" }
+dtype = { from = "dtype", as = "str" }
+spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "dot.damage"
+kind = "damage"
+priority = 40
+anchors = [" damage from "]
+# "has" and "have": first person is "You have taken", and anchoring on "has"
+# alone silently dropped every incoming DoT tick on the player.
+pattern = '''^(?P<dst>.+?) ha[sv]e? taken (?P<amt>[0-9,]+) damage from (?P<spell>.+?) by (?P<src>.+?)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Mileena has taken 2 damage from Flame Lick by Gash Flockwalker.",
+  "[Tue Jul 28 15:02:15 2026] You have taken 1 damage from Rabies by a greater mummy.",
+  "[Tue Jul 28 15:02:15 2026] You have taken 29 damage from Searing Arrow by Gynok Moltor pet.",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+amount = { from = "amt", as = "u64" }
+spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "ds.damage"
+kind = "damage"
+priority = 40
+anchors = ["points of non-melee damage"]
+pattern = '''^(?P<dst>.+?) is (?P<verb>[a-z]+) by (?P<src>.+?) for (?P<amt>[0-9,]+) points of non-melee damage\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Kaeus is burned by Tranixx Darkpaw's flames for 6 points of non-melee damage.",
+  "[Tue Jul 28 15:02:15 2026] Master Brewer is pierced by Bravesirrobin's thorns for 3 points of non-melee damage.",
+  "[Tue Jul 28 15:02:15 2026] A seafury cyclops is pierced by YOUR thorns for 29 points of non-melee damage.",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+amount = { from = "amt", as = "u64" }
+
+# ============================================================ healing
+
+[[rule]]
+id = "heal.by_spell"
+kind = "heal"
+priority = 40
+anchors = ["hit points by "]
+pattern = '''^(?P<src>.+?) healed (?P<dst>.+?) for (?P<amt>[0-9,]+)(?: \((?P<uncapped>[0-9,]+)\))? hit points by (?P<spell>.+?)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Mairin healed himself for 5 hit points by Lifetap.",
+  "[Tue Jul 28 15:02:15 2026] Rammu healed himself for 2 hit points by Blessing of the Squire.",
+  "[Tue Jul 28 15:02:15 2026] Vhenwheel healed himself for 0 (4) hit points by Lifetap.",
+  "[Tue Jul 28 15:02:15 2026] Geloe healed herself for 14 hit points by Minor Healing.",
+  "[Tue Jul 28 15:02:15 2026] Lebtik healed itself for 4 hit points by Lifetap.",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+amount = { from = "amt", as = "u64" }
+uncapped = { from = "uncapped", as = "u64" }
+spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "heal.plain"
+kind = "heal"
+priority = 30
+anchors = [" hit points."]
+excludes = ["hit points by "]
+pattern = '''^(?P<src>.+?) healed (?P<dst>.+?) for (?P<amt>[0-9,]+)(?: \((?P<uncapped>[0-9,]+)\))? hit points\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Dippinsauce healed you for 40 hit points.",
+  "[Tue Jul 28 15:02:15 2026] Ikao healed Jaded for 10 hit points.",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+amount = { from = "amt", as = "u64" }
+
+# ============================================================ casting
+
+[[rule]]
+id = "cast.begin"
+kind = "cast"
+priority = 30
+anchors = ["casting "]
+pattern = '''^(?P<src>.+?) begins? casting (?P<spell>.+?)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Vhenwheel begins casting Cavorting Bones.",
+  "[Tue Jul 28 15:02:15 2026] You begin casting Garrison's Mighty Mana Shock X.",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "sing.begin"
+kind = "cast"
+priority = 30
+anchors = ["singing "]
+pattern = '''^(?P<src>.+?) begins? singing (?P<song>.+?)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Murgledoo begins singing Chords of Dissonance."]
+[rule.fields]
+source = { from = "src", as = "str" }
+song = { from = "song", as = "str" }
+
+[[rule]]
+id = "spell.memorize_start"
+kind = "spell"
+priority = 30
+anchors = ["Beginning to memorize"]
+pattern = '''^Beginning to memorize (?P<spell>.+?)\.\.\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Beginning to memorize Color Flux..."]
+
+[[rule]]
+id = "spell.memorize_done"
+kind = "spell"
+priority = 30
+anchors = ["finished memorizing"]
+pattern = '''^You have finished memorizing (?P<spell>.+?)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have finished memorizing Color Flux."]
+
+[[rule]]
+id = "spell.forget"
+kind = "spell"
+priority = 30
+anchors = ["You forget "]
+pattern = '''^You forget (?P<spell>.+?)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You forget Juli's Animation."]
+
+# ============================================================ death
+
+[[rule]]
+id = "death.you_slew"
+kind = "death"
+priority = 50
+anchors = ["You have slain"]
+pattern = '''^You have slain (?P<victim>.+?)!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have slain a fragile pet!"]
+[rule.fields]
+victim = { from = "victim", as = "str" }
+
+[[rule]]
+id = "death.you_died"
+kind = "death"
+priority = 50
+anchors = ["You have been slain by"]
+pattern = '''^You have been slain by (?P<killer>.+?)!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have been slain by Guard Fintran!"]
+[rule.fields]
+killer = { from = "killer", as = "str" }
+
+[[rule]]
+id = "death.other"
+kind = "death"
+priority = 40
+anchors = ["has been slain by"]
+excludes = ["You have been slain by"]
+pattern = '''^(?P<victim>.+?) has been slain by (?P<killer>.+?)!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] An armadillo has been slain by Vhenwheel!"]
+[rule.fields]
+victim = { from = "victim", as = "str" }
+killer = { from = "killer", as = "str" }
+
+[[rule]]
+id = "death.plain"
+kind = "death"
+priority = 30
+anchors = [" died."]
+pattern = '''^(?P<victim>.+?) died\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Dippinsauce died."]
+[rule.fields]
+victim = { from = "victim", as = "str" }
+
+# ============================================================ progression
+
+[[rule]]
+id = "xp.gain"
+kind = "xp"
+priority = 40
+anchors = ["experience!"]
+pattern = '''^You gain (?P<scope>party |group |raid |)experience! \((?P<pct>[0-9.]+)%\)$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You gain experience! (11.000%)"]
+[rule.fields]
+scope = { from = "scope", as = "str" }
+pct = { from = "pct", as = "f64" }
+
+[[rule]]
+id = "level.up"
+kind = "level"
+priority = 50
+anchors = ["Welcome to level"]
+pattern = '''^You have gained a level! Welcome to level (?P<level>[0-9]+)!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have gained a level! Welcome to level 2!"]
+[rule.fields]
+level = { from = "level", as = "u64" }
+
+[[rule]]
+id = "skill.up"
+kind = "skill"
+priority = 40
+anchors = ["become better at"]
+pattern = '''^You have become better at (?P<skill>.+?)! \((?P<level>[0-9]+)\)$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have become better at Meditate! (11)"]
+[rule.fields]
+skill = { from = "skill", as = "str" }
+level = { from = "level", as = "u64" }
+
+[[rule]]
+id = "faction.adjust"
+kind = "faction"
+priority = 40
+anchors = ["faction standing with"]
+pattern = '''^Your faction standing with (?P<faction>.+?) has been adjusted by (?P<delta>-?[0-9]+)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Your faction standing with Neriak Ogre has been adjusted by 5.",
+  "[Tue Jul 28 15:02:15 2026] Your faction standing with Keepers of the Art has been adjusted by -20.",
+]
+[rule.fields]
+faction = { from = "faction", as = "str" }
+delta = { from = "delta", as = "i64" }
+
+# ============================================================ items / world
+
+[[rule]]
+id = "loot.self"
+kind = "loot"
+priority = 50
+anchors = ["You have looted"]
+pattern = '''^--You have looted (?:a|an) (?P<item>.+?) from (?P<corpse>.+?)\.--$'''
+examples = ["[Tue Jul 28 15:02:15 2026] --You have looted a Fragile Pet's Skull from a fragile pet's corpse.--"]
+[rule.fields]
+item = { from = "item", as = "str" }
+corpse = { from = "corpse", as = "str" }
+
+[[rule]]
+id = "money.corpse"
+kind = "money"
+priority = 40
+anchors = ["from the corpse"]
+pattern = '''^You receive (?P<amount>.+?) from the corpse\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You receive 3 silver and 4 copper from the corpse."]
+[rule.fields]
+amount = { from = "amount", as = "str" }
+
+[[rule]]
+id = "zone.enter"
+kind = "zone"
+priority = 40
+anchors = ["You have entered"]
+excludes = ["an area where"]
+pattern = '''^You have entered (?P<zone>.+?)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You have entered The Northern Desert of Ro.",
+  "[Tue Jul 28 15:02:15 2026] You have entered New Sebilis Expedition.",
+]
+[rule.fields]
+zone = { from = "zone", as = "str" }
+
+[[rule]]
+id = "proc.item"
+kind = "proc"
+priority = 30
+anchors = ["Your ", ") "]
+pattern = '''^Your (?P<item>.+?) \((?P<effect>[^()]+)\) (?P<msg>.+)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Your Flowing Black Robe (Exaltation) flickers with a pale light.",
+  "[Tue Jul 28 15:02:15 2026] Your Black Tome with Silver Runes (Exaltation) feels alive with power.",
+]
+[rule.fields]
+item = { from = "item", as = "str" }
+effect = { from = "effect", as = "str" }
+message = { from = "msg", as = "str" }
+
+# ============================================================ noise
+# Not interesting, but 141k lines of it. Claiming known-boring lines keeps the
+# unmatched backlog honest -- what's left is genuinely unhandled.
+
+[[rule]]
+id = "noise.command_blocked"
+kind = "noise"
+priority = 60
+anchors = ["use that command right now"]
+pattern = '''^You can't use that command right now\.\.\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You can't use that command right now..."]
+
+[[rule]]
+id = "noise.stunned"
+kind = "noise"
+priority = 60
+anchors = ["stun"]
+pattern = '''^(?:You can't cast spells while stunned!|You are stunned!|You are no longer stunned\.|You avoid the stunning blow\.)$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You are stunned!",
+  "[Tue Jul 28 15:02:15 2026] You are no longer stunned.",
+  "[Tue Jul 28 15:02:15 2026] You can't cast spells while stunned!",
+  "[Tue Jul 28 15:02:15 2026] You avoid the stunning blow.",
+]
+
+[[rule]]
+id = "cast.interrupted_recover"
+kind = "cast"
+priority = 40
+anchors = ["regain your concentration"]
+pattern = '''^You regain your concentration and continue your casting\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You regain your concentration and continue your casting."]
+
+# ============================================================ second pass
+# Everything below was added by running `coverage` against the reference log and
+# working down the unmatched-shape list. This is the intended loop.
+
+[[rule]]
+id = "dot.damage_uncredited"
+kind = "damage"
+priority = 40
+anchors = ["has taken "]
+excludes = [" damage from "]
+pattern = '''^(?P<dst>.+?) has taken (?P<amt>[0-9,]+) damage by (?P<spell>.+?)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Zaser has taken 1 damage by Disease Cloud."]
+note = "No caster named. 1,952 occurrences against 36,065 of the credited form."
+[rule.fields]
+target = { from = "dst", as = "str" }
+amount = { from = "amt", as = "u64" }
+spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "cast.interrupted"
+kind = "cast"
+priority = 40
+anchors = ["spell is interrupted"]
+pattern = '''^(?P<who>.+?) (?P<spell>.+?) spell is interrupted\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Your Burst of Flame spell is interrupted.",
+  "[Tue Jul 28 15:02:15 2026] Cylic's Burst of Flame spell is interrupted.",
+]
+
+[[rule]]
+id = "spell.warded"
+kind = "spell"
+priority = 40
+anchors = ["but you are protected"]
+pattern = '''^(?P<src>.+?) tries to cast a spell on you, but you are protected\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Dippinsauce tries to cast a spell on you, but you are protected."]
+
+[[rule]]
+id = "faction.maxed"
+kind = "faction"
+priority = 50
+anchors = ["could not possibly get any"]
+pattern = '''^Your faction standing with (?P<faction>.+?) could not possibly get any (?P<dir>better|worse)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your faction standing with Dark Bargainers could not possibly get any better."]
+[rule.fields]
+faction = { from = "faction", as = "str" }
+
+[[rule]]
+id = "mob.state"
+kind = "mobstate"
+priority = 20
+anchors = [" "]
+pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better)[.!]$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Splitpaw Sentry staggers.",
+  "[Tue Jul 28 15:02:15 2026] Rallo rages.",
+  "[Tue Jul 28 15:02:15 2026] Horror fades away.",
+  "[Tue Jul 28 15:02:15 2026] Tranixx Darkpaw feels much better.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+state = { from = "state", as = "str" }
+
+[[rule]]
+id = "target.info"
+kind = "target"
+priority = 40
+anchors = ["Targeted ("]
+pattern = '''^Targeted \((?P<ttype>[^()]+)\): (?P<name>.+)$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Targeted (Player): Moritati"]
+[rule.fields]
+name = { from = "name", as = "str" }
+
+[[rule]]
+id = "noise.cast_failure"
+kind = "noise"
+priority = 50
+anchors = ["target"]
+pattern = '''^(?:Your target is too far away, get closer!|You cannot see your target\.|You must first select a target for this spell!)$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Your target is too far away, get closer!",
+  "[Tue Jul 28 15:02:15 2026] You cannot see your target.",
+]
+
+[[rule]]
+id = "noise.insufficient_mana"
+kind = "noise"
+priority = 50
+anchors = ["Insufficient Mana"]
+pattern = '''^Insufficient Mana to cast this spell!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Insufficient Mana to cast this spell!"]
+
+# ============================================================ entity state
+# Transitions the state machine reads. These are logged regardless of who
+# caused them -- a mez landing names no caster -- which is what lets entity
+# state be tracked for fights the player has no part in.
+#
+# Not observable, and deliberately absent: memory blur, pacify and lull produce
+# no result line at all. Those end up as an inferred `Lost` transition rather
+# than being modelled as if the log reported them.
+
+[[rule]]
+id = "state.mesmerized"
+kind = "state"
+priority = 50
+anchors = ["has been mesmerized"]
+pattern = '''^(?P<who>.+?) has been mesmerized\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] a wan ghoul knight has been mesmerized."]
+note = "No caster named. Break is silent: inferred when the mob deals damage again."
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "state.charmed"
+kind = "state"
+priority = 50
+anchors = ["has been charmed"]
+pattern = '''^(?P<who>.+?) has been charmed\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] an abhorrent has been charmed."]
+note = "No caster named -- 179 landings against 85 of my own casts, so these are everyone's."
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "state.charm_broken"
+kind = "state"
+priority = 50
+anchors = ["spell has worn off of"]
+pattern = '''^Your (?P<spell>.+?) spell has worn off of (?P<who>.+?)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your Allure spell has worn off of an abhorrent."]
+note = "Self only. No equivalent exists for other players' charms."
+[rule.fields]
+who = { from = "who", as = "str" }
+spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "state.you_mesmerized"
+kind = "state"
+priority = 50
+anchors = ["no longer mesmerized"]
+pattern = '''^You are no longer mesmerized\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You are no longer mesmerized."]
+
+[[rule]]
+id = "spell.resisted"
+kind = "resist"
+priority = 40
+anchors = ["resisted your"]
+pattern = '''^(?P<who>.+?) resisted your (?P<spell>.+?)!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] A willowisp resisted your Garrison's Mighty Mana Shock VIII!"]
+note = "Carries the rank numeral, which landed damage lines drop. A second rank source."
+[rule.fields]
+who = { from = "who", as = "str" }
+spell = { from = "spell", as = "str" }

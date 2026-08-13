@@ -1,0 +1,54 @@
+# Gate 3 — tags only, and only reachable from main.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: tag must be on main
+        run: |
+          git branch -a --contains ${{ github.ref_name }} | grep -q 'origin/main' \
+            || { echo "::error::tag is not an ancestor of main"; exit 1; }
+
+  build:
+    needs: guard
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04    # oldest WebKitGTK we support
+          - os: windows-latest
+          - os: macos-14
+            unsupported: true   # built to detect breakage, never published
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+                                  librsvg2-dev patchelf
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        if: ${{ !matrix.unsupported }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseDraft: true
+          includeUpdaterJson: true
+      - name: compile-only (unsupported target)
+        if: ${{ matrix.unsupported }}
+        run: npm run tauri build -- --debug

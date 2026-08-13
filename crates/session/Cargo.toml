@@ -1,0 +1,10 @@
+[package]
+name = "eqlp-session"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Encounters, rolling DPS, time-to-kill. Stateful interpretation over a live event stream."
+
+[dependencies]
+eqlp-core = { path = "../core" }
+eqlp-source = { path = "../source" }

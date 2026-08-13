@@ -1,0 +1,79 @@
+# Gate 1 — every push and PR. Must be fast enough that nobody routes around it.
+# Nothing here needs a display, a browser, or a game client.
+name: verify
+
+on:
+  push:
+    branches: [main, beta, "feature/**"]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt, clippy }
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --release
+
+      - name: no ambient time outside the clock module
+        run: |
+          hits=$(grep -rn --include='*.rs' -e 'Instant::now' -e 'SystemTime::now' \
+                   crates/ src-tauri/ 2>/dev/null \
+                 | grep -v 'crates/source/src/clock.rs' \
+                 | grep -v 'clock-exempt' \
+                 | grep -vE ':[[:space:]]*(//|//!|///)' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "::error::use Clock, not ambient time. Append '// clock-exempt: <why>' if wall time is genuinely correct."
+            exit 1
+          fi
+
+      - name: no test code in production source
+        run: |
+          hits=$(grep -rn --include='*.rs' -e '#\[cfg(test)\]' -e '#\[test\]' crates/*/src/ 2>/dev/null || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "::error::tests belong in crates/<name>/tests/, not in src/"
+            exit 1
+          fi
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-fuzz --locked
+      # Short smoke run per target. The long campaign is the nightly job --
+      # a PR gate that takes 20 minutes is a gate people learn to ignore.
+      - name: fuzz smoke
+        run: |
+          for t in $(cargo fuzz list); do
+            echo "::group::$t"
+            cargo fuzz run "$t" -- -max_total_time=60 -rss_limit_mb=2048
+            echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: fuzz-crashes, path: fuzz/artifacts/ }
+
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release -p eqlp-cli
+      - run: ./target/release/eqlp lint --pack packs/eql.toml
+      - name: coverage must not regress
+        run: |
+          ./target/release/eqlp lint --pack packs/eql.toml \
+            --against fixtures/reference-slice.log --min-rate 0.80

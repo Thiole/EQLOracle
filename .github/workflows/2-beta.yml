@@ -1,0 +1,96 @@
+# Gate 2 — the beta branch. Does the thing actually RENDER and RESPOND.
+#
+# This is the gate that catches what Electron-style apps routinely ship: double
+# windows, overlapping panels, hit targets that don't line up with the cursor,
+# z-order inversions, focus traps. None of that is caught by unit tests, and all
+# of it is caught by driving a real engine.
+#
+# WebKit is blocking because Linux ships WebKitGTK. Chromium is advisory.
+name: beta
+
+on:
+  push:
+    branches: [beta]
+  workflow_dispatch:
+
+jobs:
+  render:
+    # Visual correctness against the mock IPC harness. No Rust, no game.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [webkit, chromium]
+        viewport: ["1280x800", "1920x1080", "2560x1440"]
+        scale: ["1", "1.25", "2"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - name: render suite
+        run: npx playwright test --project=${{ matrix.engine }} tests/render
+        env:
+          EQLP_VIEWPORT: ${{ matrix.viewport }}
+          EQLP_SCALE: ${{ matrix.scale }}
+        continue-on-error: ${{ matrix.engine == 'chromium' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: render-${{ matrix.engine }}-${{ matrix.viewport }}-${{ matrix.scale }}
+          path: ui/playwright-report/
+
+  interaction:
+    # Click ordering, hit testing, state permutations.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [webkit, chromium]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx playwright install --with-deps ${{ matrix.engine }}
+      - run: npx playwright test --project=${{ matrix.engine }} tests/interaction
+        continue-on-error: ${{ matrix.engine == 'chromium' }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: interaction-${{ matrix.engine }}, path: ui/playwright-report/ }
+
+  shell:
+    # The real webview, via tauri-driver. Catches what the mock harness cannot:
+    # window count, actual chrome, real IPC, native cursor position.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+                                  librsvg2-dev patchelf webkit2gtk-driver xvfb
+      - run: npm ci
+      - run: npm run tauri build -- --debug
+      - name: shell smoke
+        run: ${{ runner.os == 'Linux' && 'xvfb-run -a npm run test:shell' || 'npm run test:shell' }}
+
+  wine-filesystem:
+    # Not the app under Wine -- we ship native. This checks the only thing that
+    # genuinely differs: reading a file a Wine process holds open and appends to.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y wine
+      - run: cargo test -p eqlp-source --release -- --ignored --nocapture

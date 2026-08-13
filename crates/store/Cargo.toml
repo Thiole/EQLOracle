@@ -1,0 +1,12 @@
+[package]
+name = "eqlp-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "In-memory columnar event store. Single source of truth; every aggregate is a query."
+
+[dependencies]
+eqlp-source = { path = "../source" }
+
+[dev-dependencies]
+eqlp-testkit = { path = "../testkit" }

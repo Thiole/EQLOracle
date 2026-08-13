@@ -1,0 +1,6 @@
+[package]
+name = "eqlp-testkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Seeded generators for property tests. Dev-dependency only."

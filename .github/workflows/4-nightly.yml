@@ -1,0 +1,22 @@
+# Long fuzz campaign and full-log regression. Too slow to gate a PR.
+name: nightly
+on:
+  schedule: [{ cron: "0 6 * * *" }]
+  workflow_dispatch:
+
+jobs:
+  deep-fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-fuzz --locked
+      - name: 30 min per target, corpus persisted
+        run: |
+          for t in $(cargo fuzz list); do
+            cargo fuzz run "$t" -- -max_total_time=1800 -rss_limit_mb=4096 || echo "FAIL:$t" >> fails
+          done
+          [ ! -f fails ] || { cat fails; exit 1; }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: fuzz-corpus, path: fuzz/corpus/ }

@@ -1,0 +1,16 @@
+[package]
+name = "eqlp-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Log framing, header parsing and data-driven line classification. No I/O, no UI, no Tauri."
+
+[dependencies]
+aho-corasick = "1"
+memchr = "2"
+regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-case", "unicode-perl"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[dev-dependencies]
+serde_json = "1"

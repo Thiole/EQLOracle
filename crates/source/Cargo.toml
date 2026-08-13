@@ -1,0 +1,9 @@
+[package]
+name = "eqlp-source"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Where log bytes come from: live tailing, deterministic replay, and the clock they share."
+
+[dependencies]
+eqlp-core = { path = "../core" }

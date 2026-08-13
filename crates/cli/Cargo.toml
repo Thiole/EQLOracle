@@ -1,0 +1,15 @@
+[package]
+name = "eqlp-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Headless harness: parse, coverage, shapes, lint, bench. No UI required."
+
+[[bin]]
+name = "eqlp"
+path = "src/main.rs"
+
+[dependencies]
+eqlp-core = { path = "../core" }
+eqlp-source = { path = "../source" }
+serde_json = "1"
