@@ -1,0 +1,279 @@
+/* House rules (FOUNDATION.md #2): no backdrop-filter/blur, no continuous
+   animation, no unnecessary transparency, flat opaque panels, monospace
+   numeric columns, fixed layout. Targets WebKitGTK on Ubuntu 22.04 as the
+   floor, so nothing here relies on a bleeding-edge CSS feature. */
+
+:root {
+  --bg: #1b1d22;
+  --panel: #24272e;
+  --panel-alt: #2c2f37;
+  --border: #3a3e47;
+  --text: #e6e8eb;
+  --text-muted: #9aa0ab;
+  --accent: #5fb3ff;
+  --ok: #5fd18a;
+  --warn: #e0b34d;
+  --err: #e0616f;
+  --mono: "SFMono-Regular", "Consolas", "Liberation Mono", Menlo, monospace;
+  --sans: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.titlebar .title {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.status {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 3px;
+  background: var(--panel-alt);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.status-live {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.status-error {
+  color: var(--err);
+  border-color: var(--err);
+}
+
+.error {
+  margin: 10px 16px 0;
+  padding: 8px 12px;
+  background: var(--panel-alt);
+  border: 1px solid var(--err);
+  color: var(--err);
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.screen {
+  padding: 24px;
+}
+
+/* ---- setup screen ---- */
+
+.setup-card {
+  max-width: 520px;
+  margin: 48px auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 28px 32px;
+  text-align: center;
+}
+
+.setup-card h1 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+
+.setup-card p {
+  color: var(--text-muted);
+  line-height: 1.5;
+  font-size: 13px;
+}
+
+.setup-card code {
+  font-family: var(--mono);
+  background: var(--panel-alt);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--accent);
+  border: none;
+  border-radius: 4px;
+  padding: 9px 18px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:hover {
+  filter: brightness(1.08);
+}
+
+.link-button {
+  background: none;
+  color: var(--text-muted);
+  font-weight: 400;
+  padding: 4px 8px;
+  text-decoration: underline;
+}
+
+.link-button:hover {
+  color: var(--text);
+  filter: none;
+}
+
+/* ---- main screen ---- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.tail-info {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.tail-info .label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+#tail-file {
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.stat .num {
+  display: block;
+  font-family: var(--mono);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.panes {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.pane {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.pane h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+#kind-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+#kind-table td {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#kind-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pane.feed {
+  height: 60vh;
+  overflow-y: auto;
+}
+
+#feed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+#feed-list li {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+#feed-list .kind {
+  flex: 0 0 auto;
+  color: var(--accent);
+  text-transform: uppercase;
+  font-size: 10px;
+  padding-top: 2px;
+}
+
+#feed-list .text {
+  color: var(--text);
+  text-overflow: ellipsis;
+  overflow: hidden;
+}

@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "IPC the main window is allowed to use: core invoke/event plumbing, plus the dialog plugin's Rust-side API that pick_log_directory calls on the window's behalf.",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:default"]
+}

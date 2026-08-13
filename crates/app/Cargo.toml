@@ -1,0 +1,21 @@
+[package]
+name = "eqlp-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Desktop shell: first-launch directory picker, live log tailing, real-time parse feed. Docked window only -- see FOUNDATION.md #4 for why there is no overlay yet."
+
+[[bin]]
+name = "eqlp-app"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+eqlp-core = { path = "../core" }
+eqlp-source = { path = "../source" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
