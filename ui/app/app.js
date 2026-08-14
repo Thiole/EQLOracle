@@ -182,14 +182,7 @@ async function refreshCombat() {
   renderCombatStats(summary);
 
   const allies = await invoke('list_allies', { zoneVisit, encounterId });
-  renderAllies(allies);
-  if (expandedAlly !== null) {
-    if (allies.some((a) => a.name === expandedAlly)) {
-      await refreshExpandedAlly();
-    } else {
-      expandedAlly = null; // no longer in this selection -- nothing to keep open
-    }
-  }
+  renderAllies(allies); // also keeps the expanded ally's detail panel open, if any
 
   if (encounterId !== null) {
     if (encounterId !== currentTimelineEncounterId) {
@@ -248,10 +241,20 @@ let currentZoneVisit = null;
 let currentEncounterId = null;
 let expandedAlly = null;
 
+// `renderAllies` rebuilds the whole table on every refresh (the ally list
+// itself can reorder/change), which would otherwise silently drop whichever
+// row's detail panel was open -- there is no persistent DOM node to just
+// update. So the expanded row's detail is rebuilt here too, every refresh,
+// not left for a separate "reattach" pass to find and patch: there is
+// nothing left for that pass to find once innerHTML has been cleared.
 function renderAllies(allies) {
   const tbody = document.querySelector('#ally-table tbody');
   tbody.innerHTML = '';
   el('combat-empty').classList.toggle('hidden', allies.length > 0);
+
+  if (expandedAlly !== null && !allies.some((a) => a.name === expandedAlly)) {
+    expandedAlly = null; // no longer part of this selection
+  }
 
   for (const ally of allies) {
     const row = document.createElement('tr');
@@ -267,15 +270,15 @@ function renderAllies(allies) {
     `;
     row.addEventListener('click', () => toggleAllyDetail(ally.name, row));
     tbody.appendChild(row);
-  }
 
-  if (expandedAlly !== null) {
-    const row = tbody.querySelector(`tr.ally-row[data-name="${cssEscape(expandedAlly)}"]`);
-    if (row) row.classList.add('expanded');
+    if (ally.name === expandedAlly) {
+      row.classList.add('expanded');
+      insertAllyDetail(ally.name, row);
+    }
   }
 }
 
-async function toggleAllyDetail(name, row) {
+function toggleAllyDetail(name, row) {
   const existingDetail = row.nextElementSibling;
   if (expandedAlly === name && existingDetail?.classList.contains('ally-detail')) {
     existingDetail.remove();
@@ -289,7 +292,15 @@ async function toggleAllyDetail(name, row) {
 
   row.classList.add('expanded');
   expandedAlly = name;
+  insertAllyDetail(name, row);
+}
 
+// Inserts (or, on a redraw, re-inserts) `name`'s ability breakdown right
+// after `row`, and fills it in once the query returns. `row` is a fresh
+// element on every `renderAllies` redraw, so staleness is checked by
+// whether `expandedAlly` still names this ally when the response lands,
+// not by whether `row` is still around (it always is, by construction).
+function insertAllyDetail(name, row) {
   const detail = document.createElement('tr');
   detail.className = 'ally-detail';
   const cell = document.createElement('td');
@@ -298,22 +309,11 @@ async function toggleAllyDetail(name, row) {
   detail.appendChild(cell);
   row.after(detail);
 
-  const summary = await invoke('get_combat_summary', { zoneVisit: currentZoneVisit, encounterId: currentEncounterId, actor: name });
-  if (expandedAlly === name) {
-    cell.innerHTML = abilitySubtableHtml(summary.abilities);
-  }
-}
-
-async function refreshExpandedAlly() {
-  const row = document.querySelector(`#ally-table .ally-row[data-name="${cssEscape(expandedAlly)}"]`);
-  const detail = row?.nextElementSibling;
-  if (!row || !detail?.classList.contains('ally-detail')) return;
-  const summary = await invoke('get_combat_summary', { zoneVisit: currentZoneVisit, encounterId: currentEncounterId, actor: expandedAlly });
-  detail.querySelector('td').innerHTML = abilitySubtableHtml(summary.abilities);
-}
-
-function cssEscape(s) {
-  return window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/["\\]/g, '\\$&');
+  invoke('get_combat_summary', { zoneVisit: currentZoneVisit, encounterId: currentEncounterId, actor: name }).then((summary) => {
+    if (expandedAlly === name) {
+      cell.innerHTML = abilitySubtableHtml(summary.abilities);
+    }
+  });
 }
 
 // ---------------------------------------------------------------- fight timeline
