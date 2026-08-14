@@ -490,10 +490,20 @@ function applyHighlight() {
 }
 
 async function showStateAt(tsMs) {
-  selectedBucketMs = tsMs;
+  selectedBucketMs = tsMs; // bucket *start* -- matches dto.buckets, for the scrub line
   if (currentTimelineDto) renderTimelineChart(currentTimelineDto); // redraws the scrub line
 
-  const states = await invoke('get_fight_state_at', { encounterId: currentTimelineEncounterId, tsMs });
+  // get_fight_state_at's dps is a trailing window ending *at* the instant
+  // it's given -- querying at the clicked bucket's own start would look
+  // backward into the *previous* bucket almost entirely, showing that
+  // bucket's dps instead of the one you clicked. Query at this bucket's
+  // end instead, so the window actually overlaps the bucket you clicked
+  // (fully, whenever a bucket covers more than the inspect window).
+  const bucketMs = currentTimelineDto ? currentTimelineDto.bucket_ms : 0;
+  const fightEnd = currentTimelineDto ? currentTimelineDto.start_ms + currentTimelineDto.duration_ms : tsMs;
+  const queryMs = Math.min(tsMs + bucketMs, fightEnd);
+
+  const states = await invoke('get_fight_state_at', { encounterId: currentTimelineEncounterId, tsMs: queryMs });
 
   const panel = el('timeline-state');
   panel.classList.remove('hidden');
