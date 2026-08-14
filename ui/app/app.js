@@ -308,7 +308,13 @@ function buildAllyRow(name) {
 function updateAllyRowValues(row, ally) {
   const badge = ally.is_player ? ' <span class="ally-badge">you</span>' : ally.is_pet ? ' <span class="ally-badge">pet</span>' : '';
   row.classList.toggle('expanded', ally.name === expandedAlly);
-  row.querySelector('.ally-name').innerHTML = `${escapeHtml(ally.name)}${badge}`;
+  const nameCell = row.querySelector('.ally-name');
+  nameCell.innerHTML = `${escapeHtml(ally.name)}${badge}`;
+  // Player/pet are confirmed by the log's own markers; everyone else in
+  // this list is an unspoken name the log gives no ownership signal for --
+  // could be a real groupmate, so it's left untinted rather than guessed
+  // at either way.
+  nameCell.classList.toggle('entity-ally', ally.is_player || ally.is_pet);
   row.querySelector('.ally-total').textContent = ally.total.toLocaleString();
   row.querySelector('.ally-pct').textContent = ally.pct.toFixed(1);
   row.querySelector('.ally-dps').textContent = ally.dps.toFixed(1);
@@ -388,13 +394,18 @@ function renderTimelineChart(dto) {
 
   dto.series.forEach((s, i) => {
     const color = SERIES_COLORS[i % SERIES_COLORS.length];
+    // Bar/swatch colors stay distinct per person (that's what makes
+    // several people's bars tellable apart); ally/enemy is conveyed
+    // separately, as a tint on the name text, so it doesn't cost that
+    // per-person distinction.
+    const sideClass = s.is_player || s.is_pet ? 'entity-ally' : s.is_enemy ? 'entity-enemy' : '';
 
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'legend-chip';
     chip.dataset.entity = s.name;
     chip.style.setProperty('--series-color', color);
-    chip.innerHTML = `<span class="swatch"></span>${escapeHtml(s.name)} (${s.total.toLocaleString()})`;
+    chip.innerHTML = `<span class="swatch"></span><span class="${sideClass}">${escapeHtml(s.name)}</span> (${s.total.toLocaleString()})`;
     chip.addEventListener('click', () => {
       highlightedEntity = highlightedEntity === s.name ? null : s.name;
       applyHighlight();
@@ -405,7 +416,7 @@ function renderTimelineChart(dto) {
     row.className = 'series-row';
     row.dataset.entity = s.name;
     const nameEl = document.createElement('span');
-    nameEl.className = 'series-name';
+    nameEl.className = `series-name ${sideClass}`;
     nameEl.textContent = s.name;
     const bars = document.createElement('div');
     bars.className = 'bars';
@@ -455,8 +466,9 @@ async function showStateAt(tsMs, barEl) {
   for (const s of states) {
     const tr = document.createElement('tr');
     const badgeClass = `state-badge state-${s.state}${s.observed ? '' : ' inferred'}`;
+    const sideClass = s.is_player || s.is_pet ? 'entity-ally' : s.is_enemy ? 'entity-enemy' : '';
     tr.innerHTML = `
-      <td>${escapeHtml(s.name)}${s.is_player ? ' <span class="muted">(you)</span>' : ''}</td>
+      <td><span class="${sideClass}">${escapeHtml(s.name)}</span>${s.is_player ? ' <span class="muted">(you)</span>' : ''}</td>
       <td><span class="${badgeClass}">${s.state}${s.observed ? '' : ' (inferred)'}</span></td>
       <td class="num">${s.dps.toFixed(1)} dps</td>
     `;

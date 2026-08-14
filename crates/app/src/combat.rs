@@ -326,6 +326,13 @@ const INSPECT_WINDOW_MS: Millis = 6000;
 pub struct EntitySeriesDto {
     pub name: String,
     pub is_player: bool,
+    pub is_pet: bool,
+    /// This entity is the fight's own anchor target -- see
+    /// `Ingest::link`'s `anchor` comment. Reliable for the mob a fight
+    /// opened on; a multi-mob pull's other members aren't flagged, since
+    /// nothing in the log distinguishes them from an ally caught up in the
+    /// same component.
+    pub is_enemy: bool,
     pub total: u64,
     /// One damage total per bucket in `FightTimelineDto::buckets`, same
     /// length and same order.
@@ -351,6 +358,8 @@ pub struct FightTimelineDto {
 pub struct EntityStateDto {
     pub name: String,
     pub is_player: bool,
+    pub is_pet: bool,
+    pub is_enemy: bool,
     pub state: &'static str,
     /// Whether `state` came from a log line (mesmerized/charmed/slain) or
     /// was inferred from silence (`Lost`, or the default `Engaged` before
@@ -374,6 +383,7 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
 
     let entities = ing.entities_by_enc.get(&id).cloned().unwrap_or_default();
     let range = e.range();
+    let target_name = ing.store.name(e.target).to_string();
 
     let mut series: Vec<EntitySeriesDto> = Vec::new();
     let mut buckets_len = 0usize;
@@ -396,8 +406,15 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
         let buckets = bucket_series(&ts, &amt, start, end, bucket_ms);
         buckets_len = buckets_len.max(buckets.len());
         let total: u64 = amt.iter().sum();
-        let is_player = ing.encounters.entities.kind(name) == Kind::Player;
-        series.push(EntitySeriesDto { name: name.clone(), is_player, total, values: buckets.iter().map(|b| b.total).collect() });
+        let kind = ing.encounters.entities.kind(name);
+        series.push(EntitySeriesDto {
+            name: name.clone(),
+            is_player: kind == Kind::Player,
+            is_pet: kind == Kind::Pet,
+            is_enemy: *name == target_name,
+            total,
+            values: buckets.iter().map(|b| b.total).collect(),
+        });
     }
     series.sort_by(|a, b| b.total.cmp(&a.total));
 
@@ -410,11 +427,12 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
 pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<EntityStateDto> {
     let id = EncounterId(encounter_id);
     let entities = ing.entities_by_enc.get(&id).cloned().unwrap_or_default();
+    let target_name = ing.store.encounter(id).map(|e| ing.store.name(e.target).to_string());
 
     let mut out: Vec<EntityStateDto> = entities
         .into_iter()
         .map(|name| {
-            let is_player = ing.encounters.entities.kind(&name) == Kind::Player;
+            let kind = ing.encounters.entities.kind(&name);
             let sym = ing.store.names.get(&name);
             let (state, observed) = sym
                 .and_then(|s| ing.timeline.state_at(s.0, ts_ms))
@@ -423,7 +441,15 @@ pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<Ent
             let dps = sym
                 .map(|s| dps_window(&ing.store, &Filter::encounter(id).damage().by(s), ts_ms, INSPECT_WINDOW_MS))
                 .unwrap_or(0.0);
-            EntityStateDto { name, is_player, state: state.name(), observed, dps }
+            EntityStateDto {
+                is_player: kind == Kind::Player,
+                is_pet: kind == Kind::Pet,
+                is_enemy: target_name.as_deref() == Some(name.as_str()),
+                state: state.name(),
+                observed,
+                dps,
+                name,
+            }
         })
         .collect();
     out.sort_by(|a, b| b.dps.partial_cmp(&a.dps).unwrap_or(std::cmp::Ordering::Equal));

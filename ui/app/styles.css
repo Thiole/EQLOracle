@@ -347,6 +347,19 @@ button:hover {
   display: none;
 }
 
+/* Confirmed ally (player/pet) vs. the fight's own target. Anything neither
+   -- an unspoken name the log gives no ownership marker for -- stays the
+   default text color instead of a guessed tint; see ingest.rs's
+   split_damage_shield_source-adjacent doc comments on why guessing here is
+   the wrong trade. */
+.entity-ally {
+  color: var(--ok);
+}
+
+.entity-enemy {
+  color: var(--err);
+}
+
 .ally-badge {
   font-size: 10px;
   text-transform: uppercase;
