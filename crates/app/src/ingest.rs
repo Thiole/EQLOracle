@@ -58,15 +58,16 @@ pub struct RecentLine {
 const MAX_PENDING_RECENT: usize = 500;
 
 /// How long a "<Owner> summons a <flavour>." line stays a candidate for
-/// matching against the next brand-new entity to act. The log never names
+/// matching against the next new "Inner Fire" caster. The log never names
 /// the pet, only the owner and flavour -- attribution comes from a pet's
-/// spawn behaviour (it self-buffs within a couple of seconds of being
-/// summoned) rather than from any direct textual link. Measured against
-/// the 2M-line reference log before shipping: checking "does exactly one
-/// new actor appear within this window" against every summon line, using
-/// an 8s window, produced zero ambiguous matches (never two candidates at
-/// once) across the whole log -- when this fires, it has never had to
-/// guess between two possible pets. See `Ingest::note_actor`.
+/// spawn behaviour (several pet flavours reliably self-buff with Inner
+/// Fire within a couple of seconds of being summoned) rather than from any
+/// direct textual link, and only that specific spell counts as a
+/// candidate signal -- see `Ingest::note_actor` for why "any first cast"
+/// was tried and found unsafe against real data. 8s was chosen by
+/// measuring against the 2M-line reference log: matching each summon
+/// against the closest new Inner-Fire caster within the window resolved
+/// dozens of real pets with no implausible pairing in a manual spot check.
 const PET_MATCH_WINDOW_MS: Millis = 8_000;
 
 /// Everything parsed from one tailed file, and the machinery that turns raw
@@ -231,11 +232,21 @@ impl Ingest {
             Action::Death { victim } => self.record_death(ts, &victim),
             Action::Zone { zone } => self.zone.enter(ts, zone),
             Action::Cast { who, spell } => {
-                // A pet's first action after being summoned is almost
-                // always casting its own spawn buff (see
-                // PET_MATCH_WINDOW_MS) -- this is often the *only* chance
-                // to catch it, well before it ever lands a hit.
-                self.note_actor(ts, &who);
+                // A pet's first action after being summoned is casting its
+                // own spawn buff, "Inner Fire" specifically -- measured
+                // against the real reference log (see PET_MATCH_WINDOW_MS),
+                // not any cast in general. That distinction matters: a
+                // version that treated *any* first-ever cast as a pet
+                // candidate mismatched a real, not-yet-proven-player
+                // character whose first cast happened to follow someone
+                // else's pet summon by a second, at exactly the moment
+                // that's most common -- session/zone-in, when everyone's
+                // first buff and everyone's pet summon land in the same
+                // few seconds. Checking only "Inner Fire" is what was
+                // actually validated to be safe.
+                if spell == "Inner Fire" {
+                    self.note_actor(ts, &who);
+                }
                 // A cast line proves the ability isn't a weapon proc; no
                 // store row needed, just the ability metadata.
                 let id = self.store.ability_id(&spell, tag::SPELL);
@@ -382,6 +393,20 @@ impl Ingest {
         }
         if !self.seen_actors.insert(resolved.clone()) {
             return; // not their first time acting
+        }
+        // Never a pet: the log's own player, and anyone already proven a
+        // player by a player-only chat channel. Without this, the worst
+        // case for the closest-in-time match is exactly session/zone-in --
+        // everyone's first cast (buffing up) and everyone's pet summon
+        // cluster into the same few seconds, and "closest in time" doesn't
+        // care whether the candidate is a person, only that it's new and
+        // nearby. A real player who hasn't spoken yet still isn't
+        // protected by this -- that half of the gap is the same
+        // unspoken-NPC-vs-unspoken-player ceiling `list_allies` already
+        // documents -- but "You" and anyone already known to be a player
+        // are unambiguous and cost nothing to exclude outright.
+        if resolved.eq_ignore_ascii_case("you") || self.encounters.entities.kind(&resolved) == Kind::Player {
+            return;
         }
         self.pending_summons.retain(|(sts, _)| ts - *sts <= PET_MATCH_WINDOW_MS);
         let closest = self.pending_summons.iter().enumerate().min_by_key(|(_, (sts, _))| (ts - sts).abs()).map(|(i, _)| i);
