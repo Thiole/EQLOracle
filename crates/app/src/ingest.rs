@@ -441,11 +441,19 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             })
         }
         "ds.damage" => {
-            let (src, dst, amount) = (str_field("source")?, str_field("target")?, u64_field("amount")?);
+            // `source` names the effect, not the entity: "Tranixx Darkpaw's
+            // flames", "YOUR thorns" -- always the shield wearer's name (or
+            // "YOUR" for the player) plus a possessive and the shield's
+            // flavour word. Split it so the wearer is the actor, like every
+            // other damage line, instead of "Tranixx Darkpaw's flames"
+            // silently interning as its own entity separate from Tranixx
+            // Darkpaw.
+            let (raw_src, dst, amount) = (str_field("source")?, str_field("target")?, u64_field("amount")?);
+            let (src, flavour) = split_damage_shield_source(&raw_src);
             Some(Action::Damage {
                 src,
                 dst,
-                ability: "Damage Shield".to_string(),
+                ability: format!("Damage Shield ({flavour})"),
                 tags: tag::DAMAGE_SHIELD | tag::PROC,
                 amount,
                 flags: 0,
@@ -539,6 +547,25 @@ fn resolve_reflexive(target: &str, source: &str) -> String {
         "himself" | "herself" | "itself" | "yourself" => source.to_string(),
         other => other.to_string(),
     }
+}
+
+/// Splits a `ds.damage` `source` capture ("Tranixx Darkpaw's flames",
+/// "Bravesirrobin's thorns", "YOUR thorns") into the shield wearer's name
+/// and the shield's flavour word. Falls back to treating the whole string
+/// as the wearer with a generic flavour if it doesn't match either shape,
+/// rather than panicking on a pack/log variant this hasn't seen.
+fn split_damage_shield_source(raw: &str) -> (String, String) {
+    if let Some(flavour) = raw.strip_prefix("YOUR ") {
+        return ("You".to_string(), flavour.to_string());
+    }
+    if let Some(pos) = raw.rfind("'s ") {
+        let (wearer, rest) = raw.split_at(pos);
+        let flavour = &rest[3..]; // skip "'s "
+        if !wearer.is_empty() && !flavour.is_empty() {
+            return (wearer.to_string(), flavour.to_string());
+        }
+    }
+    (raw.to_string(), "Damage Shield".to_string())
 }
 
 // ---------------------------------------------------------------- parallel backfill
