@@ -241,66 +241,90 @@ let currentZoneVisit = null;
 let currentEncounterId = null;
 let expandedAlly = null;
 
-// `renderAllies` rebuilds the whole table on every refresh (the ally list
-// itself can reorder/change), which would otherwise silently drop whichever
-// row's detail panel was open -- there is no persistent DOM node to just
-// update. So the expanded row's detail is rebuilt here too, every refresh,
-// not left for a separate "reattach" pass to find and patch: there is
-// nothing left for that pass to find once innerHTML has been cleared.
+// `renderAllies` runs every 3s. It used to rebuild the whole <tbody> from
+// scratch every time -- destroying and recreating even an already-open
+// detail panel, flashing it back to "Loading..." before repopulating. That
+// read as the panel closing and reopening on every tick. Fixed by treating
+// this as a live view over changing data rather than a fresh render each
+// time: existing row/detail elements are found by name and patched in
+// place (`updateAllyRowValues`, `refreshAllyDetail`), and a DOM node is
+// only created or removed when an ally actually enters or leaves the
+// selection -- never just because a refresh happened.
 function renderAllies(allies) {
   const tbody = document.querySelector('#ally-table tbody');
-  tbody.innerHTML = '';
   el('combat-empty').classList.toggle('hidden', allies.length > 0);
 
   if (expandedAlly !== null && !allies.some((a) => a.name === expandedAlly)) {
-    expandedAlly = null; // no longer part of this selection
+    collapseAllyDetail();
   }
 
-  for (const ally of allies) {
-    const row = document.createElement('tr');
-    row.className = 'ally-row';
-    row.dataset.name = ally.name;
-    const badge = ally.is_player ? ' <span class="ally-badge">you</span>' : ally.is_pet ? ' <span class="ally-badge">pet</span>' : '';
-    row.innerHTML = `
-      <td>${escapeHtml(ally.name)}${badge}</td>
-      <td class="num">${ally.total.toLocaleString()}</td>
-      <td class="num">${ally.pct.toFixed(1)}</td>
-      <td class="num">${ally.dps.toFixed(1)}</td>
-      <td class="num">${ally.hits.toLocaleString()}</td>
-    `;
-    row.addEventListener('click', () => toggleAllyDetail(ally.name, row));
-    tbody.appendChild(row);
-
-    if (ally.name === expandedAlly) {
-      row.classList.add('expanded');
-      insertAllyDetail(ally.name, row);
+  const present = new Set(allies.map((a) => a.name));
+  for (const row of [...tbody.querySelectorAll('tr.ally-row')]) {
+    if (!present.has(row.dataset.name)) {
+      if (row.nextElementSibling?.classList.contains('ally-detail')) {
+        row.nextElementSibling.remove();
+      }
+      row.remove();
     }
   }
+
+  let cursor = tbody.firstChild;
+  for (const ally of allies) {
+    const row = findAllyRow(ally.name) ?? buildAllyRow(ally.name);
+    updateAllyRowValues(row, ally);
+    if (cursor !== row) {
+      tbody.insertBefore(row, cursor);
+    }
+    // Advance past this row, and past its detail panel if it has one, so
+    // the next ally lands after both rather than splitting them apart.
+    cursor = row.nextElementSibling;
+    if (cursor?.classList.contains('ally-detail')) {
+      cursor = cursor.nextElementSibling;
+    }
+  }
+
+  if (expandedAlly !== null) {
+    refreshAllyDetail(expandedAlly);
+  }
+}
+
+function findAllyRow(name) {
+  for (const row of document.querySelectorAll('#ally-table tr.ally-row')) {
+    if (row.dataset.name === name) return row;
+  }
+  return null;
+}
+
+function buildAllyRow(name) {
+  const row = document.createElement('tr');
+  row.className = 'ally-row';
+  row.dataset.name = name;
+  row.innerHTML =
+    '<td class="ally-name"></td><td class="num ally-total"></td><td class="num ally-pct"></td><td class="num ally-dps"></td><td class="num ally-hits"></td>';
+  row.addEventListener('click', () => toggleAllyDetail(name, row));
+  return row;
+}
+
+function updateAllyRowValues(row, ally) {
+  const badge = ally.is_player ? ' <span class="ally-badge">you</span>' : ally.is_pet ? ' <span class="ally-badge">pet</span>' : '';
+  row.classList.toggle('expanded', ally.name === expandedAlly);
+  row.querySelector('.ally-name').innerHTML = `${escapeHtml(ally.name)}${badge}`;
+  row.querySelector('.ally-total').textContent = ally.total.toLocaleString();
+  row.querySelector('.ally-pct').textContent = ally.pct.toFixed(1);
+  row.querySelector('.ally-dps').textContent = ally.dps.toFixed(1);
+  row.querySelector('.ally-hits').textContent = ally.hits.toLocaleString();
 }
 
 function toggleAllyDetail(name, row) {
-  const existingDetail = row.nextElementSibling;
-  if (expandedAlly === name && existingDetail?.classList.contains('ally-detail')) {
-    existingDetail.remove();
-    row.classList.remove('expanded');
-    expandedAlly = null;
+  if (expandedAlly === name) {
+    collapseAllyDetail();
     return;
   }
-
-  for (const r of document.querySelectorAll('#ally-table .ally-detail')) r.remove();
-  for (const r of document.querySelectorAll('#ally-table .ally-row.expanded')) r.classList.remove('expanded');
+  collapseAllyDetail();
 
   row.classList.add('expanded');
   expandedAlly = name;
-  insertAllyDetail(name, row);
-}
 
-// Inserts (or, on a redraw, re-inserts) `name`'s ability breakdown right
-// after `row`, and fills it in once the query returns. `row` is a fresh
-// element on every `renderAllies` redraw, so staleness is checked by
-// whether `expandedAlly` still names this ally when the response lands,
-// not by whether `row` is still around (it always is, by construction).
-function insertAllyDetail(name, row) {
   const detail = document.createElement('tr');
   detail.className = 'ally-detail';
   const cell = document.createElement('td');
@@ -309,11 +333,28 @@ function insertAllyDetail(name, row) {
   detail.appendChild(cell);
   row.after(detail);
 
-  invoke('get_combat_summary', { zoneVisit: currentZoneVisit, encounterId: currentEncounterId, actor: name }).then((summary) => {
-    if (expandedAlly === name) {
-      cell.innerHTML = abilitySubtableHtml(summary.abilities);
-    }
-  });
+  refreshAllyDetail(name); // first real fill-in, replacing "Loading..."
+}
+
+function collapseAllyDetail() {
+  for (const r of document.querySelectorAll('#ally-table .ally-detail')) r.remove();
+  for (const r of document.querySelectorAll('#ally-table .ally-row.expanded')) r.classList.remove('expanded');
+  expandedAlly = null;
+}
+
+// Patches the open detail panel's numbers in place -- called right after a
+// fresh expand and again on every periodic refresh. Must never show the
+// "Loading..." placeholder on a refresh of an already-open panel; that's
+// exactly what made it look like the panel was closing and reopening.
+async function refreshAllyDetail(name) {
+  const row = findAllyRow(name);
+  const detail = row?.nextElementSibling;
+  const cell = detail?.classList.contains('ally-detail') ? detail.querySelector('td') : null;
+  if (!cell) return;
+  const summary = await invoke('get_combat_summary', { zoneVisit: currentZoneVisit, encounterId: currentEncounterId, actor: name });
+  if (expandedAlly === name) {
+    cell.innerHTML = abilitySubtableHtml(summary.abilities);
+  }
 }
 
 // ---------------------------------------------------------------- fight timeline
