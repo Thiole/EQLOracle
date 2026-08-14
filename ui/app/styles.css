@@ -369,9 +369,17 @@ button:hover {
 
 .stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 10px;
   margin-bottom: 18px;
+}
+
+.stat.stat-ally .num {
+  color: var(--ok);
+}
+
+.stat.stat-enemy .num {
+  color: var(--err);
 }
 
 .stat {

@@ -199,9 +199,14 @@ async function refreshCombat() {
 
 function renderCombatStats(summary) {
   el('combat-fights').textContent = summary.fight_count.toLocaleString();
-  el('combat-damage').textContent = summary.total_damage.toLocaleString();
   el('combat-duration').textContent = fmtDuration(summary.duration_ms);
+  // "team" vs "incoming" are deliberately separate stats, not one total --
+  // a number that mixes damage dealt and damage taken says nothing about
+  // either. See combat::summarize's doc comment.
+  el('combat-damage').textContent = summary.total_damage.toLocaleString();
   el('combat-dps').textContent = summary.dps.toFixed(1);
+  el('combat-enemy-damage').textContent = summary.enemy_damage.toLocaleString();
+  el('combat-enemy-dps').textContent = summary.enemy_dps.toFixed(1);
 }
 
 function abilitySubtableHtml(abilities) {

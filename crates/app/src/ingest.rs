@@ -302,6 +302,24 @@ impl Ingest {
     /// Routes one damage edge through the encounter graph, then resolves it
     /// to a store `EncounterId`, opening one the first time this graph
     /// component is seen.
+    ///
+    /// Known gap: when `Builder` transitively merges two graph components
+    /// (`graph.rs`'s `merge`), their two store encounters are *not*
+    /// merged -- `store::Encounter` models one contiguous index range, and
+    /// a merge joins two components that were, until that moment, separate
+    /// ranges with unrelated rows in between. The graph-side component
+    /// keeps growing correctly under one `EncId`; the *other*, now-merged
+    /// EncId's store-side counterpart stops being extended (every future
+    /// event resolves to the surviving EncId) and never closes, since
+    /// `Builder::close` is only ever called for an EncId still in
+    /// `self.live`, and a merged-away EncId was removed from `live`
+    /// without going through `close`. The result is a permanently-open,
+    /// frozen-in-time duplicate encounter sitting in the store alongside
+    /// the real one. Encounters that never transitively merge (most solo
+    /// and small-group fights) are unaffected. Fixing this needs either
+    /// `Store` supporting non-contiguous/re-tagged encounter membership,
+    /// or closing the orphan explicitly the moment a merge is detected --
+    /// neither is done here.
     fn link(&mut self, ts: Millis, actor: &str, target: &str) -> EncounterId {
         let enc_id = self.encounters.damage(ts, actor, target);
         let store_id = if let Some(&id) = self.enc_map.get(&enc_id) {

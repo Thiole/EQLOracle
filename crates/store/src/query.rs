@@ -86,6 +86,18 @@ fn range_of(store: &Store, f: &Filter) -> std::ops::Range<usize> {
 
 #[inline]
 fn keep(store: &Store, i: usize, f: &Filter) -> bool {
+    if let Some(enc) = f.encounter {
+        // `range_of` narrows the scan to this encounter's index range, but
+        // a range is not a membership test: when two fights' events
+        // interleave in append order (routine once several encounters
+        // overlap in time -- other combat nearby, a pet's own actions),
+        // a row that falls inside the range can still belong to a
+        // different encounter. The `enc` column is what actually says
+        // whose row this is; check it, not just the range that got us here.
+        if store.enc[i] != enc.0 {
+            return false;
+        }
+    }
     if let Some(k) = f.kind {
         if store.kind[i] != k {
             return false;

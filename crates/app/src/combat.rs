@@ -10,9 +10,9 @@
 use crate::ingest::Ingest;
 use eqlp_session::{series as bucket_series, Cause, Kind};
 use eqlp_source::Millis;
-use eqlp_store::{by_ability, by_actor, dps_window, tag, total, AbilityRow, EncounterId, EventKind, Filter, Sym};
+use eqlp_store::{by_ability, dps_window, tag, total, AbilityRow, EncounterId, EventKind, Filter, Sym};
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ZoneVisitDto {
@@ -37,8 +37,15 @@ pub struct EncounterDto {
     pub start_ms: Millis,
     pub end_ms: Option<Millis>,
     pub duration_ms: Millis,
+    /// The team's own damage output -- excludes whatever the fight's own
+    /// target dealt back. A number that mixes offense and incoming damage
+    /// together says nothing; see `enemy_damage`/`enemy_dps` for the other
+    /// half.
     pub total_damage: u64,
     pub dps: f64,
+    /// Damage the target dealt to the team during this fight.
+    pub enemy_damage: u64,
+    pub enemy_dps: f64,
     pub slain: bool,
     pub open: bool,
 }
@@ -59,9 +66,16 @@ pub struct AbilityRowDto {
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct CombatSummaryDto {
     pub fight_count: usize,
+    /// The team's own damage output -- excludes whatever each fight's own
+    /// target dealt back. See `enemy_damage`/`enemy_dps`.
     pub total_damage: u64,
     pub duration_ms: Millis,
     pub dps: f64,
+    /// Damage the enemy (each fight's own target) dealt to the team.
+    /// Grouped, not mixed into `total_damage` -- a number that combines
+    /// offense and incoming damage says nothing about either.
+    pub enemy_damage: u64,
+    pub enemy_dps: f64,
     pub abilities: Vec<AbilityRowDto>,
 }
 
@@ -121,7 +135,10 @@ pub fn list_encounters(ing: &Ingest, zone_visit: Option<i64>) -> Vec<EncounterDt
         .filter(|e| matches_visit(ing, e.start_ms, zone_visit))
         .map(|e| {
             let dur = e.duration_ms(now).max(0);
-            let dmg = total(&ing.store, &Filter::encounter(e.id).damage());
+            let dur_secs = (dur as f64 / 1000.0).max(0.001);
+            let all = total(&ing.store, &Filter::encounter(e.id).damage());
+            let enemy = total(&ing.store, &Filter::encounter(e.id).damage().by(e.target));
+            let dmg = all.saturating_sub(enemy);
             EncounterDto {
                 id: e.id.0,
                 target: ing.store.name(e.target).to_string(),
@@ -130,7 +147,9 @@ pub fn list_encounters(ing: &Ingest, zone_visit: Option<i64>) -> Vec<EncounterDt
                 end_ms: e.end_ms,
                 duration_ms: dur,
                 total_damage: dmg,
-                dps: if dur > 0 { dmg as f64 / (dur as f64 / 1000.0) } else { 0.0 },
+                dps: dmg as f64 / dur_secs,
+                enemy_damage: enemy,
+                enemy_dps: enemy as f64 / dur_secs,
                 slain: e.slain,
                 open: e.is_open(),
             }
@@ -152,58 +171,80 @@ fn resolve_ids(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32>)
     }
 }
 
+/// Merges one `by_ability` call's rows into a running accumulator.
+fn merge_ability_rows(dst: &mut HashMap<eqlp_store::AbilityId, AbilityRow>, rows: Vec<AbilityRow>) {
+    for row in rows {
+        let acc = dst.entry(row.ability).or_insert_with(|| AbilityRow {
+            ability: row.ability,
+            tags: row.tags,
+            total: 0,
+            hits: 0,
+            min: u64::MAX,
+            max: 0,
+            full_power: 0,
+            crits: 0,
+            flags: 0,
+        });
+        acc.total += row.total;
+        acc.hits += row.hits;
+        acc.min = acc.min.min(row.min);
+        acc.max = acc.max.max(row.max);
+        acc.full_power += row.full_power;
+        acc.crits += row.crits;
+        acc.flags |= row.flags;
+    }
+}
+
 /// Aggregates one encounter, every encounter in a zone visit, or every
 /// encounter parsed so far. `encounter_id` wins if given; otherwise
 /// `zone_visit`; otherwise everything. `actor`, if given, narrows to one
 /// ally's own abilities -- the drill-down from `list_allies`.
 ///
+/// `total_damage`/`abilities` are the team's own output: everyone in the
+/// fight *except* its own target, matching `list_allies`' exclusion, so
+/// this never mixes offense and incoming damage into one meaningless
+/// number. What the target did back is `enemy_damage`/`enemy_dps`,
+/// reported separately rather than folded in.
+///
 /// Merging several encounters' ability breakdowns client-side (one
-/// `by_ability` call per encounter, summed) rather than teaching
+/// `by_ability` call per encounter per actor, summed) rather than teaching
 /// `eqlp-store`'s `Filter` to accept a set of encounter ids: a zone visit is
-/// a handful of fights, so this is a handful of cheap calls
-/// (`docs/design/store.md` measures a single-encounter `by_ability` at
-/// 39µs), and it leaves the store's query contract exactly as documented
-/// rather than extending it for one caller.
+/// a handful of fights with a handful of participants, so this is a
+/// handful of cheap calls (`docs/design/store.md` measures a
+/// single-encounter `by_ability` at 39µs), and it leaves the store's query
+/// contract exactly as documented rather than extending it for one caller.
 pub fn summarize(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32>, actor: Option<&str>) -> CombatSummaryDto {
     let now = ing.now_ms();
     let ids = resolve_ids(ing, zone_visit, encounter_id);
     if ids.is_empty() {
         return CombatSummaryDto::default();
     }
-    let actor_sym = actor.and_then(|n| ing.store.names.get(n));
 
-    let mut total_damage = 0u64;
     let mut duration_ms: Millis = 0;
+    let mut enemy_damage = 0u64;
     let mut merged: HashMap<eqlp_store::AbilityId, AbilityRow> = HashMap::new();
 
     for &id in &ids {
-        let mut f = Filter::encounter(id).damage();
-        if let Some(s) = actor_sym {
-            f = f.by(s);
-        }
-        total_damage += total(&ing.store, &f);
-        if let Some(e) = ing.store.encounter(id) {
-            duration_ms += e.duration_ms(now).max(0);
-        }
-        for row in by_ability(&ing.store, &f) {
-            let acc = merged.entry(row.ability).or_insert_with(|| AbilityRow {
-                ability: row.ability,
-                tags: row.tags,
-                total: 0,
-                hits: 0,
-                min: u64::MAX,
-                max: 0,
-                full_power: 0,
-                crits: 0,
-                flags: 0,
-            });
-            acc.total += row.total;
-            acc.hits += row.hits;
-            acc.min = acc.min.min(row.min);
-            acc.max = acc.max.max(row.max);
-            acc.full_power += row.full_power;
-            acc.crits += row.crits;
-            acc.flags |= row.flags;
+        let Some(enc) = ing.store.encounter(id) else { continue };
+        duration_ms += enc.duration_ms(now).max(0);
+        enemy_damage += total(&ing.store, &Filter::encounter(id).damage().by(enc.target));
+
+        // Which actors count toward "the team" here: one specific ally if
+        // drilling in, otherwise everyone in the fight except its own
+        // target. A real ally is never the target, so this is never
+        // narrower than intended when `actor` is given.
+        let target_name = ing.store.name(enc.target).to_string();
+        let actors: Vec<String> = match actor {
+            Some(name) => vec![name.to_string()],
+            None => {
+                ing.entities_by_enc.get(&id).cloned().unwrap_or_default().into_iter().filter(|n| *n != target_name).collect()
+            }
+        };
+
+        for name in &actors {
+            let Some(sym) = ing.store.names.get(name) else { continue };
+            let rows = by_ability(&ing.store, &Filter::encounter(id).damage().by(sym));
+            merge_ability_rows(&mut merged, rows);
         }
     }
 
@@ -214,6 +255,8 @@ pub fn summarize(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32
         }
     }
     rows.sort_by(|a, b| b.total.cmp(&a.total));
+
+    let total_damage: u64 = rows.iter().map(|r| r.total).sum();
 
     // A floor under the divisor, not under the reported DPS: an aggregate
     // with a handful of ms of combat should read as a huge, honest number,
@@ -234,7 +277,15 @@ pub fn summarize(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32
         })
         .collect();
 
-    CombatSummaryDto { fight_count: ids.len(), total_damage, duration_ms, dps: total_damage as f64 / dur_secs, abilities }
+    CombatSummaryDto {
+        fight_count: ids.len(),
+        total_damage,
+        duration_ms,
+        dps: total_damage as f64 / dur_secs,
+        enemy_damage,
+        enemy_dps: enemy_damage as f64 / dur_secs,
+        abilities,
+    }
 }
 
 // ---------------------------------------------------------------- allies
@@ -254,12 +305,22 @@ pub struct AllyDto {
 /// the Combat module's primary view. Click one (`summarize` with `actor`
 /// set) to drill into their own ability breakdown.
 ///
-/// Excludes whichever entity anchors each encounter's `target` label. The
-/// log gives no clean enemy/ally flag -- `Kind` only distinguishes
-/// `Player`/`Pet` from `Unproven`, and an unspoken NPC and an unspoken
-/// player look identical -- but the fight's own target is reliably the
-/// thing being fought, in both a kill and a timeout. A multi-mob pull's
-/// *other* mobs are a known gap this doesn't cover; see
+/// Same actor set, and the same per-actor `by_ability` queries, as
+/// `summarize`'s team aggregate -- deliberately, not just similarly:
+/// `sum(list_allies(..))` and `summarize(..).total_damage` need to agree,
+/// and an earlier version that determined "who's on the team" two
+/// different ways (this via `by_actor` over the whole encounter, that via
+/// `entities_by_enc`) produced two different totals for the same selection
+/// on the real reference log. Iterating `entities_by_enc` here too, the
+/// same source `summarize` reads, is what keeps them in agreement by
+/// construction rather than by coincidence.
+///
+/// Excludes whichever entity anchors *that fight's own* `target` label,
+/// checked per encounter. The log gives no clean enemy/ally flag -- `Kind`
+/// only distinguishes `Player`/`Pet` from `Unproven`, and an unspoken NPC
+/// and an unspoken player look identical -- but the fight's own target is
+/// reliably the thing being fought, in both a kill and a timeout. A
+/// multi-mob pull's *other* mobs are a known gap this doesn't cover; see
 /// `Ingest::entities_by_enc`'s doc comment.
 pub fn list_allies(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32>) -> Vec<AllyDto> {
     let ids = resolve_ids(ing, zone_visit, encounter_id);
@@ -267,17 +328,20 @@ pub fn list_allies(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u
         return Vec::new();
     }
 
-    let mut exclude: HashSet<Sym> = HashSet::new();
-    let mut total_damage = 0u64;
     let mut acc: HashMap<Sym, (u64, u64)> = HashMap::new();
 
     for &id in &ids {
-        if let Some(e) = ing.store.encounter(id) {
-            exclude.insert(e.target);
-        }
-        let f = Filter::encounter(id).damage();
-        total_damage += total(&ing.store, &f);
-        for (sym, dmg, hits) in by_actor(&ing.store, &f) {
+        let Some(enc) = ing.store.encounter(id) else { continue };
+        let target_name = ing.store.name(enc.target).to_string();
+        let entities = ing.entities_by_enc.get(&id).cloned().unwrap_or_default();
+        for name in entities.iter().filter(|n| **n != target_name) {
+            let Some(sym) = ing.store.names.get(name) else { continue };
+            let rows = by_ability(&ing.store, &Filter::encounter(id).damage().by(sym));
+            if rows.is_empty() {
+                continue; // present in the fight, but never dealt damage (e.g. a healer)
+            }
+            let dmg: u64 = rows.iter().map(|r| r.total).sum();
+            let hits: u64 = rows.iter().map(|r| r.hits).sum();
             let e = acc.entry(sym).or_insert((0, 0));
             e.0 += dmg;
             e.1 += hits;
@@ -287,10 +351,10 @@ pub fn list_allies(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u
     let now = ing.now_ms();
     let duration_ms: Millis = ids.iter().filter_map(|&id| ing.store.encounter(id)).map(|e| e.duration_ms(now).max(0)).sum();
     let dur_secs = (duration_ms.max(0) as f64 / 1000.0).max(0.001);
+    let total_damage: u64 = acc.values().map(|(dmg, _)| dmg).sum();
 
     let mut out: Vec<AllyDto> = acc
         .into_iter()
-        .filter(|(sym, _)| !exclude.contains(sym))
         .map(|(sym, (dmg, hits))| {
             let name = ing.store.name(sym).to_string();
             let kind = ing.encounters.entities.kind(&name);
