@@ -1,14 +1,16 @@
 // Plain JS, no build step -- Tauri serves this folder as-is. `window.__TAURI__`
 // is injected because tauri.conf.json sets `app.withGlobalTauri`.
 //
-// Two screens: `setup` (first launch, no directory chosen yet) and `main`
-// (live feed). Which one shows is decided once at load from `get_status`,
-// then `main` is the target of every `set_log_directory` success.
+// Two screens: `setup` (first launch, no directory chosen yet) and `main`.
+// Inside `main`, a left-nav sidebar switches between modules ("Overview",
+// "Combat") without touching the toolbar or which screen is showing --
+// module state is a smaller, separate concern from setup/connected state.
 
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
 const MAX_FEED_ROWS = 200;
+const COMBAT_REFRESH_MS = 3000;
 
 const el = (id) => document.getElementById(id);
 const screens = { setup: el('setup'), main: el('main') };
@@ -29,27 +31,31 @@ function clearError() {
   el('error-banner').classList.add('hidden');
 }
 
-function escapeHtml(s) {
-  const div = document.createElement('div');
-  div.textContent = s;
-  return div.innerHTML;
+function fmtDuration(ms) {
+  const total = Math.max(0, Math.round((ms ?? 0) / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function renderSnapshot(snap) {
-  el('tail-file').textContent = snap.file ?? '—';
-  el('tail-char').textContent = snap.character ? `${snap.character} @ ${snap.server ?? '?'}` : '';
+// ---------------------------------------------------------------- toolbar / overview
 
-  el('stat-total').textContent = snap.total.toLocaleString();
-  el('stat-matched').textContent = snap.matched.toLocaleString();
-  el('stat-unmatched').textContent = snap.unmatched.toLocaleString();
+function renderStatus(status, counts) {
+  el('tail-file').textContent = status.file ?? '—';
+  el('tail-char').textContent = status.character ? `${status.character} @ ${status.server ?? '?'}` : '';
+  el('backfill-note').classList.toggle('hidden', !status.backfilling);
 
-  const coverable = snap.matched + snap.unmatched;
-  const pct = coverable > 0 ? (100 * snap.matched) / coverable : 0;
+  el('stat-total').textContent = counts.total.toLocaleString();
+  el('stat-matched').textContent = counts.matched.toLocaleString();
+  el('stat-unmatched').textContent = counts.unmatched.toLocaleString();
+
+  const coverable = counts.matched + counts.unmatched;
+  const pct = coverable > 0 ? (100 * counts.matched) / coverable : 0;
   el('stat-coverage').textContent = `${pct.toFixed(1)}%`;
 
   const tbody = document.querySelector('#kind-table tbody');
   tbody.innerHTML = '';
-  const entries = Object.entries(snap.by_kind ?? {}).sort((a, b) => b[1] - a[1]);
+  const entries = Object.entries(counts.by_kind ?? {}).sort((a, b) => b[1] - a[1]);
   for (const [kind, count] of entries) {
     const tr = document.createElement('tr');
     const kindCell = document.createElement('td');
@@ -61,16 +67,19 @@ function renderSnapshot(snap) {
     tbody.appendChild(tr);
   }
 
-  const status = el('conn-status');
-  if (!snap.watching) {
-    status.textContent = 'not connected';
-    status.className = 'status status-idle';
-  } else if (snap.tail_status === 'missing') {
-    status.textContent = 'file not found — waiting';
-    status.className = 'status status-idle';
+  const conn = el('conn-status');
+  if (!status.watching) {
+    conn.textContent = 'not connected';
+    conn.className = 'status status-idle';
+  } else if (status.tail_status === 'missing') {
+    conn.textContent = 'file not found — waiting';
+    conn.className = 'status status-idle';
+  } else if (status.backfilling) {
+    conn.textContent = 'replaying history';
+    conn.className = 'status status-live';
   } else {
-    status.textContent = 'watching';
-    status.className = 'status status-live';
+    conn.textContent = 'watching';
+    conn.className = 'status status-live';
   }
 }
 
@@ -93,6 +102,111 @@ function appendFeed(lines) {
   }
 }
 
+// ---------------------------------------------------------------- module nav
+
+let activeModule = 'overview';
+
+function showModule(name) {
+  activeModule = name;
+  for (const btn of document.querySelectorAll('#module-nav .nav-item')) {
+    btn.classList.toggle('active', btn.dataset.module === name);
+  }
+  for (const section of document.querySelectorAll('.module')) {
+    section.classList.toggle('hidden', section.id !== `module-${name}`);
+  }
+  if (name === 'combat') refreshCombat();
+}
+
+for (const btn of document.querySelectorAll('#module-nav .nav-item')) {
+  btn.addEventListener('click', () => showModule(btn.dataset.module));
+}
+
+// ---------------------------------------------------------------- combat module
+
+async function refreshCombat() {
+  if (activeModule !== 'combat') return;
+
+  const zoneSelect = el('zone-select');
+  const encSelect = el('encounter-select');
+  const prevZone = zoneSelect.value;
+  const prevEnc = encSelect.value;
+
+  const visits = await invoke('list_zone_visits');
+  zoneSelect.innerHTML = '';
+  const allOpt = document.createElement('option');
+  allOpt.value = '';
+  allOpt.textContent = `All zones (${visits.reduce((n, v) => n + v.fight_count, 0)} fights)`;
+  zoneSelect.appendChild(allOpt);
+  for (const v of visits) {
+    const opt = document.createElement('option');
+    // -1 is the "Unknown" bucket's wire value (see combat::matches_visit)
+    // -- distinct from '', which means "no filter" here.
+    opt.value = v.index === null ? '-1' : String(v.index);
+    opt.textContent = `${v.current ? '● ' : ''}${v.label} (${v.fight_count})`;
+    zoneSelect.appendChild(opt);
+  }
+  if ([...zoneSelect.options].some((o) => o.value === prevZone)) {
+    zoneSelect.value = prevZone;
+  }
+
+  const zoneVisit = zoneSelect.value === '' ? null : Number(zoneSelect.value);
+  const encounters = await invoke('list_encounters', { zoneVisit });
+  encSelect.innerHTML = '';
+  const aggOpt = document.createElement('option');
+  aggOpt.value = '';
+  aggOpt.textContent = `Aggregate (${encounters.length} fight${encounters.length === 1 ? '' : 's'})`;
+  encSelect.appendChild(aggOpt);
+  for (const e of encounters) {
+    const opt = document.createElement('option');
+    opt.value = String(e.id);
+    const tag = e.open ? 'ongoing' : e.slain ? 'kill' : 'reset';
+    opt.textContent = `${e.target} — ${fmtDuration(e.duration_ms)} — ${e.total_damage.toLocaleString()} dmg (${tag})`;
+    encSelect.appendChild(opt);
+  }
+  if ([...encSelect.options].some((o) => o.value === prevEnc)) {
+    encSelect.value = prevEnc;
+  }
+
+  const encounterId = encSelect.value === '' ? null : Number(encSelect.value);
+  const summary = await invoke('get_combat_summary', { zoneVisit, encounterId });
+  renderCombatSummary(summary);
+}
+
+function renderCombatSummary(summary) {
+  el('combat-fights').textContent = summary.fight_count.toLocaleString();
+  el('combat-damage').textContent = summary.total_damage.toLocaleString();
+  el('combat-duration').textContent = fmtDuration(summary.duration_ms);
+  el('combat-dps').textContent = summary.dps.toFixed(1);
+
+  const tbody = document.querySelector('#ability-table tbody');
+  tbody.innerHTML = '';
+  for (const row of summary.abilities) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${row.ability}</td>
+      <td class="tags">${row.tags.join(' ')}</td>
+      <td class="num">${row.hits.toLocaleString()}</td>
+      <td class="num">${row.total.toLocaleString()}</td>
+      <td class="num">${row.pct.toFixed(1)}</td>
+      <td class="num">${row.dps.toFixed(1)}</td>
+      <td class="num">${row.hits > 0 ? Math.round(row.total / row.hits).toLocaleString() : 0}</td>
+      <td class="num">${row.hits > 0 ? ((100 * row.crits) / row.hits).toFixed(0) : 0}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+  el('combat-empty').classList.toggle('hidden', summary.abilities.length > 0);
+}
+
+el('zone-select').addEventListener('change', () => {
+  el('encounter-select').value = ''; // a new zone invalidates the old fight pick
+  refreshCombat();
+});
+el('encounter-select').addEventListener('change', refreshCombat);
+
+setInterval(refreshCombat, COMBAT_REFRESH_MS);
+
+// ---------------------------------------------------------------- setup / directory
+
 async function chooseDirectory() {
   clearError();
   let path;
@@ -105,8 +219,8 @@ async function chooseDirectory() {
   if (!path) return; // user cancelled
 
   try {
-    const status = await invoke('set_log_directory', { path });
-    renderSnapshot(status.snapshot);
+    const result = await invoke('set_log_directory', { path });
+    renderStatus(result.status, result.counts);
     showScreen('main');
   } catch (e) {
     showError(String(e));
@@ -117,7 +231,7 @@ el('choose-dir').addEventListener('click', chooseDirectory);
 el('change-dir').addEventListener('click', chooseDirectory);
 
 listen('parse-tick', (event) => {
-  renderSnapshot(event.payload.snapshot);
+  renderStatus(event.payload.status, event.payload.counts);
   appendFeed(event.payload.recent);
 });
 
@@ -126,7 +240,8 @@ listen('parse-error', (event) => {
 });
 
 (async () => {
-  const status = await invoke('get_status');
-  renderSnapshot(status.snapshot);
-  showScreen(status.configured ? 'main' : 'setup');
+  const result = await invoke('get_status');
+  renderStatus(result.status, result.counts);
+  showScreen(result.configured ? 'main' : 'setup');
+  showModule('overview');
 })();

@@ -6,15 +6,7 @@ use crate::rolling::Rolling;
 use eqlp_source::Millis;
 use std::collections::HashMap;
 
-/// Encounter key: first character case-folded, rest preserved.
-/// See `docs/design/session.md`.
-fn key(name: &str) -> String {
-    let mut c = name.chars();
-    match c.next() {
-        Some(f) => f.to_lowercase().collect::<String>() + c.as_str(),
-        None => String::new(),
-    }
-}
+use crate::fold_key as key;
 
 pub const DEFAULT_TIMEOUT_MS: Millis = 12_000;
 pub const DEFAULT_WINDOW_MS: Millis = 10_000;

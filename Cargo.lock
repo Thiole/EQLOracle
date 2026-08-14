@@ -737,7 +737,9 @@ name = "eqlp-app"
 version = "0.1.0"
 dependencies = [
  "eqlp-core",
+ "eqlp-session",
  "eqlp-source",
+ "eqlp-store",
  "serde",
  "serde_json",
  "tauri",

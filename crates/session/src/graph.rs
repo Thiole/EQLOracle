@@ -2,6 +2,7 @@
 //!
 //! Design notes: `docs/design/encounters.md`
 
+use crate::fold_key;
 use std::collections::HashMap;
 
 pub type Millis = i64;
@@ -71,43 +72,57 @@ pub enum Kind {
 
 /// Entity registry. Classification is monotonic: evidence promotes, nothing
 /// demotes, so a player who speaks once stays a player.
+///
+/// Identity maps are keyed by `fold_key`, not the raw name -- see
+/// `fold_key` for why. `display` keeps the first-cased spelling seen per
+/// key, so lookups are case-insensitive but anything handed back out (e.g.
+/// `players()`) still reads the way the log actually wrote it.
 #[derive(Debug, Default)]
 pub struct Entities {
     kind: HashMap<String, Kind>,
     owner: HashMap<String, String>,
+    display: HashMap<String, String>,
 }
 
 impl Entities {
+    fn note_seen(&mut self, key: &str, name: &str) {
+        self.display.entry(key.to_string()).or_insert_with(|| name.to_string());
+    }
+
     /// Called when a name uses a player-only channel (group/guild/raid/General).
     /// NPCs use `says`, never these, so this is the one reliable player proof.
     pub fn note_player_channel(&mut self, name: &str) {
-        self.kind.insert(name.to_string(), Kind::Player);
+        let key = fold_key(name);
+        self.note_seen(&key, name);
+        self.kind.insert(key, Kind::Player);
     }
 
     /// Classify on first sight. Pets are detected by the ` pet` suffix, which
     /// carries the owner's name — the only ownership marker the log provides.
     /// Charmed mobs never get it and stay `Unproven`.
     pub fn observe(&mut self, name: &str) -> Kind {
-        if let Some(&k) = self.kind.get(name) {
+        let key = fold_key(name);
+        self.note_seen(&key, name);
+        if let Some(&k) = self.kind.get(&key) {
             return k;
         }
         let k = match name.strip_suffix(" pet") {
             Some(owner) if !owner.is_empty() => {
-                self.owner.insert(name.to_string(), owner.to_string());
+                self.owner.insert(key.clone(), owner.to_string());
                 Kind::Pet
             }
             _ => Kind::Unproven,
         };
-        self.kind.insert(name.to_string(), k);
+        self.kind.insert(key, k);
         k
     }
 
     pub fn kind(&self, name: &str) -> Kind {
-        self.kind.get(name).copied().unwrap_or(Kind::Unproven)
+        self.kind.get(&fold_key(name)).copied().unwrap_or(Kind::Unproven)
     }
 
     pub fn owner_of(&self, name: &str) -> Option<&str> {
-        self.owner.get(name).map(|s| s.as_str())
+        self.owner.get(&fold_key(name)).map(|s| s.as_str())
     }
 
     /// Who this damage should count towards: a pet's owner, else the entity.
@@ -116,7 +131,9 @@ impl Entities {
     }
 
     pub fn players(&self) -> impl Iterator<Item = &str> {
-        self.kind.iter().filter(|(_, &k)| k == Kind::Player).map(|(n, _)| n.as_str())
+        self.kind.iter().filter(|(_, &k)| k == Kind::Player).map(|(k, _)| {
+            self.display.get(k).map(|s| s.as_str()).unwrap_or(k.as_str())
+        })
     }
 }
 
@@ -203,8 +220,8 @@ impl Builder {
         self.entities.observe(actor);
         self.entities.observe(target);
 
-        let a = self.of.get(actor).copied();
-        let b = self.of.get(target).copied();
+        let a = self.of.get(&fold_key(actor)).copied();
+        let b = self.of.get(&fold_key(target)).copied();
 
         let id = match (a, b) {
             (None, None) => self.open(ts, actor, target),
@@ -262,18 +279,18 @@ impl Builder {
                 merged: false,
             },
         );
-        self.of.insert(a.to_string(), id);
-        self.of.insert(b.to_string(), id);
+        self.of.insert(fold_key(a), id);
+        self.of.insert(fold_key(b), id);
         id
     }
 
     fn attach(&mut self, id: EncId, name: &str, _ts: Millis) {
         if let Some(e) = self.live.get_mut(&id) {
-            if !e.entities.iter().any(|n| n == name) {
+            if !e.entities.iter().any(|n| fold_key(n) == fold_key(name)) {
                 e.entities.push(name.to_string());
             }
         }
-        self.of.insert(name.to_string(), id);
+        self.of.insert(fold_key(name), id);
     }
 
     fn merge(&mut self, x: EncId, y: EncId) -> EncId {
@@ -281,7 +298,7 @@ impl Builder {
         if let Some(src) = self.live.remove(&gone) {
             if let Some(dst) = self.live.get_mut(&keep) {
                 for n in &src.entities {
-                    if !dst.entities.iter().any(|m| m == n) {
+                    if !dst.entities.iter().any(|m| fold_key(m) == fold_key(n)) {
                         dst.entities.push(n.clone());
                     }
                 }
@@ -291,7 +308,7 @@ impl Builder {
                 dst.merged = true;
             }
             for n in src.entities {
-                self.of.insert(n, keep);
+                self.of.insert(fold_key(&n), keep);
             }
         }
         keep
@@ -300,10 +317,10 @@ impl Builder {
     /// A death line. The target leaves combat immediately; the encounter
     /// continues if anything else in it is still fighting.
     pub fn death(&mut self, ts: Millis, target: &str) {
-        if let Some(id) = self.of.remove(target) {
+        if let Some(id) = self.of.remove(&fold_key(target)) {
             if let Some(e) = self.live.get_mut(&id) {
                 e.last_ms = ts;
-                if !e.slain.iter().any(|n| n == target) {
+                if !e.slain.iter().any(|n| fold_key(n) == fold_key(target)) {
                     e.slain.push(target.to_string());
                 }
             }
@@ -336,8 +353,8 @@ impl Builder {
             None => return,
         };
         for n in &e.entities {
-            if self.of.get(n) == Some(&id) {
-                self.of.remove(n);
+            if self.of.get(&fold_key(n)) == Some(&id) {
+                self.of.remove(&fold_key(n));
             }
         }
 
@@ -360,7 +377,7 @@ impl Builder {
 
         let mut links_to = None;
         for n in e.entities.iter().filter(|n| !is_player(n)) {
-            if let Some(&(prev, _)) = self.recent.get(n) {
+            if let Some(&(prev, _)) = self.recent.get(&fold_key(n)) {
                 links_to = Some(prev);
                 break;
             }
@@ -369,11 +386,11 @@ impl Builder {
         let carry: Vec<String> = e
             .entities
             .iter()
-            .filter(|n| !is_player(n) && !e.slain.iter().any(|s| s == *n))
+            .filter(|n| !is_player(n) && !e.slain.iter().any(|s| fold_key(s) == fold_key(n)))
             .cloned()
             .collect();
         for n in carry {
-            self.recent.insert(n, (id, e.last_ms));
+            self.recent.insert(fold_key(&n), (id, e.last_ms));
         }
 
         self.closed.push(Closed {
@@ -404,6 +421,6 @@ impl Builder {
     }
 
     pub fn encounter_of(&self, entity: &str) -> Option<EncId> {
-        self.of.get(entity).copied()
+        self.of.get(&fold_key(entity)).copied()
     }
 }

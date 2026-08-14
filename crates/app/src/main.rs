@@ -7,8 +7,10 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod combat;
 mod commands;
 mod config;
+mod ingest;
 mod parser;
 mod state;
 mod tail_worker;
@@ -27,7 +29,7 @@ fn main() {
                 if cfg.log_dir.is_dir() {
                     let dir = cfg.log_dir.clone();
                     *state.config.lock().unwrap() = Some(cfg);
-                    let worker = tail_worker::spawn(handle, dir, state.snapshot.clone());
+                    let worker = tail_worker::spawn(handle, dir, state.ingest.clone(), state.status.clone());
                     *state.worker.lock().unwrap() = Some(worker);
                 }
                 // Directory on record but gone (drive unmounted, prefix
@@ -40,6 +42,9 @@ fn main() {
             commands::get_status,
             commands::pick_log_directory,
             commands::set_log_directory,
+            commands::list_zone_visits,
+            commands::list_encounters,
+            commands::get_combat_summary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running eqlp-app");

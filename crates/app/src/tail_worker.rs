@@ -6,12 +6,10 @@
 //! for which character is currently logged in, and a `Framer` is required
 //! while tailing because a poll can land mid-line.
 
-use crate::parser::{build_engine, Counts, RecentLine};
+use crate::ingest::{Ingest, LineCounts, RecentLine};
 use eqlp_core::frame::Framer;
-use eqlp_core::Outcome;
 use eqlp_source::{identity_from_filename, newest_log_in, Clock, SystemClock, Tail, TailEvent, POLL_MS};
 use serde::Serialize;
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -21,41 +19,35 @@ use tauri::{AppHandle, Emitter};
 
 /// How often to re-scan the directory for a newer `eqlog_*.txt`. Character
 /// switches are rare compared to line growth, so this runs far less often
-/// than the 250 ms tail poll -- it's a directory listing, not a big cost,
-/// but there is no reason to pay it four times a second.
+/// than the 250 ms tail poll.
 const RESCAN_MS: i64 = 5_000;
 
 /// Emit a tick at least this often even when nothing new arrived, so the UI
 /// can show "still watching" instead of going stale-looking mid-lull.
 const HEARTBEAT_MS: i64 = 3_000;
 
-/// Feed rows kept server-side between emits. The frontend keeps its own
-/// (smaller) rolling window on top of this; this cap just bounds one
-/// worker's memory if the UI is slow to drain a burst.
-const MAX_PENDING_RECENT: usize = 500;
-
-/// Snapshot of "what's true right now", handed to the frontend both by push
-/// (the `parse-tick` event) and by pull (`get_status`, for first paint /
-/// reconnect without waiting on the next tick).
+/// What the toolbar/Overview module show: which file, whose character,
+/// whether we're still replaying history. Cheap to clone; read on every
+/// `get_status` and pushed on every tick.
 #[derive(Debug, Clone, Default, Serialize)]
-pub struct Snapshot {
+pub struct TailStatus {
     pub log_dir: Option<String>,
     pub file: Option<String>,
     pub character: Option<String>,
     pub server: Option<String>,
     pub watching: bool,
     pub tail_status: &'static str,
-    pub total: u64,
-    pub matched: u64,
-    pub unmatched: u64,
-    pub headerless: u64,
-    pub blank: u64,
-    pub by_kind: BTreeMap<String, u64>,
+    /// True while replaying the file's existing content before catching up
+    /// to live. The Combat module's numbers are already usable during this
+    /// window -- it's the live feed and real-time idle-closing that wait
+    /// for it to clear. See `Ingest::mark_live`.
+    pub backfilling: bool,
 }
 
 #[derive(Clone, Serialize)]
 struct ParseTick {
-    snapshot: Snapshot,
+    status: TailStatus,
+    counts: LineCounts,
     recent: Vec<RecentLine>,
 }
 
@@ -71,15 +63,15 @@ impl WorkerHandle {
     }
 }
 
-pub fn spawn(app: AppHandle, log_dir: PathBuf, shared: Arc<Mutex<Snapshot>>) -> WorkerHandle {
+pub fn spawn(app: AppHandle, log_dir: PathBuf, ingest: Arc<Mutex<Ingest>>, status: Arc<Mutex<TailStatus>>) -> WorkerHandle {
     let stop = Arc::new(AtomicBool::new(false));
     let stop_flag = stop.clone();
-    thread::spawn(move || run(app, log_dir, stop_flag, shared));
+    thread::spawn(move || run(app, log_dir, stop_flag, ingest, status));
     WorkerHandle { stop }
 }
 
-fn run(app: AppHandle, log_dir: PathBuf, stop: Arc<AtomicBool>, shared: Arc<Mutex<Snapshot>>) {
-    let engine = match build_engine() {
+fn run(app: AppHandle, log_dir: PathBuf, stop: Arc<AtomicBool>, ingest: Arc<Mutex<Ingest>>, status: Arc<Mutex<TailStatus>>) {
+    let engine = match crate::parser::build_engine() {
         Ok(e) => e,
         Err(e) => {
             let _ = app.emit("parse-error", format!("rule pack failed to load: {e}"));
@@ -89,13 +81,16 @@ fn run(app: AppHandle, log_dir: PathBuf, stop: Arc<AtomicBool>, shared: Arc<Mute
     let mut matcher = engine.matcher();
     let clock = SystemClock;
 
+    // A fresh directory (first launch, or "change folder") starts from a
+    // fresh parsed db -- row indices and encounter ids from a previous
+    // directory mean nothing here.
+    *ingest.lock().unwrap() = Ingest::default();
+
     let mut target: Option<PathBuf> = None;
     let mut tail: Option<Tail> = None;
     let mut framer = Framer::default();
-    let mut counts = Counts::default();
-    let mut recent: Vec<RecentLine> = Vec::new();
+    let mut backfilling = false;
 
-    // Force an immediate scan and an immediate first emit on entry.
     let mut last_rescan = clock.now_ms() - RESCAN_MS;
     let mut last_emit = clock.now_ms() - HEARTBEAT_MS;
 
@@ -108,14 +103,13 @@ fn run(app: AppHandle, log_dir: PathBuf, stop: Arc<AtomicBool>, shared: Arc<Mute
             if let Some(newest) = newest_log_in(&log_dir) {
                 if target.as_ref() != Some(&newest) {
                     target = Some(newest.clone());
-                    // Live only: pick up whatever the game writes from here.
-                    // History backfill is `Tail::from_start`, a separate,
-                    // deliberately opt-in feature -- not what "which file is
-                    // the game logging to right now" asks for.
-                    tail = Some(Tail::at_end(newest));
+                    // Replay this file's existing content, then continue
+                    // live -- "watch live" and "browse past fights" are the
+                    // same tail, just before and after catching up.
+                    tail = Some(Tail::from_start(newest));
                     framer = Framer::default();
-                    counts = Counts::default();
-                    recent.clear();
+                    backfilling = true;
+                    *ingest.lock().unwrap() = Ingest::default();
                     switched = true;
                 }
             }
@@ -123,8 +117,13 @@ fn run(app: AppHandle, log_dir: PathBuf, stop: Arc<AtomicBool>, shared: Arc<Mute
 
         let mut tail_status: &'static str = "idle";
         if let Some(t) = tail.as_mut() {
-            let mut raw = Vec::new();
-            let ev = t.poll(|chunk| raw.extend_from_slice(chunk));
+            let mut ing = ingest.lock().unwrap();
+            let ev = t.poll(|chunk| {
+                framer.push(chunk, |line| {
+                    let outcome = matcher.classify(line);
+                    ing.route(&engine, line, &outcome);
+                });
+            });
             tail_status = match ev {
                 TailEvent::Grew(_) => "grew",
                 TailEvent::Truncated => "truncated",
@@ -132,61 +131,44 @@ fn run(app: AppHandle, log_dir: PathBuf, stop: Arc<AtomicBool>, shared: Arc<Mute
                 TailEvent::Missing => "missing",
                 TailEvent::Idle => "idle",
             };
-
-            // The file's own content changed identity; a carried partial
-            // line from before no longer means anything, and counts so far
-            // described bytes that are no longer there.
+            // The file's own content changed identity mid-tail (not a
+            // character switch, which already gets a fresh Ingest above).
+            // A carried partial line from before means nothing now; the
+            // parsed history in the store is not thrown away for it --
+            // only the frame boundary resets, at the cost of possibly one
+            // misframed line at the seam. Rare enough, and cheap enough to
+            // accept, that rebuilding hours of parsed history over it
+            // would be the wrong trade.
             if matches!(ev, TailEvent::Truncated | TailEvent::Replaced) {
                 framer = Framer::default();
-                counts = Counts::default();
-                recent.clear();
             }
-
-            if !raw.is_empty() {
-                framer.push(&raw, |line| {
-                    let outcome = matcher.classify(line);
-                    let kind = match &outcome {
-                        Outcome::Matched(m) => Some(engine.rule(m.rule).kind.as_str()),
-                        _ => None,
-                    };
-                    counts.record(&outcome, kind);
-                    if let Outcome::Matched(m) = &outcome {
-                        let rule = engine.rule(m.rule);
-                        recent.push(RecentLine {
-                            kind: rule.kind.clone(),
-                            rule_id: rule.id.clone(),
-                            text: String::from_utf8_lossy(m.body.slice(line)).into_owned(),
-                        });
-                        if recent.len() > MAX_PENDING_RECENT {
-                            let excess = recent.len() - MAX_PENDING_RECENT;
-                            recent.drain(0..excess);
-                        }
-                    }
-                });
+            if backfilling {
+                ing.mark_live();
+                backfilling = false;
             }
+            ing.tick(now);
         }
 
-        let has_news = switched || !matches!(tail_status, "idle" | "missing") || !recent.is_empty();
+        let has_news = switched || !matches!(tail_status, "idle" | "missing");
         if has_news || now - last_emit >= HEARTBEAT_MS {
             last_emit = now;
             let identity = target.as_ref().and_then(|p| identity_from_filename(p));
-            let snapshot = Snapshot {
+            let st = TailStatus {
                 log_dir: Some(log_dir.display().to_string()),
                 file: target.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()),
                 character: identity.as_ref().map(|(c, _)| c.clone()),
                 server: identity.as_ref().map(|(_, s)| s.clone()),
                 watching: true,
                 tail_status,
-                total: counts.total,
-                matched: counts.matched,
-                unmatched: counts.unmatched,
-                headerless: counts.headerless,
-                blank: counts.blank,
-                by_kind: counts.by_kind.clone(),
+                backfilling,
             };
-            *shared.lock().unwrap() = snapshot.clone();
-            let batch = std::mem::take(&mut recent);
-            let _ = app.emit("parse-tick", ParseTick { snapshot, recent: batch });
+            *status.lock().unwrap() = st.clone();
+
+            let mut ing = ingest.lock().unwrap();
+            let counts = ing.counts.clone();
+            let recent = std::mem::take(&mut ing.recent);
+            drop(ing);
+            let _ = app.emit("parse-tick", ParseTick { status: st, counts, recent });
         }
 
         thread::sleep(Duration::from_millis(POLL_MS));
