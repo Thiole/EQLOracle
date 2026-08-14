@@ -10,7 +10,7 @@
 use crate::ingest::Ingest;
 use eqlp_session::{series as bucket_series, Cause, Kind};
 use eqlp_source::Millis;
-use eqlp_store::{by_ability, dps_window, tag, total, AbilityRow, EncounterId, EventKind, Filter, Sym};
+use eqlp_store::{by_ability, by_actor, dps_window, tag, total, AbilityRow, EncounterId, EventKind, Filter, Sym};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -195,23 +195,41 @@ fn merge_ability_rows(dst: &mut HashMap<eqlp_store::AbilityId, AbilityRow>, rows
     }
 }
 
+/// Removes `rows` from an accumulator built by `merge_ability_rows`, then
+/// drops any entry that's been subtracted down to nothing -- an ability
+/// only the enemy used (a mob-only special attack, say) should vanish from
+/// a "team" breakdown entirely, not linger as a zero row. `min`/`max`
+/// aren't meaningfully subtractable and are left as the all-actors
+/// extremes; a minor, known imprecision on abilities the enemy happens to
+/// share with the team (in practice just the generic "Miss" bucket -- see
+/// `record_miss`), not on total/hits/dps/pct, which is what this exists for.
+fn subtract_ability_rows(dst: &mut HashMap<eqlp_store::AbilityId, AbilityRow>, rows: Vec<AbilityRow>) {
+    for row in rows {
+        if let Some(acc) = dst.get_mut(&row.ability) {
+            acc.total = acc.total.saturating_sub(row.total);
+            acc.hits = acc.hits.saturating_sub(row.hits);
+            acc.crits = acc.crits.saturating_sub(row.crits);
+            acc.full_power = acc.full_power.saturating_sub(row.full_power);
+        }
+    }
+    dst.retain(|_, r| r.total > 0 || r.hits > 0);
+}
+
 /// Aggregates one encounter, every encounter in a zone visit, or every
 /// encounter parsed so far. `encounter_id` wins if given; otherwise
 /// `zone_visit`; otherwise everything. `actor`, if given, narrows to one
 /// ally's own abilities -- the drill-down from `list_allies`.
 ///
 /// `total_damage`/`abilities` are the team's own output: everyone in the
-/// fight *except* its own target, matching `list_allies`' exclusion, so
-/// this never mixes offense and incoming damage into one meaningless
-/// number. What the target did back is `enemy_damage`/`enemy_dps`,
-/// reported separately rather than folded in.
+/// fight *except* its own target (subtracted out below), so this never
+/// mixes offense and incoming damage into one meaningless number. What the
+/// target did back is `enemy_damage`/`enemy_dps`, reported separately
+/// rather than folded in.
 ///
-/// Merging several encounters' ability breakdowns client-side (one
-/// `by_ability` call per encounter per actor, summed) rather than teaching
+/// One or two `by_ability`/`total` calls per encounter (`docs/design/store.md`
+/// measures a single-encounter `by_ability` at 39µs) rather than teaching
 /// `eqlp-store`'s `Filter` to accept a set of encounter ids: a zone visit is
-/// a handful of fights with a handful of participants, so this is a
-/// handful of cheap calls (`docs/design/store.md` measures a
-/// single-encounter `by_ability` at 39µs), and it leaves the store's query
+/// a handful of fights, so this is cheap, and it leaves the store's query
 /// contract exactly as documented rather than extending it for one caller.
 pub fn summarize(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32>, actor: Option<&str>) -> CombatSummaryDto {
     let now = ing.now_ms();
@@ -219,6 +237,7 @@ pub fn summarize(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32
     if ids.is_empty() {
         return CombatSummaryDto::default();
     }
+    let actor_sym = actor.and_then(|n| ing.store.names.get(n));
 
     let mut duration_ms: Millis = 0;
     let mut enemy_damage = 0u64;
@@ -229,22 +248,15 @@ pub fn summarize(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32
         duration_ms += enc.duration_ms(now).max(0);
         enemy_damage += total(&ing.store, &Filter::encounter(id).damage().by(enc.target));
 
-        // Which actors count toward "the team" here: one specific ally if
-        // drilling in, otherwise everyone in the fight except its own
-        // target. A real ally is never the target, so this is never
-        // narrower than intended when `actor` is given.
-        let target_name = ing.store.name(enc.target).to_string();
-        let actors: Vec<String> = match actor {
-            Some(name) => vec![name.to_string()],
-            None => {
-                ing.entities_by_enc.get(&id).cloned().unwrap_or_default().into_iter().filter(|n| *n != target_name).collect()
-            }
-        };
-
-        for name in &actors {
-            let Some(sym) = ing.store.names.get(name) else { continue };
-            let rows = by_ability(&ing.store, &Filter::encounter(id).damage().by(sym));
-            merge_ability_rows(&mut merged, rows);
+        if let Some(sym) = actor_sym {
+            // Drilling into one specific ally: their own rows only. A real
+            // ally is never a fight's own target, so no exclusion needed.
+            merge_ability_rows(&mut merged, by_ability(&ing.store, &Filter::encounter(id).damage().by(sym)));
+        } else {
+            // Team aggregate: everyone in the fight, minus whatever the
+            // fight's own target contributed.
+            merge_ability_rows(&mut merged, by_ability(&ing.store, &Filter::encounter(id).damage()));
+            subtract_ability_rows(&mut merged, by_ability(&ing.store, &Filter::encounter(id).damage().by(enc.target)));
         }
     }
 
@@ -305,15 +317,19 @@ pub struct AllyDto {
 /// the Combat module's primary view. Click one (`summarize` with `actor`
 /// set) to drill into their own ability breakdown.
 ///
-/// Same actor set, and the same per-actor `by_ability` queries, as
-/// `summarize`'s team aggregate -- deliberately, not just similarly:
-/// `sum(list_allies(..))` and `summarize(..).total_damage` need to agree,
-/// and an earlier version that determined "who's on the team" two
-/// different ways (this via `by_actor` over the whole encounter, that via
-/// `entities_by_enc`) produced two different totals for the same selection
-/// on the real reference log. Iterating `entities_by_enc` here too, the
-/// same source `summarize` reads, is what keeps them in agreement by
-/// construction rather than by coincidence.
+/// Reads straight from `by_actor(Filter::encounter(id).damage())` -- a
+/// `store::Encounter`'s own range plus its `enc` column, not
+/// `Ingest::entities_by_enc` (the encounter graph's entity list). That
+/// matters for merged pets: `Ingest::sym` redirects a matched pet's rows to
+/// its owner's `Sym` at push time, but the owner's *name* was never
+/// necessarily added to the graph's entity list for that fight (a
+/// pet-class player who never personally swings still owns rows tagged
+/// with their Sym). Querying the store directly finds them regardless;
+/// walking `entities_by_enc` would have silently missed them. An earlier
+/// version routed through `entities_by_enc` for an unrelated reason (see
+/// git history) and produced a different total than `summarize` for the
+/// same selection on the real reference log -- both are store-driven now,
+/// so they can't disagree.
 ///
 /// Excludes whichever entity anchors *that fight's own* `target` label,
 /// checked per encounter. The log gives no clean enemy/ally flag -- `Kind`
@@ -332,16 +348,10 @@ pub fn list_allies(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u
 
     for &id in &ids {
         let Some(enc) = ing.store.encounter(id) else { continue };
-        let target_name = ing.store.name(enc.target).to_string();
-        let entities = ing.entities_by_enc.get(&id).cloned().unwrap_or_default();
-        for name in entities.iter().filter(|n| **n != target_name) {
-            let Some(sym) = ing.store.names.get(name) else { continue };
-            let rows = by_ability(&ing.store, &Filter::encounter(id).damage().by(sym));
-            if rows.is_empty() {
-                continue; // present in the fight, but never dealt damage (e.g. a healer)
+        for (sym, dmg, hits) in by_actor(&ing.store, &Filter::encounter(id).damage()) {
+            if sym == enc.target {
+                continue; // this fight's own target, not an ally in this fight
             }
-            let dmg: u64 = rows.iter().map(|r| r.total).sum();
-            let hits: u64 = rows.iter().map(|r| r.hits).sum();
             let e = acc.entry(sym).or_insert((0, 0));
             e.0 += dmg;
             e.1 += hits;
@@ -445,9 +455,16 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
     let duration = (end - start).max(1);
     let bucket_ms = (duration / TARGET_BUCKETS).max(MIN_BUCKET_MS);
 
-    let entities = ing.entities_by_enc.get(&id).cloned().unwrap_or_default();
+    // Raw graph entity names, resolved through inferred pet ownership and
+    // de-duplicated -- the graph doesn't know about pet merging (see
+    // `Ingest::link`'s doc comment), so a merged pet's raw name and its
+    // owner's raw name can both appear here naming the same effective
+    // entity.
+    let mut entities: Vec<String> = ing.entities_by_enc.get(&id).cloned().unwrap_or_default().iter().map(|n| ing.effective_name(n)).collect();
+    entities.sort();
+    entities.dedup();
     let range = e.range();
-    let target_name = ing.store.name(e.target).to_string();
+    let target_name = ing.effective_name(ing.store.name(e.target));
 
     let mut series: Vec<EntitySeriesDto> = Vec::new();
     let mut buckets_len = 0usize;
@@ -490,8 +507,13 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
 /// as of `ts_ms` -- what clicking a point on the timeline shows.
 pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<EntityStateDto> {
     let id = EncounterId(encounter_id);
-    let entities = ing.entities_by_enc.get(&id).cloned().unwrap_or_default();
-    let target_name = ing.store.encounter(id).map(|e| ing.store.name(e.target).to_string());
+    // See fight_timeline's matching comment: resolved through inferred pet
+    // ownership and de-duplicated, since the graph's raw entity list can
+    // name a merged pet and its owner separately.
+    let mut entities: Vec<String> = ing.entities_by_enc.get(&id).cloned().unwrap_or_default().iter().map(|n| ing.effective_name(n)).collect();
+    entities.sort();
+    entities.dedup();
+    let target_name = ing.store.encounter(id).map(|e| ing.effective_name(ing.store.name(e.target)));
 
     let mut out: Vec<EntityStateDto> = entities
         .into_iter()

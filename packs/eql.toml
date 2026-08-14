@@ -566,3 +566,25 @@ note = "Carries the rank numeral, which landed damage lines drop. A second rank 
 [rule.fields]
 who = { from = "who", as = "str" }
 spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "pet.summoned"
+kind = "pet"
+priority = 40
+anchors = ["summon"]
+# Never names the pet -- only the owner and the pet's flavour ("a frenzied
+# spirit", "a lesser familiar", ...). The pet's own combat identity is a
+# separate, unrelated name that shows up in the next few lines (its
+# spawn self-buff routine). See docs/design/session.md-adjacent reasoning
+# in eqlp-app's Ingest::note_actor for how that gets bridged.
+pattern = '''^(?P<who>.+?) summons? (?:forth )?(?:a|an) (?P<flavor>[a-z][a-z ]*)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Rapha summons a frenzied spirit.",
+  "[Tue Jul 28 15:02:15 2026] You summon forth a lesser familiar.",
+  "[Tue Jul 28 15:02:15 2026] Forty summons forth a minor familiar.",
+  "[Tue Jul 28 15:02:15 2026] Uktabi summons a companion spirit.",
+  "[Tue Jul 28 15:02:15 2026] Mits summons a guardian spirit.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+flavor = { from = "flavor", as = "str" }

@@ -42,6 +42,10 @@ pub struct TailStatus {
     /// window -- it's the live feed and real-time idle-closing that wait
     /// for it to clear. See `Ingest::mark_live`.
     pub backfilling: bool,
+    /// How many pets have been auto-attributed to an owner so far
+    /// (`Ingest::note_actor`) -- shown so that inference stays visible
+    /// rather than an invisible thing happening to the numbers.
+    pub pets_attributed: usize,
 }
 
 #[derive(Clone, Serialize)]
@@ -183,6 +187,7 @@ fn run(app: AppHandle, log_dir: PathBuf, stop: Arc<AtomicBool>, ingest: Arc<Mute
         if has_news || now - last_emit >= HEARTBEAT_MS {
             last_emit = now;
             let identity = target.as_ref().and_then(|p| identity_from_filename(p));
+            let pets_attributed = ingest.lock().unwrap().pet_owner_count();
             let st = TailStatus {
                 log_dir: Some(log_dir.display().to_string()),
                 file: target.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()),
@@ -191,6 +196,7 @@ fn run(app: AppHandle, log_dir: PathBuf, stop: Arc<AtomicBool>, ingest: Arc<Mute
                 watching: true,
                 tail_status,
                 backfilling,
+                pets_attributed,
             };
             *status.lock().unwrap() = st.clone();
 

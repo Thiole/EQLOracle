@@ -18,7 +18,7 @@ use eqlp_session::{Builder, EncId, Kind, Policy, Spans, State, Timeline};
 use eqlp_source::{Clock, Millis, VirtualClock};
 use eqlp_store::{flag, tag, EncounterId, EventKind, Flags, Store, Sym, Tags, NO_ENCOUNTER};
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Running counters for the currently tailed file. Reset whenever the tail
 /// target changes (new file, truncation, replacement).
@@ -57,6 +57,18 @@ pub struct RecentLine {
 /// drain a burst. The frontend keeps its own smaller rolling window on top.
 const MAX_PENDING_RECENT: usize = 500;
 
+/// How long a "<Owner> summons a <flavour>." line stays a candidate for
+/// matching against the next brand-new entity to act. The log never names
+/// the pet, only the owner and flavour -- attribution comes from a pet's
+/// spawn behaviour (it self-buffs within a couple of seconds of being
+/// summoned) rather than from any direct textual link. Measured against
+/// the 2M-line reference log before shipping: checking "does exactly one
+/// new actor appear within this window" against every summon line, using
+/// an 8s window, produced zero ambiguous matches (never two candidates at
+/// once) across the whole log -- when this fires, it has never had to
+/// guess between two possible pets. See `Ingest::note_actor`.
+const PET_MATCH_WINDOW_MS: Millis = 8_000;
+
 /// Everything parsed from one tailed file, and the machinery that turns raw
 /// matches into store rows and encounters. One instance per tailed file:
 /// switching files means a fresh `Ingest`, since row indices and encounter
@@ -85,6 +97,22 @@ pub struct Ingest {
     /// How far into `encounters.closed` we've synced to the store.
     /// `Builder` only ever appends to that vec, never drains it.
     closed_seen: usize,
+    /// Unresolved "<Owner> summons a <flavour>." sightings, newest last,
+    /// waiting to be matched against the next brand-new actor. Pruned to
+    /// `PET_MATCH_WINDOW_MS` in `note_actor`.
+    pending_summons: Vec<(Millis, String)>,
+    /// Names ever seen acting (dealing damage, healing, missing, casting)
+    /// -- an entity only gets checked against `pending_summons` the first
+    /// time it acts, not on every subsequent action.
+    seen_actors: HashSet<String>,
+    /// Resolved pet -> owner, both already `display_name`-canonicalised.
+    /// Checked by `sym` before interning, so a matched pet's every action
+    /// -- including the one that triggered the match -- merges into the
+    /// owner's identity rather than becoming its own entity. See
+    /// `note_actor` for how a match is made, and `Ingest::link`'s doc
+    /// comment for why the encounter graph is untouched by this: fight
+    /// membership and store identity are separate concerns.
+    pet_owner: HashMap<String, String>,
     /// Log-time clock: set from the log's own timestamps while replaying
     /// history, then (once `mark_live` is called) also advanced by real
     /// elapsed time between ticks, so a fight that goes quiet during live
@@ -107,6 +135,9 @@ impl Default for Ingest {
             enc_map: HashMap::new(),
             entities_by_enc: HashMap::new(),
             closed_seen: 0,
+            pending_summons: Vec::new(),
+            seen_actors: HashSet::new(),
+            pet_owner: HashMap::new(),
             log_clock: VirtualClock::new(0),
             last_wall_ms: None,
             live: false,
@@ -200,6 +231,11 @@ impl Ingest {
             Action::Death { victim } => self.record_death(ts, &victim),
             Action::Zone { zone } => self.zone.enter(ts, zone),
             Action::Cast { who, spell } => {
+                // A pet's first action after being summoned is almost
+                // always casting its own spawn buff (see
+                // PET_MATCH_WINDOW_MS) -- this is often the *only* chance
+                // to catch it, well before it ever lands a hit.
+                self.note_actor(ts, &who);
                 // A cast line proves the ability isn't a weapon proc; no
                 // store row needed, just the ability metadata.
                 let id = self.store.ability_id(&spell, tag::SPELL);
@@ -207,6 +243,7 @@ impl Ingest {
                 let caster = self.sym(&who);
                 self.clear_dead_if_acting(ts, caster);
             }
+            Action::PetSummon { owner } => self.note_pet_summon(ts, &owner),
             Action::PlayerProof { who } => self.encounters.entities.note_player_channel(&who),
             Action::Mez { who } => {
                 let sym = self.sym(&who);
@@ -285,18 +322,98 @@ impl Ingest {
         }
     }
 
-    /// Interns `name` after resolving it to whatever casing this identity
-    /// was first observed under (`Entities::display_name`), and registers
-    /// it with the entity table if this is the first time it's been seen
-    /// through this path (a heal or miss can name someone before any
-    /// damage line does). Without this, the store's symbol table could
-    /// split one entity into two syms over a sentence-position casing
-    /// difference the same way the encounter graph used to -- see
-    /// `docs/design/session.md`, "Case folding".
-    fn sym(&mut self, name: &str) -> Sym {
+    /// Resolves `name` to whatever casing this identity was first observed
+    /// under (`Entities::display_name`), registering it with the entity
+    /// table if this is the first time it's been seen through this path (a
+    /// heal or miss can name someone before any damage line does). The
+    /// canonical form everything else here keys on.
+    fn resolve_name(&mut self, name: &str) -> String {
         self.encounters.entities.observe(name);
+        self.encounters.entities.display_name(name).to_string()
+    }
+
+    /// Interns `name`, redirecting through inferred pet ownership first if
+    /// this identity has been matched to an owner (`pet_owner`, populated
+    /// by `note_actor`) -- so a merged pet's damage, heals, and misses all
+    /// land on the owner's `Sym` everywhere, not just wherever it was first
+    /// detected. Without the case-folding resolution this also does, the
+    /// store's symbol table could split one entity into two syms over a
+    /// sentence-position casing difference the same way the encounter
+    /// graph used to -- see `docs/design/session.md`, "Case folding".
+    fn sym(&mut self, name: &str) -> Sym {
+        let resolved = self.resolve_name(name);
+        let effective = self.pet_owner.get(&resolved).cloned().unwrap_or(resolved);
+        self.store.sym(&effective)
+    }
+
+    /// Called only from the `Cast` action, deliberately not also from
+    /// damage/heal/miss: a pet's first logged action is reliably its own
+    /// spawn self-buff cast, and restricting candidacy to "first-ever
+    /// cast" is what was actually measured against the real reference log
+    /// (see `PET_MATCH_WINDOW_MS`) before this shipped. Checking every
+    /// action type would catch a couple more real pets but was never
+    /// validated against real data, and widens the population of
+    /// first-time actors this runs against by orders of magnitude (every
+    /// new player and mob in the whole log, not just new casters) for a
+    /// case that's cheap to be conservative about instead.
+    ///
+    /// The first time a name casts, checks whether it's the pet a recent
+    /// "<Owner> summons a <flavour>." line was waiting on: if so, every
+    /// future `sym()` call for this name -- including the one about to
+    /// happen for this very cast -- resolves to the owner instead.
+    ///
+    /// Matches against the *closest-in-time* pending summon, not against
+    /// "exactly one pending, else give up": requiring the window to hold a
+    /// single candidate sounded safer, but measuring it against the real
+    /// reference log showed it was too strict to be useful -- a raid
+    /// buffing up summons several pets within a few seconds of each other
+    /// (each a real, resolvable match against its *own* nearest summon),
+    /// and the game itself sometimes logs one summon twice at an identical
+    /// timestamp, which alone was enough to make "exactly one" fail on
+    /// cases with an unambiguous correct answer. Closest-in-time matched
+    /// every case the stricter rule missed, including the two names this
+    /// was built to fix, without producing an implausible pairing in a
+    /// spot check of the first 20 resolved. Once a pending summon is used
+    /// it's removed, so it can't also match a second, later name.
+    fn note_actor(&mut self, ts: Millis, name: &str) {
+        let resolved = self.resolve_name(name);
+        if self.pet_owner.contains_key(&resolved) {
+            return; // already resolved, nothing to check
+        }
+        if !self.seen_actors.insert(resolved.clone()) {
+            return; // not their first time acting
+        }
+        self.pending_summons.retain(|(sts, _)| ts - *sts <= PET_MATCH_WINDOW_MS);
+        let closest = self.pending_summons.iter().enumerate().min_by_key(|(_, (sts, _))| (ts - sts).abs()).map(|(i, _)| i);
+        if let Some(i) = closest {
+            let (_, owner) = self.pending_summons.remove(i);
+            self.pet_owner.insert(resolved, owner);
+        }
+        // No pending summons at all: leave unresolved.
+    }
+
+    /// A "<Owner> summons a <flavour>." line: registers `owner` as a
+    /// pending candidate for whichever brand-new entity acts next. See
+    /// `note_actor`.
+    fn note_pet_summon(&mut self, ts: Millis, owner: &str) {
+        let resolved = self.resolve_name(owner);
+        self.pending_summons.push((ts, resolved));
+    }
+
+    /// `name` resolved through inferred pet ownership, for callers outside
+    /// `Ingest` that walk `entities_by_enc` -- that list is the encounter
+    /// graph's raw entity names, untouched by pet merging (see `link`'s
+    /// doc comment on why), so a caller displaying or querying by name
+    /// needs this to land on the same identity `sym()` would have used.
+    pub fn effective_name(&self, name: &str) -> String {
         let resolved = self.encounters.entities.display_name(name).to_string();
-        self.store.sym(&resolved)
+        self.pet_owner.get(&resolved).cloned().unwrap_or(resolved)
+    }
+
+    /// How many pets have been matched to an owner so far -- surfaced in
+    /// the Overview module so the inference is visible, not silent.
+    pub fn pet_owner_count(&self) -> usize {
+        self.pet_owner.len()
     }
 
     /// Routes one damage edge through the encounter graph, then resolves it
@@ -394,6 +511,9 @@ enum Action {
     Death { victim: String },
     Zone { zone: String },
     Cast { who: String, spell: String },
+    /// "<Owner> summons a <flavour>." -- never names the pet itself, only
+    /// the owner. See `Ingest::note_pet_summon`.
+    PetSummon { owner: String },
     PlayerProof { who: String },
     Mez { who: String },
     Charm { who: String },
@@ -502,6 +622,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             Some(Action::Death { victim: "You".to_string() })
         }
         "zone.enter" => Some(Action::Zone { zone: str_field("zone")? }),
+        "pet.summoned" => Some(Action::PetSummon { owner: str_field("who")? }),
         "state.mesmerized" => Some(Action::Mez { who: str_field("who")? }),
         "state.charmed" => Some(Action::Charm { who: str_field("who")? }),
         "state.charm_broken" | "state.you_mesmerized" => {

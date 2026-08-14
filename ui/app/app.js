@@ -58,6 +58,7 @@ function renderStatus(status, counts) {
   const coverable = counts.matched + counts.unmatched;
   const pct = coverable > 0 ? (100 * counts.matched) / coverable : 0;
   el('stat-coverage').textContent = `${pct.toFixed(1)}%`;
+  el('stat-pets').textContent = status.pets_attributed.toLocaleString();
 
   const tbody = document.querySelector('#kind-table tbody');
   tbody.innerHTML = '';
