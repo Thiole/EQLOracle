@@ -121,6 +121,15 @@ pub struct Ingest {
     /// line happens to arrive.
     log_clock: VirtualClock,
     last_wall_ms: Option<Millis>,
+    /// `log_clock`'s value as of `last_wall_ms`. Snapshotting the two
+    /// together, and only ever projecting forward from this pair rather
+    /// than from a freshly-read `log_clock.now_ms()`, is what keeps a
+    /// tick's wall-elapsed delta from being counted twice: a line arriving
+    /// between two ticks already advances `log_clock` past this snapshot
+    /// on its own (via `route`'s `set_at_least`), so the next tick's
+    /// projection lands exactly on the already-advanced value instead of
+    /// adding wall-elapsed on top of it. See `tick`.
+    last_log_ms: Millis,
     live: bool,
     pub counts: LineCounts,
     pub recent: Vec<RecentLine>,
@@ -141,6 +150,7 @@ impl Default for Ingest {
             pet_owner: HashMap::new(),
             log_clock: VirtualClock::new(0),
             last_wall_ms: None,
+            last_log_ms: 0,
             live: false,
             counts: LineCounts::default(),
             recent: Vec::new(),
@@ -201,13 +211,24 @@ impl Ingest {
 
     /// Call once per worker loop tick, live or not. Advances the log clock
     /// during live idle stretches and closes fights that have gone quiet.
+    ///
+    /// Projects forward from `last_log_ms` (the log clock's value as of
+    /// `last_wall_ms`), not from `log_clock.now_ms()` read fresh here --
+    /// lines routed since the last tick may already have advanced the log
+    /// clock past that snapshot via their own timestamps, and adding
+    /// wall-elapsed on top of an already-advanced value would double-count
+    /// the same span of real time. During any continuously-active session
+    /// that double-count compounds every tick a line also arrived in,
+    /// racing the log clock far ahead of real time and idle-closing fights
+    /// that never actually went quiet.
     pub fn tick(&mut self, wall_now_ms: Millis) {
         if self.live {
             if let Some(last) = self.last_wall_ms {
                 let elapsed = (wall_now_ms - last).max(0);
-                self.log_clock.set_at_least(self.log_clock.now_ms() + elapsed);
+                self.log_clock.set_at_least(self.last_log_ms + elapsed);
             }
             self.last_wall_ms = Some(wall_now_ms);
+            self.last_log_ms = self.log_clock.now_ms();
         }
         let now = self.log_clock.now_ms();
         self.encounters.expire(now);
