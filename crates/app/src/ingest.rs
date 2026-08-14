@@ -603,12 +603,14 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "spell.damage" => {
             let (src, dst, amount, spell) =
                 (str_field("source")?, str_field("target")?, u64_field("amount")?, str_field("spell")?);
-            Some(Action::Damage { src, dst, ability: spell, tags: tag::SPELL, amount, flags: 0 })
+            let flags = str_field("flag").map(|s| flag::parse(&s)).unwrap_or(0);
+            Some(Action::Damage { src, dst, ability: spell, tags: tag::SPELL, amount, flags })
         }
         "dot.damage" => {
             let (src, dst, amount, spell) =
                 (str_field("source")?, str_field("target")?, u64_field("amount")?, str_field("spell")?);
-            Some(Action::Damage { src, dst, ability: spell, tags: tag::SPELL | tag::DOT, amount, flags: 0 })
+            let flags = str_field("flag").map(|s| flag::parse(&s)).unwrap_or(0);
+            Some(Action::Damage { src, dst, ability: spell, tags: tag::SPELL | tag::DOT, amount, flags })
         }
         "dot.damage_uncredited" => {
             // No caster named -- the log gives us nothing to link this to.

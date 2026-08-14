@@ -98,11 +98,12 @@ id = "spell.damage"
 kind = "damage"
 priority = 40
 anchors = [" damage by "]
-pattern = '''^(?P<src>.+?) hit (?P<dst>.+?) for (?P<amt>[0-9,]+) points of (?P<dtype>[a-z]+) damage by (?P<spell>.+?)\.$'''
+pattern = '''^(?P<src>.+?) hit (?P<dst>.+?) for (?P<amt>[0-9,]+) points of (?P<dtype>[a-z]+) damage by (?P<spell>.+?)\.(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Vhenwheel hit an armadillo for 4 points of magic damage by Lifetap.",
   "[Tue Jul 28 15:02:15 2026] You hit a fragile pet for 3 points of fire damage by Burst of Flame.",
   "[Tue Jul 28 15:02:15 2026] a rattlesnake hit you for 3 points of poison damage by Feeble Poison.",
+  "[Tue Jul 28 15:02:15 2026] Vhenwheel hit an armadillo for 8 points of magic damage by Lifetap. (Critical)",
 ]
 [rule.fields]
 source = { from = "src", as = "str" }
@@ -110,6 +111,9 @@ target = { from = "dst", as = "str" }
 amount = { from = "amt", as = "u64" }
 dtype = { from = "dtype", as = "str" }
 spell = { from = "spell", as = "str" }
+# Same free-string flag as melee.hit -- nukes crit too, and the log marks it
+# the same way, trailing the line rather than changing its shape.
+flag = { from = "flag", as = "str" }
 
 [[rule]]
 id = "dot.damage"
@@ -118,17 +122,19 @@ priority = 40
 anchors = [" damage from "]
 # "has" and "have": first person is "You have taken", and anchoring on "has"
 # alone silently dropped every incoming DoT tick on the player.
-pattern = '''^(?P<dst>.+?) ha[sv]e? taken (?P<amt>[0-9,]+) damage from (?P<spell>.+?) by (?P<src>.+?)\.$'''
+pattern = '''^(?P<dst>.+?) ha[sv]e? taken (?P<amt>[0-9,]+) damage from (?P<spell>.+?) by (?P<src>.+?)\.(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Mileena has taken 2 damage from Flame Lick by Gash Flockwalker.",
   "[Tue Jul 28 15:02:15 2026] You have taken 1 damage from Rabies by a greater mummy.",
   "[Tue Jul 28 15:02:15 2026] You have taken 29 damage from Searing Arrow by Gynok Moltor pet.",
+  "[Tue Jul 28 15:02:15 2026] Mileena has taken 4 damage from Flame Lick by Gash Flockwalker. (Critical)",
 ]
 [rule.fields]
 source = { from = "src", as = "str" }
 target = { from = "dst", as = "str" }
 amount = { from = "amt", as = "u64" }
 spell = { from = "spell", as = "str" }
+flag = { from = "flag", as = "str" }
 
 [[rule]]
 id = "ds.damage"
