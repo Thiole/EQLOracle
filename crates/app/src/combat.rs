@@ -309,6 +309,8 @@ pub struct AllyDto {
     pub is_pet: bool,
     pub total: u64,
     pub hits: u64,
+    pub crits: u64,
+    pub crit_pct: f64,
     pub dps: f64,
     pub pct: f64,
 }
@@ -344,28 +346,29 @@ pub fn list_allies(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u
         return Vec::new();
     }
 
-    let mut acc: HashMap<Sym, (u64, u64)> = HashMap::new();
+    let mut acc: HashMap<Sym, (u64, u64, u64)> = HashMap::new();
 
     for &id in &ids {
         let Some(enc) = ing.store.encounter(id) else { continue };
-        for (sym, dmg, hits) in by_actor(&ing.store, &Filter::encounter(id).damage()) {
+        for (sym, dmg, hits, crits) in by_actor(&ing.store, &Filter::encounter(id).damage()) {
             if sym == enc.target {
                 continue; // this fight's own target, not an ally in this fight
             }
-            let e = acc.entry(sym).or_insert((0, 0));
+            let e = acc.entry(sym).or_insert((0, 0, 0));
             e.0 += dmg;
             e.1 += hits;
+            e.2 += crits;
         }
     }
 
     let now = ing.now_ms();
     let duration_ms: Millis = ids.iter().filter_map(|&id| ing.store.encounter(id)).map(|e| e.duration_ms(now).max(0)).sum();
     let dur_secs = (duration_ms.max(0) as f64 / 1000.0).max(0.001);
-    let total_damage: u64 = acc.values().map(|(dmg, _)| dmg).sum();
+    let total_damage: u64 = acc.values().map(|(dmg, _, _)| dmg).sum();
 
     let mut out: Vec<AllyDto> = acc
         .into_iter()
-        .map(|(sym, (dmg, hits))| {
+        .map(|(sym, (dmg, hits, crits))| {
             let name = ing.store.name(sym).to_string();
             let kind = ing.encounters.entities.kind(&name);
             AllyDto {
@@ -373,6 +376,8 @@ pub fn list_allies(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u
                 is_pet: kind == Kind::Pet,
                 total: dmg,
                 hits,
+                crits,
+                crit_pct: if hits > 0 { 100.0 * crits as f64 / hits as f64 } else { 0.0 },
                 dps: dmg as f64 / dur_secs,
                 pct: if total_damage > 0 { 100.0 * dmg as f64 / total_damage as f64 } else { 0.0 },
                 name,

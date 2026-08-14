@@ -221,17 +221,24 @@ pub fn roll_up_by_tag(rows: &[AbilityRow]) -> Vec<(&'static str, u64, u64)> {
 }
 
 /// Damage by actor. Same scan, different key.
-pub fn by_actor(store: &Store, f: &Filter) -> Vec<(Sym, u64, u64)> {
-    let mut acc: HashMap<Sym, (u64, u64)> = HashMap::new();
+/// `(actor, total damage, hits, crits)` per actor. `crits` is a subset of
+/// `hits`, same convention as `AbilityRow` -- a caller wanting crit chance
+/// divides the two rather than being handed a pre-computed percentage, so
+/// it stays comparable across selections without re-deriving the count.
+pub fn by_actor(store: &Store, f: &Filter) -> Vec<(Sym, u64, u64, u64)> {
+    let mut acc: HashMap<Sym, (u64, u64, u64)> = HashMap::new();
     for i in range_of(store, f) {
         if !keep(store, i, f) {
             continue;
         }
-        let e = acc.entry(store.actor[i]).or_insert((0, 0));
+        let e = acc.entry(store.actor[i]).or_insert((0, 0, 0));
         e.0 += store.amount[i];
         e.1 += 1;
+        if store.flags[i] & crate::store::flag::CRITICAL != 0 {
+            e.2 += 1;
+        }
     }
-    let mut v: Vec<_> = acc.into_iter().map(|(k, (t, n))| (k, t, n)).collect();
+    let mut v: Vec<_> = acc.into_iter().map(|(k, (t, n, c))| (k, t, n, c)).collect();
     v.sort_by(|a, b| b.1.cmp(&a.1));
     v
 }

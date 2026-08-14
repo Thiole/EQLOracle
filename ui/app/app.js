@@ -306,7 +306,7 @@ function buildAllyRow(name) {
   row.className = 'ally-row';
   row.dataset.name = name;
   row.innerHTML =
-    '<td class="ally-name"></td><td class="num ally-total"></td><td class="num ally-pct"></td><td class="num ally-dps"></td><td class="num ally-hits"></td>';
+    '<td class="ally-name"></td><td class="num ally-total"></td><td class="num ally-pct"></td><td class="num ally-dps"></td><td class="num ally-hits"></td><td class="num ally-crit"></td>';
   row.addEventListener('click', () => toggleAllyDetail(name, row));
   return row;
 }
@@ -325,6 +325,7 @@ function updateAllyRowValues(row, ally) {
   row.querySelector('.ally-pct').textContent = ally.pct.toFixed(1);
   row.querySelector('.ally-dps').textContent = ally.dps.toFixed(1);
   row.querySelector('.ally-hits').textContent = ally.hits.toLocaleString();
+  row.querySelector('.ally-crit').textContent = ally.crit_pct.toFixed(0);
 }
 
 function toggleAllyDetail(name, row) {
@@ -340,7 +341,7 @@ function toggleAllyDetail(name, row) {
   const detail = document.createElement('tr');
   detail.className = 'ally-detail';
   const cell = document.createElement('td');
-  cell.colSpan = 5;
+  cell.colSpan = 6;
   cell.innerHTML = '<p class="muted">Loading&hellip;</p>';
   detail.appendChild(cell);
   row.after(detail);
