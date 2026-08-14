@@ -521,57 +521,45 @@ button:hover {
 }
 
 .timeline-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.series-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.series-row.dimmed .bars .bar {
-  opacity: 0.25;
-}
-
-.series-name {
-  flex: 0 0 120px;
-  font-size: 11px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.bars {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: flex-end;
-  gap: 1px;
-  height: 36px;
+  height: 200px;
   background: var(--panel-alt);
-  border-radius: 3px;
-  padding: 2px;
+  border-radius: 4px;
+  padding: 8px;
 }
 
-.bar {
-  flex: 1 1 0;
-  min-width: 2px;
-  height: 4%;
-  background: var(--series-color, var(--accent));
-  border-radius: 1px;
-  cursor: pointer;
+.timeline-chart svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
 }
 
-.bar:hover {
-  filter: brightness(1.3);
+.series-line {
+  fill: none;
+  stroke: var(--series-color, var(--accent));
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.85;
 }
 
-.bar.selected {
-  outline: 1px solid var(--text);
-  outline-offset: 0;
+/* Selected via a legend click: solid and on top of the others. */
+.series-line.highlighted {
+  opacity: 1;
+  stroke-width: 3;
+}
+
+/* Every *other* line once one is selected -- faded back so the solid one
+   reads clearly against the overlap. */
+.series-line.dimmed {
+  opacity: 0.15;
+}
+
+.timeline-scrub {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
 }
 
 .timeline-state {

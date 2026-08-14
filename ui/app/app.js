@@ -372,9 +372,19 @@ async function refreshAllyDetail(name) {
 // ---------------------------------------------------------------- fight timeline
 
 const SERIES_COLORS = ['#5fb3ff', '#5fd18a', '#e0b34d', '#e0616f', '#b892ff', '#4dd0e1', '#ffb74d', '#81c995'];
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// Fixed coordinate space for the chart; CSS stretches the <svg> to fill its
+// container (preserveAspectRatio="none"), so these are just a convenient
+// unit to compute point positions in, not pixels.
+const CHART_VIEW_W = 1000;
+const CHART_VIEW_H = 200;
+// Headroom above the tallest point so a peak doesn't touch the top edge.
+const CHART_PAD_TOP = 10;
 
 let currentTimelineEncounterId = null;
 let currentTimelineStartMs = null;
+let currentTimelineDto = null;
 let highlightedEntity = null;
 let selectedBucketMs = null;
 
@@ -383,27 +393,39 @@ async function loadTimeline(encounterId) {
   const dto = await invoke('get_fight_timeline', { encounterId });
   if (!dto || dto.series.length === 0) {
     el('timeline-pane').classList.add('hidden');
+    currentTimelineDto = null;
     return;
   }
   el('timeline-pane').classList.remove('hidden');
   currentTimelineStartMs = dto.start_ms;
+  currentTimelineDto = dto;
   renderTimelineChart(dto);
 }
 
+// One shared chart, all entities as overlapping lines, rather than a row of
+// bars per entity -- easier to compare shapes over time across several
+// people at once. Line/swatch colors stay distinct per person; ally/enemy
+// is conveyed separately as a tint on the name text so it doesn't cost that
+// per-person distinction. Selecting a legend chip makes that person's line
+// solid and full-opacity, fading the rest -- see .series-line.highlighted
+// / .dimmed.
 function renderTimelineChart(dto) {
   const legend = el('timeline-legend');
   const chart = el('timeline-chart');
   legend.innerHTML = '';
-  chart.innerHTML = '';
 
   const globalMax = Math.max(1, ...dto.series.flatMap((s) => s.values));
+  const bucketCount = dto.buckets.length;
+  const xStep = bucketCount > 1 ? CHART_VIEW_W / (bucketCount - 1) : 0;
+  const xFor = (i) => (bucketCount > 1 ? i * xStep : CHART_VIEW_W / 2);
+  const yFor = (v) => CHART_PAD_TOP + (CHART_VIEW_H - CHART_PAD_TOP) * (1 - v / globalMax);
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${CHART_VIEW_W} ${CHART_VIEW_H}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
 
   dto.series.forEach((s, i) => {
     const color = SERIES_COLORS[i % SERIES_COLORS.length];
-    // Bar/swatch colors stay distinct per person (that's what makes
-    // several people's bars tellable apart); ally/enemy is conveyed
-    // separately, as a tint on the name text, so it doesn't cost that
-    // per-person distinction.
     const sideClass = s.is_player || s.is_pet ? 'entity-ally' : s.is_enemy ? 'entity-enemy' : '';
 
     const chip = document.createElement('button');
@@ -418,47 +440,57 @@ function renderTimelineChart(dto) {
     });
     legend.appendChild(chip);
 
-    const row = document.createElement('div');
-    row.className = 'series-row';
-    row.dataset.entity = s.name;
-    const nameEl = document.createElement('span');
-    nameEl.className = `series-name ${sideClass}`;
-    nameEl.textContent = s.name;
-    const bars = document.createElement('div');
-    bars.className = 'bars';
-    bars.style.setProperty('--series-color', color);
-    s.values.forEach((v, bi) => {
-      const bar = document.createElement('div');
-      bar.className = 'bar';
-      bar.style.setProperty('--series-color', color);
-      bar.style.height = `${Math.max(4, (v / globalMax) * 100)}%`;
-      bar.title = `${v.toLocaleString()} dmg`;
-      const bucketMs = dto.buckets[bi] ?? dto.start_ms;
-      bar.dataset.ts = String(bucketMs);
-      if (selectedBucketMs === bucketMs) bar.classList.add('selected');
-      bar.addEventListener('click', () => showStateAt(bucketMs, bar));
-      bars.appendChild(bar);
-    });
-    row.append(nameEl, bars);
-    chart.appendChild(row);
+    const points = s.values.map((v, bi) => `${xFor(bi).toFixed(1)},${yFor(v).toFixed(1)}`).join(' ');
+    const line = document.createElementNS(SVG_NS, 'polyline');
+    line.setAttribute('class', 'series-line');
+    line.setAttribute('points', points);
+    line.style.setProperty('--series-color', color);
+    // Property assignment, not string interpolation into markup -- safe
+    // regardless of what characters a log-derived name contains.
+    line.dataset.entity = s.name;
+    svg.appendChild(line);
   });
+
+  const scrubIdx = selectedBucketMs === null ? -1 : dto.buckets.indexOf(selectedBucketMs);
+  if (scrubIdx >= 0) {
+    const x = xFor(scrubIdx);
+    const scrub = document.createElementNS(SVG_NS, 'line');
+    scrub.setAttribute('class', 'timeline-scrub');
+    scrub.setAttribute('x1', x);
+    scrub.setAttribute('y1', 0);
+    scrub.setAttribute('x2', x);
+    scrub.setAttribute('y2', CHART_VIEW_H);
+    svg.appendChild(scrub);
+  }
+
+  svg.addEventListener('click', (event) => {
+    const rect = svg.getBoundingClientRect();
+    const relX = ((event.clientX - rect.left) / rect.width) * CHART_VIEW_W;
+    const idx = bucketCount > 1 ? Math.round(relX / xStep) : 0;
+    const clamped = Math.max(0, Math.min(bucketCount - 1, idx));
+    showStateAt(dto.buckets[clamped] ?? dto.start_ms);
+  });
+
+  chart.innerHTML = '';
+  chart.appendChild(svg);
 
   applyHighlight();
 }
 
 function applyHighlight() {
-  for (const row of document.querySelectorAll('.series-row')) {
-    row.classList.toggle('dimmed', highlightedEntity !== null && row.dataset.entity !== highlightedEntity);
+  for (const line of document.querySelectorAll('.series-line')) {
+    const isHighlighted = highlightedEntity !== null && line.dataset.entity === highlightedEntity;
+    line.classList.toggle('highlighted', isHighlighted);
+    line.classList.toggle('dimmed', highlightedEntity !== null && !isHighlighted);
   }
   for (const chip of document.querySelectorAll('.legend-chip')) {
     chip.classList.toggle('dimmed', highlightedEntity !== null && chip.dataset.entity !== highlightedEntity);
   }
 }
 
-async function showStateAt(tsMs, barEl) {
+async function showStateAt(tsMs) {
   selectedBucketMs = tsMs;
-  for (const b of document.querySelectorAll('.bar.selected')) b.classList.remove('selected');
-  if (barEl) barEl.classList.add('selected');
+  if (currentTimelineDto) renderTimelineChart(currentTimelineDto); // redraws the scrub line
 
   const states = await invoke('get_fight_state_at', { encounterId: currentTimelineEncounterId, tsMs });
 
