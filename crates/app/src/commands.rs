@@ -7,7 +7,7 @@
 //! no reparsing. Everything live-updating besides that goes over the
 //! `parse-tick` / `parse-error` events emitted from `tail_worker`.
 
-use crate::combat::{self, CombatSummaryDto, EncounterDto, EntityStateDto, FightTimelineDto, ZoneVisitDto};
+use crate::combat::{self, AllyDto, CombatSummaryDto, EncounterDto, EntityStateDto, FightTimelineDto, ZoneVisitDto};
 use crate::config::{self, AppConfig};
 use crate::ingest::LineCounts;
 use crate::state::AppState;
@@ -98,11 +98,19 @@ pub fn list_encounters(state: State<AppState>, zone_visit: Option<i64>) -> Vec<E
     combat::list_encounters(&state.ingest.lock().unwrap(), zone_visit)
 }
 
-/// The Combat module's main panel: one encounter if `encounter_id` is
-/// given, else every encounter in `zone_visit`, else everything parsed.
+/// Damage dealers in the current selection, sorted by total descending --
+/// the Combat module's primary view (a "menu of allies", not a flat
+/// ability table).
 #[tauri::command]
-pub fn get_combat_summary(state: State<AppState>, zone_visit: Option<i64>, encounter_id: Option<u32>) -> CombatSummaryDto {
-    combat::summarize(&state.ingest.lock().unwrap(), zone_visit, encounter_id)
+pub fn list_allies(state: State<AppState>, zone_visit: Option<i64>, encounter_id: Option<u32>) -> Vec<AllyDto> {
+    combat::list_allies(&state.ingest.lock().unwrap(), zone_visit, encounter_id)
+}
+
+/// The Combat module's drill-down: one ally's own ability breakdown if
+/// `actor` is given, else the whole selection's combined breakdown.
+#[tauri::command]
+pub fn get_combat_summary(state: State<AppState>, zone_visit: Option<i64>, encounter_id: Option<u32>, actor: Option<String>) -> CombatSummaryDto {
+    combat::summarize(&state.ingest.lock().unwrap(), zone_visit, encounter_id, actor.as_deref())
 }
 
 /// Per-entity damage-over-time bars for one fight's scrub bar.

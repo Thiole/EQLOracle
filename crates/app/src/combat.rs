@@ -10,9 +10,9 @@
 use crate::ingest::Ingest;
 use eqlp_session::{series as bucket_series, Cause, Kind};
 use eqlp_source::Millis;
-use eqlp_store::{by_ability, dps_window, tag, total, AbilityRow, EncounterId, EventKind, Filter};
+use eqlp_store::{by_ability, by_actor, dps_window, tag, total, AbilityRow, EncounterId, EventKind, Filter, Sym};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ZoneVisitDto {
@@ -140,9 +140,22 @@ pub fn list_encounters(ing: &Ingest, zone_visit: Option<i64>) -> Vec<EncounterDt
     out
 }
 
+/// Every encounter id in a selection: one specific fight if `encounter_id`
+/// is given, otherwise every fight in `zone_visit`, otherwise every fight
+/// parsed so far. Shared by `summarize` and `list_allies` -- both aggregate
+/// over "the current selection", just grouped by a different key.
+fn resolve_ids(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32>) -> Vec<EncounterId> {
+    if let Some(eid) = encounter_id {
+        vec![EncounterId(eid)]
+    } else {
+        ing.store.encounters.iter().filter(|e| matches_visit(ing, e.start_ms, zone_visit)).map(|e| e.id).collect()
+    }
+}
+
 /// Aggregates one encounter, every encounter in a zone visit, or every
 /// encounter parsed so far. `encounter_id` wins if given; otherwise
-/// `zone_visit`; otherwise everything.
+/// `zone_visit`; otherwise everything. `actor`, if given, narrows to one
+/// ally's own abilities -- the drill-down from `list_allies`.
 ///
 /// Merging several encounters' ability breakdowns client-side (one
 /// `by_ability` call per encounter, summed) rather than teaching
@@ -151,28 +164,23 @@ pub fn list_encounters(ing: &Ingest, zone_visit: Option<i64>) -> Vec<EncounterDt
 /// (`docs/design/store.md` measures a single-encounter `by_ability` at
 /// 39µs), and it leaves the store's query contract exactly as documented
 /// rather than extending it for one caller.
-pub fn summarize(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32>) -> CombatSummaryDto {
+pub fn summarize(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32>, actor: Option<&str>) -> CombatSummaryDto {
     let now = ing.now_ms();
-    let ids: Vec<EncounterId> = if let Some(eid) = encounter_id {
-        vec![EncounterId(eid)]
-    } else {
-        ing.store
-            .encounters
-            .iter()
-            .filter(|e| matches_visit(ing, e.start_ms, zone_visit))
-            .map(|e| e.id)
-            .collect()
-    };
+    let ids = resolve_ids(ing, zone_visit, encounter_id);
     if ids.is_empty() {
         return CombatSummaryDto::default();
     }
+    let actor_sym = actor.and_then(|n| ing.store.names.get(n));
 
     let mut total_damage = 0u64;
     let mut duration_ms: Millis = 0;
     let mut merged: HashMap<eqlp_store::AbilityId, AbilityRow> = HashMap::new();
 
     for &id in &ids {
-        let f = Filter::encounter(id).damage();
+        let mut f = Filter::encounter(id).damage();
+        if let Some(s) = actor_sym {
+            f = f.by(s);
+        }
         total_damage += total(&ing.store, &f);
         if let Some(e) = ing.store.encounter(id) {
             duration_ms += e.duration_ms(now).max(0);
@@ -227,6 +235,78 @@ pub fn summarize(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32
         .collect();
 
     CombatSummaryDto { fight_count: ids.len(), total_damage, duration_ms, dps: total_damage as f64 / dur_secs, abilities }
+}
+
+// ---------------------------------------------------------------- allies
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AllyDto {
+    pub name: String,
+    pub is_player: bool,
+    pub is_pet: bool,
+    pub total: u64,
+    pub hits: u64,
+    pub dps: f64,
+    pub pct: f64,
+}
+
+/// Damage dealers in the current selection, sorted by total descending --
+/// the Combat module's primary view. Click one (`summarize` with `actor`
+/// set) to drill into their own ability breakdown.
+///
+/// Excludes whichever entity anchors each encounter's `target` label. The
+/// log gives no clean enemy/ally flag -- `Kind` only distinguishes
+/// `Player`/`Pet` from `Unproven`, and an unspoken NPC and an unspoken
+/// player look identical -- but the fight's own target is reliably the
+/// thing being fought, in both a kill and a timeout. A multi-mob pull's
+/// *other* mobs are a known gap this doesn't cover; see
+/// `Ingest::entities_by_enc`'s doc comment.
+pub fn list_allies(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32>) -> Vec<AllyDto> {
+    let ids = resolve_ids(ing, zone_visit, encounter_id);
+    if ids.is_empty() {
+        return Vec::new();
+    }
+
+    let mut exclude: HashSet<Sym> = HashSet::new();
+    let mut total_damage = 0u64;
+    let mut acc: HashMap<Sym, (u64, u64)> = HashMap::new();
+
+    for &id in &ids {
+        if let Some(e) = ing.store.encounter(id) {
+            exclude.insert(e.target);
+        }
+        let f = Filter::encounter(id).damage();
+        total_damage += total(&ing.store, &f);
+        for (sym, dmg, hits) in by_actor(&ing.store, &f) {
+            let e = acc.entry(sym).or_insert((0, 0));
+            e.0 += dmg;
+            e.1 += hits;
+        }
+    }
+
+    let now = ing.now_ms();
+    let duration_ms: Millis = ids.iter().filter_map(|&id| ing.store.encounter(id)).map(|e| e.duration_ms(now).max(0)).sum();
+    let dur_secs = (duration_ms.max(0) as f64 / 1000.0).max(0.001);
+
+    let mut out: Vec<AllyDto> = acc
+        .into_iter()
+        .filter(|(sym, _)| !exclude.contains(sym))
+        .map(|(sym, (dmg, hits))| {
+            let name = ing.store.name(sym).to_string();
+            let kind = ing.encounters.entities.kind(&name);
+            AllyDto {
+                is_player: kind == Kind::Player,
+                is_pet: kind == Kind::Pet,
+                total: dmg,
+                hits,
+                dps: dmg as f64 / dur_secs,
+                pct: if total_damage > 0 { 100.0 * dmg as f64 / total_damage as f64 } else { 0.0 },
+                name,
+            }
+        })
+        .collect();
+    out.sort_by(|a, b| b.total.cmp(&a.total));
+    out
 }
 
 // ---------------------------------------------------------------- timeline

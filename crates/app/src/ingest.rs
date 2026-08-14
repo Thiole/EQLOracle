@@ -199,11 +199,13 @@ impl Ingest {
             Action::Miss { src, dst } => self.record_miss(ts, &src, &dst),
             Action::Death { victim } => self.record_death(ts, &victim),
             Action::Zone { zone } => self.zone.enter(ts, zone),
-            Action::Cast { spell } => {
+            Action::Cast { who, spell } => {
                 // A cast line proves the ability isn't a weapon proc; no
                 // store row needed, just the ability metadata.
                 let id = self.store.ability_id(&spell, tag::SPELL);
                 self.store.abilities.note_cast(id);
+                let caster = self.sym(&who);
+                self.clear_dead_if_acting(ts, caster);
             }
             Action::PlayerProof { who } => self.encounters.entities.note_player_channel(&who),
             Action::Mez { who } => {
@@ -229,6 +231,7 @@ impl Ingest {
         let enc = self.link(ts, src, dst);
         let a = self.sym(src);
         let t = self.sym(dst);
+        self.clear_dead_if_acting(ts, a);
         let ab = self.store.ability_id(ability, tags);
         let idx = self.store.push(ts, EventKind::Damage, a, t, ab, amount, flags, enc.0);
         self.store.extend_encounter(enc, idx);
@@ -239,6 +242,7 @@ impl Ingest {
         let enc = self.current_encounter_of(src).or_else(|| self.current_encounter_of(dst));
         let a = self.sym(src);
         let t = self.sym(dst);
+        self.clear_dead_if_acting(ts, a);
         let ab = self.store.ability_id(ability, tag::HEAL);
         let idx = self.store.push(ts, EventKind::Heal, a, t, ab, amount, 0, enc.map(|e| e.0).unwrap_or(NO_ENCOUNTER));
         if let Some(id) = enc {
@@ -250,6 +254,7 @@ impl Ingest {
         let enc = self.current_encounter_of(src).or_else(|| self.current_encounter_of(dst));
         let a = self.sym(src);
         let t = self.sym(dst);
+        self.clear_dead_if_acting(ts, a);
         let ab = self.store.ability_id("Miss", tag::MELEE);
         let idx = self.store.push(ts, EventKind::Miss, a, t, ab, 0, 0, enc.map(|e| e.0).unwrap_or(NO_ENCOUNTER));
         if let Some(id) = enc {
@@ -262,6 +267,22 @@ impl Ingest {
         let sym = self.sym(victim);
         self.timeline.observed(ts, sym.0, State::Dead);
         self.drain_closed();
+    }
+
+    /// If `actor` was last known Dead and is now doing something (dealing
+    /// damage, healing, swinging, or -- via `Action::Cast` -- casting),
+    /// that action is itself proof of life. The log rarely states a clean
+    /// "you have been resurrected" or "you respawn" line, especially for a
+    /// corpse-run recovery, so recovery is inferred from the next thing the
+    /// entity does rather than waited for -- the same principle as `Lost`
+    /// in `drain_closed`, applied going the other direction. Without this,
+    /// a death recorded once stayed the last known state forever, which is
+    /// what made the state panel keep reporting "dead" long after a
+    /// respawn.
+    fn clear_dead_if_acting(&mut self, ts: Millis, actor: Sym) {
+        if matches!(self.timeline.state_at(actor.0, ts), Some((State::Dead, _))) {
+            self.timeline.inferred(ts, actor.0, State::Engaged);
+        }
     }
 
     /// Interns `name` after resolving it to whatever casing this identity
@@ -354,7 +375,7 @@ enum Action {
     Miss { src: String, dst: String },
     Death { victim: String },
     Zone { zone: String },
-    Cast { spell: String },
+    Cast { who: String, spell: String },
     PlayerProof { who: String },
     Mez { who: String },
     Charm { who: String },
@@ -444,8 +465,9 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             Some(Action::Miss { src, dst })
         }
         "cast.begin" | "sing.begin" => {
+            let who = str_field("source")?;
             let spell = str_field("spell").or_else(|| str_field("song"))?;
-            Some(Action::Cast { spell })
+            Some(Action::Cast { who, spell })
         }
         "death.you_slew" | "death.other" | "death.plain" => Some(Action::Death { victim: str_field("victim")? }),
         "death.you_died" => {

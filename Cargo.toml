@@ -17,3 +17,33 @@ panic = "abort"
 [profile.bench]
 inherits = "release"
 debug = true
+
+# A `cargo run` (no --release) debug build backfilling a real log feels
+# like it hung: unoptimized regex matching and unoptimized hashmap/string
+# work in the ingest path are both dramatically slower than release.
+# Optimizing the crates below (measured on a 2M-line/144 MiB synthetic log:
+# 8.6s -> 3.3s) gets most of that back for `cargo run` without paying full
+# release build times.
+#
+# eqlp-app itself is deliberately NOT in this list. It's the crate under
+# active edit; bumping its opt-level closed the remaining gap to release
+# (3.3s -> 2.0s) but made every rebuild after touching it ~3x slower
+# (11s -> 29s here) -- a bad trade against the fast edit-build-run loop
+# that matters more while iterating on it than another second of ingest
+# speed.
+[profile.dev.package.eqlp-core]
+opt-level = 3
+[profile.dev.package.eqlp-session]
+opt-level = 3
+[profile.dev.package.eqlp-store]
+opt-level = 3
+[profile.dev.package.eqlp-source]
+opt-level = 3
+[profile.dev.package.regex]
+opt-level = 3
+[profile.dev.package.regex-automata]
+opt-level = 3
+[profile.dev.package.aho-corasick]
+opt-level = 3
+[profile.dev.package.memchr]
+opt-level = 3

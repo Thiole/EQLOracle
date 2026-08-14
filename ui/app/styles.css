@@ -273,14 +273,16 @@ button:hover {
   padding: 7px 10px;
 }
 
-#ability-table {
+#ally-table,
+.ability-subtable {
   width: 100%;
   border-collapse: collapse;
   font-family: var(--mono);
   font-size: 12px;
 }
 
-#ability-table th {
+#ally-table th,
+.ability-subtable th {
   text-align: left;
   font-family: var(--sans);
   font-size: 10px;
@@ -291,26 +293,65 @@ button:hover {
   border-bottom: 1px solid var(--border);
 }
 
-#ability-table td {
+#ally-table td,
+.ability-subtable td {
   padding: 4px 8px 4px 0;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
-#ability-table th.num,
-#ability-table td.num {
+#ally-table th.num,
+#ally-table td.num,
+.ability-subtable th.num,
+.ability-subtable td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 
-#ability-table .tags {
+.ability-subtable .tags {
   color: var(--text-muted);
   font-size: 10px;
   text-transform: uppercase;
 }
 
-.pane.abilities {
+.pane.allies {
   overflow-x: auto;
+}
+
+#ally-table tbody tr.ally-row {
+  cursor: pointer;
+}
+
+#ally-table tbody tr.ally-row:hover {
+  background: var(--panel-alt);
+}
+
+#ally-table tbody tr.ally-row td:first-child::before {
+  content: "▸ ";
+  color: var(--text-muted);
+  display: inline-block;
+  width: 1em;
+}
+
+#ally-table tbody tr.ally-row.expanded td:first-child::before {
+  content: "▾ ";
+}
+
+.ally-detail td {
+  padding: 0 0 12px 20px;
+  border-bottom: 1px solid var(--border);
+  white-space: normal;
+}
+
+.ally-detail.hidden {
+  display: none;
+}
+
+.ally-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-left: 6px;
 }
 
 .stats {

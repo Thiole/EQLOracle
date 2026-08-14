@@ -175,8 +175,21 @@ async function refreshCombat() {
   }
 
   const encounterId = encSelect.value === '' ? null : Number(encSelect.value);
+  currentZoneVisit = zoneVisit;
+  currentEncounterId = encounterId;
+
   const summary = await invoke('get_combat_summary', { zoneVisit, encounterId });
-  renderCombatSummary(summary);
+  renderCombatStats(summary);
+
+  const allies = await invoke('list_allies', { zoneVisit, encounterId });
+  renderAllies(allies);
+  if (expandedAlly !== null) {
+    if (allies.some((a) => a.name === expandedAlly)) {
+      await refreshExpandedAlly();
+    } else {
+      expandedAlly = null; // no longer in this selection -- nothing to keep open
+    }
+  }
 
   if (encounterId !== null) {
     if (encounterId !== currentTimelineEncounterId) {
@@ -191,29 +204,116 @@ async function refreshCombat() {
   }
 }
 
-function renderCombatSummary(summary) {
+function renderCombatStats(summary) {
   el('combat-fights').textContent = summary.fight_count.toLocaleString();
   el('combat-damage').textContent = summary.total_damage.toLocaleString();
   el('combat-duration').textContent = fmtDuration(summary.duration_ms);
   el('combat-dps').textContent = summary.dps.toFixed(1);
+}
 
-  const tbody = document.querySelector('#ability-table tbody');
-  tbody.innerHTML = '';
-  for (const row of summary.abilities) {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${row.ability}</td>
-      <td class="tags">${row.tags.join(' ')}</td>
-      <td class="num">${row.hits.toLocaleString()}</td>
-      <td class="num">${row.total.toLocaleString()}</td>
-      <td class="num">${row.pct.toFixed(1)}</td>
-      <td class="num">${row.dps.toFixed(1)}</td>
-      <td class="num">${row.hits > 0 ? Math.round(row.total / row.hits).toLocaleString() : 0}</td>
-      <td class="num">${row.hits > 0 ? ((100 * row.crits) / row.hits).toFixed(0) : 0}</td>
-    `;
-    tbody.appendChild(tr);
+function abilitySubtableHtml(abilities) {
+  if (abilities.length === 0) {
+    return '<p class="muted">No abilities recorded for this selection.</p>';
   }
-  el('combat-empty').classList.toggle('hidden', summary.abilities.length > 0);
+  const rows = abilities
+    .map(
+      (row) => `
+      <tr>
+        <td>${escapeHtml(row.ability)}</td>
+        <td class="tags">${row.tags.join(' ')}</td>
+        <td class="num">${row.hits.toLocaleString()}</td>
+        <td class="num">${row.total.toLocaleString()}</td>
+        <td class="num">${row.pct.toFixed(1)}</td>
+        <td class="num">${row.dps.toFixed(1)}</td>
+        <td class="num">${row.hits > 0 ? Math.round(row.total / row.hits).toLocaleString() : 0}</td>
+        <td class="num">${row.hits > 0 ? ((100 * row.crits) / row.hits).toFixed(0) : 0}</td>
+      </tr>`
+    )
+    .join('');
+  return `
+    <table class="ability-subtable">
+      <thead>
+        <tr>
+          <th>ability</th><th>tags</th><th class="num">hits</th><th class="num">total</th>
+          <th class="num">%</th><th class="num">dps</th><th class="num">avg</th><th class="num">crit%</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ---------------------------------------------------------------- allies
+
+let currentZoneVisit = null;
+let currentEncounterId = null;
+let expandedAlly = null;
+
+function renderAllies(allies) {
+  const tbody = document.querySelector('#ally-table tbody');
+  tbody.innerHTML = '';
+  el('combat-empty').classList.toggle('hidden', allies.length > 0);
+
+  for (const ally of allies) {
+    const row = document.createElement('tr');
+    row.className = 'ally-row';
+    row.dataset.name = ally.name;
+    const badge = ally.is_player ? ' <span class="ally-badge">you</span>' : ally.is_pet ? ' <span class="ally-badge">pet</span>' : '';
+    row.innerHTML = `
+      <td>${escapeHtml(ally.name)}${badge}</td>
+      <td class="num">${ally.total.toLocaleString()}</td>
+      <td class="num">${ally.pct.toFixed(1)}</td>
+      <td class="num">${ally.dps.toFixed(1)}</td>
+      <td class="num">${ally.hits.toLocaleString()}</td>
+    `;
+    row.addEventListener('click', () => toggleAllyDetail(ally.name, row));
+    tbody.appendChild(row);
+  }
+
+  if (expandedAlly !== null) {
+    const row = tbody.querySelector(`tr.ally-row[data-name="${cssEscape(expandedAlly)}"]`);
+    if (row) row.classList.add('expanded');
+  }
+}
+
+async function toggleAllyDetail(name, row) {
+  const existingDetail = row.nextElementSibling;
+  if (expandedAlly === name && existingDetail?.classList.contains('ally-detail')) {
+    existingDetail.remove();
+    row.classList.remove('expanded');
+    expandedAlly = null;
+    return;
+  }
+
+  for (const r of document.querySelectorAll('#ally-table .ally-detail')) r.remove();
+  for (const r of document.querySelectorAll('#ally-table .ally-row.expanded')) r.classList.remove('expanded');
+
+  row.classList.add('expanded');
+  expandedAlly = name;
+
+  const detail = document.createElement('tr');
+  detail.className = 'ally-detail';
+  const cell = document.createElement('td');
+  cell.colSpan = 5;
+  cell.innerHTML = '<p class="muted">Loading&hellip;</p>';
+  detail.appendChild(cell);
+  row.after(detail);
+
+  const summary = await invoke('get_combat_summary', { zoneVisit: currentZoneVisit, encounterId: currentEncounterId, actor: name });
+  if (expandedAlly === name) {
+    cell.innerHTML = abilitySubtableHtml(summary.abilities);
+  }
+}
+
+async function refreshExpandedAlly() {
+  const row = document.querySelector(`#ally-table .ally-row[data-name="${cssEscape(expandedAlly)}"]`);
+  const detail = row?.nextElementSibling;
+  if (!row || !detail?.classList.contains('ally-detail')) return;
+  const summary = await invoke('get_combat_summary', { zoneVisit: currentZoneVisit, encounterId: currentEncounterId, actor: expandedAlly });
+  detail.querySelector('td').innerHTML = abilitySubtableHtml(summary.abilities);
+}
+
+function cssEscape(s) {
+  return window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/["\\]/g, '\\$&');
 }
 
 // ---------------------------------------------------------------- fight timeline

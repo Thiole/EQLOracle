@@ -44,6 +44,7 @@ fn main() {
             commands::set_log_directory,
             commands::list_zone_visits,
             commands::list_encounters,
+            commands::list_allies,
             commands::get_combat_summary,
             commands::get_fight_timeline,
             commands::get_fight_state_at,
