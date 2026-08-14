@@ -38,6 +38,12 @@ function fmtDuration(ms) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+function escapeHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
 // ---------------------------------------------------------------- toolbar / overview
 
 function renderStatus(status, counts) {
@@ -160,7 +166,8 @@ async function refreshCombat() {
     const opt = document.createElement('option');
     opt.value = String(e.id);
     const tag = e.open ? 'ongoing' : e.slain ? 'kill' : 'reset';
-    opt.textContent = `${e.target} — ${fmtDuration(e.duration_ms)} — ${e.total_damage.toLocaleString()} dmg (${tag})`;
+    const others = e.entities.length > 1 ? ` +${e.entities.length - 1} other${e.entities.length > 2 ? 's' : ''}` : '';
+    opt.textContent = `${e.target}${others} — ${fmtDuration(e.duration_ms)} — ${e.total_damage.toLocaleString()} dmg (${tag})`;
     encSelect.appendChild(opt);
   }
   if ([...encSelect.options].some((o) => o.value === prevEnc)) {
@@ -170,6 +177,18 @@ async function refreshCombat() {
   const encounterId = encSelect.value === '' ? null : Number(encSelect.value);
   const summary = await invoke('get_combat_summary', { zoneVisit, encounterId });
   renderCombatSummary(summary);
+
+  if (encounterId !== null) {
+    if (encounterId !== currentTimelineEncounterId) {
+      highlightedEntity = null;
+      selectedBucketMs = null;
+      el('timeline-state').classList.add('hidden');
+    }
+    await loadTimeline(encounterId);
+  } else {
+    el('timeline-pane').classList.add('hidden');
+    currentTimelineEncounterId = null;
+  }
 }
 
 function renderCombatSummary(summary) {
@@ -195,6 +214,113 @@ function renderCombatSummary(summary) {
     tbody.appendChild(tr);
   }
   el('combat-empty').classList.toggle('hidden', summary.abilities.length > 0);
+}
+
+// ---------------------------------------------------------------- fight timeline
+
+const SERIES_COLORS = ['#5fb3ff', '#5fd18a', '#e0b34d', '#e0616f', '#b892ff', '#4dd0e1', '#ffb74d', '#81c995'];
+
+let currentTimelineEncounterId = null;
+let currentTimelineStartMs = null;
+let highlightedEntity = null;
+let selectedBucketMs = null;
+
+async function loadTimeline(encounterId) {
+  currentTimelineEncounterId = encounterId;
+  const dto = await invoke('get_fight_timeline', { encounterId });
+  if (!dto || dto.series.length === 0) {
+    el('timeline-pane').classList.add('hidden');
+    return;
+  }
+  el('timeline-pane').classList.remove('hidden');
+  currentTimelineStartMs = dto.start_ms;
+  renderTimelineChart(dto);
+}
+
+function renderTimelineChart(dto) {
+  const legend = el('timeline-legend');
+  const chart = el('timeline-chart');
+  legend.innerHTML = '';
+  chart.innerHTML = '';
+
+  const globalMax = Math.max(1, ...dto.series.flatMap((s) => s.values));
+
+  dto.series.forEach((s, i) => {
+    const color = SERIES_COLORS[i % SERIES_COLORS.length];
+
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'legend-chip';
+    chip.dataset.entity = s.name;
+    chip.style.setProperty('--series-color', color);
+    chip.innerHTML = `<span class="swatch"></span>${escapeHtml(s.name)} (${s.total.toLocaleString()})`;
+    chip.addEventListener('click', () => {
+      highlightedEntity = highlightedEntity === s.name ? null : s.name;
+      applyHighlight();
+    });
+    legend.appendChild(chip);
+
+    const row = document.createElement('div');
+    row.className = 'series-row';
+    row.dataset.entity = s.name;
+    const nameEl = document.createElement('span');
+    nameEl.className = 'series-name';
+    nameEl.textContent = s.name;
+    const bars = document.createElement('div');
+    bars.className = 'bars';
+    bars.style.setProperty('--series-color', color);
+    s.values.forEach((v, bi) => {
+      const bar = document.createElement('div');
+      bar.className = 'bar';
+      bar.style.setProperty('--series-color', color);
+      bar.style.height = `${Math.max(4, (v / globalMax) * 100)}%`;
+      bar.title = `${v.toLocaleString()} dmg`;
+      const bucketMs = dto.buckets[bi] ?? dto.start_ms;
+      bar.dataset.ts = String(bucketMs);
+      if (selectedBucketMs === bucketMs) bar.classList.add('selected');
+      bar.addEventListener('click', () => showStateAt(bucketMs, bar));
+      bars.appendChild(bar);
+    });
+    row.append(nameEl, bars);
+    chart.appendChild(row);
+  });
+
+  applyHighlight();
+}
+
+function applyHighlight() {
+  for (const row of document.querySelectorAll('.series-row')) {
+    row.classList.toggle('dimmed', highlightedEntity !== null && row.dataset.entity !== highlightedEntity);
+  }
+  for (const chip of document.querySelectorAll('.legend-chip')) {
+    chip.classList.toggle('dimmed', highlightedEntity !== null && chip.dataset.entity !== highlightedEntity);
+  }
+}
+
+async function showStateAt(tsMs, barEl) {
+  selectedBucketMs = tsMs;
+  for (const b of document.querySelectorAll('.bar.selected')) b.classList.remove('selected');
+  if (barEl) barEl.classList.add('selected');
+
+  const states = await invoke('get_fight_state_at', { encounterId: currentTimelineEncounterId, tsMs });
+
+  const panel = el('timeline-state');
+  panel.classList.remove('hidden');
+  const into = currentTimelineStartMs !== null ? tsMs - currentTimelineStartMs : 0;
+  el('timeline-state-time').textContent = `${fmtDuration(into)} into the fight`;
+
+  const tbody = document.querySelector('#timeline-state-table tbody');
+  tbody.innerHTML = '';
+  for (const s of states) {
+    const tr = document.createElement('tr');
+    const badgeClass = `state-badge state-${s.state}${s.observed ? '' : ' inferred'}`;
+    tr.innerHTML = `
+      <td>${escapeHtml(s.name)}${s.is_player ? ' <span class="muted">(you)</span>' : ''}</td>
+      <td><span class="${badgeClass}">${s.state}${s.observed ? '' : ' (inferred)'}</span></td>
+      <td class="num">${s.dps.toFixed(1)} dps</td>
+    `;
+    tbody.appendChild(tr);
+  }
 }
 
 el('zone-select').addEventListener('change', () => {

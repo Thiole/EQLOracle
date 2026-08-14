@@ -416,3 +416,158 @@ button:hover {
   text-overflow: ellipsis;
   overflow: hidden;
 }
+
+/* ---- fight timeline ---- */
+
+.pane.timeline {
+  margin-top: 16px;
+}
+
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.legend-chip .swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--series-color, var(--accent));
+  flex: 0 0 auto;
+}
+
+.legend-chip.dimmed {
+  color: var(--text-muted);
+  border-color: var(--border);
+  opacity: 0.5;
+}
+
+.timeline-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.series-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.series-row.dimmed .bars .bar {
+  opacity: 0.25;
+}
+
+.series-name {
+  flex: 0 0 120px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bars {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 36px;
+  background: var(--panel-alt);
+  border-radius: 3px;
+  padding: 2px;
+}
+
+.bar {
+  flex: 1 1 0;
+  min-width: 2px;
+  height: 4%;
+  background: var(--series-color, var(--accent));
+  border-radius: 1px;
+  cursor: pointer;
+}
+
+.bar:hover {
+  filter: brightness(1.3);
+}
+
+.bar.selected {
+  outline: 1px solid var(--text);
+  outline-offset: 0;
+}
+
+.timeline-state {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.timeline-state-header {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+#timeline-state-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+#timeline-state-table td {
+  padding: 3px 8px 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#timeline-state-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.state-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.state-badge.state-engaged {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.state-badge.state-mezzed,
+.state-badge.state-charmed {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.state-badge.state-dead,
+.state-badge.state-lost {
+  color: var(--err);
+  border-color: var(--err);
+}
+
+.state-badge.inferred {
+  border-style: dashed;
+}

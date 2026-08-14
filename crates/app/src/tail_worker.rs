@@ -6,7 +6,7 @@
 //! for which character is currently logged in, and a `Framer` is required
 //! while tailing because a poll can land mid-line.
 
-use crate::ingest::{Ingest, LineCounts, RecentLine};
+use crate::ingest::{self, Ingest, LineCounts, RecentLine};
 use eqlp_core::frame::Framer;
 use eqlp_source::{identity_from_filename, newest_log_in, Clock, SystemClock, Tail, TailEvent, POLL_MS};
 use serde::Serialize;
@@ -51,6 +51,16 @@ struct ParseTick {
     recent: Vec<RecentLine>,
 }
 
+fn tail_event_str(ev: TailEvent) -> &'static str {
+    match ev {
+        TailEvent::Grew(_) => "grew",
+        TailEvent::Truncated => "truncated",
+        TailEvent::Replaced => "replaced",
+        TailEvent::Missing => "missing",
+        TailEvent::Idle => "idle",
+    }
+}
+
 pub struct WorkerHandle {
     stop: Arc<AtomicBool>,
 }
@@ -80,6 +90,16 @@ fn run(app: AppHandle, log_dir: PathBuf, stop: Arc<AtomicBool>, ingest: Arc<Mute
     };
     let mut matcher = engine.matcher();
     let clock = SystemClock;
+    // A backfill (replaying a file's existing content) parses in parallel;
+    // live growth is a few lines at a time and stays on the simple
+    // single-threaded path. See ingest::backfill_parallel.
+    //
+    // Capped at 8: measured against a 2M-line/144 MiB synthetic log,
+    // wall time keeps improving up to about 8 threads (2.57s at 1 thread
+    // to 1.43s at 8) and then flattens or mildly regresses past it -- the
+    // sequential merge phase and thread overhead dominate beyond that
+    // point, so more threads just contend for no gain.
+    let backfill_threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8);
 
     // A fresh directory (first launch, or "change folder") starts from a
     // fresh parsed db -- row indices and encounter ids from a previous
@@ -117,36 +137,46 @@ fn run(app: AppHandle, log_dir: PathBuf, stop: Arc<AtomicBool>, ingest: Arc<Mute
 
         let mut tail_status: &'static str = "idle";
         if let Some(t) = tail.as_mut() {
-            let mut ing = ingest.lock().unwrap();
-            let ev = t.poll(|chunk| {
-                framer.push(chunk, |line| {
-                    let outcome = matcher.classify(line);
-                    ing.route(&engine, line, &outcome);
-                });
-            });
-            tail_status = match ev {
-                TailEvent::Grew(_) => "grew",
-                TailEvent::Truncated => "truncated",
-                TailEvent::Replaced => "replaced",
-                TailEvent::Missing => "missing",
-                TailEvent::Idle => "idle",
-            };
-            // The file's own content changed identity mid-tail (not a
-            // character switch, which already gets a fresh Ingest above).
-            // A carried partial line from before means nothing now; the
-            // parsed history in the store is not thrown away for it --
-            // only the frame boundary resets, at the cost of possibly one
-            // misframed line at the seam. Rare enough, and cheap enough to
-            // accept, that rebuilding hours of parsed history over it
-            // would be the wrong trade.
-            if matches!(ev, TailEvent::Truncated | TailEvent::Replaced) {
-                framer = Framer::default();
-            }
             if backfilling {
+                // First poll of a freshly opened file: `Tail::poll` already
+                // loops internally until it hits current EOF, so this one
+                // call *is* "everything on disk right now" -- pull it into
+                // one buffer and parse it with a bounded thread pool
+                // instead of the incremental single-line path live growth
+                // uses. See ingest::backfill_parallel for why that split
+                // is worth it.
+                let mut raw = Vec::new();
+                let ev = t.poll(|chunk| raw.extend_from_slice(chunk));
+                tail_status = tail_event_str(ev);
+                let mut ing = ingest.lock().unwrap();
+                if !raw.is_empty() {
+                    ingest::backfill_parallel(&mut ing, &engine, &raw, backfill_threads);
+                }
                 ing.mark_live();
+                ing.tick(now);
                 backfilling = false;
+            } else {
+                let mut ing = ingest.lock().unwrap();
+                let ev = t.poll(|chunk| {
+                    framer.push(chunk, |line| {
+                        let outcome = matcher.classify(line);
+                        ing.route(&engine, line, &outcome);
+                    });
+                });
+                tail_status = tail_event_str(ev);
+                // The file's own content changed identity mid-tail (not a
+                // character switch, which already gets a fresh Ingest
+                // above). A carried partial line from before means nothing
+                // now; the parsed history in the store is not thrown away
+                // for it -- only the frame boundary resets, at the cost of
+                // possibly one misframed line at the seam. Rare enough, and
+                // cheap enough to accept, that rebuilding hours of parsed
+                // history over it would be the wrong trade.
+                if matches!(ev, TailEvent::Truncated | TailEvent::Replaced) {
+                    framer = Framer::default();
+                }
+                ing.tick(now);
             }
-            ing.tick(now);
         }
 
         let has_news = switched || !matches!(tail_status, "idle" | "missing");

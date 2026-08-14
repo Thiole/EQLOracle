@@ -8,8 +8,9 @@
 //! reparsed to answer these.
 
 use crate::ingest::Ingest;
+use eqlp_session::{series as bucket_series, Cause, Kind};
 use eqlp_source::Millis;
-use eqlp_store::{by_ability, tag, total, AbilityRow, EncounterId, Filter};
+use eqlp_store::{by_ability, dps_window, tag, total, AbilityRow, EncounterId, EventKind, Filter};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -30,6 +31,9 @@ pub struct ZoneVisitDto {
 pub struct EncounterDto {
     pub id: u32,
     pub target: String,
+    /// Every entity seen in this fight, not just the anchor `target` label
+    /// -- a multi-mob pull holds several. See `Ingest::entities_by_enc`.
+    pub entities: Vec<String>,
     pub start_ms: Millis,
     pub end_ms: Option<Millis>,
     pub duration_ms: Millis,
@@ -121,6 +125,7 @@ pub fn list_encounters(ing: &Ingest, zone_visit: Option<i64>) -> Vec<EncounterDt
             EncounterDto {
                 id: e.id.0,
                 target: ing.store.name(e.target).to_string(),
+                entities: ing.entities_by_enc.get(&e.id).cloned().unwrap_or_default(),
                 start_ms: e.start_ms,
                 end_ms: e.end_ms,
                 duration_ms: dur,
@@ -222,4 +227,125 @@ pub fn summarize(ing: &Ingest, zone_visit: Option<i64>, encounter_id: Option<u32
         .collect();
 
     CombatSummaryDto { fight_count: ids.len(), total_damage, duration_ms, dps: total_damage as f64 / dur_secs, abilities }
+}
+
+// ---------------------------------------------------------------- timeline
+
+/// Aim for around this many buckets across a fight regardless of its
+/// length, so a 10-second skirmish and a 10-minute grind both render as a
+/// readable strip of bars rather than one bucket or ten thousand.
+const TARGET_BUCKETS: Millis = 60;
+const MIN_BUCKET_MS: Millis = 1000;
+
+/// A believable "current DPS" window for the click-to-inspect readout --
+/// long enough not to be one lucky hit, short enough to feel like "right
+/// now" rather than the whole fight's average.
+const INSPECT_WINDOW_MS: Millis = 6000;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EntitySeriesDto {
+    pub name: String,
+    pub is_player: bool,
+    pub total: u64,
+    /// One damage total per bucket in `FightTimelineDto::buckets`, same
+    /// length and same order.
+    pub values: Vec<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct FightTimelineDto {
+    pub start_ms: Millis,
+    pub duration_ms: Millis,
+    pub bucket_ms: Millis,
+    /// Start time of each bucket, log-time ms -- same basis as every other
+    /// timestamp in this app, so the frontend can line this up against
+    /// `start_ms`/`end_ms` without a conversion.
+    pub buckets: Vec<Millis>,
+    /// Damage-dealing entities only, sorted by total descending. Healers
+    /// and pure targets (an entity that only ever received damage) are not
+    /// bars on this chart -- the ask was "dps over time per person".
+    pub series: Vec<EntitySeriesDto>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EntityStateDto {
+    pub name: String,
+    pub is_player: bool,
+    pub state: &'static str,
+    /// Whether `state` came from a log line (mesmerized/charmed/slain) or
+    /// was inferred from silence (`Lost`, or the default `Engaged` before
+    /// any transition at all). See `docs/design/timeline.md`.
+    pub observed: bool,
+    /// Damage over the `INSPECT_WINDOW_MS` trailing up to the clicked
+    /// instant -- a snapshot reading, not a running total.
+    pub dps: f64,
+}
+
+/// Per-entity damage-over-time for one fight, for the scrub bar. `None` if
+/// the encounter id doesn't exist (evicted, or never was one).
+pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDto> {
+    let id = EncounterId(encounter_id);
+    let e = ing.store.encounter(id)?;
+    let now = ing.now_ms();
+    let start = e.start_ms;
+    let end = e.end_ms.unwrap_or(now).max(start);
+    let duration = (end - start).max(1);
+    let bucket_ms = (duration / TARGET_BUCKETS).max(MIN_BUCKET_MS);
+
+    let entities = ing.entities_by_enc.get(&id).cloned().unwrap_or_default();
+    let range = e.range();
+
+    let mut series: Vec<EntitySeriesDto> = Vec::new();
+    let mut buckets_len = 0usize;
+    for name in &entities {
+        let sym = match ing.store.names.get(name) {
+            Some(s) => s,
+            None => continue,
+        };
+        let mut ts = Vec::new();
+        let mut amt = Vec::new();
+        for i in range.clone() {
+            if ing.store.kind[i] == EventKind::Damage && ing.store.actor[i] == sym {
+                ts.push(ing.store.ts[i]);
+                amt.push(ing.store.amount[i]);
+            }
+        }
+        if ts.is_empty() {
+            continue; // healer or pure target -- nothing to plot as a dps bar
+        }
+        let buckets = bucket_series(&ts, &amt, start, end, bucket_ms);
+        buckets_len = buckets_len.max(buckets.len());
+        let total: u64 = amt.iter().sum();
+        let is_player = ing.encounters.entities.kind(name) == Kind::Player;
+        series.push(EntitySeriesDto { name: name.clone(), is_player, total, values: buckets.iter().map(|b| b.total).collect() });
+    }
+    series.sort_by(|a, b| b.total.cmp(&a.total));
+
+    let buckets: Vec<Millis> = (0..buckets_len as Millis).map(|i| start + i * bucket_ms).collect();
+    Some(FightTimelineDto { start_ms: start, duration_ms: duration, bucket_ms, buckets, series })
+}
+
+/// Every entity in the fight, their state, and a snapshot DPS reading, all
+/// as of `ts_ms` -- what clicking a point on the timeline shows.
+pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<EntityStateDto> {
+    let id = EncounterId(encounter_id);
+    let entities = ing.entities_by_enc.get(&id).cloned().unwrap_or_default();
+
+    let mut out: Vec<EntityStateDto> = entities
+        .into_iter()
+        .map(|name| {
+            let is_player = ing.encounters.entities.kind(&name) == Kind::Player;
+            let sym = ing.store.names.get(&name);
+            let (state, observed) = sym
+                .and_then(|s| ing.timeline.state_at(s.0, ts_ms))
+                .map(|(s, c)| (s, matches!(c, Cause::Observed)))
+                .unwrap_or((eqlp_session::State::Engaged, false));
+            let dps = sym
+                .map(|s| dps_window(&ing.store, &Filter::encounter(id).damage().by(s), ts_ms, INSPECT_WINDOW_MS))
+                .unwrap_or(0.0);
+            EntityStateDto { name, is_player, state: state.name(), observed, dps }
+        })
+        .collect();
+    out.sort_by(|a, b| b.dps.partial_cmp(&a.dps).unwrap_or(std::cmp::Ordering::Equal));
+    out
 }

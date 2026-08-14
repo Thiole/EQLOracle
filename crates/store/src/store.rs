@@ -49,7 +49,7 @@ pub mod flag {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EncounterId(pub u32);
 
 /// An encounter is a half-open range over the event log plus its identity. It

@@ -7,7 +7,7 @@
 //! no reparsing. Everything live-updating besides that goes over the
 //! `parse-tick` / `parse-error` events emitted from `tail_worker`.
 
-use crate::combat::{self, CombatSummaryDto, EncounterDto, ZoneVisitDto};
+use crate::combat::{self, CombatSummaryDto, EncounterDto, EntityStateDto, FightTimelineDto, ZoneVisitDto};
 use crate::config::{self, AppConfig};
 use crate::ingest::LineCounts;
 use crate::state::AppState;
@@ -103,4 +103,17 @@ pub fn list_encounters(state: State<AppState>, zone_visit: Option<i64>) -> Vec<E
 #[tauri::command]
 pub fn get_combat_summary(state: State<AppState>, zone_visit: Option<i64>, encounter_id: Option<u32>) -> CombatSummaryDto {
     combat::summarize(&state.ingest.lock().unwrap(), zone_visit, encounter_id)
+}
+
+/// Per-entity damage-over-time bars for one fight's scrub bar.
+#[tauri::command]
+pub fn get_fight_timeline(state: State<AppState>, encounter_id: u32) -> Option<FightTimelineDto> {
+    combat::fight_timeline(&state.ingest.lock().unwrap(), encounter_id)
+}
+
+/// What clicking a point on the scrub bar shows: every entity's state and a
+/// snapshot DPS reading as of that instant.
+#[tauri::command]
+pub fn get_fight_state_at(state: State<AppState>, encounter_id: u32, ts_ms: i64) -> Vec<EntityStateDto> {
+    combat::fight_state_at(&state.ingest.lock().unwrap(), encounter_id, ts_ms)
 }

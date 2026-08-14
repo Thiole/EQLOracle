@@ -125,6 +125,15 @@ impl Entities {
         self.owner.get(&fold_key(name)).map(|s| s.as_str())
     }
 
+    /// The casing this identity was first observed under, regardless of how
+    /// `name` happens to be cased. Callers that intern a name elsewhere
+    /// (e.g. a store's own symbol table) should resolve through this first,
+    /// so "You" and "you" -- or "an armadillo" and "An armadillo" -- always
+    /// intern to the same identity there too, not just here.
+    pub fn display_name<'a>(&'a self, name: &'a str) -> &'a str {
+        self.display.get(&fold_key(name)).map(|s| s.as_str()).unwrap_or(name)
+    }
+
     /// Who this damage should count towards: a pet's owner, else the entity.
     pub fn credit<'a>(&'a self, name: &'a str) -> &'a str {
         self.owner_of(name).unwrap_or(name)
@@ -414,6 +423,12 @@ impl Builder {
 
     pub fn live_encounters(&self) -> impl Iterator<Item = &Live> {
         self.live.values()
+    }
+
+    /// One live encounter by id, for a caller that already has it (e.g.
+    /// from the return value of `damage`) rather than needing to scan.
+    pub fn live(&self, id: EncId) -> Option<&Live> {
+        self.live.get(&id)
     }
 
     pub fn live_count(&self) -> usize {

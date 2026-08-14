@@ -45,6 +45,8 @@ fn main() {
             commands::list_zone_visits,
             commands::list_encounters,
             commands::get_combat_summary,
+            commands::get_fight_timeline,
+            commands::get_fight_state_at,
         ])
         .run(tauri::generate_context!())
         .expect("error while running eqlp-app");

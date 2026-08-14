@@ -14,9 +14,9 @@
 
 use eqlp_core::event::Match;
 use eqlp_core::{field, Engine, Outcome};
-use eqlp_session::{Builder, EncId, Policy, Spans};
+use eqlp_session::{Builder, EncId, Kind, Policy, Spans, State, Timeline};
 use eqlp_source::{Clock, Millis, VirtualClock};
-use eqlp_store::{flag, tag, EncounterId, EventKind, Flags, Store, Tags, NO_ENCOUNTER};
+use eqlp_store::{flag, tag, EncounterId, EventKind, Flags, Store, Sym, Tags, NO_ENCOUNTER};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
 
@@ -30,6 +30,19 @@ pub struct LineCounts {
     pub headerless: u64,
     pub blank: u64,
     pub by_kind: BTreeMap<String, u64>,
+}
+
+impl LineCounts {
+    fn add(&mut self, other: &LineCounts) {
+        self.total += other.total;
+        self.matched += other.matched;
+        self.unmatched += other.unmatched;
+        self.headerless += other.headerless;
+        self.blank += other.blank;
+        for (k, v) in &other.by_kind {
+            *self.by_kind.entry(k.clone()).or_insert(0) += v;
+        }
+    }
 }
 
 /// One matched line, trimmed to what the live feed shows.
@@ -58,7 +71,17 @@ pub struct Ingest {
     pub store: Store,
     pub encounters: Builder,
     pub zone: Spans,
+    /// Entity states (mez/charm/dead) keyed by the same `Sym` the store
+    /// uses -- see `docs/design/timeline.md`. Session-wide rather than one
+    /// per encounter: `state_at`/`between` already take an explicit time
+    /// range, so scoping to one fight is a query, not a second table.
+    pub timeline: Timeline,
     enc_map: HashMap<EncId, EncounterId>,
+    /// Every entity seen in each store encounter so far, kept current as a
+    /// fight grows (a multi-mob pull adds to it) rather than frozen at
+    /// whichever mob was hit first -- `store::Encounter` only carries one
+    /// label, but a fight can hold several entities. See `link`.
+    pub entities_by_enc: HashMap<EncounterId, Vec<String>>,
     /// How far into `encounters.closed` we've synced to the store.
     /// `Builder` only ever appends to that vec, never drains it.
     closed_seen: usize,
@@ -80,7 +103,9 @@ impl Default for Ingest {
             store: Store::default(),
             encounters: Builder::new(Policy::default()),
             zone: Spans::default(),
+            timeline: Timeline::default(),
             enc_map: HashMap::new(),
+            entities_by_enc: HashMap::new(),
             closed_seen: 0,
             log_clock: VirtualClock::new(0),
             last_wall_ms: None,
@@ -132,7 +157,9 @@ impl Ingest {
 
                 let ts_ms = m.ts.secs() * 1000;
                 self.log_clock.set_at_least(ts_ms);
-                self.dispatch(engine, rule.id.as_str(), m, line, ts_ms);
+                if let Some(action) = extract_action(engine, rule.id.as_str(), m, line) {
+                    self.apply(ts_ms, action);
+                }
             }
             Outcome::Unmatched { .. } => self.counts.unmatched += 1,
             Outcome::Headerless { .. } => self.counts.headerless += 1,
@@ -155,131 +182,42 @@ impl Ingest {
         self.drain_closed();
     }
 
-    fn dispatch(&mut self, engine: &Engine, rule_id: &str, m: &Match, line: &[u8], ts: Millis) {
-        let str_field = |name: &str| -> Option<String> {
-            match field::field(engine, m, line, name) {
-                field::Value::Str(s) => Some(String::from_utf8_lossy(s).into_owned()),
-                _ => None,
+    /// Executes one already-extracted action against the store/graph/zone/
+    /// timeline. Never touches `line`/`Match`/`Engine` -- everything it
+    /// needed was pulled out by `extract_action`, which is what lets the
+    /// same logic run from a sequential merge after parallel classification
+    /// (`backfill_parallel`) as well as inline on the live tail thread.
+    fn apply(&mut self, ts: Millis, action: Action) {
+        match action {
+            Action::Damage { src, dst, ability, tags, amount, flags } => {
+                self.record_damage(ts, &src, &dst, &ability, tags, amount, flags);
             }
-        };
-        let u64_field = |name: &str| -> Option<u64> {
-            match field::field(engine, m, line, name) {
-                field::Value::U64(n) => Some(n),
-                _ => None,
+            Action::Heal { src, dst, ability, amount } => {
+                let dst = resolve_reflexive(&dst, &src);
+                self.record_heal(ts, &src, &dst, &ability, amount);
             }
-        };
-
-        match rule_id {
-            "melee.hit" => {
-                if let (Some(src), Some(dst), Some(amt)) =
-                    (str_field("source"), str_field("target"), u64_field("amount"))
-                {
-                    let verb = str_field("verb").unwrap_or_default();
-                    let flags = str_field("flag").map(|s| flag::parse(&s)).unwrap_or(0);
-                    self.record_damage(ts, &src, &dst, canonical_melee_ability(&verb), tag::MELEE, amt, flags);
-                }
+            Action::Miss { src, dst } => self.record_miss(ts, &src, &dst),
+            Action::Death { victim } => self.record_death(ts, &victim),
+            Action::Zone { zone } => self.zone.enter(ts, zone),
+            Action::Cast { spell } => {
+                // A cast line proves the ability isn't a weapon proc; no
+                // store row needed, just the ability metadata.
+                let id = self.store.ability_id(&spell, tag::SPELL);
+                self.store.abilities.note_cast(id);
             }
-            "spell.damage" => {
-                if let (Some(src), Some(dst), Some(amt), Some(spell)) =
-                    (str_field("source"), str_field("target"), u64_field("amount"), str_field("spell"))
-                {
-                    self.record_damage(ts, &src, &dst, &spell, tag::SPELL, amt, 0);
-                }
+            Action::PlayerProof { who } => self.encounters.entities.note_player_channel(&who),
+            Action::Mez { who } => {
+                let sym = self.sym(&who);
+                self.timeline.observed(ts, sym.0, State::Mezzed);
             }
-            "dot.damage" => {
-                if let (Some(src), Some(dst), Some(amt), Some(spell)) =
-                    (str_field("source"), str_field("target"), u64_field("amount"), str_field("spell"))
-                {
-                    self.record_damage(ts, &src, &dst, &spell, tag::SPELL | tag::DOT, amt, 0);
-                }
+            Action::Charm { who } => {
+                let sym = self.sym(&who);
+                self.timeline.observed(ts, sym.0, State::Charmed);
             }
-            "dot.damage_uncredited" => {
-                // No caster named -- the log gives us nothing to link this
-                // to. Attributed to a placeholder rather than dropped, so
-                // the damage still counts against the target's total.
-                if let (Some(dst), Some(amt), Some(spell)) =
-                    (str_field("target"), u64_field("amount"), str_field("spell"))
-                {
-                    self.record_damage(ts, "unknown", &dst, &spell, tag::SPELL | tag::DOT, amt, 0);
-                }
+            Action::Recovered { who } => {
+                let sym = self.sym(&who);
+                self.timeline.observed(ts, sym.0, State::Engaged);
             }
-            "ds.damage" => {
-                if let (Some(src), Some(dst), Some(amt)) =
-                    (str_field("source"), str_field("target"), u64_field("amount"))
-                {
-                    self.record_damage(ts, &src, &dst, "Damage Shield", tag::DAMAGE_SHIELD | tag::PROC, amt, 0);
-                }
-            }
-            "heal.by_spell" => {
-                if let (Some(src), Some(dst), Some(amt), Some(spell)) =
-                    (str_field("source"), str_field("target"), u64_field("amount"), str_field("spell"))
-                {
-                    let dst = resolve_reflexive(&dst, &src);
-                    self.record_heal(ts, &src, &dst, &spell, amt);
-                }
-            }
-            "heal.plain" => {
-                if let (Some(src), Some(dst), Some(amt)) =
-                    (str_field("source"), str_field("target"), u64_field("amount"))
-                {
-                    let dst = resolve_reflexive(&dst, &src);
-                    self.record_heal(ts, &src, &dst, "Heal", amt);
-                }
-            }
-            "melee.miss" => {
-                if let (Some(src), Some(dst)) = (str_field("source"), str_field("target")) {
-                    self.record_miss(ts, &src, &dst);
-                }
-            }
-            "cast.begin" | "sing.begin" => {
-                if let Some(spell) = str_field("spell").or_else(|| str_field("song")) {
-                    // A cast line proves the ability isn't a weapon proc;
-                    // no store row needed, just the ability metadata.
-                    let id = self.store.ability_id(&spell, tag::SPELL);
-                    self.store.abilities.note_cast(id);
-                }
-            }
-            "death.you_slew" => {
-                if let Some(victim) = str_field("victim") {
-                    self.record_death(ts, &victim);
-                }
-            }
-            "death.other" | "death.plain" => {
-                if let Some(victim) = str_field("victim") {
-                    self.record_death(ts, &victim);
-                }
-            }
-            "death.you_died" => {
-                // Synthesised, not read from the log -- fold_key makes it
-                // match whatever casing "you"/"You" was seen under.
-                self.record_death(ts, "You");
-            }
-            "zone.enter" => {
-                if let Some(zone) = str_field("zone") {
-                    self.zone.enter(ts, zone);
-                }
-            }
-            "chat.channel" => {
-                if let Some(who) = str_field("who") {
-                    self.encounters.entities.note_player_channel(&who);
-                }
-            }
-            "chat.directed" => {
-                // Only the channels that are provably player-to-player.
-                // `says`/`shouts`/`auctions` are excluded on purpose --
-                // NPCs use `says` too, so it proves nothing. See
-                // docs/design/encounters.md, "Entity classification".
-                if let (Some(who), Some(chan)) = (str_field("who"), str_field("chan")) {
-                    let player_only = matches!(
-                        chan.as_str(),
-                        "tells you" | "tells the guild" | "tells the group" | "tell your party" | "tell the guild" | "tell the group"
-                    );
-                    if player_only {
-                        self.encounters.entities.note_player_channel(&who);
-                    }
-                }
-            }
-            _ => {}
         }
     }
 
@@ -289,8 +227,8 @@ impl Ingest {
     /// already open, if any.
     fn record_damage(&mut self, ts: Millis, src: &str, dst: &str, ability: &str, tags: Tags, amount: u64, flags: Flags) {
         let enc = self.link(ts, src, dst);
-        let a = self.store.sym(src);
-        let t = self.store.sym(dst);
+        let a = self.sym(src);
+        let t = self.sym(dst);
         let ab = self.store.ability_id(ability, tags);
         let idx = self.store.push(ts, EventKind::Damage, a, t, ab, amount, flags, enc.0);
         self.store.extend_encounter(enc, idx);
@@ -299,8 +237,8 @@ impl Ingest {
 
     fn record_heal(&mut self, ts: Millis, src: &str, dst: &str, ability: &str, amount: u64) {
         let enc = self.current_encounter_of(src).or_else(|| self.current_encounter_of(dst));
-        let a = self.store.sym(src);
-        let t = self.store.sym(dst);
+        let a = self.sym(src);
+        let t = self.sym(dst);
         let ab = self.store.ability_id(ability, tag::HEAL);
         let idx = self.store.push(ts, EventKind::Heal, a, t, ab, amount, 0, enc.map(|e| e.0).unwrap_or(NO_ENCOUNTER));
         if let Some(id) = enc {
@@ -310,8 +248,8 @@ impl Ingest {
 
     fn record_miss(&mut self, ts: Millis, src: &str, dst: &str) {
         let enc = self.current_encounter_of(src).or_else(|| self.current_encounter_of(dst));
-        let a = self.store.sym(src);
-        let t = self.store.sym(dst);
+        let a = self.sym(src);
+        let t = self.sym(dst);
         let ab = self.store.ability_id("Miss", tag::MELEE);
         let idx = self.store.push(ts, EventKind::Miss, a, t, ab, 0, 0, enc.map(|e| e.0).unwrap_or(NO_ENCOUNTER));
         if let Some(id) = enc {
@@ -321,7 +259,23 @@ impl Ingest {
 
     fn record_death(&mut self, ts: Millis, victim: &str) {
         self.encounters.death(ts, victim);
+        let sym = self.sym(victim);
+        self.timeline.observed(ts, sym.0, State::Dead);
         self.drain_closed();
+    }
+
+    /// Interns `name` after resolving it to whatever casing this identity
+    /// was first observed under (`Entities::display_name`), and registers
+    /// it with the entity table if this is the first time it's been seen
+    /// through this path (a heal or miss can name someone before any
+    /// damage line does). Without this, the store's symbol table could
+    /// split one entity into two syms over a sentence-position casing
+    /// difference the same way the encounter graph used to -- see
+    /// `docs/design/session.md`, "Case folding".
+    fn sym(&mut self, name: &str) -> Sym {
+        self.encounters.entities.observe(name);
+        let resolved = self.encounters.entities.display_name(name).to_string();
+        self.store.sym(&resolved)
     }
 
     /// Routes one damage edge through the encounter graph, then resolves it
@@ -329,19 +283,25 @@ impl Ingest {
     /// component is seen.
     fn link(&mut self, ts: Millis, actor: &str, target: &str) -> EncounterId {
         let enc_id = self.encounters.damage(ts, actor, target);
-        if let Some(&id) = self.enc_map.get(&enc_id) {
-            return id;
+        let store_id = if let Some(&id) = self.enc_map.get(&enc_id) {
+            id
+        } else {
+            // Anchor the store encounter's single display label on whichever
+            // side isn't the player -- "an armadillo", not "You".
+            // `open_encounter` only needs the row index this event *will*
+            // get, which is exactly the store's current length before the
+            // push that follows.
+            let anchor = if target.eq_ignore_ascii_case("you") { actor } else { target };
+            let target_sym = self.sym(anchor);
+            let idx_hint = self.store.len() as u32;
+            let id = self.store.open_encounter(target_sym, ts, idx_hint);
+            self.enc_map.insert(enc_id, id);
+            id
+        };
+        if let Some(live) = self.encounters.live(enc_id) {
+            self.entities_by_enc.insert(store_id, live.entities.clone());
         }
-        // Anchor the store encounter's single display label on whichever
-        // side isn't the player -- "an armadillo", not "You". `open_encounter`
-        // only needs the row index this event *will* get, which is exactly
-        // the store's current length before the push that follows.
-        let anchor = if target.eq_ignore_ascii_case("you") { actor } else { target };
-        let sym = self.store.sym(anchor);
-        let idx_hint = self.store.len() as u32;
-        let id = self.store.open_encounter(sym, ts, idx_hint);
-        self.enc_map.insert(enc_id, id);
-        id
+        store_id
     }
 
     fn current_encounter_of(&self, name: &str) -> Option<EncounterId> {
@@ -353,12 +313,166 @@ impl Ingest {
     /// only grows, so this drains what's new since the last call.
     fn drain_closed(&mut self) {
         while self.closed_seen < self.encounters.closed.len() {
-            let c = &self.encounters.closed[self.closed_seen];
+            // Cloned rather than borrowed: everything below needs &mut self
+            // (sym() touches both the entity table and the store), which
+            // can't coexist with a borrow into `encounters.closed`.
+            let c = self.encounters.closed[self.closed_seen].clone();
             if let Some(&store_id) = self.enc_map.get(&c.id) {
                 self.store.close_encounter(store_id, c.end_ms, !c.slain.is_empty());
             }
+
+            // Everything that leaves a closed fight alive and unaccounted
+            // for left for a reason the log didn't report -- memory blur,
+            // pacify, fleeing. Marked Lost/Inferred rather than left
+            // looking Engaged forever. Players are excluded: the player
+            // ending a fight is not "lost". See docs/design/timeline.md,
+            // "Observed vs inferred".
+            for name in &c.entities {
+                if c.slain.iter().any(|s| s == name) || self.encounters.entities.kind(name) == Kind::Player {
+                    continue;
+                }
+                let sym = self.sym(name);
+                if !matches!(self.timeline.state_at(sym.0, c.end_ms), Some((State::Dead, _))) {
+                    self.timeline.inferred(c.end_ms, sym.0, State::Lost);
+                }
+            }
+
             self.closed_seen += 1;
         }
+    }
+}
+
+/// One line's meaning, fully extracted to owned data -- independent of the
+/// `Match`/`line` it came from, so it can cross a thread boundary. Produced
+/// by `extract_action`, consumed by `Ingest::apply`.
+enum Action {
+    Damage { src: String, dst: String, ability: String, tags: Tags, amount: u64, flags: Flags },
+    /// `dst` may still be a reflexive pronoun ("himself") -- resolved in
+    /// `apply`, not here; extraction stays a pure read of what the line
+    /// literally says.
+    Heal { src: String, dst: String, ability: String, amount: u64 },
+    Miss { src: String, dst: String },
+    Death { victim: String },
+    Zone { zone: String },
+    Cast { spell: String },
+    PlayerProof { who: String },
+    Mez { who: String },
+    Charm { who: String },
+    /// Charm wearing off, or the player's own mez ending -- both a return
+    /// to `State::Engaged`.
+    Recovered { who: String },
+}
+
+/// Classifies what one matched line means, without mutating anything. A
+/// pure function of the rule pack and the match, which is what lets it run
+/// on a worker thread during parallel backfill just as well as inline on
+/// the live tail thread -- see `backfill_parallel`.
+fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Option<Action> {
+    let str_field = |name: &str| -> Option<String> {
+        match field::field(engine, m, line, name) {
+            field::Value::Str(s) => Some(String::from_utf8_lossy(s).into_owned()),
+            _ => None,
+        }
+    };
+    let u64_field = |name: &str| -> Option<u64> {
+        match field::field(engine, m, line, name) {
+            field::Value::U64(n) => Some(n),
+            _ => None,
+        }
+    };
+
+    match rule_id {
+        "melee.hit" => {
+            let (src, dst, amount) = (str_field("source")?, str_field("target")?, u64_field("amount")?);
+            let verb = str_field("verb").unwrap_or_default();
+            let flags = str_field("flag").map(|s| flag::parse(&s)).unwrap_or(0);
+            Some(Action::Damage {
+                src,
+                dst,
+                ability: canonical_melee_ability(&verb).to_string(),
+                tags: tag::MELEE,
+                amount,
+                flags,
+            })
+        }
+        "spell.damage" => {
+            let (src, dst, amount, spell) =
+                (str_field("source")?, str_field("target")?, u64_field("amount")?, str_field("spell")?);
+            Some(Action::Damage { src, dst, ability: spell, tags: tag::SPELL, amount, flags: 0 })
+        }
+        "dot.damage" => {
+            let (src, dst, amount, spell) =
+                (str_field("source")?, str_field("target")?, u64_field("amount")?, str_field("spell")?);
+            Some(Action::Damage { src, dst, ability: spell, tags: tag::SPELL | tag::DOT, amount, flags: 0 })
+        }
+        "dot.damage_uncredited" => {
+            // No caster named -- the log gives us nothing to link this to.
+            // Attributed to a placeholder rather than dropped, so the
+            // damage still counts against the target's total.
+            let (dst, amount, spell) = (str_field("target")?, u64_field("amount")?, str_field("spell")?);
+            Some(Action::Damage {
+                src: "unknown".to_string(),
+                dst,
+                ability: spell,
+                tags: tag::SPELL | tag::DOT,
+                amount,
+                flags: 0,
+            })
+        }
+        "ds.damage" => {
+            let (src, dst, amount) = (str_field("source")?, str_field("target")?, u64_field("amount")?);
+            Some(Action::Damage {
+                src,
+                dst,
+                ability: "Damage Shield".to_string(),
+                tags: tag::DAMAGE_SHIELD | tag::PROC,
+                amount,
+                flags: 0,
+            })
+        }
+        "heal.by_spell" => {
+            let (src, dst, amount, spell) =
+                (str_field("source")?, str_field("target")?, u64_field("amount")?, str_field("spell")?);
+            Some(Action::Heal { src, dst, ability: spell, amount })
+        }
+        "heal.plain" => {
+            let (src, dst, amount) = (str_field("source")?, str_field("target")?, u64_field("amount")?);
+            Some(Action::Heal { src, dst, ability: "Heal".to_string(), amount })
+        }
+        "melee.miss" => {
+            let (src, dst) = (str_field("source")?, str_field("target")?);
+            Some(Action::Miss { src, dst })
+        }
+        "cast.begin" | "sing.begin" => {
+            let spell = str_field("spell").or_else(|| str_field("song"))?;
+            Some(Action::Cast { spell })
+        }
+        "death.you_slew" | "death.other" | "death.plain" => Some(Action::Death { victim: str_field("victim")? }),
+        "death.you_died" => {
+            // Synthesised, not read from the log -- fold_key makes it match
+            // whatever casing "you"/"You" was seen under.
+            Some(Action::Death { victim: "You".to_string() })
+        }
+        "zone.enter" => Some(Action::Zone { zone: str_field("zone")? }),
+        "state.mesmerized" => Some(Action::Mez { who: str_field("who")? }),
+        "state.charmed" => Some(Action::Charm { who: str_field("who")? }),
+        "state.charm_broken" | "state.you_mesmerized" => {
+            Some(Action::Recovered { who: str_field("who").unwrap_or_else(|| "You".to_string()) })
+        }
+        "chat.channel" => Some(Action::PlayerProof { who: str_field("who")? }),
+        "chat.directed" => {
+            // Only the channels that are provably player-to-player.
+            // `says`/`shouts`/`auctions` are excluded on purpose -- NPCs
+            // use `says` too, so it proves nothing. See
+            // docs/design/encounters.md, "Entity classification".
+            let (who, chan) = (str_field("who")?, str_field("chan")?);
+            let player_only = matches!(
+                chan.as_str(),
+                "tells you" | "tells the guild" | "tells the group" | "tell your party" | "tell the guild" | "tell the group"
+            );
+            player_only.then_some(Action::PlayerProof { who })
+        }
+        _ => None,
     }
 }
 
@@ -402,5 +516,124 @@ fn resolve_reflexive(target: &str, source: &str) -> String {
     match target {
         "himself" | "herself" | "itself" | "yourself" => source.to_string(),
         other => other.to_string(),
+    }
+}
+
+// ---------------------------------------------------------------- parallel backfill
+
+/// One chunk's worth of classification, ready to be replayed sequentially.
+/// `matched` keeps every matched line's timestamp even when it produced no
+/// `Action` (a "noise" rule, say), because the log clock still needs to
+/// advance past it in order.
+struct ChunkResult {
+    counts: LineCounts,
+    matched: Vec<(Millis, Option<Action>)>,
+}
+
+/// Classification only -- the expensive, embarrassingly-parallel part. No
+/// access to `Ingest`; a chunk is classified against nothing but the
+/// (immutable, `Send + Sync`) `Engine` and its own lines, which is what
+/// makes it safe to run on someone else's thread.
+fn classify_chunk(engine: &Engine, lines: &[&[u8]]) -> ChunkResult {
+    let mut matcher = engine.matcher();
+    let mut counts = LineCounts::default();
+    let mut matched = Vec::with_capacity(lines.len());
+    for &line in lines {
+        counts.total += 1;
+        match matcher.classify(line) {
+            Outcome::Matched(m) => {
+                counts.matched += 1;
+                let rule = engine.rule(m.rule);
+                *counts.by_kind.entry(rule.kind.clone()).or_insert(0) += 1;
+                let ts_ms = m.ts.secs() * 1000;
+                let action = extract_action(engine, rule.id.as_str(), &m, line);
+                matched.push((ts_ms, action));
+            }
+            Outcome::Unmatched { .. } => counts.unmatched += 1,
+            Outcome::Headerless { .. } => counts.headerless += 1,
+            Outcome::Blank => counts.blank += 1,
+        }
+    }
+    ChunkResult { counts, matched }
+}
+
+/// Splits `raw` into complete lines, CRLF-tolerant, holding back a trailing
+/// line with no terminating `\n` -- the game may still be mid-write of it.
+/// Same contract as `eqlp_core::frame::Framer` for a single buffer, just
+/// without needing a streaming callback (see `backfill_parallel`).
+fn framed_lines(raw: &[u8]) -> Vec<&[u8]> {
+    if raw.is_empty() {
+        return Vec::new();
+    }
+    let mut parts: Vec<&[u8]> = raw.split(|&b| b == b'\n').collect();
+    // `[T]::split` emits a trailing empty slice after a separator at the
+    // very end; without one, the trailing slice is the partial line. Either
+    // way it is not a complete line, so it is dropped here, not emitted.
+    parts.pop();
+    parts.into_iter().map(strip_cr).collect()
+}
+
+fn strip_cr(line: &[u8]) -> &[u8] {
+    match line.split_last() {
+        Some((&b'\r', rest)) => rest,
+        _ => line,
+    }
+}
+
+/// Parses a whole buffer (a file's history, read in one shot) across
+/// several threads instead of one line at a time on the tail thread.
+///
+/// `Engine::matcher` is documented as "one matcher per thread" precisely
+/// for this: the engine itself is immutable and `Send + Sync`, so
+/// classification -- the expensive, regex-bound part -- parallelises
+/// cleanly. What can't parallelise is applying the results: the encounter
+/// graph and zone spans are order-dependent state machines, not a
+/// reduction, so that stays a single sequential pass over the classified
+/// output, in original line order. On an N-core machine this trades an
+/// O(lines) sequential regex pass for an O(lines) sequential hashmap pass
+/// plus an O(lines / N) parallel regex pass -- a real win when
+/// classification (measured in `docs/design/parsing.md` at ~900ns/line
+/// with captures) dominates the per-line cost, which it does here.
+///
+/// Framing (splitting `raw` into lines) stays single-threaded and runs
+/// first: it's a cheap linear scan, not the bottleneck, and doing it once
+/// up front is what lets a trailing partial line (the game mid-write when
+/// this read happened) get held back exactly as the live path would,
+/// rather than misparsed as a truncated line. Uses `framed_lines` rather
+/// than `eqlp_core::frame::Framer` here: `Framer::push`'s callback type is
+/// generic over any lifetime (it's built for streaming consumption, one
+/// line at a time), so it can't hand back slices borrowed from `raw` for
+/// later use the way this needs.
+pub fn backfill_parallel(ing: &mut Ingest, engine: &Engine, raw: &[u8], threads: usize) {
+    let lines = framed_lines(raw);
+    if lines.is_empty() {
+        return;
+    }
+
+    let threads = threads.max(1).min(lines.len());
+    let chunk_size = lines.len().div_ceil(threads);
+
+    let results: Vec<ChunkResult> = std::thread::scope(|scope| {
+        lines
+            .chunks(chunk_size)
+            .map(|chunk| scope.spawn(move || classify_chunk(engine, chunk)))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|handle| handle.join().expect("classify worker panicked"))
+            .collect()
+    });
+
+    // Sequential merge, in file order (chunks were split contiguously, so
+    // iterating results in order is iterating the file in order): this is
+    // the part that can't parallelise, but it's hashmap/vec work with no
+    // regex left in it.
+    for r in results {
+        ing.counts.add(&r.counts);
+        for (ts_ms, action) in r.matched {
+            ing.log_clock.set_at_least(ts_ms);
+            if let Some(action) = action {
+                ing.apply(ts_ms, action);
+            }
+        }
     }
 }
