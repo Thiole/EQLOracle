@@ -3,17 +3,23 @@
 //!
 //! Design notes: `docs/design/session.md`
 
-pub mod encounter;
+pub mod allegiance;
+pub mod cast;
+pub mod classdetect;
 pub mod context;
+pub mod encounter;
 pub mod graph;
-pub mod timeline;
 pub mod rolling;
+pub mod timeline;
 
-pub use timeline::{series, Bucket, Cause, State, Timeline, Transition};
+pub use allegiance::Allegiance;
+pub use cast::{Outcome as CastOutcome, Resolution as CastResolution, Resolver as CastResolver};
+pub use classdetect::Detector as ClassDetector;
 pub use context::{Context, Sessions, Spans};
+pub use encounter::{Encounter, EndReason, HpModel, Tracker, Ttk};
 pub use graph::{Builder, Closed, EncId, Entities, Kind, Live, Policy};
-pub use encounter::{EndReason, Encounter, HpModel, Tracker, Ttk};
 pub use rolling::Rolling;
+pub use timeline::{series, Bucket, Cause, State, Timeline, Transition};
 
 /// Entity-name key: first character case-folded, rest preserved.
 ///

@@ -1,7 +1,7 @@
 //! Tests for `tail`. Kept out of the production module by
 //! convention: src/ contains shipping code only.
 
-use eqlp_source::tail::{newest_log_in, identity_from_filename, Tail, TailEvent};
+use eqlp_source::tail::{identity_from_filename, newest_log_in, Tail, TailEvent};
 use std::path::{Path, PathBuf};
 
 use std::io::Write;
@@ -77,8 +77,14 @@ fn truncation_rewinds_instead_of_seeking_past_the_end() {
 
     std::fs::write(&p, b"b\n").unwrap(); // shorter
     let (ev, got) = collect(&mut t);
-    assert!(matches!(ev, TailEvent::Truncated | TailEvent::Replaced), "{ev:?}");
-    assert_eq!(got, b"b\n", "must re-read from the start, not from a stale offset");
+    assert!(
+        matches!(ev, TailEvent::Truncated | TailEvent::Replaced),
+        "{ev:?}"
+    );
+    assert_eq!(
+        got, b"b\n",
+        "must re-read from the start, not from a stale offset"
+    );
 }
 
 /// A partial write must never surface as a line. This is the property that

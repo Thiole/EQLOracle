@@ -1,0 +1,11 @@
+{
+  "Arcane Mastery": ["Enchanter", "Magician", "Necromancer", "Shadow Knight", "Wizard"],
+  "Divine": ["Beastlord", "Cleric", "Druid", "Paladin", "Ranger", "Shaman"],
+  "Empower": ["Cleric", "Druid", "Enchanter", "Magician", "Necromancer", "Shaman", "Wizard"],
+  "Inversion": ["Bard", "Beastlord", "Cleric", "Druid", "Enchanter", "Magician", "Necromancer", "Paladin", "Ranger", "Shadow Knight", "Shaman", "Wizard"],
+  "Inviolable": ["Bard", "Wizard"],
+  "Over Channel": ["Bard", "Beastlord", "Cleric", "Druid", "Enchanter", "Magician", "Necromancer", "Paladin", "Ranger", "Shadow Knight", "Shaman", "Wizard"],
+  "Recovery": ["Bard", "Beastlord", "Cleric", "Druid", "Enchanter", "Magician", "Necromancer", "Paladin", "Ranger", "Shadow Knight", "Shaman", "Wizard"],
+  "Spellblade": ["Beastlord", "Paladin", "Ranger", "Shadow Knight"],
+  "Unyielding": ["Berserker", "Monk", "Rogue", "Warrior"]
+}

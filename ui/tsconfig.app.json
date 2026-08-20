@@ -1,0 +1,32 @@
+{
+  "extends": "@tsconfig/svelte/tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "module": "esnext",
+    "types": ["svelte", "vite/client"],
+    "allowArbitraryExtensions": true,
+    "noEmit": true,
+    /**
+     * Typecheck JS in `.svelte` and `.js` files by default.
+     * Disable checkJs if you'd like to use dynamic types in JS.
+     * Note that setting allowJs false does not prevent the use
+     * of JS in `.svelte` files.
+     */
+    "allowJs": true,
+    "checkJs": true,
+    "moduleDetection": "force",
+    // For `mock.ts`'s direct import of the fixture JSON.
+    "resolveJsonModule": true,
+    // Plain Vite+Svelte, not SvelteKit -- `$lib` isn't automatic here the
+    // way it is under SvelteKit, so it's declared explicitly and mirrored
+    // in vite.config.ts's own `resolve.alias`. No `baseUrl` needed --
+    // `moduleResolution: bundler` (from @tsconfig/svelte) allows `paths`
+    // on its own.
+    "paths": {
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"]
+}

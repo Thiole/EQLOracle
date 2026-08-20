@@ -35,7 +35,12 @@ pub struct Policy {
 
 impl Default for Policy {
     fn default() -> Self {
-        Policy { idle_ms: 10_000, link_ms: 60_000, transitive: true, max_entities: None }
+        Policy {
+            idle_ms: 10_000,
+            link_ms: 60_000,
+            transitive: true,
+            max_entities: None,
+        }
     }
 }
 
@@ -70,6 +75,19 @@ pub enum Kind {
     Unproven,
 }
 
+/// A player-pet owner's name, if `name` is shaped like `` <Owner>'s pet ``
+/// (possessive apostrophe or this log's backtick-as-apostrophe stand-in,
+/// e.g. `` Di`Zok ``). `None` for a bare `` <name> pet `` with no
+/// possessive -- see `Entities::observe`'s doc comment for why that's a
+/// mob's own pet, not a player's.
+fn pet_owner(name: &str) -> Option<&str> {
+    let base = name.strip_suffix(" pet")?;
+    let owner = base
+        .strip_suffix("'s")
+        .or_else(|| base.strip_suffix("`s"))?;
+    (!owner.is_empty()).then_some(owner)
+}
+
 /// Entity registry. Classification is monotonic: evidence promotes, nothing
 /// demotes, so a player who speaks once stays a player.
 ///
@@ -86,39 +104,75 @@ pub struct Entities {
 
 impl Entities {
     fn note_seen(&mut self, key: &str, name: &str) {
-        self.display.entry(key.to_string()).or_insert_with(|| name.to_string());
+        self.display
+            .entry(key.to_string())
+            .or_insert_with(|| name.to_string());
     }
 
     /// Called when a name uses a player-only channel (group/guild/raid/General).
-    /// NPCs use `says`, never these, so this is the one reliable player proof.
+    /// NPCs use `says`, never these, so this is one reliable player proof.
     pub fn note_player_channel(&mut self, name: &str) {
+        self.promote_to_player(name);
+    }
+
+    /// Called when a name deals damage to the same target "You" also damage
+    /// within the same fight. The log gives no explicit party-roster line,
+    /// but landing damage on the very same mob in the very same fight is,
+    /// for all practical purposes, proof of being partied together --
+    /// stronger and far more common evidence than chat, which many real
+    /// players never use. See `Ingest::note_shared_target` (crate `eqlp-app`)
+    /// for how this gets applied, including retroactively to anyone who hit
+    /// the mob before "You" landed the hit that confirmed it, and for the
+    /// currently-charmed guard that keeps this from permanently promoting a
+    /// mob that's only temporarily fighting on your side.
+    pub fn note_shared_target(&mut self, name: &str) {
+        self.promote_to_player(name);
+    }
+
+    fn promote_to_player(&mut self, name: &str) {
         let key = fold_key(name);
         self.note_seen(&key, name);
         self.kind.insert(key, Kind::Player);
     }
 
-    /// Classify on first sight. Pets are detected by the ` pet` suffix, which
-    /// carries the owner's name — the only ownership marker the log provides.
-    /// Charmed mobs never get it and stay `Unproven`.
+    /// Classify on first sight. A *player's* pet is detected by a
+    /// possessive ` X's pet` / `` X`s pet `` suffix, which carries the
+    /// owner's name — the only ownership marker the log provides. Charmed
+    /// mobs never get it and stay `Unproven`.
+    ///
+    /// A bare `` <name> pet `` with no possessive is a *mob's own*
+    /// summoned pet -- `a gnoll pet`, `Priest Amiaz pet`, a raid boss's own
+    /// add (`Terror pet`, `Fright pet`) -- not a player's ally. Confirmed
+    /// against the reference log: 208 distinct bare `<name> pet`
+    /// combatants, every one of them a mob or NPC name, never a proven
+    /// player; the one possessive `<name>'s pet` seen was the log owner's
+    /// own pet. An earlier version treated any ` pet` suffix as proof of a
+    /// player's pet, which put every enemy-summoned pet on the ally side of
+    /// `Allegiance::of` -- undercounting incoming damage in the Combat
+    /// module and leaking straight into the Monsters module's mob list the
+    /// same way an unproven player could.
     pub fn observe(&mut self, name: &str) -> Kind {
         let key = fold_key(name);
         self.note_seen(&key, name);
         if let Some(&k) = self.kind.get(&key) {
             return k;
         }
-        let k = match name.strip_suffix(" pet") {
-            Some(owner) if !owner.is_empty() => {
+        let k = match pet_owner(name) {
+            Some(owner) => {
                 self.owner.insert(key.clone(), owner.to_string());
                 Kind::Pet
             }
-            _ => Kind::Unproven,
+            None => Kind::Unproven,
         };
         self.kind.insert(key, k);
         k
     }
 
     pub fn kind(&self, name: &str) -> Kind {
-        self.kind.get(&fold_key(name)).copied().unwrap_or(Kind::Unproven)
+        self.kind
+            .get(&fold_key(name))
+            .copied()
+            .unwrap_or(Kind::Unproven)
     }
 
     pub fn owner_of(&self, name: &str) -> Option<&str> {
@@ -131,7 +185,10 @@ impl Entities {
     /// so "You" and "you" -- or "an armadillo" and "An armadillo" -- always
     /// intern to the same identity there too, not just here.
     pub fn display_name<'a>(&'a self, name: &'a str) -> &'a str {
-        self.display.get(&fold_key(name)).map(|s| s.as_str()).unwrap_or(name)
+        self.display
+            .get(&fold_key(name))
+            .map(|s| s.as_str())
+            .unwrap_or(name)
     }
 
     /// Who this damage should count towards: a pet's owner, else the entity.
@@ -140,9 +197,15 @@ impl Entities {
     }
 
     pub fn players(&self) -> impl Iterator<Item = &str> {
-        self.kind.iter().filter(|(_, &k)| k == Kind::Player).map(|(k, _)| {
-            self.display.get(k).map(|s| s.as_str()).unwrap_or(k.as_str())
-        })
+        self.kind
+            .iter()
+            .filter(|(_, &k)| k == Kind::Player)
+            .map(|(k, _)| {
+                self.display
+                    .get(k)
+                    .map(|s| s.as_str())
+                    .unwrap_or(k.as_str())
+            })
     }
 }
 
@@ -316,9 +379,22 @@ impl Builder {
                 dst.start_ms = dst.start_ms.min(src.start_ms);
                 dst.merged = true;
             }
-            for n in src.entities {
-                self.of.insert(fold_key(&n), keep);
+            for n in &src.entities {
+                self.of.insert(fold_key(n), keep);
             }
+            // why: `gone` never reaches close() -- push its own Closed record
+            // here so its store-side twin still gets an end_ms, instead of
+            // sitting open forever with a duration that grows every query.
+            self.closed.push(Closed {
+                id: src.id,
+                start_ms: src.start_ms,
+                end_ms: src.last_ms,
+                entities: src.entities,
+                slain: src.slain,
+                events: src.events,
+                merged: true,
+                links_to: None,
+            });
         }
         keep
     }

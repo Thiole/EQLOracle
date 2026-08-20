@@ -57,8 +57,22 @@ impl Spans {
         }
     }
 
+    /// The label of the span immediately before the one covering `ts` --
+    /// what was current just before the most recent transition. Used to
+    /// guess where on a freshly-entered zone's map the player probably is
+    /// before any `/loc` has been typed there (the Maps module's entrance
+    /// guess: match this against a `to_<zone>` marker). `None` if `ts`
+    /// falls in the first span, or before the first mark entirely.
+    pub fn label_before(&self, ts: Millis) -> Option<&str> {
+        let i = self.index_at(ts)?;
+        i.checked_sub(1).map(|j| self.labels[j].as_str())
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (Millis, &str)> {
-        self.starts.iter().copied().zip(self.labels.iter().map(|s| s.as_str()))
+        self.starts
+            .iter()
+            .copied()
+            .zip(self.labels.iter().map(|s| s.as_str()))
     }
 
     pub fn len(&self) -> usize {
@@ -97,7 +111,12 @@ impl Default for Sessions {
 
 impl Sessions {
     pub fn new(gap_ms: Millis) -> Self {
-        Sessions { gap_ms, last_ms: None, spans: Spans::default(), n: 0 }
+        Sessions {
+            gap_ms,
+            last_ms: None,
+            spans: Spans::default(),
+            n: 0,
+        }
     }
 
     /// Feed every timestamped line, in order.
@@ -134,14 +153,20 @@ pub struct Context {
 
 impl Context {
     pub fn new(session_gap_ms: Millis) -> Self {
-        Context { zone: Spans::default(), sessions: Sessions::new(session_gap_ms) }
+        Context {
+            zone: Spans::default(),
+            sessions: Sessions::new(session_gap_ms),
+        }
     }
 
     /// Group encounter ids by the zone visit they started in.
     ///
     /// Keyed on the span index, not the zone name: you visit Nektulos Forest 35
     /// times and those are separate visits, not one bucket.
-    pub fn group_by_zone_visit<T: Copy>(&self, items: &[(T, Millis)]) -> Vec<(usize, String, Vec<T>)> {
+    pub fn group_by_zone_visit<T: Copy>(
+        &self,
+        items: &[(T, Millis)],
+    ) -> Vec<(usize, String, Vec<T>)> {
         let mut out: Vec<(usize, String, Vec<T>)> = Vec::new();
         for &(id, ts) in items {
             let (i, name) = match self.zone.index_at(ts) {

@@ -14,7 +14,10 @@ pub struct Span {
 impl Span {
     #[inline]
     pub fn new(start: usize, end: usize) -> Self {
-        Span { start: start as u32, end: end as u32 }
+        Span {
+            start: start as u32,
+            end: end as u32,
+        }
     }
     #[inline]
     pub fn len(&self) -> usize {

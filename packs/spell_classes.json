@@ -1,0 +1,4841 @@
+{
+ "Aanya's Animation": [
+  "Enchanter"
+ ],
+ "Aanya's Quickening": [
+  "Enchanter"
+ ],
+ "Abolish Disease": [
+  "Shaman"
+ ],
+ "Abolish Poison": [
+  "Cleric"
+ ],
+ "Abscond": [
+  "Wizard"
+ ],
+ "Abundant Drink": [
+  "Cleric"
+ ],
+ "Abundant Food": [
+  "Cleric"
+ ],
+ "Acumen": [
+  "Shaman"
+ ],
+ "Adorning Grace": [
+  "Enchanter"
+ ],
+ "Aegis": [
+  "Cleric"
+ ],
+ "Aegis of Ro": [
+  "Magician"
+ ],
+ "Aegolism": [
+  "Cleric"
+ ],
+ "Affliction": [
+  "Shaman"
+ ],
+ "Agility": [
+  "Shaman"
+ ],
+ "Agilmente's Aria of Eagles": [
+  "Bard"
+ ],
+ "Alacrity": [
+  "Enchanter",
+  "Shaman"
+ ],
+ "Alenia's Disenchanting Melody": [
+  "Bard"
+ ],
+ "Alliance": [
+  "Enchanter"
+ ],
+ "Allure": [
+  "Enchanter"
+ ],
+ "Allure of Death": [
+  "Necromancer"
+ ],
+ "Allure of the Wild": [
+  "Druid"
+ ],
+ "Alluring Aura": [
+  "Shaman"
+ ],
+ "Alter Plane: Hate": [
+  "Wizard"
+ ],
+ "Alter Plane: Sky": [
+  "Wizard"
+ ],
+ "Amplification": [
+  "Bard"
+ ],
+ "Anarchy": [
+  "Enchanter"
+ ],
+ "Angstlich's Appalling Screech": [
+  "Bard"
+ ],
+ "Angstlich's Assonance": [
+  "Bard"
+ ],
+ "Animate Dead": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Annul Magic": [
+  "Cleric",
+  "Druid",
+  "Magician",
+  "Necromancer",
+  "Shaman",
+  "Wizard"
+ ],
+ "Anthem De Arms": [
+  "Bard"
+ ],
+ "Antidote": [
+  "Cleric"
+ ],
+ "Antimagic Poison": [
+  "Rogue"
+ ],
+ "Arch Lich": [
+  "Necromancer"
+ ],
+ "Arch Shielding": [
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Wizard"
+ ],
+ "Aria of Asceticism": [
+  "Bard"
+ ],
+ "Armor of Faith": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Armor of Protection": [
+  "Cleric"
+ ],
+ "Armor of the Faithful": [
+  "Cleric"
+ ],
+ "Asphyxiate": [
+  "Enchanter"
+ ],
+ "Assiduous Vision": [
+  "Shaman"
+ ],
+ "Asystole": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Atol`s Spectral Shackles": [
+  "Wizard"
+ ],
+ "Atone": [
+  "Cleric"
+ ],
+ "Augment": [
+  "Enchanter"
+ ],
+ "Augment Death": [
+  "Necromancer"
+ ],
+ "Augmentation": [
+  "Enchanter"
+ ],
+ "Augmentation of Death": [
+  "Necromancer"
+ ],
+ "Auspice": [
+  "Necromancer"
+ ],
+ "Avalanche": [
+  "Druid"
+ ],
+ "Avatar": [
+  "Shaman"
+ ],
+ "Bandoleer of Luclin": [
+  "Magician"
+ ],
+ "Bane of Nife": [
+  "Shaman"
+ ],
+ "Banish Summoned": [
+  "Cleric",
+  "Druid",
+  "Magician"
+ ],
+ "Banish Undead": [
+  "Cleric",
+  "Necromancer"
+ ],
+ "Banishment": [
+  "Druid",
+  "Magician"
+ ],
+ "Banishment of Shadows": [
+  "Cleric",
+  "Necromancer"
+ ],
+ "Banshee Aura": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Barbcoat": [
+  "Druid",
+  "Ranger"
+ ],
+ "Barrier of Combustion": [
+  "Magician"
+ ],
+ "Barrier of Force": [
+  "Wizard"
+ ],
+ "Bedlam": [
+  "Enchanter"
+ ],
+ "Befriend Animal": [
+  "Druid",
+  "Shaman"
+ ],
+ "Beguile": [
+  "Enchanter"
+ ],
+ "Beguile Animals": [
+  "Druid"
+ ],
+ "Beguile Plants": [
+  "Druid"
+ ],
+ "Beguile Undead": [
+  "Necromancer"
+ ],
+ "Benevolence": [
+  "Enchanter"
+ ],
+ "Berserker Spirit": [
+  "Enchanter"
+ ],
+ "Berserker Strength": [
+  "Enchanter"
+ ],
+ "Bind Affinity": [
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Shaman",
+  "Wizard"
+ ],
+ "Bind Sight": [
+  "Enchanter",
+  "Ranger",
+  "Wizard"
+ ],
+ "Binding Poison": [
+  "Rogue"
+ ],
+ "Bladecoat": [
+  "Druid"
+ ],
+ "Blanket of Forgetfulness": [
+  "Enchanter"
+ ],
+ "Blast of Cold": [
+  "Wizard"
+ ],
+ "Blast of Frost": [
+  "Beastlord"
+ ],
+ "Blast of Poison": [
+  "Shaman"
+ ],
+ "Blaze": [
+  "Magician"
+ ],
+ "Blessing of Faith": [
+  "Cleric"
+ ],
+ "Blessing of Piety": [
+  "Cleric"
+ ],
+ "Blessing of Temperance": [
+  "Cleric"
+ ],
+ "Blessing of the Knight": [
+  "Cleric"
+ ],
+ "Blessing of the Lord Commander": [
+  "Cleric"
+ ],
+ "Blessing of the Page": [
+  "Cleric"
+ ],
+ "Blessing of the Squire": [
+  "Cleric"
+ ],
+ "Blinding Luminance": [
+  "Cleric",
+  "Shaman"
+ ],
+ "Blizzard": [
+  "Druid"
+ ],
+ "Blizzard Blast": [
+  "Shaman"
+ ],
+ "Blood of Pain": [
+  "Shadow Knight"
+ ],
+ "Blooming Heal": [
+  "Druid"
+ ],
+ "Blossoming Heal": [
+  "Druid"
+ ],
+ "Bobbing Corpse": [
+  "Shadow Knight"
+ ],
+ "Boil Blood": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Bolt of Flame": [
+  "Magician"
+ ],
+ "Boltran's Agacerie": [
+  "Enchanter"
+ ],
+ "Boltran's Animation": [
+  "Enchanter"
+ ],
+ "Bond of Death": [
+  "Necromancer"
+ ],
+ "Bonds of Force": [
+  "Wizard"
+ ],
+ "Bonds of Tunare": [
+  "Druid"
+ ],
+ "Bone Walk": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Boon of Immolation": [
+  "Magician"
+ ],
+ "Boon of the Clear Mind": [
+  "Enchanter"
+ ],
+ "Boon of the Garou": [
+  "Enchanter"
+ ],
+ "Bounce": [
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Wizard"
+ ],
+ "Bramblecoat": [
+  "Druid",
+  "Ranger"
+ ],
+ "Bravery": [
+  "Cleric"
+ ],
+ "Breath of Karana": [
+  "Druid"
+ ],
+ "Breath of Ro": [
+  "Druid"
+ ],
+ "Breath of the Dead": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Breeze": [
+  "Enchanter"
+ ],
+ "Brell's Steadfast Aegis": [
+  "Paladin"
+ ],
+ "Brilliance": [
+  "Enchanter"
+ ],
+ "Bristlebane`s Bundle": [
+  "Magician"
+ ],
+ "Brusco's Boastful Bellow": [
+  "Bard"
+ ],
+ "Brusco's Bombastic Bellow": [
+  "Bard"
+ ],
+ "Budding Heal": [
+  "Druid"
+ ],
+ "Bulwark of Faith": [
+  "Cleric"
+ ],
+ "Burn": [
+  "Magician"
+ ],
+ "Burning Arrow": [
+  "Ranger"
+ ],
+ "Burnout": [
+  "Magician"
+ ],
+ "Burnout II": [
+  "Magician"
+ ],
+ "Burnout III": [
+  "Magician"
+ ],
+ "Burst of Fire": [
+  "Druid",
+  "Ranger"
+ ],
+ "Burst of Flame": [
+  "Druid",
+  "Magician",
+  "Shaman"
+ ],
+ "Burst of Strength": [
+  "Shaman"
+ ],
+ "Cackling Bones": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Cadeau of Flame": [
+  "Magician"
+ ],
+ "Cajole Undead": [
+  "Necromancer"
+ ],
+ "Cajoling Whispers": [
+  "Enchanter"
+ ],
+ "Calefaction": [
+  "Druid",
+  "Ranger"
+ ],
+ "Call of Bones": [
+  "Necromancer"
+ ],
+ "Call of Earth": [
+  "Ranger"
+ ],
+ "Call of Fire": [
+  "Ranger"
+ ],
+ "Call of Fire Strike": [
+  "Ranger"
+ ],
+ "Call of Flame": [
+  "Ranger"
+ ],
+ "Call of Karana": [
+  "Druid"
+ ],
+ "Call of Sky": [
+  "Ranger"
+ ],
+ "Call of Sky Strike": [
+  "Ranger"
+ ],
+ "Call of the Hero": [
+  "Magician"
+ ],
+ "Call of the Predator": [
+  "Ranger"
+ ],
+ "Calm": [
+  "Cleric",
+  "Enchanter",
+  "Paladin"
+ ],
+ "Calm Animal": [
+  "Druid",
+  "Ranger"
+ ],
+ "Calming Visage": [
+  "Enchanter"
+ ],
+ "Camouflage": [
+  "Druid",
+  "Ranger"
+ ],
+ "Cancel Magic": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Paladin",
+  "Ranger",
+  "Shadow Knight",
+  "Shaman",
+  "Wizard"
+ ],
+ "Cancelling of Life": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Cannibalize": [
+  "Shaman"
+ ],
+ "Cantana of Replenishment": [
+  "Bard"
+ ],
+ "Cantana of Soothing": [
+  "Bard"
+ ],
+ "Careless Lightning": [
+  "Druid",
+  "Ranger"
+ ],
+ "Cascade of Hail": [
+  "Druid"
+ ],
+ "Cascading Darkness": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Cassindra's Chant of Clarity": [
+  "Bard"
+ ],
+ "Cassindra's Chorus of Clarity": [
+  "Bard"
+ ],
+ "Cassindra's Elegy": [
+  "Bard"
+ ],
+ "Cassindra's Insipid Ditty": [
+  "Bard"
+ ],
+ "Cast Force": [
+  "Wizard"
+ ],
+ "Cast Sight": [
+  "Enchanter"
+ ],
+ "Cavorting Bones": [
+  "Necromancer"
+ ],
+ "Cazic Gate": [
+  "Wizard"
+ ],
+ "Cazic Portal": [
+  "Wizard"
+ ],
+ "Cazic Temple Gate": [
+  "Wizard"
+ ],
+ "Cazic Temple Portal": [
+  "Wizard"
+ ],
+ "Cease": [
+  "Paladin"
+ ],
+ "Celerity": [
+  "Enchanter",
+  "Shaman"
+ ],
+ "Celestial Cleansing": [
+  "Paladin"
+ ],
+ "Celestial Echo": [
+  "Cleric"
+ ],
+ "Celestial Elixir": [
+  "Cleric"
+ ],
+ "Celestial Healing": [
+  "Cleric"
+ ],
+ "Celestial Health": [
+  "Cleric"
+ ],
+ "Celestial Remedy": [
+  "Cleric"
+ ],
+ "Center": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Cessation of Cor": [
+  "Necromancer"
+ ],
+ "Cessation of Life": [
+  "Necromancer"
+ ],
+ "Chant of Battle": [
+  "Bard"
+ ],
+ "Chaos Flux": [
+  "Enchanter"
+ ],
+ "Chaotic Feedback": [
+  "Enchanter"
+ ],
+ "Char": [
+  "Magician"
+ ],
+ "Charisma": [
+  "Shaman"
+ ],
+ "Charm": [
+  "Enchanter"
+ ],
+ "Charm Animals": [
+  "Druid",
+  "Shaman"
+ ],
+ "Chase the Moon": [
+  "Enchanter"
+ ],
+ "Chill Bones": [
+  "Necromancer"
+ ],
+ "Chill Sight": [
+  "Ranger",
+  "Wizard"
+ ],
+ "Chilling Embrace": [
+  "Necromancer"
+ ],
+ "Chloroblast": [
+  "Druid",
+  "Shaman"
+ ],
+ "Chloroplast": [
+  "Druid",
+  "Shaman"
+ ],
+ "Choke": [
+  "Enchanter"
+ ],
+ "Chords of Dissonance": [
+  "Bard"
+ ],
+ "Cinda's Charismatic Carillon": [
+  "Bard"
+ ],
+ "Cinder Bolt": [
+  "Magician"
+ ],
+ "Cinder Jolt": [
+  "Ranger"
+ ],
+ "Circle of Butcher": [
+  "Druid"
+ ],
+ "Circle of Cobalt Scar": [
+  "Druid"
+ ],
+ "Circle of Commons": [
+  "Druid"
+ ],
+ "Circle of Feerrott": [
+  "Druid"
+ ],
+ "Circle of Force": [
+  "Wizard"
+ ],
+ "Circle of Great Divide": [
+  "Druid"
+ ],
+ "Circle of Iceclad": [
+  "Druid"
+ ],
+ "Circle of Karana": [
+  "Druid"
+ ],
+ "Circle of Lavastorm": [
+  "Druid"
+ ],
+ "Circle of Misty": [
+  "Druid"
+ ],
+ "Circle of Misty Thicket": [
+  "Druid"
+ ],
+ "Circle of Ro": [
+  "Druid"
+ ],
+ "Circle of South Ro": [
+  "Druid"
+ ],
+ "Circle of Steamfont": [
+  "Druid"
+ ],
+ "Circle of Stonebrunt": [
+  "Druid"
+ ],
+ "Circle of Summer": [
+  "Druid"
+ ],
+ "Circle of Surefall Glade": [
+  "Druid"
+ ],
+ "Circle of Toxxulia": [
+  "Druid"
+ ],
+ "Circle of Wakening Lands": [
+  "Druid"
+ ],
+ "Circle of West Commons": [
+  "Druid"
+ ],
+ "Circle of Winter": [
+  "Druid"
+ ],
+ "Circle of the Combines": [
+  "Druid"
+ ],
+ "Clarify Mana": [
+  "Enchanter"
+ ],
+ "Clarity": [
+  "Enchanter"
+ ],
+ "Clarity II": [
+  "Enchanter"
+ ],
+ "Clinging Darkness": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Cloud": [
+  "Enchanter"
+ ],
+ "Clumsiness Poison": [
+  "Rogue"
+ ],
+ "Cobalt Scar Gate": [
+  "Wizard"
+ ],
+ "Cobalt Scar Portal": [
+  "Wizard"
+ ],
+ "Coldlight": [
+  "Necromancer"
+ ],
+ "Collaboration": [
+  "Enchanter"
+ ],
+ "Color Flux": [
+  "Enchanter"
+ ],
+ "Color Shift": [
+  "Enchanter"
+ ],
+ "Color Skew": [
+  "Enchanter"
+ ],
+ "Color Slant": [
+  "Enchanter"
+ ],
+ "Column of Fire": [
+  "Magician"
+ ],
+ "Column of Frost": [
+  "Wizard"
+ ],
+ "Column of Lightning": [
+  "Wizard"
+ ],
+ "Combine Gate": [
+  "Wizard"
+ ],
+ "Combine Portal": [
+  "Wizard"
+ ],
+ "Combust": [
+  "Druid"
+ ],
+ "Common Gate": [
+  "Wizard"
+ ],
+ "Common Portal": [
+  "Wizard"
+ ],
+ "Companion Spirit": [
+  "Shaman"
+ ],
+ "Complete Healing": [
+  "Cleric"
+ ],
+ "Concussion": [
+  "Wizard"
+ ],
+ "Concussive Poison": [
+  "Rogue"
+ ],
+ "Conflagration": [
+  "Wizard"
+ ],
+ "Conglaciation of Bone": [
+  "Necromancer"
+ ],
+ "Conjuration: Air": [
+  "Magician"
+ ],
+ "Conjuration: Earth": [
+  "Magician"
+ ],
+ "Conjuration: Fire": [
+  "Magician"
+ ],
+ "Conjuration: Water": [
+  "Magician"
+ ],
+ "Conjure Corpse": [
+  "Necromancer"
+ ],
+ "Convergence": [
+  "Necromancer"
+ ],
+ "Convoke Shadow": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Cornucopia": [
+  "Magician"
+ ],
+ "Corporeal Empathy": [
+  "Necromancer"
+ ],
+ "Counteract Disease": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Necromancer",
+  "Shaman"
+ ],
+ "Counteract Poison": [
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Shaman"
+ ],
+ "Courage": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Covetous Subversion": [
+  "Necromancer"
+ ],
+ "Creeping Crud": [
+  "Druid"
+ ],
+ "Creeping Vision": [
+  "Shaman"
+ ],
+ "Cripple": [
+  "Enchanter",
+  "Shaman"
+ ],
+ "Crission's Pixie Strike": [
+  "Bard"
+ ],
+ "Crystallize Mana": [
+  "Enchanter"
+ ],
+ "Cure Blindness": [
+  "Cleric",
+  "Shaman"
+ ],
+ "Cure Disease": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Necromancer",
+  "Paladin",
+  "Ranger",
+  "Shadow Knight",
+  "Shaman"
+ ],
+ "Cure Poison": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Ranger",
+  "Shaman"
+ ],
+ "Curse": [
+  "Shaman"
+ ],
+ "Curse of the Simple Mind": [
+  "Enchanter"
+ ],
+ "Dagger of Symbols": [
+  "Magician"
+ ],
+ "Dance of the Fireflies": [
+  "Druid",
+  "Ranger"
+ ],
+ "Daring": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Dark Empathy": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Dark Pact": [
+  "Necromancer"
+ ],
+ "Dark Soul": [
+  "Necromancer"
+ ],
+ "Dark Temptation": [
+  "Shadow Knight"
+ ],
+ "Dazzle": [
+  "Enchanter"
+ ],
+ "Dead Man Floating": [
+  "Necromancer"
+ ],
+ "Dead Men Floating": [
+  "Necromancer"
+ ],
+ "Deadeye": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Death Pact": [
+  "Cleric"
+ ],
+ "Death Peace": [
+  "Shadow Knight"
+ ],
+ "Deflux": [
+  "Necromancer"
+ ],
+ "Defoliate": [
+  "Necromancer"
+ ],
+ "Defoliation": [
+  "Necromancer"
+ ],
+ "Deftness": [
+  "Shaman"
+ ],
+ "Deliriously Nimble": [
+  "Shaman"
+ ],
+ "Dementia": [
+  "Enchanter"
+ ],
+ "Dementing Visions": [
+  "Enchanter"
+ ],
+ "Demi Lich": [
+  "Necromancer"
+ ],
+ "Denon's Bereavement": [
+  "Bard"
+ ],
+ "Denon's Desperate Dirge": [
+  "Bard"
+ ],
+ "Denon's Disruptive Discord": [
+  "Bard"
+ ],
+ "Denon's Dissension": [
+  "Bard"
+ ],
+ "Desist": [
+  "Paladin"
+ ],
+ "Despair": [
+  "Shadow Knight"
+ ],
+ "Devouring Darkness": [
+  "Necromancer"
+ ],
+ "Dexterity": [
+  "Shaman"
+ ],
+ "Dexterous Aura": [
+  "Shaman"
+ ],
+ "Diamondskin": [
+  "Necromancer",
+  "Shadow Knight",
+  "Wizard"
+ ],
+ "Dictate": [
+  "Enchanter"
+ ],
+ "Dimensional Hole": [
+  "Magician"
+ ],
+ "Dimensional Pocket": [
+  "Magician"
+ ],
+ "Discordant Mind": [
+  "Enchanter"
+ ],
+ "Disease Cloud": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Disempower": [
+  "Enchanter",
+  "Shaman"
+ ],
+ "Disintegrate": [
+  "Wizard"
+ ],
+ "Dismiss Summoned": [
+  "Cleric",
+  "Druid",
+  "Magician",
+  "Ranger"
+ ],
+ "Dismiss Undead": [
+  "Cleric",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight"
+ ],
+ "Distill Mana": [
+  "Enchanter"
+ ],
+ "Divine Aura": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Divine Barrier": [
+  "Cleric"
+ ],
+ "Divine Favor": [
+  "Paladin"
+ ],
+ "Divine Glory": [
+  "Paladin"
+ ],
+ "Divine Intervention": [
+  "Cleric"
+ ],
+ "Divine Light": [
+  "Cleric"
+ ],
+ "Divine Might": [
+  "Paladin"
+ ],
+ "Divine Purpose": [
+  "Paladin"
+ ],
+ "Divine Strength": [
+  "Paladin"
+ ],
+ "Divine Vigor": [
+  "Paladin"
+ ],
+ "Dizzying Wind": [
+  "Druid"
+ ],
+ "Dominate Undead": [
+  "Necromancer"
+ ],
+ "Dooming Darkness": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Drain Soul": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Drain Spirit": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Draught of Fire": [
+  "Wizard"
+ ],
+ "Draught of Ice": [
+  "Wizard"
+ ],
+ "Draught of Jiva": [
+  "Wizard"
+ ],
+ "Dread of Night": [
+  "Cleric",
+  "Necromancer"
+ ],
+ "Drifting Death": [
+  "Druid"
+ ],
+ "Drones of Doom": [
+  "Druid",
+  "Ranger"
+ ],
+ "Drowsy": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Dustdevil": [
+  "Druid"
+ ],
+ "Dyn's Dizzying Draught": [
+  "Enchanter"
+ ],
+ "Dyzil`s Deafening Decoy": [
+  "Magician"
+ ],
+ "Earthquake": [
+  "Cleric",
+  "Druid"
+ ],
+ "Ebbing Strength": [
+  "Enchanter"
+ ],
+ "Echo of Health": [
+  "Cleric"
+ ],
+ "Echoing Light": [
+  "Cleric"
+ ],
+ "Efflorescing Heal": [
+  "Druid"
+ ],
+ "Egress": [
+  "Druid"
+ ],
+ "Elemental Armor": [
+  "Magician",
+  "Wizard"
+ ],
+ "Elemental Maelstrom": [
+  "Magician"
+ ],
+ "Elemental Rhythms": [
+  "Bard"
+ ],
+ "Elemental Shield": [
+  "Magician",
+  "Wizard"
+ ],
+ "Elemental: Air": [
+  "Magician"
+ ],
+ "Elemental: Earth": [
+  "Magician"
+ ],
+ "Elemental: Fire": [
+  "Magician"
+ ],
+ "Elemental: Water": [
+  "Magician"
+ ],
+ "Elementaling: Air": [
+  "Magician"
+ ],
+ "Elementaling: Earth": [
+  "Magician"
+ ],
+ "Elementaling: Fire": [
+  "Magician"
+ ],
+ "Elementaling: Water": [
+  "Magician"
+ ],
+ "Elementalkin: Air": [
+  "Magician"
+ ],
+ "Elementalkin: Earth": [
+  "Magician"
+ ],
+ "Elementalkin: Fire": [
+  "Magician"
+ ],
+ "Elementalkin: Water": [
+  "Magician"
+ ],
+ "Elnerick's Entombment of Ice": [
+  "Wizard"
+ ],
+ "Emissary of Thule": [
+  "Necromancer"
+ ],
+ "Enchant Brellium": [
+  "Enchanter"
+ ],
+ "Enchant Clay": [
+  "Enchanter"
+ ],
+ "Enchant Electrum": [
+  "Enchanter"
+ ],
+ "Enchant Gold": [
+  "Enchanter"
+ ],
+ "Enchant Mithril": [
+  "Enchanter"
+ ],
+ "Enchant Platinum": [
+  "Enchanter"
+ ],
+ "Enchant Silver": [
+  "Enchanter"
+ ],
+ "Enchant Steel": [
+  "Enchanter"
+ ],
+ "Enchant: Adamantite": [
+  "Enchanter"
+ ],
+ "Enchant: Velium": [
+  "Enchanter"
+ ],
+ "Endure Cold": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Necromancer",
+  "Ranger",
+  "Shadow Knight",
+  "Shaman"
+ ],
+ "Endure Disease": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight",
+  "Shaman"
+ ],
+ "Endure Fire": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Ranger",
+  "Shaman"
+ ],
+ "Endure Magic": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Paladin",
+  "Shaman"
+ ],
+ "Endure Poison": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Shaman"
+ ],
+ "Enduring Breath": [
+  "Beastlord",
+  "Druid",
+  "Enchanter",
+  "Ranger",
+  "Shaman"
+ ],
+ "Energy Storm": [
+  "Wizard"
+ ],
+ "Enfeeblement": [
+  "Enchanter"
+ ],
+ "Enforced Reverence": [
+  "Cleric"
+ ],
+ "Engorging Roots": [
+  "Druid"
+ ],
+ "Engulfing Darkness": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Engulfing Roots": [
+  "Druid"
+ ],
+ "Enlightenment": [
+  "Enchanter"
+ ],
+ "Enslave Death": [
+  "Necromancer"
+ ],
+ "Ensnare": [
+  "Druid",
+  "Ranger"
+ ],
+ "Ensnaring Roots": [
+  "Druid",
+  "Ranger"
+ ],
+ "Enthrall": [
+  "Enchanter"
+ ],
+ "Enticement of Flame": [
+  "Wizard"
+ ],
+ "Entrance": [
+  "Enchanter"
+ ],
+ "Entrancing Lights": [
+  "Enchanter"
+ ],
+ "Entrapping Roots": [
+  "Druid"
+ ],
+ "Enveloping Roots": [
+  "Druid",
+  "Ranger"
+ ],
+ "Envenomed Bolt": [
+  "Necromancer",
+  "Shaman"
+ ],
+ "Envenomed Breath": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Eternities Torment": [
+  "Necromancer"
+ ],
+ "Ethereal Cleansing": [
+  "Paladin"
+ ],
+ "Evacuate": [
+  "Wizard"
+ ],
+ "Evacuate: Fay": [
+  "Wizard"
+ ],
+ "Evacuate: Greater Faydark": [
+  "Wizard"
+ ],
+ "Evacuate: Greater Nektulos": [
+  "Wizard"
+ ],
+ "Evacuate: Nek": [
+  "Wizard"
+ ],
+ "Evacuate: North": [
+  "Wizard"
+ ],
+ "Evacuate: North Karana": [
+  "Wizard"
+ ],
+ "Evacuate: Ro": [
+  "Wizard"
+ ],
+ "Evacuate: South Ro": [
+  "Wizard"
+ ],
+ "Evacuate: West": [
+  "Wizard"
+ ],
+ "Evacuate: West Karana": [
+  "Wizard"
+ ],
+ "Everfount": [
+  "Magician"
+ ],
+ "Everlasting Breath": [
+  "Druid"
+ ],
+ "Exile Summoned": [
+  "Druid",
+  "Magician"
+ ],
+ "Exile Undead": [
+  "Cleric",
+  "Necromancer"
+ ],
+ "Expedience": [
+  "Magician"
+ ],
+ "Expel Summoned": [
+  "Cleric",
+  "Druid",
+  "Magician"
+ ],
+ "Expel Undead": [
+  "Cleric",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight"
+ ],
+ "Expulse Summoned": [
+  "Cleric",
+  "Druid",
+  "Magician"
+ ],
+ "Expulse Undead": [
+  "Cleric",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight"
+ ],
+ "Extinguish Fatigue": [
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Ranger",
+  "Shaman"
+ ],
+ "Eye of Confusion": [
+  "Enchanter"
+ ],
+ "Eye of Tallon": [
+  "Magician",
+  "Wizard"
+ ],
+ "Eye of Zomm": [
+  "Magician",
+  "Wizard"
+ ],
+ "Eyes of the Cat": [
+  "Ranger"
+ ],
+ "Fade": [
+  "Wizard"
+ ],
+ "Fascination": [
+  "Enchanter"
+ ],
+ "Fay Gate": [
+  "Wizard"
+ ],
+ "Fay Portal": [
+  "Wizard"
+ ],
+ "Fear": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Feckless Might": [
+  "Enchanter"
+ ],
+ "Feedback": [
+  "Enchanter"
+ ],
+ "Feet like Cat": [
+  "Ranger",
+  "Shaman"
+ ],
+ "Feign Death": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Feral Spirit": [
+  "Druid"
+ ],
+ "Fetter": [
+  "Enchanter",
+  "Wizard"
+ ],
+ "Fettering Poison": [
+  "Rogue"
+ ],
+ "Fingers of Fire": [
+  "Wizard"
+ ],
+ "Fire": [
+  "Druid"
+ ],
+ "Fire Bolt": [
+  "Wizard"
+ ],
+ "Fire Flux": [
+  "Magician"
+ ],
+ "Fire Spiral of Al'Kabor": [
+  "Wizard"
+ ],
+ "Firefist": [
+  "Druid",
+  "Ranger"
+ ],
+ "Firestorm": [
+  "Wizard"
+ ],
+ "Firestrike": [
+  "Druid",
+  "Ranger"
+ ],
+ "Fist of Karana": [
+  "Druid"
+ ],
+ "Fixation of Ro": [
+  "Druid"
+ ],
+ "Flame Arc": [
+  "Magician"
+ ],
+ "Flame Bolt": [
+  "Magician"
+ ],
+ "Flame Flux": [
+  "Magician"
+ ],
+ "Flame Lick": [
+  "Druid",
+  "Ranger"
+ ],
+ "Flame Shock": [
+  "Wizard"
+ ],
+ "Flame of Light": [
+  "Paladin"
+ ],
+ "Flaming Arrow": [
+  "Ranger"
+ ],
+ "Flaming Sword of Xuzl": [
+  "Wizard"
+ ],
+ "Flare": [
+  "Magician"
+ ],
+ "Flash of Light": [
+  "Beastlord",
+  "Cleric",
+  "Paladin",
+  "Shaman"
+ ],
+ "Fleeting Fury": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Flowering Heal": [
+  "Druid"
+ ],
+ "Focus Death": [
+  "Necromancer"
+ ],
+ "Focus of Spirit": [
+  "Shaman"
+ ],
+ "Force": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Force Shock": [
+  "Wizard"
+ ],
+ "Force Snap": [
+  "Wizard"
+ ],
+ "Force Spiral of Al'Kabor": [
+  "Wizard"
+ ],
+ "Force Strike": [
+  "Wizard"
+ ],
+ "Force of Nature": [
+  "Ranger"
+ ],
+ "Forest's Renewal": [
+  "Druid"
+ ],
+ "Forlorn Deeds": [
+  "Enchanter"
+ ],
+ "Form of Bleached Bone": [
+  "Necromancer"
+ ],
+ "Form of Chilled Bone": [
+  "Necromancer"
+ ],
+ "Form of the Bear": [
+  "Shaman"
+ ],
+ "Form of the Great Bear": [
+  "Shaman"
+ ],
+ "Form of the Great Wolf": [
+  "Druid"
+ ],
+ "Form of the Howler": [
+  "Druid"
+ ],
+ "Form of the Hunter": [
+  "Druid"
+ ],
+ "Fortitude": [
+  "Cleric"
+ ],
+ "Frenzied Spirit": [
+  "Shaman"
+ ],
+ "Frenzied Strength": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Frenzy": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Frost": [
+  "Druid"
+ ],
+ "Frost Bolt": [
+  "Wizard"
+ ],
+ "Frost Dagger": [
+  "Beastlord"
+ ],
+ "Frost Rift": [
+  "Shaman"
+ ],
+ "Frost Shard": [
+  "Beastlord"
+ ],
+ "Frost Shock": [
+  "Wizard"
+ ],
+ "Frost Spiral of Al'Kabor": [
+  "Wizard"
+ ],
+ "Frost Spiral of Al`Kabor": [
+  "Wizard"
+ ],
+ "Frost Storm": [
+  "Wizard"
+ ],
+ "Frost Strike": [
+  "Shaman"
+ ],
+ "Fufil's Curtailing Chant": [
+  "Bard"
+ ],
+ "Furious Strength": [
+  "Shaman"
+ ],
+ "Furor": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Fury": [
+  "Shaman"
+ ],
+ "Fury of Air": [
+  "Druid"
+ ],
+ "Gale of Poison": [
+  "Shaman"
+ ],
+ "Gangrenous Touch of Zum`uul": [
+  "Necromancer"
+ ],
+ "Garrison's Mighty Mana Shock": [
+  "Wizard"
+ ],
+ "Gasping Embrace": [
+  "Enchanter"
+ ],
+ "Gate": [
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Shaman",
+  "Wizard"
+ ],
+ "Gather Shadows": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Gaze": [
+  "Wizard"
+ ],
+ "Gift of Brilliance": [
+  "Enchanter"
+ ],
+ "Gift of Insight": [
+  "Enchanter"
+ ],
+ "Gift of Magic": [
+  "Enchanter"
+ ],
+ "Gift of Pure Thought": [
+  "Enchanter"
+ ],
+ "Gift of Xev": [
+  "Magician"
+ ],
+ "Girdle of Karana": [
+  "Druid"
+ ],
+ "Glamour": [
+  "Shaman"
+ ],
+ "Glamour of Kintaz": [
+  "Enchanter"
+ ],
+ "Glamour of Tunare": [
+  "Druid"
+ ],
+ "Glimpse": [
+  "Ranger",
+  "Wizard"
+ ],
+ "Grasping Roots": [
+  "Druid",
+  "Ranger"
+ ],
+ "Gravity Flux": [
+  "Enchanter",
+  "Wizard"
+ ],
+ "Great Divide Gate": [
+  "Wizard"
+ ],
+ "Great Divide Portal": [
+  "Wizard"
+ ],
+ "Greater Conjuration: Air": [
+  "Magician"
+ ],
+ "Greater Conjuration: Earth": [
+  "Magician"
+ ],
+ "Greater Conjuration: Fire": [
+  "Magician"
+ ],
+ "Greater Conjuration: Water": [
+  "Magician"
+ ],
+ "Greater Faydark Gate": [
+  "Wizard"
+ ],
+ "Greater Faydark Portal": [
+  "Wizard"
+ ],
+ "Greater Healing": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Ranger",
+  "Shaman"
+ ],
+ "Greater Mass Imbue Fire Opal": [
+  "Wizard"
+ ],
+ "Greater Shielding": [
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Wizard"
+ ],
+ "Greater Summoning: Air": [
+  "Magician"
+ ],
+ "Greater Summoning: Earth": [
+  "Magician"
+ ],
+ "Greater Summoning: Fire": [
+  "Magician"
+ ],
+ "Greater Summoning: Water": [
+  "Magician"
+ ],
+ "Greater Vocaration: Air": [
+  "Magician"
+ ],
+ "Greater Vocaration: Earth": [
+  "Magician"
+ ],
+ "Greater Vocaration: Fire": [
+  "Magician"
+ ],
+ "Greater Vocaration: Water": [
+  "Magician"
+ ],
+ "Greater Wolf Form": [
+  "Druid",
+  "Ranger"
+ ],
+ "Grim Aura": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Grimling Gate": [
+  "Wizard"
+ ],
+ "Group Resist Magic": [
+  "Enchanter"
+ ],
+ "Grow": [
+  "Shaman"
+ ],
+ "Guard": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Guard of Alendar": [
+  "Enchanter"
+ ],
+ "Guard of Vie": [
+  "Cleric"
+ ],
+ "Guardian": [
+  "Shaman"
+ ],
+ "Guardian Rhythms": [
+  "Bard"
+ ],
+ "Guardian Spirit": [
+  "Shaman"
+ ],
+ "Halo of Light": [
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Wizard"
+ ],
+ "Hammer of Requital": [
+  "Cleric"
+ ],
+ "Hammer of Striking": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Hammer of Wrath": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Harm Touch": [
+  "Shadow Knight"
+ ],
+ "Harmony": [
+  "Druid",
+  "Ranger"
+ ],
+ "Harmony of Nature": [
+  "Druid",
+  "Ranger"
+ ],
+ "Harmshield": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Harnessing of Spirit": [
+  "Shaman"
+ ],
+ "Harvest": [
+  "Wizard"
+ ],
+ "Haunting Corpse": [
+  "Necromancer"
+ ],
+ "Haunting Visage": [
+  "Enchanter"
+ ],
+ "Hawk Eye": [
+  "Ranger"
+ ],
+ "Haze": [
+  "Enchanter"
+ ],
+ "Healing": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Ranger",
+  "Shaman"
+ ],
+ "Healing Light": [
+  "Cleric"
+ ],
+ "Health": [
+  "Shaman"
+ ],
+ "Heart Flutter": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Heat Blood": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Heat Sight": [
+  "Wizard"
+ ],
+ "Herikol's Soothing": [
+  "Beastlord"
+ ],
+ "Heroic Bond": [
+  "Cleric"
+ ],
+ "Heroism": [
+  "Cleric"
+ ],
+ "Holy Armor": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Holy Might": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Hsagra's Wrath": [
+  "Wizard"
+ ],
+ "Hungry Earth": [
+  "Necromancer"
+ ],
+ "Hymn of Restoration": [
+  "Bard"
+ ],
+ "Ice": [
+  "Druid"
+ ],
+ "Ice Comet": [
+  "Wizard"
+ ],
+ "Ice Shock": [
+  "Wizard"
+ ],
+ "Ice Spear": [
+  "Beastlord"
+ ],
+ "Ice Spear of Solist": [
+  "Wizard"
+ ],
+ "Ice Strike": [
+  "Shaman"
+ ],
+ "Iceclad Gate": [
+  "Wizard"
+ ],
+ "Iceclad Portal": [
+  "Wizard"
+ ],
+ "Icestrike": [
+  "Wizard"
+ ],
+ "Identify": [
+  "Bard",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Wizard"
+ ],
+ "Ignite": [
+  "Druid",
+  "Ranger"
+ ],
+ "Ignite Blood": [
+  "Necromancer"
+ ],
+ "Ignite Bones": [
+  "Necromancer"
+ ],
+ "Illusion: Air Elemental": [
+  "Enchanter"
+ ],
+ "Illusion: Barbarian": [
+  "Enchanter"
+ ],
+ "Illusion: Dark Elf": [
+  "Enchanter"
+ ],
+ "Illusion: Dry Bone": [
+  "Enchanter"
+ ],
+ "Illusion: Dwarf": [
+  "Enchanter"
+ ],
+ "Illusion: Earth Elemental": [
+  "Enchanter"
+ ],
+ "Illusion: Erudite": [
+  "Enchanter"
+ ],
+ "Illusion: Fire Elemental": [
+  "Enchanter"
+ ],
+ "Illusion: Gnome": [
+  "Enchanter"
+ ],
+ "Illusion: Half Elf": [
+  "Enchanter"
+ ],
+ "Illusion: Halfling": [
+  "Enchanter"
+ ],
+ "Illusion: High Elf": [
+  "Enchanter"
+ ],
+ "Illusion: Human": [
+  "Enchanter"
+ ],
+ "Illusion: Iksar": [
+  "Enchanter"
+ ],
+ "Illusion: Ogre": [
+  "Enchanter"
+ ],
+ "Illusion: Scaled Wolf": [
+  "Enchanter"
+ ],
+ "Illusion: Skeleton": [
+  "Enchanter"
+ ],
+ "Illusion: Spirit Wolf": [
+  "Enchanter"
+ ],
+ "Illusion: Tree": [
+  "Enchanter"
+ ],
+ "Illusion: Troll": [
+  "Enchanter"
+ ],
+ "Illusion: Water Elemental": [
+  "Enchanter"
+ ],
+ "Illusion: Werewolf": [
+  "Enchanter"
+ ],
+ "Illusion: Wood Elf": [
+  "Enchanter"
+ ],
+ "Imbue Amber": [
+  "Cleric",
+  "Shaman"
+ ],
+ "Imbue Black Pearl": [
+  "Cleric"
+ ],
+ "Imbue Black Sapphire": [
+  "Cleric"
+ ],
+ "Imbue Diamond": [
+  "Cleric",
+  "Shaman"
+ ],
+ "Imbue Emerald": [
+  "Cleric",
+  "Druid"
+ ],
+ "Imbue Fire Opal": [
+  "Wizard"
+ ],
+ "Imbue Ivory": [
+  "Shaman"
+ ],
+ "Imbue Jade": [
+  "Shaman"
+ ],
+ "Imbue Opal": [
+  "Cleric"
+ ],
+ "Imbue Peridot": [
+  "Cleric"
+ ],
+ "Imbue Plains Pebble": [
+  "Cleric",
+  "Druid"
+ ],
+ "Imbue Rose Quartz": [
+  "Cleric"
+ ],
+ "Imbue Ruby": [
+  "Cleric"
+ ],
+ "Imbue Sapphire": [
+  "Cleric",
+  "Shaman"
+ ],
+ "Imbue Topaz": [
+  "Cleric"
+ ],
+ "Immobilize": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer",
+  "Shaman",
+  "Wizard"
+ ],
+ "Immolate": [
+  "Druid",
+  "Ranger"
+ ],
+ "Impart Strength": [
+  "Necromancer"
+ ],
+ "Impassivity": [
+  "Shaman"
+ ],
+ "Improved Invis vs Undead": [
+  "Cleric",
+  "Necromancer"
+ ],
+ "Improved Invisibility": [
+  "Enchanter",
+  "Wizard"
+ ],
+ "Improved Invisibility to Undead": [
+  "Cleric",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight"
+ ],
+ "Improved Superior Camo": [
+  "Druid"
+ ],
+ "Improved Superior Camou": [
+  "Druid"
+ ],
+ "Incapacitate": [
+  "Enchanter",
+  "Shaman"
+ ],
+ "Incinerate Bones": [
+  "Necromancer"
+ ],
+ "Infectious Cloud": [
+  "Necromancer",
+  "Shaman"
+ ],
+ "Inferno Shield": [
+  "Magician"
+ ],
+ "Inferno Shock": [
+  "Wizard"
+ ],
+ "Inferno of Al`Kabor": [
+  "Wizard"
+ ],
+ "Infusion": [
+  "Necromancer"
+ ],
+ "Infusion of Spirit": [
+  "Shaman"
+ ],
+ "Inner Fire": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Insidious Decay": [
+  "Shaman"
+ ],
+ "Insidious Fever": [
+  "Shaman"
+ ],
+ "Insidious Malady": [
+  "Shaman"
+ ],
+ "Insidious Retrogression": [
+  "Necromancer"
+ ],
+ "Insight": [
+  "Enchanter"
+ ],
+ "Insipid Weakness": [
+  "Enchanter"
+ ],
+ "Inspire Fear": [
+  "Cleric"
+ ],
+ "Instill": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer",
+  "Paladin",
+  "Shaman",
+  "Wizard"
+ ],
+ "Instrument of Nife": [
+  "Paladin"
+ ],
+ "Intellectual Advancement": [
+  "Enchanter"
+ ],
+ "Intellectual Superiority": [
+  "Enchanter"
+ ],
+ "Intensify Death": [
+  "Necromancer"
+ ],
+ "Invert Gravity": [
+  "Wizard"
+ ],
+ "Invigor": [
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Paladin",
+  "Ranger",
+  "Shaman"
+ ],
+ "Invisibility": [
+  "Beastlord",
+  "Enchanter",
+  "Magician",
+  "Shaman",
+  "Wizard"
+ ],
+ "Invisibility Versus Animals": [
+  "Druid",
+  "Shaman"
+ ],
+ "Invisibility Versus Undead": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight"
+ ],
+ "Invisibility to Undead": [
+  "Wizard"
+ ],
+ "Invisibility versus Animals": [
+  "Druid",
+  "Shaman"
+ ],
+ "Invisibility versus Undead": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight"
+ ],
+ "Invoke Death": [
+  "Necromancer"
+ ],
+ "Invoke Fear": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Invoke Lightning": [
+  "Druid",
+  "Ranger"
+ ],
+ "Invoke Shadow": [
+  "Necromancer"
+ ],
+ "Jaxan's Jig o' Vigor": [
+  "Bard"
+ ],
+ "Jolt": [
+  "Ranger"
+ ],
+ "Jonthan's Inspiration": [
+  "Bard"
+ ],
+ "Jonthan's Provocation": [
+  "Bard"
+ ],
+ "Jonthan's Whistling Warsong": [
+  "Bard"
+ ],
+ "Juli's Animation": [
+  "Enchanter"
+ ],
+ "Jyll's Wave of Heat": [
+  "Wizard"
+ ],
+ "Jyll`s Static Pulse": [
+  "Wizard"
+ ],
+ "Jyll`s Zephyr of Ice": [
+  "Wizard"
+ ],
+ "Kazumi's Note of Preservation": [
+  "Bard"
+ ],
+ "Kelin's Lucid Lullaby": [
+  "Bard"
+ ],
+ "Kelin's Lugubrious Lament": [
+  "Bard"
+ ],
+ "Keshuval's Rejuvenation": [
+  "Beastlord"
+ ],
+ "Kilan's Animation": [
+  "Enchanter"
+ ],
+ "Kintaz's Animation": [
+  "Enchanter"
+ ],
+ "Kragg's Salve": [
+  "Shaman"
+ ],
+ "Languid Pace": [
+  "Beastlord",
+  "Enchanter"
+ ],
+ "Largarn`s Lamentation": [
+  "Enchanter"
+ ],
+ "Largo's Assonant Binding": [
+  "Bard"
+ ],
+ "Largo's Melodic Binding": [
+  "Bard"
+ ],
+ "Lava Bolt": [
+  "Magician"
+ ],
+ "Lava Storm": [
+  "Wizard"
+ ],
+ "Leach": [
+  "Necromancer"
+ ],
+ "Leatherskin": [
+  "Necromancer",
+  "Wizard"
+ ],
+ "Leech": [
+  "Necromancer"
+ ],
+ "Leering Corpse": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Legacy of Spike": [
+  "Druid"
+ ],
+ "Legacy of Thorn": [
+  "Druid"
+ ],
+ "Lesser Conjuration: Air": [
+  "Magician"
+ ],
+ "Lesser Conjuration: Earth": [
+  "Magician"
+ ],
+ "Lesser Conjuration: Fire": [
+  "Magician"
+ ],
+ "Lesser Conjuration: Water": [
+  "Magician"
+ ],
+ "Lesser Evacuate": [
+  "Wizard"
+ ],
+ "Lesser Familiar": [
+  "Wizard"
+ ],
+ "Lesser Shielding": [
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Wizard"
+ ],
+ "Lesser Succor": [
+  "Druid"
+ ],
+ "Lesser Summoning: Air": [
+  "Magician"
+ ],
+ "Lesser Summoning: Earth": [
+  "Magician"
+ ],
+ "Lesser Summoning: Fire": [
+  "Magician"
+ ],
+ "Lesser Summoning: Water": [
+  "Magician"
+ ],
+ "Levant": [
+  "Necromancer"
+ ],
+ "Leviathan Eyes": [
+  "Enchanter"
+ ],
+ "Levitate": [
+  "Beastlord",
+  "Druid",
+  "Enchanter",
+  "Ranger",
+  "Shaman",
+  "Wizard"
+ ],
+ "Levitation": [
+  "Druid",
+  "Wizard"
+ ],
+ "Lich": [
+  "Necromancer"
+ ],
+ "Life Leech": [
+  "Shadow Knight"
+ ],
+ "Lifedraw": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Lifespike": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Lifetap": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Light Healing": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Ranger",
+  "Shaman"
+ ],
+ "Lightning Blast": [
+  "Druid"
+ ],
+ "Lightning Bolt": [
+  "Wizard"
+ ],
+ "Lightning Shock": [
+  "Wizard"
+ ],
+ "Lightning Storm": [
+  "Wizard"
+ ],
+ "Lightning Strike": [
+  "Druid"
+ ],
+ "Listless Power": [
+  "Beastlord",
+  "Enchanter",
+  "Shaman"
+ ],
+ "Locate Corpse": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Lull": [
+  "Cleric",
+  "Enchanter",
+  "Paladin"
+ ],
+ "Lull Animal": [
+  "Druid",
+  "Ranger"
+ ],
+ "Lure of Flame": [
+  "Wizard"
+ ],
+ "Lure of Frost": [
+  "Wizard"
+ ],
+ "Lure of Ice": [
+  "Wizard"
+ ],
+ "Lure of Lightning": [
+  "Wizard"
+ ],
+ "Lyssa's Cataloging Libretto": [
+  "Bard"
+ ],
+ "Lyssa's Locating Lyric": [
+  "Bard"
+ ],
+ "Lyssa's Solidarity of Vision": [
+  "Bard"
+ ],
+ "Lyssa's Veracious Concord": [
+  "Bard"
+ ],
+ "Mage Bane Poison": [
+  "Rogue"
+ ],
+ "Magical Monologue": [
+  "Bard"
+ ],
+ "Magnify": [
+  "Wizard"
+ ],
+ "Major Shielding": [
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Wizard"
+ ],
+ "Mala": [
+  "Magician"
+ ],
+ "Malaise": [
+  "Magician",
+  "Shaman"
+ ],
+ "Malaisement": [
+  "Magician",
+  "Shaman"
+ ],
+ "Malaria": [
+  "Beastlord"
+ ],
+ "Malignant Dead": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Malisement": [
+  "Magician",
+  "Shaman"
+ ],
+ "Malo": [
+  "Shaman"
+ ],
+ "Malosi": [
+  "Magician",
+  "Shaman"
+ ],
+ "Malosini": [
+  "Magician",
+  "Shaman"
+ ],
+ "Mana Detonation": [
+  "Wizard"
+ ],
+ "Mana Ignition": [
+  "Wizard"
+ ],
+ "Mana Sieve": [
+  "Enchanter"
+ ],
+ "Manasink": [
+  "Wizard"
+ ],
+ "Manaskin": [
+  "Necromancer",
+  "Wizard"
+ ],
+ "Manastorm": [
+  "Magician"
+ ],
+ "Manicial Strength": [
+  "Shaman"
+ ],
+ "Mark of Karn": [
+  "Cleric"
+ ],
+ "Markar's Relocation": [
+  "Wizard"
+ ],
+ "Markar`s Clash": [
+  "Wizard"
+ ],
+ "Markar`s Discord": [
+  "Wizard"
+ ],
+ "Mask of the Hunter": [
+  "Druid"
+ ],
+ "Mass Clarify Mana": [
+  "Enchanter"
+ ],
+ "Mass Crystallize Mana": [
+  "Enchanter"
+ ],
+ "Mass Distill Mana": [
+  "Enchanter"
+ ],
+ "Mass Enchant Clay": [
+  "Enchanter"
+ ],
+ "Mass Enchant Electrum": [
+  "Enchanter"
+ ],
+ "Mass Enchant Gold": [
+  "Enchanter"
+ ],
+ "Mass Enchant Platinum": [
+  "Enchanter"
+ ],
+ "Mass Enchant Silver": [
+  "Enchanter"
+ ],
+ "Mass Imbue Amber": [
+  "Cleric",
+  "Shaman"
+ ],
+ "Mass Imbue Black Pearl": [
+  "Cleric"
+ ],
+ "Mass Imbue Black Sapphire": [
+  "Cleric"
+ ],
+ "Mass Imbue Diamond": [
+  "Cleric",
+  "Shaman"
+ ],
+ "Mass Imbue Fire Opal": [
+  "Wizard"
+ ],
+ "Mass Imbue Ivory": [
+  "Cleric",
+  "Shaman"
+ ],
+ "Mass Imbue Jade": [
+  "Cleric",
+  "Shaman"
+ ],
+ "Mass Imbue Opal": [
+  "Cleric"
+ ],
+ "Mass Imbue Peridot": [
+  "Cleric"
+ ],
+ "Mass Imbue Plains Pebble": [
+  "Cleric",
+  "Druid"
+ ],
+ "Mass Imbue Rose Quartz": [
+  "Cleric"
+ ],
+ "Mass Imbue Ruby": [
+  "Cleric"
+ ],
+ "Mass Imbue Sapphire": [
+  "Cleric",
+  "Shaman"
+ ],
+ "Mass Imbue Topaz": [
+  "Cleric"
+ ],
+ "Mass Purify Mana": [
+  "Enchanter"
+ ],
+ "Mass Thicken Mana": [
+  "Enchanter"
+ ],
+ "McMerin's Feast": [
+  "Shaman"
+ ],
+ "McVaxius' Berserker Crescendo": [
+  "Bard"
+ ],
+ "McVaxius' Rousing Rondo": [
+  "Bard"
+ ],
+ "Melanie's Mellifluous Motion": [
+  "Bard"
+ ],
+ "Memory Blur": [
+  "Enchanter"
+ ],
+ "Memory Flux": [
+  "Enchanter"
+ ],
+ "Mend Bones": [
+  "Necromancer"
+ ],
+ "Mesmerization": [
+  "Enchanter"
+ ],
+ "Mesmerize": [
+  "Enchanter"
+ ],
+ "Mind Wipe": [
+  "Enchanter"
+ ],
+ "Minion of Shadows": [
+  "Necromancer"
+ ],
+ "Minor Conjuration: Air": [
+  "Magician"
+ ],
+ "Minor Conjuration: Earth": [
+  "Magician"
+ ],
+ "Minor Conjuration: Fire": [
+  "Magician"
+ ],
+ "Minor Conjuration: Water": [
+  "Magician"
+ ],
+ "Minor Familiar": [
+  "Wizard"
+ ],
+ "Minor Healing": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Ranger",
+  "Shaman"
+ ],
+ "Minor Illusion": [
+  "Enchanter"
+ ],
+ "Minor Shielding": [
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Wizard"
+ ],
+ "Minor Summoning: Air": [
+  "Magician"
+ ],
+ "Minor Summoning: Earth": [
+  "Magician"
+ ],
+ "Minor Summoning: Fire": [
+  "Magician"
+ ],
+ "Minor Summoning: Water": [
+  "Magician"
+ ],
+ "Mircyl's Animation": [
+  "Enchanter"
+ ],
+ "Mist": [
+  "Enchanter"
+ ],
+ "Modulating Rod": [
+  "Magician"
+ ],
+ "Monster Summoning": [
+  "Magician"
+ ],
+ "Monster Summoning I": [
+  "Magician"
+ ],
+ "Mortal Deftness": [
+  "Shaman"
+ ],
+ "Naltron's Mark": [
+  "Cleric"
+ ],
+ "Nature Walkers Behest": [
+  "Druid"
+ ],
+ "Nature's Precision": [
+  "Ranger"
+ ],
+ "Nature's Renewal": [
+  "Druid"
+ ],
+ "Nature's Touch": [
+  "Druid"
+ ],
+ "Natureskin": [
+  "Druid"
+ ],
+ "Negation of Life": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Nek Gate": [
+  "Wizard"
+ ],
+ "Nek Portal": [
+  "Wizard"
+ ],
+ "Nektulos Gate": [
+  "Wizard"
+ ],
+ "Nektulos Portal": [
+  "Wizard"
+ ],
+ "Neurotoxic Poison": [
+  "Rogue"
+ ],
+ "Nillipus' March of the Wee": [
+  "Bard"
+ ],
+ "Nimble": [
+  "Shaman"
+ ],
+ "Niv's Harmonic": [
+  "Bard"
+ ],
+ "Niv's Melody of Preservation": [
+  "Bard"
+ ],
+ "Nonchalance": [
+  "Shaman"
+ ],
+ "North Gate": [
+  "Wizard"
+ ],
+ "North Karana Gate": [
+  "Wizard"
+ ],
+ "North Karana Portal": [
+  "Wizard"
+ ],
+ "North Portal": [
+  "Wizard"
+ ],
+ "North Ro Gate": [
+  "Wizard"
+ ],
+ "North Ro Portal": [
+  "Wizard"
+ ],
+ "Nullify Magic": [
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Shaman",
+  "Wizard"
+ ],
+ "Numb the Dead": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Numbing Cold": [
+  "Wizard"
+ ],
+ "O'Keils Radiation": [
+  "Wizard"
+ ],
+ "O`Keil's Embers": [
+  "Wizard"
+ ],
+ "O`Keil's Flickering Flame": [
+  "Wizard"
+ ],
+ "O`Keil's Levity": [
+  "Wizard"
+ ],
+ "O`Keil's Radiation": [
+  "Wizard"
+ ],
+ "O`Keils Flickering Flame": [
+  "Wizard"
+ ],
+ "Obscure": [
+  "Enchanter"
+ ],
+ "Odium": [
+  "Shaman"
+ ],
+ "Overwhelming Splendor": [
+  "Enchanter"
+ ],
+ "Pacify": [
+  "Cleric",
+  "Enchanter",
+  "Paladin"
+ ],
+ "Pack Chloroplast": [
+  "Druid"
+ ],
+ "Pack Regeneration": [
+  "Druid"
+ ],
+ "Pack Shrew": [
+  "Beastlord",
+  "Druid",
+  "Ranger",
+  "Shaman"
+ ],
+ "Pack Spirit": [
+  "Druid"
+ ],
+ "Pact of Shadow": [
+  "Necromancer"
+ ],
+ "Panic Animal": [
+  "Druid",
+  "Ranger"
+ ],
+ "Panic the Dead": [
+  "Cleric",
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Paralytic Poison": [
+  "Rogue"
+ ],
+ "Paralyzing Earth": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer",
+  "Shaman",
+  "Wizard"
+ ],
+ "Pendril's Animation": [
+  "Enchanter"
+ ],
+ "Phantom Armor": [
+  "Magician"
+ ],
+ "Phantom Chain": [
+  "Magician"
+ ],
+ "Phantom Leather": [
+  "Magician"
+ ],
+ "Phantom Plate": [
+  "Magician"
+ ],
+ "Pillage Enchantment": [
+  "Enchanter"
+ ],
+ "Pillar of Fire": [
+  "Wizard"
+ ],
+ "Pillar of Flame": [
+  "Wizard"
+ ],
+ "Pillar of Frost": [
+  "Wizard"
+ ],
+ "Pillar of Lightning": [
+  "Wizard"
+ ],
+ "Plague": [
+  "Necromancer",
+  "Shaman"
+ ],
+ "Plainsight": [
+  "Wizard"
+ ],
+ "Pogonip": [
+  "Druid"
+ ],
+ "Poison Bolt": [
+  "Necromancer"
+ ],
+ "Poison Storm": [
+  "Shaman"
+ ],
+ "Porlos' Fury": [
+  "Wizard"
+ ],
+ "Pouch of Quellious": [
+  "Magician"
+ ],
+ "Pox of Bertoxxulous": [
+  "Shaman"
+ ],
+ "Primal Avatar": [
+  "Shaman"
+ ],
+ "Primal Remedy": [
+  "Magician"
+ ],
+ "Project Lightning": [
+  "Wizard"
+ ],
+ "Promised Renewal": [
+  "Cleric"
+ ],
+ "Protect": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Protection of Diamond": [
+  "Druid"
+ ],
+ "Protection of Nature": [
+  "Druid"
+ ],
+ "Protection of Rock": [
+  "Druid"
+ ],
+ "Protection of Steel": [
+  "Druid"
+ ],
+ "Protection of Wood": [
+  "Druid"
+ ],
+ "Protection of the Glades": [
+  "Druid"
+ ],
+ "Psalm of Cooling": [
+  "Bard"
+ ],
+ "Psalm of Mystic Shielding": [
+  "Bard"
+ ],
+ "Psalm of Purity": [
+  "Bard"
+ ],
+ "Psalm of Vitality": [
+  "Bard"
+ ],
+ "Psalm of Warmth": [
+  "Bard"
+ ],
+ "Purify Mana": [
+  "Enchanter"
+ ],
+ "Purifying Rhythms": [
+  "Bard"
+ ],
+ "Pyrocruor": [
+  "Necromancer"
+ ],
+ "Quickness": [
+  "Enchanter",
+  "Shaman"
+ ],
+ "Quiver of Marr": [
+  "Magician"
+ ],
+ "Quivering Veil of Xarn": [
+  "Necromancer"
+ ],
+ "Radiant Visage": [
+  "Enchanter"
+ ],
+ "Rage": [
+  "Shaman"
+ ],
+ "Rage of Zomm": [
+  "Magician"
+ ],
+ "Raging Strength": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Rain of Blades": [
+  "Magician"
+ ],
+ "Rain of Fire": [
+  "Magician"
+ ],
+ "Rain of Lava": [
+  "Magician"
+ ],
+ "Rain of Spikes": [
+  "Magician"
+ ],
+ "Rain of Swords": [
+  "Magician"
+ ],
+ "Rampage": [
+  "Enchanter"
+ ],
+ "Rapacious Subvention": [
+  "Necromancer"
+ ],
+ "Rapture": [
+  "Enchanter"
+ ],
+ "Reanimation": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Recant Magic": [
+  "Enchanter"
+ ],
+ "Reckless Strength": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Reckoning": [
+  "Cleric"
+ ],
+ "Reclaim Energy": [
+  "Enchanter",
+  "Magician",
+  "Necromancer"
+ ],
+ "Reconstitute": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Refresh Summoning": [
+  "Magician"
+ ],
+ "Regeneration": [
+  "Druid",
+  "Shaman"
+ ],
+ "Regrowth": [
+  "Druid",
+  "Shaman"
+ ],
+ "Regrowth of the Grove": [
+  "Druid"
+ ],
+ "Remedy": [
+  "Cleric"
+ ],
+ "Remove Curse": [
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Shaman"
+ ],
+ "Remove Lesser Curse": [
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Shaman"
+ ],
+ "Remove Minor Curse": [
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Shaman"
+ ],
+ "Rend": [
+  "Wizard"
+ ],
+ "Renew Bones": [
+  "Necromancer"
+ ],
+ "Renew Elements": [
+  "Magician"
+ ],
+ "Renew Summoning": [
+  "Magician"
+ ],
+ "Renewal": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Renewing Echo": [
+  "Cleric"
+ ],
+ "Reoccurring Amnesia": [
+  "Enchanter"
+ ],
+ "Reparation": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Repulse Animal": [
+  "Druid"
+ ],
+ "Resist Cold": [
+  "Cleric",
+  "Druid",
+  "Necromancer",
+  "Ranger",
+  "Shadow Knight",
+  "Shaman"
+ ],
+ "Resist Disease": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Necromancer",
+  "Paladin",
+  "Shaman"
+ ],
+ "Resist Fire": [
+  "Cleric",
+  "Druid",
+  "Ranger",
+  "Shaman"
+ ],
+ "Resist Magic": [
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Paladin",
+  "Shaman"
+ ],
+ "Resist Poison": [
+  "Cleric",
+  "Druid",
+  "Shaman"
+ ],
+ "Resistant Skin": [
+  "Wizard"
+ ],
+ "Resolution": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Rest the Dead": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Restless Bones": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Restoration": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Resurrection": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Resurrection Effects": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Resuscitate": [
+  "Cleric"
+ ],
+ "Retribution": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Retribution of Al`Kabor": [
+  "Wizard"
+ ],
+ "Revive": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Reviviscence": [
+  "Cleric"
+ ],
+ "Riftwind's Protection": [
+  "Ranger"
+ ],
+ "Ring of Butcher": [
+  "Druid"
+ ],
+ "Ring of Cobalt Scar": [
+  "Druid"
+ ],
+ "Ring of Commons": [
+  "Druid"
+ ],
+ "Ring of Feerrott": [
+  "Druid"
+ ],
+ "Ring of Great Divide": [
+  "Druid"
+ ],
+ "Ring of Iceclad": [
+  "Druid"
+ ],
+ "Ring of Karana": [
+  "Druid"
+ ],
+ "Ring of Lavastorm": [
+  "Druid"
+ ],
+ "Ring of Misty": [
+  "Druid"
+ ],
+ "Ring of Misty Thicket": [
+  "Druid"
+ ],
+ "Ring of Ro": [
+  "Druid"
+ ],
+ "Ring of South Ro": [
+  "Druid"
+ ],
+ "Ring of Steamfont": [
+  "Druid"
+ ],
+ "Ring of Stonebrunt": [
+  "Druid"
+ ],
+ "Ring of Surefall Glade": [
+  "Druid"
+ ],
+ "Ring of Toxxulia": [
+  "Druid"
+ ],
+ "Ring of Wakening Lands": [
+  "Druid"
+ ],
+ "Ring of West Commons": [
+  "Druid"
+ ],
+ "Ring of the Combines": [
+  "Druid"
+ ],
+ "Riotous Health": [
+  "Shaman"
+ ],
+ "Rising Dexterity": [
+  "Shaman"
+ ],
+ "Rizlona's Embers": [
+  "Bard"
+ ],
+ "Ro Gate": [
+  "Wizard"
+ ],
+ "Ro Portal": [
+  "Wizard"
+ ],
+ "Ro's Fiery Sundering": [
+  "Druid"
+ ],
+ "Root": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer",
+  "Paladin",
+  "Shaman",
+  "Wizard"
+ ],
+ "Rune": [
+  "Enchanter"
+ ],
+ "Rune I": [
+  "Enchanter"
+ ],
+ "Rune II": [
+  "Enchanter"
+ ],
+ "Rune III": [
+  "Enchanter"
+ ],
+ "Sacred Echo": [
+  "Cleric"
+ ],
+ "Sacred Word": [
+  "Cleric"
+ ],
+ "Sacrifice": [
+  "Necromancer"
+ ],
+ "Sagar's Animation": [
+  "Enchanter"
+ ],
+ "Sanctuary": [
+  "Cleric"
+ ],
+ "Sanity Warp": [
+  "Enchanter"
+ ],
+ "Savage Spirit": [
+  "Druid"
+ ],
+ "Scale Skin": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Scale of Wolf": [
+  "Druid",
+  "Shaman"
+ ],
+ "Scars of Sigil": [
+  "Magician"
+ ],
+ "Scent of Darkness": [
+  "Necromancer"
+ ],
+ "Scent of Dusk": [
+  "Necromancer"
+ ],
+ "Scent of Shadow": [
+  "Necromancer"
+ ],
+ "Scent of Terris": [
+  "Necromancer"
+ ],
+ "Scintillation": [
+  "Magician"
+ ],
+ "Scorching Arrow": [
+  "Ranger"
+ ],
+ "Scoriae": [
+  "Druid"
+ ],
+ "Scourge": [
+  "Necromancer",
+  "Shaman"
+ ],
+ "Scream of Death": [
+  "Shadow Knight"
+ ],
+ "Scream of Hate": [
+  "Shadow Knight"
+ ],
+ "Scream of Pain": [
+  "Shadow Knight"
+ ],
+ "Screaming Terror": [
+  "Necromancer"
+ ],
+ "Scythe of Darkness": [
+  "Shadow Knight"
+ ],
+ "Searing Arrow": [
+  "Ranger"
+ ],
+ "Sedulous Subversion": [
+  "Necromancer"
+ ],
+ "See Invisible": [
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Ranger",
+  "Wizard"
+ ],
+ "Seeking Flame of Seukor": [
+  "Magician"
+ ],
+ "Selo's Accelerando": [
+  "Bard"
+ ],
+ "Selo's Accelerating Chorus": [
+  "Bard"
+ ],
+ "Selo's Assonant Strain": [
+  "Bard"
+ ],
+ "Selo's Chords of Cessation": [
+  "Bard"
+ ],
+ "Selo's Consonant Chain": [
+  "Bard"
+ ],
+ "Selo's Song of Travel": [
+  "Bard"
+ ],
+ "Sense Animals": [
+  "Beastlord",
+  "Druid",
+  "Shaman"
+ ],
+ "Sense Summoned": [
+  "Cleric",
+  "Magician",
+  "Wizard"
+ ],
+ "Sense the Dead": [
+  "Cleric",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight"
+ ],
+ "Sentinel": [
+  "Enchanter"
+ ],
+ "Sermon of the Righteous": [
+  "Cleric"
+ ],
+ "Serpent Sight": [
+  "Beastlord",
+  "Enchanter",
+  "Shaman"
+ ],
+ "Servant of Bones": [
+  "Necromancer"
+ ],
+ "Sha's Lethargy": [
+  "Beastlord"
+ ],
+ "Shackle of Bone": [
+  "Necromancer"
+ ],
+ "Shackle of Spirit": [
+  "Necromancer"
+ ],
+ "Shade": [
+  "Enchanter"
+ ],
+ "Shadow": [
+  "Enchanter"
+ ],
+ "Shadow Compact": [
+  "Necromancer"
+ ],
+ "Shadow Sight": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Shadow Step": [
+  "Necromancer",
+  "Shadow Knight",
+  "Wizard"
+ ],
+ "Shadow Vortex": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Shadowbond": [
+  "Necromancer"
+ ],
+ "Shalee's Animation": [
+  "Enchanter"
+ ],
+ "Shallow Breath": [
+  "Enchanter"
+ ],
+ "Share Form of the Great Wolf": [
+  "Druid"
+ ],
+ "Share Wolf Form": [
+  "Druid"
+ ],
+ "Sharik's Replenishing": [
+  "Beastlord"
+ ],
+ "Shauri's Sonorous Clouding": [
+  "Bard"
+ ],
+ "Shield of Barbs": [
+  "Druid"
+ ],
+ "Shield of Blades": [
+  "Druid"
+ ],
+ "Shield of Brambles": [
+  "Druid",
+  "Ranger"
+ ],
+ "Shield of Fire": [
+  "Magician"
+ ],
+ "Shield of Flame": [
+  "Magician"
+ ],
+ "Shield of Lava": [
+  "Magician"
+ ],
+ "Shield of Song": [
+  "Bard"
+ ],
+ "Shield of Spikes": [
+  "Druid",
+  "Ranger"
+ ],
+ "Shield of Thistles": [
+  "Druid",
+  "Ranger"
+ ],
+ "Shield of Thorns (Spell)": [
+  "Druid"
+ ],
+ "Shield of Words": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Shield of the Magi": [
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Wizard"
+ ],
+ "Shielding": [
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Wizard"
+ ],
+ "Shieldskin": [
+  "Necromancer",
+  "Shadow Knight",
+  "Wizard"
+ ],
+ "Shifting Shield": [
+  "Shaman"
+ ],
+ "Shifting Sight": [
+  "Enchanter",
+  "Wizard"
+ ],
+ "Shiftless Deeds": [
+  "Enchanter"
+ ],
+ "Shock Spiral of Al'Kabor": [
+  "Wizard"
+ ],
+ "Shock of Blades": [
+  "Magician"
+ ],
+ "Shock of Fire": [
+  "Wizard"
+ ],
+ "Shock of Flame": [
+  "Magician"
+ ],
+ "Shock of Frost": [
+  "Wizard"
+ ],
+ "Shock of Ice": [
+  "Wizard"
+ ],
+ "Shock of Lightning": [
+  "Wizard"
+ ],
+ "Shock of Poison": [
+  "Necromancer"
+ ],
+ "Shock of Spikes": [
+  "Magician"
+ ],
+ "Shock of Steel": [
+  "Magician"
+ ],
+ "Shock of Swords": [
+  "Magician"
+ ],
+ "Shock of Venom": [
+  "Shaman"
+ ],
+ "Shock of the Tainted": [
+  "Shaman"
+ ],
+ "Shrink": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Shroud of Death": [
+  "Shadow Knight"
+ ],
+ "Shroud of Hate": [
+  "Shadow Knight"
+ ],
+ "Shroud of Pain": [
+  "Shadow Knight"
+ ],
+ "Shroud of Undeath": [
+  "Shadow Knight"
+ ],
+ "Shroud of the Spirits": [
+  "Shaman"
+ ],
+ "Sicken": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Sight": [
+  "Wizard"
+ ],
+ "Sight Graft": [
+  "Necromancer"
+ ],
+ "Sionachie's Dreams": [
+  "Bard"
+ ],
+ "Siphon Life": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Siphon Strength": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Sirocco": [
+  "Magician"
+ ],
+ "Sisna's Animation": [
+  "Enchanter"
+ ],
+ "Skin Like Diamond": [
+  "Druid",
+  "Ranger"
+ ],
+ "Skin Like Nature": [
+  "Druid",
+  "Ranger"
+ ],
+ "Skin Like Rock": [
+  "Druid",
+  "Ranger"
+ ],
+ "Skin Like Steel": [
+  "Druid",
+  "Ranger"
+ ],
+ "Skin Like Wood": [
+  "Druid",
+  "Ranger"
+ ],
+ "Skin of the Shadow": [
+  "Necromancer"
+ ],
+ "Sloths Healing": [
+  "Shaman"
+ ],
+ "Slugs Healing": [
+  "Shaman"
+ ],
+ "Smite": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Snails Healing": [
+  "Shaman"
+ ],
+ "Snare": [
+  "Druid",
+  "Ranger"
+ ],
+ "Solon's Bravura": [
+  "Bard"
+ ],
+ "Solon's Charismatic Concord": [
+  "Bard"
+ ],
+ "Solon's Song of the Sirens": [
+  "Bard"
+ ],
+ "Song of Dawn": [
+  "Bard"
+ ],
+ "Song of Highsun": [
+  "Bard"
+ ],
+ "Song of Midnight": [
+  "Bard"
+ ],
+ "Song of Sustenance": [
+  "Bard"
+ ],
+ "Song of Twilight": [
+  "Bard"
+ ],
+ "Song: Composition of Ervaj": [
+  "Bard"
+ ],
+ "Song: Melody of Ervaj": [
+  "Bard"
+ ],
+ "Song: Occlusion of Sound": [
+  "Bard"
+ ],
+ "Soothe": [
+  "Cleric",
+  "Enchanter",
+  "Paladin"
+ ],
+ "Sound of Force": [
+  "Cleric"
+ ],
+ "Spear of Disease": [
+  "Shadow Knight"
+ ],
+ "Spear of Pain": [
+  "Shadow Knight"
+ ],
+ "Spear of Warding": [
+  "Magician"
+ ],
+ "Sphere of Light": [
+  "Wizard"
+ ],
+ "Spike of Disease": [
+  "Shadow Knight"
+ ],
+ "Spikecoat": [
+  "Druid",
+  "Ranger"
+ ],
+ "Spirit Armor": [
+  "Cleric",
+  "Necromancer",
+  "Paladin"
+ ],
+ "Spirit Pouch": [
+  "Shaman"
+ ],
+ "Spirit Quickening": [
+  "Shaman"
+ ],
+ "Spirit Salve": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Spirit Sight": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Spirit Strength": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Spirit Strike": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Spirit Tap": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Spirit of Bear": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Spirit of Bih`Li": [
+  "Shaman"
+ ],
+ "Spirit of Cat": [
+  "Shaman"
+ ],
+ "Spirit of Cheetah": [
+  "Druid",
+  "Shaman"
+ ],
+ "Spirit of Herikol": [
+  "Beastlord"
+ ],
+ "Spirit of Inferno": [
+  "Beastlord"
+ ],
+ "Spirit of Kashek": [
+  "Beastlord"
+ ],
+ "Spirit of Keshuval": [
+  "Beastlord"
+ ],
+ "Spirit of Khaliz": [
+  "Beastlord"
+ ],
+ "Spirit of Lightning": [
+  "Beastlord"
+ ],
+ "Spirit of Monkey": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Spirit of Oak": [
+  "Druid"
+ ],
+ "Spirit of Ox": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Spirit of Scale": [
+  "Druid",
+  "Shaman"
+ ],
+ "Spirit of Sharik": [
+  "Beastlord"
+ ],
+ "Spirit of Snake": [
+  "Shaman"
+ ],
+ "Spirit of Vermin": [
+  "Beastlord"
+ ],
+ "Spirit of Wolf": [
+  "Beastlord",
+  "Druid",
+  "Ranger",
+  "Shaman"
+ ],
+ "Spirit of Yekan": [
+  "Beastlord"
+ ],
+ "Spirit of the Blizzard": [
+  "Beastlord"
+ ],
+ "Spirit of the Howler": [
+  "Shaman"
+ ],
+ "Spirit of the Puma": [
+  "Shaman"
+ ],
+ "Spirit of the Scorpion": [
+  "Beastlord"
+ ],
+ "Spirit of the Shrew": [
+  "Beastlord",
+  "Druid",
+  "Ranger",
+  "Shaman"
+ ],
+ "Spiritual Brawn": [
+  "Beastlord"
+ ],
+ "Spiritual Light": [
+  "Beastlord"
+ ],
+ "Splurt": [
+  "Necromancer"
+ ],
+ "Spook the Dead": [
+  "Cleric",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight"
+ ],
+ "Sprouting Heal": [
+  "Druid"
+ ],
+ "Staff of Runes": [
+  "Magician"
+ ],
+ "Staff of Symbols": [
+  "Magician"
+ ],
+ "Staff of Tracing": [
+  "Magician"
+ ],
+ "Staff of Warding": [
+  "Magician"
+ ],
+ "Stamina": [
+  "Shaman"
+ ],
+ "Starfire": [
+  "Druid"
+ ],
+ "Starshine": [
+  "Druid"
+ ],
+ "Steelskin": [
+  "Necromancer",
+  "Shadow Knight",
+  "Wizard"
+ ],
+ "Stinging Swarm": [
+  "Druid",
+  "Ranger"
+ ],
+ "Stoicism": [
+  "Shaman"
+ ],
+ "Stonebrunt Gate": [
+  "Wizard"
+ ],
+ "Stonebrunt Portal": [
+  "Wizard"
+ ],
+ "Storm Strength": [
+  "Druid",
+  "Ranger"
+ ],
+ "Strength": [
+  "Shaman"
+ ],
+ "Strength of Earth": [
+  "Druid",
+  "Ranger"
+ ],
+ "Strength of Nature": [
+  "Ranger"
+ ],
+ "Strength of Stone": [
+  "Druid"
+ ],
+ "Strengthen": [
+  "Beastlord",
+  "Enchanter",
+  "Shaman"
+ ],
+ "Strengthen Death": [
+  "Shadow Knight"
+ ],
+ "Strike": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Strip Enchantment": [
+  "Enchanter"
+ ],
+ "Stun": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Stun Command": [
+  "Cleric"
+ ],
+ "Succor": [
+  "Druid"
+ ],
+ "Succor: Butcher": [
+  "Druid"
+ ],
+ "Succor: Butcherblock": [
+  "Druid"
+ ],
+ "Succor: East": [
+  "Druid"
+ ],
+ "Succor: East Karana": [
+  "Druid"
+ ],
+ "Succor: Lavastorm": [
+  "Druid"
+ ],
+ "Succor: North": [
+  "Druid"
+ ],
+ "Succor: North Karana": [
+  "Druid"
+ ],
+ "Succor: Ro": [
+  "Druid"
+ ],
+ "Succor: South Ro": [
+  "Druid"
+ ],
+ "Suffocate": [
+  "Enchanter"
+ ],
+ "Suffocating Sphere": [
+  "Enchanter"
+ ],
+ "Summon Arrows": [
+  "Magician"
+ ],
+ "Summon Bandages": [
+  "Magician"
+ ],
+ "Summon Brass Choker": [
+  "Magician"
+ ],
+ "Summon Coldstone": [
+  "Magician"
+ ],
+ "Summon Companion": [
+  "Beastlord",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Shaman"
+ ],
+ "Summon Corpse": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Summon Dagger": [
+  "Magician"
+ ],
+ "Summon Dead": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Summon Drink": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Magician",
+  "Shaman"
+ ],
+ "Summon Elemental Blanket": [
+  "Magician"
+ ],
+ "Summon Elemental Defender": [
+  "Magician"
+ ],
+ "Summon Fang": [
+  "Magician"
+ ],
+ "Summon Food": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Magician",
+  "Shaman"
+ ],
+ "Summon Golden Choker": [
+  "Magician"
+ ],
+ "Summon Heatstone": [
+  "Magician"
+ ],
+ "Summon Jade Bracelet": [
+  "Magician"
+ ],
+ "Summon Leather Mantle": [
+  "Magician"
+ ],
+ "Summon Linen Mantle": [
+  "Magician"
+ ],
+ "Summon Opal Bracelet": [
+  "Magician"
+ ],
+ "Summon Orb": [
+  "Magician"
+ ],
+ "Summon Phantom Chain": [
+  "Magician"
+ ],
+ "Summon Phantom Leather": [
+  "Magician"
+ ],
+ "Summon Phantom Plate": [
+  "Magician"
+ ],
+ "Summon Ring of Flight": [
+  "Magician"
+ ],
+ "Summon Shard of the Core": [
+  "Magician"
+ ],
+ "Summon Shiny Bauble": [
+  "Magician"
+ ],
+ "Summon Silver Choker": [
+  "Magician"
+ ],
+ "Summon Stone Bracelet": [
+  "Magician"
+ ],
+ "Summon Tarnished Bauble": [
+  "Magician"
+ ],
+ "Summon Throwing Dagger": [
+  "Magician"
+ ],
+ "Summon Tiny Ring": [
+  "Magician"
+ ],
+ "Summon Twisted Ring": [
+  "Magician"
+ ],
+ "Summon Waterstone": [
+  "Magician"
+ ],
+ "Summon Wisp": [
+  "Magician"
+ ],
+ "Summon Wooden Bracelet": [
+  "Magician"
+ ],
+ "Summon: Muzzle of Mardu": [
+  "Magician"
+ ],
+ "Summon: Orb of Exploration": [
+  "Magician"
+ ],
+ "Summoning: Air": [
+  "Magician"
+ ],
+ "Summoning: Earth": [
+  "Magician"
+ ],
+ "Summoning: Fire": [
+  "Magician"
+ ],
+ "Summoning: Water": [
+  "Magician"
+ ],
+ "Sunbeam": [
+  "Druid"
+ ],
+ "Sunskin": [
+  "Cleric"
+ ],
+ "Sunstrike": [
+  "Wizard"
+ ],
+ "Superior Camouflage": [
+  "Druid",
+  "Ranger"
+ ],
+ "Superior Healing": [
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Shaman"
+ ],
+ "Supernova": [
+  "Wizard"
+ ],
+ "Surge of Enfeeblement": [
+  "Necromancer"
+ ],
+ "Swarm of Pain": [
+  "Ranger"
+ ],
+ "Swift Like The Wind": [
+  "Enchanter"
+ ],
+ "Sword of Runes": [
+  "Magician"
+ ],
+ "Symbol of Marzin": [
+  "Cleric"
+ ],
+ "Symbol of Naltron": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Symbol of Pinzarn": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Symbol of Ryltan": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Symbol of Transal": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Sympathetic Aura": [
+  "Enchanter"
+ ],
+ "Syvelian's Anti-Magic Aria": [
+  "Bard"
+ ],
+ "Tagar's Insects": [
+  "Shaman"
+ ],
+ "Tainted Breath": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Talisman of Altuna": [
+  "Shaman"
+ ],
+ "Talisman of Jasinth": [
+  "Shaman"
+ ],
+ "Talisman of Kragg": [
+  "Shaman"
+ ],
+ "Talisman of Shadoo": [
+  "Shaman"
+ ],
+ "Talisman of Tnarg": [
+  "Shaman"
+ ],
+ "Talisman of the Beast": [
+  "Shaman"
+ ],
+ "Talisman of the Brute": [
+  "Shaman"
+ ],
+ "Talisman of the Cat": [
+  "Shaman"
+ ],
+ "Talisman of the Raptor": [
+  "Shaman"
+ ],
+ "Talisman of the Rhino": [
+  "Shaman"
+ ],
+ "Talisman of the Serpent": [
+  "Shaman"
+ ],
+ "Tame Spirit": [
+  "Beastlord"
+ ],
+ "Tangling Weeds": [
+  "Druid",
+  "Ranger"
+ ],
+ "Taper Enchantment": [
+  "Enchanter"
+ ],
+ "Tarew's Aquatic Ayre": [
+  "Bard"
+ ],
+ "Tashan": [
+  "Enchanter"
+ ],
+ "Tashani": [
+  "Enchanter"
+ ],
+ "Tashania": [
+  "Enchanter"
+ ],
+ "Tashanian": [
+  "Enchanter"
+ ],
+ "Tashina": [
+  "Enchanter"
+ ],
+ "Tears of Druzzil": [
+  "Wizard"
+ ],
+ "Tears of Prexus": [
+  "Wizard"
+ ],
+ "Tears of Solusek": [
+  "Wizard"
+ ],
+ "Temperance": [
+  "Cleric"
+ ],
+ "Tepid Deeds": [
+  "Enchanter"
+ ],
+ "Terror of Darkness": [
+  "Shadow Knight"
+ ],
+ "Terror of Shadows": [
+  "Shadow Knight"
+ ],
+ "Terrorize Animal": [
+  "Druid"
+ ],
+ "The Unspoken Word": [
+  "Cleric"
+ ],
+ "Theft of Thought": [
+  "Enchanter"
+ ],
+ "Thicken Mana": [
+  "Enchanter"
+ ],
+ "Thistlecoat": [
+  "Druid",
+  "Ranger"
+ ],
+ "Thorncoat": [
+  "Druid",
+  "Ranger"
+ ],
+ "Thought Drain Poison": [
+  "Rogue"
+ ],
+ "Thrall of Bones": [
+  "Necromancer"
+ ],
+ "Thunder Strike": [
+  "Wizard"
+ ],
+ "Thunder of Karana": [
+  "Paladin"
+ ],
+ "Thunderbold": [
+  "Wizard"
+ ],
+ "Thunderclap": [
+  "Wizard"
+ ],
+ "Tigir`s Insects": [
+  "Shaman"
+ ],
+ "Tiny Companion": [
+  "Beastlord",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Shadow Knight",
+  "Shaman"
+ ],
+ "Tishan's Clash": [
+  "Wizard"
+ ],
+ "Tishan's Relocation": [
+  "Wizard"
+ ],
+ "Tishan`s Discord": [
+  "Wizard"
+ ],
+ "Togor's Insects": [
+  "Shaman"
+ ],
+ "Torbas Acid Blast": [
+  "Necromancer"
+ ],
+ "Torbas Poison Blast": [
+  "Necromancer"
+ ],
+ "Torment of Argli": [
+  "Enchanter"
+ ],
+ "Torpor": [
+  "Shaman"
+ ],
+ "Torrent of Poison": [
+  "Shaman"
+ ],
+ "Tortoises Healing": [
+  "Shaman"
+ ],
+ "Touch of Night": [
+  "Necromancer"
+ ],
+ "Tox Gate": [
+  "Wizard"
+ ],
+ "Tox Portal": [
+  "Wizard"
+ ],
+ "Toxxulia Gate": [
+  "Wizard"
+ ],
+ "Toxxulia Portal": [
+  "Wizard"
+ ],
+ "Track Corpse": [
+  "Necromancer"
+ ],
+ "Translocate": [
+  "Wizard"
+ ],
+ "Translocate: Cazic": [
+  "Wizard"
+ ],
+ "Translocate: Cazic Temple": [
+  "Wizard"
+ ],
+ "Translocate: Cobalt Scar": [
+  "Wizard"
+ ],
+ "Translocate: Combine": [
+  "Wizard"
+ ],
+ "Translocate: Common": [
+  "Wizard"
+ ],
+ "Translocate: Fay": [
+  "Wizard"
+ ],
+ "Translocate: Great Divide": [
+  "Wizard"
+ ],
+ "Translocate: Greater Faydark": [
+  "Wizard"
+ ],
+ "Translocate: Group": [
+  "Wizard"
+ ],
+ "Translocate: Iceclad": [
+  "Wizard"
+ ],
+ "Translocate: Nek": [
+  "Wizard"
+ ],
+ "Translocate: Nektulos": [
+  "Wizard"
+ ],
+ "Translocate: North": [
+  "Wizard"
+ ],
+ "Translocate: North Karana": [
+  "Wizard"
+ ],
+ "Translocate: North Ro": [
+  "Wizard"
+ ],
+ "Translocate: Ro": [
+  "Wizard"
+ ],
+ "Translocate: Stonebrunt": [
+  "Wizard"
+ ],
+ "Translocate: Tox": [
+  "Wizard"
+ ],
+ "Translocate: Toxxulia": [
+  "Wizard"
+ ],
+ "Translocate: Wakening Lands": [
+  "Wizard"
+ ],
+ "Translocate: West": [
+  "Wizard"
+ ],
+ "Translocate: West Commons": [
+  "Wizard"
+ ],
+ "Translocate: West Karana": [
+  "Wizard"
+ ],
+ "Treeform": [
+  "Druid"
+ ],
+ "Tremor": [
+  "Cleric",
+  "Druid"
+ ],
+ "Trepidation": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer"
+ ],
+ "Trucidation": [
+  "Necromancer"
+ ],
+ "True North": [
+  "Cleric",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Paladin",
+  "Shaman",
+  "Wizard"
+ ],
+ "Tumultuous Strength": [
+  "Shaman"
+ ],
+ "Tunare`s Request": [
+  "Druid"
+ ],
+ "Turgur's Insects": [
+  "Shaman"
+ ],
+ "Turgur`s Insects": [
+  "Shaman"
+ ],
+ "Turning of the Unnatural": [
+  "Cleric"
+ ],
+ "Turtle Skin": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Tuyen's Chant of Disease": [
+  "Bard"
+ ],
+ "Tuyen's Chant of Flame": [
+  "Bard"
+ ],
+ "Tuyen's Chant of Frost": [
+  "Bard"
+ ],
+ "Tuyen's Chant of Poison": [
+  "Bard"
+ ],
+ "Uleen's Animation": [
+  "Enchanter"
+ ],
+ "Ultravision": [
+  "Enchanter",
+  "Shaman"
+ ],
+ "Umbra": [
+  "Enchanter"
+ ],
+ "Unfailing Reverence": [
+  "Shaman"
+ ],
+ "Unswerving Hammer": [
+  "Cleric"
+ ],
+ "Upheaval": [
+  "Cleric",
+  "Druid"
+ ],
+ "Valiant Companion": [
+  "Magician"
+ ],
+ "Valor": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Valor of Marr": [
+  "Paladin"
+ ],
+ "Vampiric Curse": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Vampiric Embrace": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Velocity": [
+  "Magician"
+ ],
+ "Vengeance of Al`Kabor": [
+  "Wizard"
+ ],
+ "Vengeance of the Wild": [
+  "Druid"
+ ],
+ "Venom of the Snake": [
+  "Necromancer",
+  "Shaman"
+ ],
+ "Verses of Victory": [
+  "Bard"
+ ],
+ "Vexing Mordinia": [
+  "Necromancer"
+ ],
+ "Vigilant Spirit": [
+  "Shaman"
+ ],
+ "Vigor of Zehkes": [
+  "Beastlord"
+ ],
+ "Vilia's Chorus of Celerity": [
+  "Bard"
+ ],
+ "Vilia's Verses of Celerity": [
+  "Bard"
+ ],
+ "Vision": [
+  "Shaman"
+ ],
+ "Vision Shift": [
+  "Wizard"
+ ],
+ "Visions of Grandeur": [
+  "Enchanter"
+ ],
+ "Vocarate: Air": [
+  "Magician"
+ ],
+ "Vocarate: Earth": [
+  "Magician"
+ ],
+ "Vocarate: Fire": [
+  "Magician"
+ ],
+ "Vocarate: Water": [
+  "Magician"
+ ],
+ "Voice Graft": [
+  "Necromancer"
+ ],
+ "Voice of Darkness": [
+  "Shadow Knight"
+ ],
+ "Voice of Shadows": [
+  "Shadow Knight"
+ ],
+ "Voice of the Berserker": [
+  "Shaman"
+ ],
+ "Voltaic Draught": [
+  "Wizard"
+ ],
+ "Wake of Karana": [
+  "Druid"
+ ],
+ "Wake of Tranquility": [
+  "Cleric",
+  "Enchanter"
+ ],
+ "Wakening Lands Gate": [
+  "Wizard"
+ ],
+ "Wakening Lands Portal": [
+  "Wizard"
+ ],
+ "Walking Sleep": [
+  "Shaman"
+ ],
+ "Wandering Mind": [
+  "Enchanter"
+ ],
+ "Ward Summoned": [
+  "Cleric",
+  "Druid",
+  "Magician",
+  "Ranger"
+ ],
+ "Ward Undead": [
+  "Cleric",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight"
+ ],
+ "Ward of Alendar": [
+  "Enchanter"
+ ],
+ "Ward of Calliav": [
+  "Beastlord",
+  "Magician",
+  "Necromancer"
+ ],
+ "Ward of Calrena": [
+  "Wizard"
+ ],
+ "Ward of Vie": [
+  "Cleric"
+ ],
+ "Ward of the Divine": [
+  "Cleric"
+ ],
+ "Wave of Enfeeblement": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Wave of Fear": [
+  "Cleric"
+ ],
+ "Wave of Healing": [
+  "Paladin"
+ ],
+ "Wave of Life": [
+  "Paladin"
+ ],
+ "Weaken": [
+  "Enchanter"
+ ],
+ "Weakness": [
+  "Enchanter"
+ ],
+ "West Commons Gate": [
+  "Wizard"
+ ],
+ "West Commons Portal": [
+  "Wizard"
+ ],
+ "West Gate": [
+  "Wizard"
+ ],
+ "West Karana Gate": [
+  "Wizard"
+ ],
+ "West Karana Portal": [
+  "Wizard"
+ ],
+ "West Portal": [
+  "Wizard"
+ ],
+ "Whirl Till You Hurl": [
+  "Enchanter"
+ ],
+ "Whirling Wind": [
+  "Druid"
+ ],
+ "Wild Spirit": [
+  "Beastlord"
+ ],
+ "Wildfire": [
+  "Druid"
+ ],
+ "Wind of Tashani": [
+  "Enchanter"
+ ],
+ "Wind of Tishanian": [
+  "Enchanter"
+ ],
+ "Wind of the North": [
+  "Druid"
+ ],
+ "Wind of the South": [
+  "Druid"
+ ],
+ "Winds of Gelid": [
+  "Wizard"
+ ],
+ "Winged Death": [
+  "Druid"
+ ],
+ "Winter's Roar": [
+  "Shaman"
+ ],
+ "Wolf Form": [
+  "Druid",
+  "Ranger"
+ ],
+ "Wonderous Rapidity": [
+  "Enchanter"
+ ],
+ "Word Divine": [
+  "Cleric"
+ ],
+ "Word of Healing": [
+  "Cleric"
+ ],
+ "Word of Health": [
+  "Cleric"
+ ],
+ "Word of Pain": [
+  "Cleric"
+ ],
+ "Word of Redemption": [
+  "Cleric"
+ ],
+ "Word of Restoration": [
+  "Cleric"
+ ],
+ "Word of Shadow": [
+  "Cleric",
+  "Necromancer"
+ ],
+ "Word of Souls": [
+  "Cleric",
+  "Necromancer"
+ ],
+ "Word of Spirit": [
+  "Cleric",
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Word of Vigor": [
+  "Cleric"
+ ],
+ "Wrath": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Wrath of Ap'Sagor": [
+  "Wizard"
+ ],
+ "Wrath of Nature": [
+  "Druid"
+ ],
+ "Wrath of the Elements": [
+  "Magician"
+ ],
+ "Yaulp": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Yaulp II": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Yaulp III": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Yegoreff's Animation": [
+  "Enchanter"
+ ],
+ "Yekan's Quickening": [
+  "Beastlord"
+ ],
+ "Yekan's Recovery": [
+  "Beastlord"
+ ],
+ "Yonder": [
+  "Wizard"
+ ],
+ "Zephyr: Butcherblock": [
+  "Druid"
+ ],
+ "Zephyr: Feerrott": [
+  "Druid"
+ ],
+ "Zephyr: Lavastorm": [
+  "Druid"
+ ],
+ "Zephyr: Misty Thicket": [
+  "Druid"
+ ],
+ "Zephyr: North Karana": [
+  "Druid"
+ ],
+ "Zephyr: South Ro": [
+  "Druid"
+ ],
+ "Zephyr: Steamfont": [
+  "Druid"
+ ],
+ "Zephyr: Stonebrunt": [
+  "Druid"
+ ],
+ "Zephyr: Surefall Glade": [
+  "Druid"
+ ],
+ "Zephyr: Toxxulia": [
+  "Druid"
+ ],
+ "Zephyr: West Commons": [
+  "Druid"
+ ],
+ "Zumaik`s Animation": [
+  "Enchanter"
+ ],
+ "siphon strength recourse": [
+  "Shadow Knight"
+ ]
+}

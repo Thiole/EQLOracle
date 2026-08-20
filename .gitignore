@@ -1,2 +1,8 @@
 /target
 /crates/app/gen
+
+# Real personal combat logs dropped at the repo root for local testing
+# convenience -- 185MB+, never meant to ship in git history. The small,
+# deliberately-checked-in fixture lives at fixtures/reference-slice.log
+# instead.
+/eqlog_*.txt

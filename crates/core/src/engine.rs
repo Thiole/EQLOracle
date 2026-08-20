@@ -40,8 +40,8 @@ pub struct Engine {
 
 impl Engine {
     pub fn build(pack: &ResolvedPack) -> Result<Engine, PackError> {
-        let hdr = header::by_name(&pack.header)
-            .unwrap_or_else(|| Box::new(crate::header::BracketCtime));
+        let hdr =
+            header::by_name(&pack.header).unwrap_or_else(|| Box::new(crate::header::BracketCtime));
 
         let mut rules: Vec<CompiledRule> = Vec::with_capacity(pack.rules.len());
         let mut anchor_literals: Vec<String> = Vec::new();
@@ -158,7 +158,10 @@ impl Engine {
         &self.rules[i as usize]
     }
     pub fn find_rule(&self, id: &str) -> Option<RuleIdx> {
-        self.rules.iter().position(|r| r.id == id).map(|i| i as RuleIdx)
+        self.rules
+            .iter()
+            .position(|r| r.id == id)
+            .map(|i| i as RuleIdx)
     }
     pub fn header_name(&self) -> &'static str {
         self.header.name()
@@ -167,7 +170,11 @@ impl Engine {
     /// One matcher per thread. Holds the mutable scratch that keeps the hot
     /// path allocation-free; `Engine` itself is immutable and shareable.
     pub fn matcher(&self) -> Matcher<'_> {
-        let locs = self.rules.iter().map(|r| r.re.capture_locations()).collect();
+        let locs = self
+            .rules
+            .iter()
+            .map(|r| r.re.capture_locations())
+            .collect();
         Matcher {
             eng: self,
             hits: vec![0u16; self.rules.len()],
@@ -239,7 +246,11 @@ impl<'e> Matcher<'e> {
 
         let (ts, off) = match self.eng.header.parse(line) {
             Some(x) => x,
-            None => return Outcome::Headerless { body: Span::new(0, line.len()) },
+            None => {
+                return Outcome::Headerless {
+                    body: Span::new(0, line.len()),
+                }
+            }
         };
         let body = &line[off..];
         let body_span = Span::new(off, line.len());
@@ -280,7 +291,10 @@ impl<'e> Matcher<'e> {
             }
         }
 
-        Outcome::Unmatched { ts, body: body_span }
+        Outcome::Unmatched {
+            ts,
+            body: body_span,
+        }
     }
 
     /// Which rules are worth running a regex for. Fills `self.cands` in

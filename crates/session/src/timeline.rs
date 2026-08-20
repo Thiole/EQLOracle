@@ -87,11 +87,21 @@ impl Timeline {
     }
 
     pub fn observed(&mut self, ts: Millis, entity: u32, state: State) {
-        self.push(Transition { ts, entity, state, cause: Cause::Observed });
+        self.push(Transition {
+            ts,
+            entity,
+            state,
+            cause: Cause::Observed,
+        });
     }
 
     pub fn inferred(&mut self, ts: Millis, entity: u32, state: State) {
-        self.push(Transition { ts, entity, state, cause: Cause::Inferred });
+        self.push(Transition {
+            ts,
+            entity,
+            state,
+            cause: Cause::Inferred,
+        });
     }
 
     /// State of `entity` at `ts` — the last transition at or before it.
@@ -114,7 +124,9 @@ impl Timeline {
         entities
             .iter()
             .map(|&e| {
-                let (s, c) = self.state_at(e, ts).unwrap_or((State::Engaged, Cause::Inferred));
+                let (s, c) = self
+                    .state_at(e, ts)
+                    .unwrap_or((State::Engaged, Cause::Inferred));
                 (e, s, c)
             })
             .collect()
@@ -122,7 +134,9 @@ impl Timeline {
 
     /// Whether any entity is still in combat at `ts`. Mezzed counts.
     pub fn any_in_combat(&self, entities: &[u32], ts: Millis) -> bool {
-        self.snapshot(entities, ts).iter().any(|(_, s, _)| s.in_combat())
+        self.snapshot(entities, ts)
+            .iter()
+            .any(|(_, s, _)| s.in_combat())
     }
 
     /// Transitions inside a window, for drawing markers on a scrub bar.
@@ -133,7 +147,10 @@ impl Timeline {
     }
 
     pub fn transitions_of(&self, entity: u32) -> &[Transition] {
-        self.by_entity.get(&entity).map(|v| v.as_slice()).unwrap_or(&[])
+        self.by_entity
+            .get(&entity)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 
     pub fn len(&self) -> usize {
@@ -167,14 +184,24 @@ impl Bucket {
 /// `ts` and `amount` must be the same length and `ts` ascending. Empty buckets
 /// are emitted rather than skipped: a gap in a fight is information, and a
 /// series with holes cannot be plotted against a linear axis.
-pub fn series(ts: &[Millis], amount: &[u64], from: Millis, to: Millis, width_ms: Millis) -> Vec<Bucket> {
+pub fn series(
+    ts: &[Millis],
+    amount: &[u64],
+    from: Millis,
+    to: Millis,
+    width_ms: Millis,
+) -> Vec<Bucket> {
     let width = width_ms.max(1);
     if to < from {
         return Vec::new();
     }
     let n = ((to - from) / width + 1) as usize;
     let mut out: Vec<Bucket> = (0..n)
-        .map(|i| Bucket { start_ms: from + i as i64 * width, total: 0, events: 0 })
+        .map(|i| Bucket {
+            start_ms: from + i as i64 * width,
+            total: 0,
+            events: 0,
+        })
         .collect();
     for (&t, &a) in ts.iter().zip(amount) {
         if t < from || t > to {
@@ -188,4 +215,3 @@ pub fn series(ts: &[Millis], amount: &[u64], from: Millis, to: Millis, width_ms:
     }
     out
 }
-

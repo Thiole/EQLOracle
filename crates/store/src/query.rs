@@ -20,18 +20,37 @@ pub struct Filter {
     pub tags_any: Tags,
     pub since_ms: Option<Millis>,
     pub until_ms: Option<Millis>,
+    /// Zone difficulty tier (0-4) a row was recorded at -- see
+    /// `Store::tier`'s doc for why this is an opaque app-supplied byte
+    /// rather than anything `eqlp-store` interprets.
+    pub tier: Option<u8>,
 }
 
 impl Filter {
     pub fn encounter(id: EncounterId) -> Self {
-        Filter { encounter: Some(id), ..Default::default() }
+        Filter {
+            encounter: Some(id),
+            ..Default::default()
+        }
     }
     pub fn damage(mut self) -> Self {
         self.kind = Some(EventKind::Damage);
         self
     }
+    pub fn kind(mut self, kind: EventKind) -> Self {
+        self.kind = Some(kind);
+        self
+    }
     pub fn by(mut self, actor: Sym) -> Self {
         self.actor = Some(actor);
+        self
+    }
+    pub fn target(mut self, target: Sym) -> Self {
+        self.target = Some(target);
+        self
+    }
+    pub fn tier(mut self, tier: u8) -> Self {
+        self.tier = Some(tier);
         self
     }
     pub fn window(mut self, since: Millis, until: Millis) -> Self {
@@ -57,15 +76,55 @@ pub struct AbilityRow {
     /// Hits at or within 1.5% of the ability's observed ceiling.
     pub full_power: u64,
     pub crits: u64,
+    /// Sum of just the crit hits' own damage -- `total - crit_total` is
+    /// the non-crit sum, `crit_total / crits` the average crit. Kept
+    /// separate from `total` rather than derived from `max`/`crits` alone
+    /// because a row can have several distinct crit values, not one.
+    pub crit_total: u64,
+    /// Swings of this same ability (`Punch`, `Slash`, ...) that dealt zero
+    /// damage because the target fully avoided them -- broken out by how,
+    /// not folded into `hits`/`total`/`min`/`max`, which stay exactly
+    /// "landed swings only" the same way they always have. See
+    /// `flag::MITIGATED`'s own doc for why this lives on the *same*
+    /// ability row rather than a separate synthetic one.
+    pub missed: u64,
+    pub blocked: u64,
+    pub dodged: u64,
+    pub parried: u64,
     pub flags: Flags,
 }
 
 impl AbilityRow {
+    /// Every swing attempted against/by this ability, landed or not --
+    /// the honest denominator for a real hit rate (`hits as f64 /
+    /// attempts as f64`), not `hits` alone.
+    pub fn attempts(&self) -> u64 {
+        self.hits + self.missed + self.blocked + self.dodged + self.parried
+    }
     pub fn mean(&self) -> f64 {
         if self.hits == 0 {
             0.0
         } else {
             self.total as f64 / self.hits as f64
+        }
+    }
+    /// Average of just the non-crit hits. Falls back to the overall mean
+    /// when every hit crit (or there's no crit tracking for this row --
+    /// see `by_target_and_ability`'s doc) so callers never divide by zero.
+    pub fn avg_normal(&self) -> f64 {
+        let normal_hits = self.hits.saturating_sub(self.crits);
+        if normal_hits == 0 {
+            self.mean()
+        } else {
+            (self.total - self.crit_total) as f64 / normal_hits as f64
+        }
+    }
+    /// Average of just the crit hits. Zero when this ability never crit.
+    pub fn avg_crit(&self) -> f64 {
+        if self.crits == 0 {
+            0.0
+        } else {
+            self.crit_total as f64 / self.crits as f64
         }
     }
     pub fn dps(&self, dur_ms: Millis) -> f64 {
@@ -110,6 +169,11 @@ fn keep(store: &Store, i: usize, f: &Filter) -> bool {
     }
     if let Some(t) = f.target {
         if store.target[i] != t {
+            return false;
+        }
+    }
+    if let Some(t) = f.tier {
+        if store.tier[i] != t {
             return false;
         }
     }
@@ -158,15 +222,34 @@ pub fn by_ability(store: &Store, f: &Filter) -> Vec<AbilityRow> {
             max: 0,
             full_power: 0,
             crits: 0,
+            crit_total: 0,
+            missed: 0,
+            blocked: 0,
+            dodged: 0,
+            parried: 0,
             flags: 0,
         });
-        r.total += amt;
-        r.hits += 1;
-        r.min = r.min.min(amt);
-        r.max = r.max.max(amt);
         r.flags |= fl;
-        if fl & crate::store::flag::CRITICAL != 0 {
-            r.crits += 1;
+        // A fully-mitigated swing (see `flag::MITIGATED`'s own doc) never
+        // landed -- counted by how, kept out of hits/total/min/max, which
+        // stay "landed swings only" exactly as before this existed.
+        if fl & crate::store::flag::MISSED != 0 {
+            r.missed += 1;
+        } else if fl & crate::store::flag::BLOCKED != 0 {
+            r.blocked += 1;
+        } else if fl & crate::store::flag::DODGED != 0 {
+            r.dodged += 1;
+        } else if fl & crate::store::flag::PARRIED != 0 {
+            r.parried += 1;
+        } else {
+            r.total += amt;
+            r.hits += 1;
+            r.min = r.min.min(amt);
+            r.max = r.max.max(amt);
+            if fl & crate::store::flag::CRITICAL != 0 {
+                r.crits += 1;
+                r.crit_total += amt;
+            }
         }
     }
     // Second pass, once over the range rather than once per row. Doing this
@@ -198,6 +281,63 @@ pub fn by_ability(store: &Store, f: &Filter) -> Vec<AbilityRow> {
     }
     v.sort_by(|a, b| b.total.cmp(&a.total));
     v
+}
+
+/// Every row of one `kind`, grouped by `target` and then by `ability`, in a
+/// single O(store length) pass -- regardless of how many distinct targets
+/// exist. Exists for callers that need a breakdown "per target" over the
+/// *whole* store (every mob type's loot, say): calling `by_ability` once
+/// per target with a `.target(sym)` filter would cost one full store scan
+/// *per target*, turning an O(n) question into O(targets * n) -- fine for
+/// one target, a real cost once there are hundreds (`crate` doesn't gate
+/// this behind `Filter` the way `by_ability` does, since "every target at
+/// once" is a different access pattern, not another predicate to combine).
+///
+/// `full_power`/`crits`/`crit_total`/`missed`/`blocked`/`dodged`/`parried`
+/// are left at their zero defaults: nothing that calls this needs them
+/// (they exist so `AbilityRow` doesn't need two shapes), and computing
+/// `full_power` needs the ceiling-based second pass `by_ability` does,
+/// which would reintroduce the same per-target cost this function exists
+/// to avoid.
+pub fn by_target_and_ability(store: &Store, kind: EventKind) -> HashMap<Sym, Vec<AbilityRow>> {
+    let mut acc: HashMap<(Sym, AbilityId), AbilityRow> = HashMap::new();
+    for i in 0..store.len() {
+        if store.kind[i] != kind {
+            continue;
+        }
+        let key = (store.target[i], store.ability[i]);
+        let amt = store.amount[i];
+        let r = acc.entry(key).or_insert(AbilityRow {
+            ability: store.ability[i],
+            tags: store.abilities.tags(store.ability[i]),
+            total: 0,
+            hits: 0,
+            min: u64::MAX,
+            max: 0,
+            full_power: 0,
+            crits: 0,
+            crit_total: 0,
+            missed: 0,
+            blocked: 0,
+            dodged: 0,
+            parried: 0,
+            flags: 0,
+        });
+        r.total += amt;
+        r.hits += 1;
+        r.min = r.min.min(amt);
+        r.max = r.max.max(amt);
+        r.flags |= store.flags[i];
+    }
+
+    let mut by_target: HashMap<Sym, Vec<AbilityRow>> = HashMap::new();
+    for ((target, _ability), mut row) in acc {
+        if row.min == u64::MAX {
+            row.min = 0;
+        }
+        by_target.entry(target).or_default().push(row);
+    }
+    by_target
 }
 
 /// Roll an ability breakdown up by mechanism. Derived from the same rows, so it

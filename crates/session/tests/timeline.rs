@@ -30,10 +30,18 @@ fn state_is_queryable_at_any_instant() {
     t.observed(9_000, 7, State::Dead);
 
     assert_eq!(t.state_at(7, 0), None, "before any evidence");
-    assert_eq!(t.state_at(7, 1_000).unwrap().0, State::Mezzed, "inclusive at the instant");
+    assert_eq!(
+        t.state_at(7, 1_000).unwrap().0,
+        State::Mezzed,
+        "inclusive at the instant"
+    );
     assert_eq!(t.state_at(7, 4_999).unwrap().0, State::Mezzed);
     assert_eq!(t.state_at(7, 5_000).unwrap().0, State::Engaged);
-    assert_eq!(t.state_at(7, 100_000).unwrap().0, State::Dead, "holds after the last");
+    assert_eq!(
+        t.state_at(7, 100_000).unwrap().0,
+        State::Dead,
+        "holds after the last"
+    );
 }
 
 #[test]
@@ -44,8 +52,13 @@ fn scrubbing_backwards_gives_the_same_answer_as_forwards() {
     t.observed(1_000, 7, State::Mezzed);
     t.observed(5_000, 7, State::Engaged);
     t.observed(9_000, 7, State::Dead);
-    let fwd: Vec<_> = (0..12).map(|i| t.state_at(7, i * 1000).map(|x| x.0)).collect();
-    let back: Vec<_> = (0..12).rev().map(|i| t.state_at(7, i * 1000).map(|x| x.0)).collect();
+    let fwd: Vec<_> = (0..12)
+        .map(|i| t.state_at(7, i * 1000).map(|x| x.0))
+        .collect();
+    let back: Vec<_> = (0..12)
+        .rev()
+        .map(|i| t.state_at(7, i * 1000).map(|x| x.0))
+        .collect();
     assert_eq!(fwd, back.into_iter().rev().collect::<Vec<_>>());
 }
 
@@ -53,7 +66,7 @@ fn scrubbing_backwards_gives_the_same_answer_as_forwards() {
 fn out_of_order_arrival_does_not_corrupt_the_order() {
     let mut t = Timeline::default();
     t.observed(9_000, 7, State::Dead);
-    t.observed(1_000, 7, State::Mezzed);   // late line
+    t.observed(1_000, 7, State::Mezzed); // late line
     t.observed(5_000, 7, State::Engaged);
     assert_eq!(t.state_at(7, 2_000).unwrap().0, State::Mezzed);
     assert_eq!(t.state_at(7, 6_000).unwrap().0, State::Engaged);
@@ -69,15 +82,18 @@ fn inferred_transitions_are_marked_as_such() {
     t.observed(1_000, 7, State::Engaged);
     t.inferred(20_000, 7, State::Lost);
     assert_eq!(t.state_at(7, 25_000), Some((State::Lost, Cause::Inferred)));
-    assert_eq!(t.state_at(7, 1_500), Some((State::Engaged, Cause::Observed)));
+    assert_eq!(
+        t.state_at(7, 1_500),
+        Some((State::Engaged, Cause::Observed))
+    );
 }
 
 #[test]
 fn snapshot_covers_both_sides_of_a_fight() {
     let mut t = Timeline::default();
-    t.observed(1_000, 1, State::Mezzed);   // a mob
-    t.observed(2_000, 2, State::Dead);     // another mob
-    // entity 3 has no transitions: seen fighting, nothing changed
+    t.observed(1_000, 1, State::Mezzed); // a mob
+    t.observed(2_000, 2, State::Dead); // another mob
+                                       // entity 3 has no transitions: seen fighting, nothing changed
     let snap = t.snapshot(&[1, 2, 3], 5_000);
     assert_eq!(snap.len(), 3);
     assert_eq!(snap[0].1, State::Mezzed);

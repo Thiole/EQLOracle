@@ -1,0 +1,414 @@
+Location	Name	ID	Count	Slots
+Any Slot	Bloodstar Pendant +5	1536	1	10
+Any Slot-Slot7	Empty	0	0	0
+Any Slot-Slot8	Empty	0	0	0
+Any Slot-Slot9	Empty	0	0	0
+Any Slot-Slot10	Empty	0	0	0
+Ear	Ornament of the Oracle +4	177866	1	10
+Ear-Slot7	Empty	0	0	0
+Ear-Slot8	Empty	0	0	0
+Ear-Slot9	Empty	0	0	0
+Ear-Slot10	Empty	0	0	0
+Head	Midnight Clad Headband +1	177801	1	10
+Head-Slot1	Empty	0	0	0
+Head-Slot7	Empty	0	0	0
+Face	Tobrin's Mystical Eyepatch +1	11052	1	10
+Face-Slot7	Empty	0	0	0
+Ear	Drop of Crystallized Flame +4	177839	1	10
+Ear-Slot7	Empty	0	0	0
+Ear-Slot8	Empty	0	0	0
+Ear-Slot9	Empty	0	0	0
+Ear-Slot10	Empty	0	0	0
+Neck	Talisman of Kejaar Kerrath +7	177931	1	10
+Neck-Slot1	Empty	0	0	0
+Neck-Slot7	Black Alloy Medallion (Exaltation)	3615	1	10
+Neck-Slot8	Empty	0	0	0
+Neck-Slot9	Empty	0	0	0
+Neck-Slot10	Empty	0	0	0
+Shoulders	Pauldrons of Power +5	1542	1	10
+Shoulders-Slot7	Empty	0	0	0
+Shoulders-Slot8	Empty	0	0	0
+Shoulders-Slot9	Empty	0	0	0
+Shoulders-Slot10	Empty	0	0	0
+Arms	Insidious Sleeves +4	1248	1	10
+Arms-Slot2	Empty	0	0	0
+Arms-Slot7	Empty	0	0	0
+Arms-Slot8	Empty	0	0	0
+Arms-Slot9	Empty	0	0	0
+Arms-Slot10	Empty	0	0	0
+Back	White Dragonscale Cloak +4	11603	1	10
+Back-Slot7	White Dragonscale Cloak (Exaltation)	11603	1	10
+Back-Slot8	Empty	0	0	0
+Back-Slot9	Empty	0	0	0
+Back-Slot10	Empty	0	0	0
+Wrist	Loam Encrusted Bracelet +2	1649	1	10
+Wrist-Slot2	Empty	0	0	0
+Wrist-Slot7	Empty	0	0	0
+Wrist-Slot8	Empty	0	0	0
+Wrist	Golden Chitin Bracer +3	4408	1	10
+Wrist-Slot2	Empty	0	0	0
+Wrist-Slot7	Empty	0	0	0
+Wrist-Slot8	Empty	0	0	0
+Wrist-Slot9	Empty	0	0	0
+Range	The Artist's Brush +5	177843	1	10
+Range-Slot1	Empty	0	0	0
+Range-Slot7	The Artist's Brush (Exaltation)	177843	1	10
+Range-Slot8	Empty	0	0	0
+Range-Slot9	Empty	0	0	0
+Range-Slot10	Empty	0	0	0
+Hands	Midnight Clad Fistwraps	177798	1	10
+Hands-Slot1	Empty	0	0	0
+Primary	Eye of Innoruuk +6	20656	1	10
+Primary-Slot7	Empty	0	0	0
+Primary-Slot8	Golem Metal Wand (Exaltation)	14313	1	10
+Primary-Slot9	Empty	0	0	0
+Primary-Slot10	Empty	0	0	0
+Secondary	Rokyls Channelling Crystal +5	10219	1	10
+Secondary-Slot2	Empty	0	0	0
+Secondary-Slot7	Rokyls Channelling Crystal (Exaltation)	10219	1	10
+Secondary-Slot8	Empty	0	0	0
+Secondary-Slot9	Empty	0	0	0
+Secondary-Slot10	Empty	0	0	0
+Fingers	Ring of Pureblood +4	1540	1	10
+Fingers-Slot7	Djarn's Amethyst Ring (Exaltation)	10366	1	10
+Fingers-Slot8	Empty	0	0	0
+Fingers-Slot9	Empty	0	0	0
+Fingers-Slot10	Empty	0	0	0
+Fingers	Engineer's Ring +5	1545	1	10
+Fingers-Slot7	Moonstone Ring (Exaltation)	10150	1	10
+Fingers-Slot8	Empty	0	0	0
+Fingers-Slot9	Empty	0	0	0
+Fingers-Slot10	Empty	0	0	0
+Chest	Crimson Robe of Alendine +5	11641	1	10
+Chest-Slot2	Empty	0	0	0
+Chest-Slot7	Shining Metallic Robes (Exaltation)	1360	1	10
+Chest-Slot8	Empty	0	0	0
+Chest-Slot9	Empty	0	0	0
+Chest-Slot10	Empty	0	0	0
+Legs	Ishva Mas Leggings +3	177924	1	10
+Legs-Slot7	Ishva Mas Leggings (Exaltation)	177924	1	10
+Legs-Slot8	Empty	0	0	0
+Legs-Slot9	Empty	0	0	0
+Feet	Golden Efreeti Boots +6	4407	1	10
+Feet-Slot2	Empty	0	0	0
+Feet-Slot7	Golden Efreeti Boots (Exaltation)	4407	1	10
+Feet-Slot8	Empty	0	0	0
+Feet-Slot9	Empty	0	0	0
+Feet-Slot10	Empty	0	0	0
+Waist	Bone-Clasped Girdle +4	11666	1	10
+Waist-Slot7	Empty	0	0	0
+Waist-Slot8	Empty	0	0	0
+Waist-Slot9	Empty	0	0	0
+Waist-Slot10	Empty	0	0	0
+Any Slot	Crimson Robe of Alendine +5	11641	1	10
+Any Slot-Slot2	Empty	0	0	0
+Any Slot-Slot7	Robe of the Oracle (Exaltation)	1354	1	10
+Any Slot-Slot8	Empty	0	0	0
+Any Slot-Slot9	Empty	0	0	0
+Any Slot-Slot10	Empty	0	0	0
+Ammo	Empty	0	0	0
+General 1	Spacious Rucksack	177751	1	24
+General 1-Slot1	Black Sapphire Platinum Necklace	14703	1	10
+General 1-Slot2	Platinum Bar	16503	3	10
+General 1-Slot3	Iron Ration	13005	42	10
+General 1-Slot4	Lava Rock	22521	1	10
+General 1-Slot5	Enchanted Electrum Bar	16505	3	10
+General 1-Slot6	Electrum Bar	16501	80	10
+General 1-Slot7	Fire Opal	10031	6	10
+General 1-Slot8	Prismatic Shield +1	9405	1	10
+General 1-Slot8-Slot2	Empty	0	0	0
+General 1-Slot8-Slot7	Empty	0	0	0
+General 1-Slot9	Dwarven Wire	12111	180	10
+General 1-Slot10	Apothic Sleeves +4	1241	1	10
+General 1-Slot10-Slot2	Empty	0	0	0
+General 1-Slot10-Slot7	Empty	0	0	0
+General 1-Slot10-Slot8	Empty	0	0	0
+General 1-Slot10-Slot9	Empty	0	0	0
+General 1-Slot10-Slot10	Empty	0	0	0
+General 1-Slot11	White Dragon Scales	11602	1	10
+General 1-Slot12	Enchanted Electrum Bar	16505	12	10
+General 1-Slot13	Iron Ration	13005	100	10
+General 1-Slot14	Savant's Cap +4	1302	1	10
+General 1-Slot14-Slot2	Empty	0	0	0
+General 1-Slot14-Slot7	Empty	0	0	0
+General 1-Slot14-Slot8	Empty	0	0	0
+General 1-Slot14-Slot9	Empty	0	0	0
+General 1-Slot14-Slot10	Empty	0	0	0
+General 1-Slot15	Shrieking Ahlspiess	7507	1	10
+General 1-Slot15-Slot2	Empty	0	0	0
+General 1-Slot16	Black Sapphire	10036	17	10
+General 1-Slot17	Rod of Infinite Thought +4	11574	1	10
+General 1-Slot17-Slot2	Empty	0	0	0
+General 1-Slot17-Slot7	Empty	0	0	0
+General 1-Slot17-Slot8	Rod of Infinite Thought (Exaltation)	11574	1	10
+General 1-Slot17-Slot9	Empty	0	0	0
+General 1-Slot17-Slot10	Empty	0	0	0
+General 1-Slot18	Bone Chips	13073	114	10
+General 1-Slot19	Warbone Chips	16535	11	10
+General 1-Slot20	Polished Brass Key	20632	1	10
+General 1-Slot21	Blood Fire +1	11645	1	10
+General 1-Slot21-Slot2	Empty	0	0	0
+General 1-Slot21-Slot7	Empty	0	0	0
+General 1-Slot22	Soul Leech, Dark Sword of Blood	11609	1	10
+General 1-Slot22-Slot2	Empty	0	0	0
+General 1-Slot23	Short Sword of the Ykesha +4	5500	1	10
+General 1-Slot23-Slot2	Empty	0	0	0
+General 1-Slot23-Slot7	Empty	0	0	0
+General 1-Slot23-Slot8	Empty	0	0	0
+General 1-Slot23-Slot9	Empty	0	0	0
+General 1-Slot23-Slot10	Short Sword of the Ykesha (Exaltation)	5500	1	10
+General 1-Slot24	Black Sapphire Platinum Necklace	14703	1	10
+General 2	Backpack*	32601	1	8
+General 2-Slot1	Triumphant Mask +4	1539	1	10
+General 2-Slot1-Slot7	Empty	0	0	0
+General 2-Slot1-Slot8	Empty	0	0	0
+General 2-Slot1-Slot9	Empty	0	0	0
+General 2-Slot1-Slot10	Empty	0	0	0
+General 2-Slot2	Wand of Allure +3	12507	1	10
+General 2-Slot2-Slot7	Empty	0	0	0
+General 2-Slot2-Slot9	Empty	0	0	0
+General 2-Slot3	Eye of Innoruuk +4	20656	1	10
+General 2-Slot3-Slot7	Empty	0	0	0
+General 2-Slot3-Slot8	Eye of Innoruuk (Exaltation)	20656	1	10
+General 2-Slot3-Slot9	Empty	0	0	0
+General 2-Slot3-Slot10	Empty	0	0	0
+General 2-Slot4	Tiny Dagger	13080	45	10
+General 2-Slot5	Green Silken Drape +4	1412	1	10
+General 2-Slot5-Slot2	Empty	0	0	0
+General 2-Slot5-Slot7	Empty	0	0	0
+General 2-Slot5-Slot8	Empty	0	0	0
+General 2-Slot5-Slot9	Empty	0	0	0
+General 2-Slot5-Slot10	Empty	0	0	0
+General 2-Slot6	Velium Gemmed Rune	38709	1	10
+General 2-Slot7	Staff of Elemental Mastery: Earth +3	11567	1	10
+General 2-Slot7-Slot2	Empty	0	0	0
+General 2-Slot7-Slot7	Staff of Elemental Mastery: Earth (Exaltation)	11567	1	10
+General 2-Slot7-Slot8	Staff of Elemental Mastery: Earth (Exaltation)	11567	1	10
+General 2-Slot7-Slot9	Empty	0	0	0
+General 2-Slot8	Black Tome with Silver Runes +5	13400	1	10
+General 2-Slot8-Slot2	Empty	0	0	0
+General 2-Slot8-Slot7	Black Tome with Silver Runes (Exaltation)	13400	1	10
+General 2-Slot8-Slot8	Empty	0	0	0
+General 2-Slot8-Slot9	Empty	0	0	0
+General 2-Slot8-Slot10	Empty	0	0	0
+General 3	Spacious Rucksack	177751	1	24
+General 3-Slot1	Black Sapphire Platinum Necklace	14703	1	10
+General 3-Slot2	Golem Metal Wand +6	14313	1	10
+General 3-Slot2-Slot7	Empty	0	0	0
+General 3-Slot2-Slot8	Golem Metal Wand (Exaltation)	14313	1	10
+General 3-Slot2-Slot9	Empty	0	0	0
+General 3-Slot2-Slot10	Empty	0	0	0
+General 3-Slot3	Shield of the Stalwart Seas +3	11552	1	10
+General 3-Slot3-Slot2	Empty	0	0	0
+General 3-Slot3-Slot7	Empty	0	0	0
+General 3-Slot3-Slot8	Empty	0	0	0
+General 3-Slot3-Slot9	Empty	0	0	0
+General 3-Slot4	Rune of Ivy	10568	1	10
+General 3-Slot5	Icon of the Ardent	19004	1	10
+General 3-Slot6	Shield of the Stalwart Seas +4	11552	1	10
+General 3-Slot6-Slot2	Empty	0	0	0
+General 3-Slot6-Slot7	Empty	0	0	0
+General 3-Slot6-Slot8	Empty	0	0	0
+General 3-Slot6-Slot9	Shield of the Stalwart Seas (Exaltation)	11552	1	10
+General 3-Slot6-Slot10	Empty	0	0	0
+General 3-Slot7	Leatherfoot Sandals +4	1534	1	10
+General 3-Slot7-Slot2	Empty	0	0	0
+General 3-Slot7-Slot7	Empty	0	0	0
+General 3-Slot7-Slot8	Empty	0	0	0
+General 3-Slot7-Slot9	Empty	0	0	0
+General 3-Slot7-Slot10	Empty	0	0	0
+General 3-Slot8	Valorium Greaves +3	4856	1	10
+General 3-Slot8-Slot2	Empty	0	0	0
+General 3-Slot8-Slot7	Empty	0	0	0
+General 3-Slot8-Slot8	Empty	0	0	0
+General 3-Slot8-Slot9	Empty	0	0	0
+General 3-Slot9	Sode of Empowerment +3	11561	1	10
+General 3-Slot9-Slot7	Empty	0	0	0
+General 3-Slot9-Slot8	Empty	0	0	0
+General 3-Slot9-Slot9	Empty	0	0	0
+General 3-Slot10	Ruby	10035	3	10
+General 3-Slot11	Diamond	10037	19	10
+General 3-Slot12	Empty	0	0	0
+General 3-Slot13	Crimson Cape +4	177842	1	10
+General 3-Slot13-Slot7	Empty	0	0	0
+General 3-Slot13-Slot8	Empty	0	0	0
+General 3-Slot13-Slot9	Empty	0	0	0
+General 3-Slot13-Slot10	Empty	0	0	0
+General 3-Slot14	Wand of Conflagration	12500	1	10
+General 3-Slot15	Runed Mithril Bracer +3	4406	1	10
+General 3-Slot15-Slot2	Empty	0	0	0
+General 3-Slot15-Slot7	Empty	0	0	0
+General 3-Slot15-Slot8	Empty	0	0	0
+General 3-Slot15-Slot9	Empty	0	0	0
+General 3-Slot16	Shining Metallic Robes +4	1360	1	10
+General 3-Slot16-Slot2	Empty	0	0	0
+General 3-Slot16-Slot7	Empty	0	0	0
+General 3-Slot16-Slot8	Empty	0	0	0
+General 3-Slot16-Slot9	Empty	0	0	0
+General 3-Slot16-Slot10	Empty	0	0	0
+General 3-Slot17	Black Sapphire Platinum Necklace	14703	1	10
+General 3-Slot18	Blue Diamond	22503	6	10
+General 3-Slot19	Empty	0	0	0
+General 3-Slot20	Empty	0	0	0
+General 3-Slot21	Empty	0	0	0
+General 3-Slot22	Empty	0	0	0
+General 3-Slot23	Empty	0	0	0
+General 3-Slot24	Platinum Diamond Wedding Ring	14707	1	10
+General 4	Jeweler's Kit	17912	1	4
+General 4-Slot1	Cracked Glass Key	20634	1	10
+General 4-Slot2	Black Sapphire Platinum Necklace	14703	1	10
+General 4-Slot3	Black Sapphire Platinum Necklace	14703	1	10
+General 4-Slot4	Efreeti's Key	20919	1	10
+General 5	Darkwood Trunk	17703	1	10
+General 5-Slot1	Black Sapphire Platinum Necklace	14703	1	10
+General 5-Slot2	Black Sapphire Platinum Necklace	14703	1	10
+General 5-Slot3	Empty	0	0	0
+General 5-Slot4	Empty	0	0	0
+General 5-Slot5	Empty	0	0	0
+General 5-Slot6	Empty	0	0	0
+General 5-Slot7	Empty	0	0	0
+General 5-Slot8	Black Sapphire Platinum Necklace	14703	1	10
+General 5-Slot9	Black Sapphire Platinum Necklace	14703	1	10
+General 5-Slot10	Black Sapphire Platinum Necklace	14703	1	10
+General 6	Backpack	17005	1	8
+General 6-Slot1	Smoked Glass Key	20363	1	10
+General 6-Slot2	Splintered Wooden Key	20361	1	10
+General 6-Slot3	Charred Bone Key	20362	1	10
+General 6-Slot4	Guard's Keyring	20443	1	10
+General 6-Slot5	Shiny Metal Key	20441	1	10
+General 6-Slot6	Golden Crescent Key	20445	1	10
+General 6-Slot7	Crushbone Fetish	177865	1	10
+General 6-Slot7-Slot1	Empty	0	0	0
+General 6-Slot8	Platinum Diamond Wedding Ring	14707	1	10
+General 7	Backpack	17005	1	8
+General 7-Slot1	Black Sapphire Platinum Necklace	14703	1	10
+General 7-Slot2	Bloodstained Key	20444	1	10
+General 7-Slot3	Abandoned Orc Shovel	12278	1	10
+General 7-Slot3-Slot2	Empty	0	0	0
+General 7-Slot4	Enchanted Platinum Bar	16507	18	10
+General 7-Slot5	Platinum Blue Diamond Tiara	30367	1	10
+General 7-Slot5-Slot2	Empty	0	0	0
+General 7-Slot6	Black Sapphire Platinum Necklace	14703	1	10
+General 7-Slot7	Black Sapphire Platinum Necklace	14703	1	10
+General 7-Slot8	Black Sapphire Platinum Necklace	14703	1	10
+General 8	Kavruul`s Mystic Pouch	17701	1	10
+General 8-Slot1	Empty	0	0	0
+General 8-Slot2	Empty	0	0	0
+General 8-Slot3	Ball of Golem Clay	14315	1	10
+General 8-Slot4	Malachite	10015	68	10
+General 8-Slot5	Journeyman's Boots +4	2300	1	10
+General 8-Slot5-Slot2	Empty	0	0	0
+General 8-Slot5-Slot7	Empty	0	0	0
+General 8-Slot5-Slot8	Empty	0	0	0
+General 8-Slot5-Slot9	Empty	0	0	0
+General 8-Slot5-Slot10	Empty	0	0	0
+General 8-Slot6	Box of the Void	17100	1	2
+General 8-Slot6-Slot1	Empty	0	0	0
+General 8-Slot6-Slot2	Empty	0	0	0
+General 8-Slot7	Turquoise	10017	1	10
+General 8-Slot8	Empty	0	0	0
+General 8-Slot9	Bottle of Milk	13087	8	10
+General 8-Slot10	Jade Inlaid Coffin	17355	1	2
+General 8-Slot10-Slot1	Empty	0	0	0
+General 8-Slot10-Slot2	Empty	0	0	0
+General 9	Empty	0	0	0
+General 10	Empty	0	0	0
+General 11	Empty	0	0	0
+General 12	Empty	0	0	0
+Held	Empty	0	0	0
+Bank1	Shattered Emerald of Corruption	20484	1	10
+Bank2	Empty	0	0	0
+Bank3	Empty	0	0	0
+Bank4	Empty	0	0	0
+Bank5	Empty	0	0	0
+Bank6	Empty	0	0	0
+Bank7	Empty	0	0	0
+Bank8	Empty	0	0	0
+Bank9	Empty	0	0	0
+Bank10	Empty	0	0	0
+Bank11	Empty	0	0	0
+Bank12	Empty	0	0	0
+Bank13	Empty	0	0	0
+Bank14	Empty	0	0	0
+Bank15	Empty	0	0	0
+Bank16	Empty	0	0	0
+Bank17	Empty	0	0	0
+Bank18	Empty	0	0	0
+Bank19	Empty	0	0	0
+Bank20	Empty	0	0	0
+Bank21	Empty	0	0	0
+Bank22	Empty	0	0	0
+Bank23	Empty	0	0	0
+Bank24	Empty	0	0	0
+SharedBank1	Empty	0	0	0
+SharedBank2	Empty	0	0	0
+SharedBank3	Empty	0	0	0
+SharedBank4	Empty	0	0	0
+SharedBank5	Empty	0	0	0
+SharedBank6	Empty	0	0	0
+
+KeyRing	Name	ID	
+Augmentation	Eye of Innoruuk (Exaltation)	20656
+Augmentation	Bone-Clasped Girdle (Exaltation)	11666
+Augmentation	Green Silken Drape (Exaltation)	1412
+Augmentation	Minotaur Horn (Exaltation)	13077
+Augmentation	Journeyman's Boots (Exaltation)	2300
+Augmentation	Savant's Cap (Exaltation)	1302
+Augmentation	Shining Metallic Robes (Exaltation)	1360
+Augmentation	Eye of Innoruuk (Exaltation)	20656
+Augmentation	Runed Mithril Bracer (Exaltation)	4406
+Augmentation	Shield of the Stalwart Seas (Exaltation)	11552
+Activated	Refugee Shroud +1	177823
+Activated	Eye of Innoruuk (Exaltation)	20656
+Equipment	Icebelt +4	1543
+Equipment	Cloak of Scales +4	1546
+Equipment	Stiletto of the Bloodclaw +6	7312
+Equipment	DawnFire, Morning Star of Light +4	11648
+Equipment	Evensong +5	11554
+Equipment	Kelin`s Seven Stringed Lute +4	11573
+Equipment	Split Paw Tooth Necklace +5	14708
+Equipment	Vagrant's Tunic +2	177808
+Equipment	Grimy Black Silk Robe +6	177860
+Equipment	Bow of the Underfoot +1	8408
+Equipment	Rune Etched Chestplate	4872
+Equipment	Gardash +4	11564
+Equipment	Valorium Gauntlets +1	4855
+Equipment	Skinner's Belt +4	1537
+Equipment	Sandals of the Ishva	177923
+Equipment	Robe of the Ishva +3	1357
+Equipment	Loam Encrusted Robe +1	1644
+Equipment	Amulet of Necropotence +4	11646
+Equipment	Midnight Clad Wristbands +2	177797
+Equipment	Indicolite Bracer +4	4914
+Equipment	Dawnchaser +4	11555
+Equipment	Sleeves of the Spurned Necromancer +6	177841
+Equipment	Traveling Sollerets +1	177835
+Equipment	Carnal Pauldrons +5	4405
+Equipment	Rune Etched Boots +4	4877
+Equipment	Imbrued Platemail Bracer +4	4864
+Equipment	Apothic Warband +3	1242
+Equipment	Rune Etched Bracer +4	4874
+Equipment	Ball of Everliving Golem +4	20677
+Equipment	Lustrous Russet Gauntlets +2	4835
+Equipment	Anthemion Gloves +1	7832
+Equipment	Woven Shadow Gauntlets +5	4905
+Equipment	Indicolite Gauntlets +5	4915
+Equipment	Brewer's Mesh Cloak	1535
+Equipment	Umbral Platemail Gauntlets +2	4845
+Equipment	Shiverback-Hide Jerkin +1	1201
+Equipment	Nautilus Shield	9404
+Equipment	Shadow Rage Tunic +1	55602
+Equipment	Thorny Vine Boots +1	4897
+Equipment	Woven Shadow Boots +4	4907
+Equipment	Umbral Platemail Breastplate +2	4842
+Equipment	Vermiculated Gloves +1	3805
+Equipment	Indicolite Boots +5	4917
+Equipment	Slave Trammels +6	177868
+Equipment	Indicolite Greaves +4	4916
+Equipment	Throwing Boulder +4	8013
+Equipment	Shimmering Ruby Stiletto +5	5820
+Equipment	Wand of Mana Tapping	10375
+Equipment	Insidious Gloves	1250
+Equipment	Rakusha Cloak +4	11562
+Equipment	Runewood Shield +1	9406
+Equipment	Kelin`s Seven Stringed Lute +5	11573

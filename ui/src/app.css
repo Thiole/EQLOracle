@@ -1,0 +1,129 @@
+@import 'tailwindcss';
+
+/* why: self-hosted variable font, one family, weight does the hierarchy work */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Variable.ttf') format('truetype-variations');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Dark-only, deliberately -- a desktop tool meant to run alongside a game
+   window, not a page that needs to match an OS light-mode preference. */
+:root {
+  --radius: 0.25rem;
+
+  /* why: warm brass/gold identity, not generic SaaS blue */
+  --bg: #15171b;
+  --panel: #1e2126;
+  --panel-alt: #262a31;
+  --line: #363b43;
+  --ink: #e9e6df;
+  --ink-muted: #8b8f97;
+  --brand: #c9a15a;
+  --brand-soft: #e0c384;
+  --good: #5fd18a;
+  --caution: #e0b34d;
+  --bad: #e0616f;
+
+  /* shadcn's own semantic tokens, mapped onto the raw palette above.
+     `accent`/`accent-foreground` here is shadcn's own meaning (a neutral
+     hover surface), not the brand color -- brand lives at `--primary`. */
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--panel);
+  --card-foreground: var(--ink);
+  --popover: var(--panel);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: #1a1305;
+  --secondary: var(--panel-alt);
+  --secondary-foreground: var(--ink);
+  --muted: var(--panel-alt);
+  --muted-foreground: var(--ink-muted);
+  --accent: var(--panel-alt);
+  --accent-foreground: var(--ink);
+  --destructive: var(--bad);
+  --destructive-foreground: #fff;
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--brand);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* why: separate from --color-primary; app needs good/caution/bad, not just brand */
+  --color-good: var(--good);
+  --color-caution: var(--caution);
+  --color-bad: var(--bad);
+  --color-brand-soft: var(--brand-soft);
+
+  --font-sans: 'JetBrains Mono', 'SFMono-Regular', Consolas, Menlo, monospace;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-variation-settings: 'wght' 400;
+  }
+  /* why: every number input is a plain box -- no browser spinner arrows */
+  input[type='number'] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+@layer components {
+  /* why: HUD-style section header, replaces ad-hoc muted-uppercase h2s everywhere */
+  .panel-title {
+    @apply flex items-center gap-2 text-[11px] font-semibold tracking-[0.14em] text-foreground uppercase;
+  }
+  .panel-title::before {
+    content: '';
+    @apply h-[10px] w-[3px] shrink-0 bg-primary;
+  }
+  /* why: headline number treatment, gives real numbers actual weight */
+  .stat-figure {
+    @apply text-[22px] leading-none font-bold tabular-nums;
+    font-variation-settings: 'wght' 700;
+  }
+  .stat-label {
+    @apply text-[10px] tracking-[0.1em] text-muted-foreground uppercase;
+  }
+}

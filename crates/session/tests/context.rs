@@ -11,7 +11,11 @@ fn zone_is_a_query_not_a_stored_field() {
     assert_eq!(z.at(1_000), Some("Nektulos Forest"));
     assert_eq!(z.at(4_999), Some("Nektulos Forest"));
     assert_eq!(z.at(5_000), Some("Neriak - Foreign Quarter"));
-    assert_eq!(z.at(999_999), Some("Neriak - Foreign Quarter"), "holds until the next");
+    assert_eq!(
+        z.at(999_999),
+        Some("Neriak - Foreign Quarter"),
+        "holds until the next"
+    );
 }
 
 #[test]
@@ -58,6 +62,17 @@ fn span_bounds_are_open_ended_at_the_last() {
 }
 
 #[test]
+fn label_before_gives_the_prior_zone_for_the_entrance_guess() {
+    let mut z = Spans::default();
+    z.enter(1_000, "West Commonlands");
+    z.enter(5_000, "Befallen");
+    z.enter(9_000, "Nektulos Forest");
+    assert_eq!(z.label_before(1_500), None, "no zone before the first");
+    assert_eq!(z.label_before(6_000), Some("West Commonlands"));
+    assert_eq!(z.label_before(9_500), Some("Befallen"));
+}
+
+#[test]
 fn sessions_are_inferred_from_silence_at_a_configurable_threshold() {
     let feed = |gap_ms: i64| {
         let mut s = Sessions::new(gap_ms);
@@ -66,8 +81,16 @@ fn sessions_are_inferred_from_silence_at_a_configurable_threshold() {
         }
         s.count()
     };
-    assert_eq!(feed(600_000), 3, "10min: two long gaps split three sessions");
-    assert_eq!(feed(6_000_000), 1, "a threshold wider than every gap gives one");
+    assert_eq!(
+        feed(600_000),
+        3,
+        "10min: two long gaps split three sessions"
+    );
+    assert_eq!(
+        feed(6_000_000),
+        1,
+        "a threshold wider than every gap gives one"
+    );
 }
 
 #[test]

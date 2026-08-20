@@ -12,7 +12,7 @@ fn seed() -> Store {
     let burn = s.ability_id("Burn", tag::PROC | tag::DOT);
     let nuke = s.ability_id("Ice Comet", tag::SPELL);
 
-    let e = s.open_encounter(mob, 0, 0);
+    let e = s.open_encounter(mob, 0, 0, None);
     for (i, (ab, amt, fl)) in [
         (backstab, 900, eqlp_store::flag::CRITICAL),
         (backstab, 400, 0),
@@ -26,10 +26,20 @@ fn seed() -> Store {
     .into_iter()
     .enumerate()
     {
-        let idx = s.push(i as i64 * 1000, EventKind::Damage, you, mob, ab, amt, fl, e.0);
+        let idx = s.push(
+            i as i64 * 1000,
+            EventKind::Damage,
+            you,
+            mob,
+            ab,
+            amt,
+            fl,
+            e.0,
+            0,
+        );
         s.extend_encounter(e, idx);
     }
-    s.close_encounter(e, 8000, true);
+    s.close_encounter(e, 8000, true, false);
     s
 }
 
@@ -51,7 +61,11 @@ fn rows_are_abilities_not_mechanisms() {
 fn a_melee_ability_is_directly_comparable_to_a_proc() {
     let s = seed();
     let rows = by_ability(&s, &Filter::default().damage());
-    let find = |n: &str| rows.iter().find(|r| s.ability_name(r.ability) == n).unwrap();
+    let find = |n: &str| {
+        rows.iter()
+            .find(|r| s.ability_name(r.ability) == n)
+            .unwrap()
+    };
     let bs = find("Backstab");
     let burn = find("Burn");
     assert!(bs.tags & tag::MELEE != 0);
@@ -91,7 +105,10 @@ fn encounter_is_a_range_and_stores_no_damage() {
     assert_eq!(e.range(), 0..8);
     assert!(e.slain);
     // The encounter struct has no total field; the number comes from the range.
-    assert_eq!(eqlp_store::total(&s, &Filter::encounter(e.id).damage()), 2340);
+    assert_eq!(
+        eqlp_store::total(&s, &Filter::encounter(e.id).damage()),
+        2340
+    );
 }
 
 #[test]
@@ -110,12 +127,12 @@ fn eviction_never_splits_an_encounter() {
     let ab = s.ability_id("Slash", tag::MELEE);
     for k in 0..5 {
         let m = s.sym(&format!("mob{k}"));
-        let e = s.open_encounter(m, k * 10_000, s.len() as u32);
+        let e = s.open_encounter(m, k * 10_000, s.len() as u32, None);
         for j in 0..4 {
-            let idx = s.push(k * 10_000 + j, EventKind::Damage, a, m, ab, 10, 0, e.0);
+            let idx = s.push(k * 10_000 + j, EventKind::Damage, a, m, ab, 10, 0, e.0, 0);
             s.extend_encounter(e, idx);
         }
-        s.close_encounter(e, k * 10_000 + 9, true);
+        s.close_encounter(e, k * 10_000 + 9, true, false);
     }
     assert_eq!(s.len(), 20);
     s.evict_before_encounter(2);
@@ -127,5 +144,8 @@ fn eviction_never_splits_an_encounter() {
         assert!(e.range().end <= s.len());
     }
     let first = s.encounters[0].id;
-    assert_eq!(eqlp_store::total(&s, &Filter::encounter(first).damage()), 40);
+    assert_eq!(
+        eqlp_store::total(&s, &Filter::encounter(first).damage()),
+        40
+    );
 }

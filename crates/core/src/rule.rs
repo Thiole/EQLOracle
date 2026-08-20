@@ -159,7 +159,12 @@ impl ResolvedPack {
                 }
             }
         }
-        Ok(ResolvedPack { rules, disabled, sources, header })
+        Ok(ResolvedPack {
+            rules,
+            disabled,
+            sources,
+            header,
+        })
     }
 }
 

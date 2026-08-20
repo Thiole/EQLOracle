@@ -1,0 +1,2390 @@
+/* House rules (FOUNDATION.md #2): no backdrop-filter/blur, no continuous
+   animation, no unnecessary transparency, flat opaque panels, monospace
+   numeric columns, fixed layout. Targets WebKitGTK on Ubuntu 22.04 as the
+   floor, so nothing here relies on a bleeding-edge CSS feature. */
+
+:root {
+  --bg: #1b1d22;
+  --panel: #24272e;
+  --panel-alt: #2c2f37;
+  --border: #3a3e47;
+  --text: #e6e8eb;
+  --text-muted: #9aa0ab;
+  --accent: #5fb3ff;
+  --accent-soft: #8fcaff;
+  --ok: #5fd18a;
+  --warn: #e0b34d;
+  --err: #e0616f;
+  --mono: "SFMono-Regular", "Consolas", "Liberation Mono", Menlo, monospace;
+  --sans: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.titlebar .title {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.status {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 3px;
+  background: var(--panel-alt);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.status-live {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.status-error {
+  color: var(--err);
+  border-color: var(--err);
+}
+
+.error {
+  margin: 10px 16px 0;
+  padding: 8px 12px;
+  background: var(--panel-alt);
+  border: 1px solid var(--err);
+  color: var(--err);
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+/* A tip, not a warning -- accent-toned like .backfill-note's own pill,
+   not .error's red, since nothing has actually gone wrong here. */
+.gp-notice {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  background: var(--panel-alt);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.gp-notice code {
+  font-family: var(--mono);
+  background: var(--panel);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* Slides down from above the titlebar over whatever's underneath, rather
+   than pushing content down like #error-banner does -- an inventory dump
+   finishing is a "did you notice?" prompt, not something worth reflowing
+   the whole screen for. Stays out of `.hidden`'s display:none (that can't
+   be transitioned); off-screen is a transform instead, toggled by
+   .visible, so sliding in/out actually animates. pointer-events is tied
+   to the same toggle so it can't eat clicks meant for the toolbar while
+   parked off-screen. */
+.inv-toast {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 40;
+  transform: translate(-50%, -100%);
+  transition: transform 180ms ease-out;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  max-width: min(560px, calc(100vw - 48px));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 10px 16px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  font-size: 13px;
+}
+
+.inv-toast.visible {
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.inv-toast-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.inv-toast button {
+  padding: 6px 14px;
+  font-size: 12.5px;
+}
+
+/* Passive announcement, no action buttons -- top-right rather than
+   .inv-toast's top-center, so the two are never confusable at a glance
+   even if they ever happened to overlap in time. */
+.notif-toast {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 40;
+  transform: translateX(120%);
+  transition: transform 180ms ease-out;
+  pointer-events: none;
+  max-width: min(360px, calc(100vw - 48px));
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 10px 16px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  font-size: 13px;
+}
+
+.notif-toast.visible {
+  transform: translateX(0);
+}
+
+.notif-kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.notif-kind-card {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.notif-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+
+.notif-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.notif-kind-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.notif-sound-source {
+  flex: 1 1 100%;
+  color: var(--accent-soft);
+  margin-bottom: 2px;
+}
+
+.notif-kind-body button {
+  padding: 5px 10px;
+  font-size: 11.5px;
+}
+
+.screen {
+  padding: 24px;
+}
+
+#main.screen {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 45px); /* viewport minus the titlebar */
+  padding: 0;
+}
+
+/* ---- setup screen ---- */
+
+.setup-card {
+  max-width: 520px;
+  margin: 48px auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 28px 32px;
+  text-align: center;
+}
+
+.setup-card h1 {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+
+.setup-card p {
+  color: var(--text-muted);
+  line-height: 1.5;
+  font-size: 13px;
+}
+
+.setup-card code {
+  font-family: var(--mono);
+  background: var(--panel-alt);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--accent);
+  border: none;
+  border-radius: 4px;
+  padding: 9px 18px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:hover {
+  filter: brightness(1.08);
+}
+
+.link-button {
+  background: none;
+  color: var(--text-muted);
+  font-weight: 400;
+  padding: 4px 8px;
+  text-decoration: underline;
+}
+
+.link-button:hover {
+  color: var(--text);
+  filter: none;
+}
+
+/* ---- main screen ---- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+/* A cross-module "how did I get here" trail -- distinct from Game Data's
+   own local "← back to Zones" breadcrumb, which only ever undoes one
+   list->page step within that module. This one records real jumps
+   *between* modules (a zone's "open in Combat" link, so far -- see
+   navPush's call sites) so getting pulled into Combat to look at one
+   fight doesn't cost you the exact zone/row you were looking at. Each
+   crumb is a clickable checkpoint: clicking one restores that view and
+   discards everything after it, standard breadcrumb semantics. */
+.nav-history {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 12px;
+  flex: 0 0 auto;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.nav-crumb {
+  background: none;
+  border: none;
+  color: var(--accent-soft);
+  font: inherit;
+  font-family: var(--mono);
+  padding: 2px 4px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.nav-crumb:hover {
+  color: var(--accent);
+  filter: none;
+}
+
+.nav-crumb-sep {
+  color: var(--text-muted);
+}
+
+.tail-info {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.tail-info .label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+#tail-file {
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--panel-alt);
+  border: 1px solid var(--warn);
+  color: var(--warn);
+}
+
+/* ---- app body: sidebar + module content ---- */
+
+.app-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0; /* let children scroll instead of the whole window */
+}
+
+.sidebar {
+  flex: 0 0 168px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item {
+  background: none;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: 5px;
+}
+
+.nav-item:hover {
+  filter: none;
+  background: var(--panel-alt);
+  color: var(--text);
+}
+
+.nav-item.active {
+  background: var(--panel-alt);
+  color: var(--accent);
+}
+
+.content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+.module.hidden {
+  display: none !important;
+}
+
+
+/* ---- combat module ---- */
+
+.combat-filters {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.select-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  flex: 1 1 320px;
+  max-width: 420px;
+}
+
+.select-field select {
+  font: inherit;
+  font-family: var(--sans);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 7px 10px;
+}
+
+#ally-table,
+.ability-subtable {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+#ally-table th,
+.ability-subtable th {
+  text-align: left;
+  font-family: var(--sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0 8px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#ally-table td,
+.ability-subtable td {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+#ally-table th.num,
+#ally-table td.num,
+.ability-subtable th.num,
+.ability-subtable td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ability-subtable .tags {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.pane.allies {
+  overflow-x: auto;
+}
+
+#ally-table tbody tr.ally-row {
+  cursor: pointer;
+}
+
+#ally-table tbody tr.ally-row:hover {
+  background: var(--panel-alt);
+}
+
+#ally-table tbody tr.ally-row td:first-child::before {
+  content: "▸ ";
+  color: var(--text-muted);
+  display: inline-block;
+  width: 1em;
+}
+
+#ally-table tbody tr.ally-row.expanded td:first-child::before {
+  content: "▾ ";
+}
+
+.ally-detail td {
+  padding: 0 0 12px 20px;
+  border-bottom: 1px solid var(--border);
+  white-space: normal;
+}
+
+/* Nested drill-down inside the "configurations" section of an expanded
+   ally row: configuration -> zone visits -> encounters. Same
+   chevron/hover language as the top-level ally row, one indent level per
+   depth so the hierarchy reads at a glance. */
+.config-row,
+.visit-row {
+  cursor: pointer;
+}
+
+.config-row:hover,
+.visit-row:hover {
+  background: var(--panel-alt);
+}
+
+.config-row td:first-child::before,
+.visit-row td:first-child::before {
+  content: "▸ ";
+  color: var(--text-muted);
+  display: inline-block;
+  width: 1em;
+}
+
+.config-row.expanded td:first-child::before,
+.visit-row.expanded td:first-child::before {
+  content: "▾ ";
+}
+
+.config-detail .ability-subtable,
+.visit-detail .ability-subtable {
+  margin: 4px 0 8px 1em;
+  width: calc(100% - 1em);
+}
+
+/* Encounter rows are the leaf of this drill-down -- clicking one jumps the
+   Combat module's own pickers to that fight (jumpToEncounter) rather than
+   expanding further, so the affordance is deliberately a "go to" glyph,
+   not the expand/collapse chevron config-row/visit-row use. */
+tr[data-encounter] {
+  cursor: pointer;
+}
+
+tr[data-encounter]:hover {
+  background: var(--panel-alt);
+}
+
+tr[data-encounter] td:first-child::before {
+  content: "↗ ";
+  color: var(--text-muted);
+  display: inline-block;
+  width: 1em;
+}
+
+.ally-detail.hidden {
+  display: none;
+}
+
+.ally-detail h4 {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 12px 0 6px;
+}
+
+.ally-detail h4:first-child {
+  margin-top: 0;
+}
+
+/* Confirmed ally (player/pet) vs. the fight's own target. Anything neither
+   -- an unspoken name the log gives no ownership marker for -- stays the
+   default text color instead of a guessed tint; see ingest.rs's
+   split_damage_shield_source-adjacent doc comments on why guessing here is
+   the wrong trade. */
+.entity-ally {
+  color: var(--ok);
+}
+
+.entity-enemy {
+  color: var(--err);
+}
+
+.pane.monsters {
+  overflow-x: auto;
+}
+
+#monster-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+#monster-table th {
+  text-align: left;
+  font-family: var(--sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0 8px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#monster-table td {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+#monster-table th.num,
+#monster-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#monster-table tbody tr.monster-row {
+  cursor: pointer;
+}
+
+#monster-table tbody tr.monster-row:hover {
+  background: var(--panel-alt);
+}
+
+#monster-table tbody tr.monster-row td:first-child::before {
+  content: "▸ ";
+  color: var(--text-muted);
+  display: inline-block;
+  width: 1em;
+}
+
+#monster-table tbody tr.monster-row.expanded td:first-child::before {
+  content: "▾ ";
+}
+
+/* A known-but-not-yet-looted drop row -- dimmer than a gotten one, same
+   register as .muted, so "not yet" doesn't read as a normal data row. */
+.loot-ungotten {
+  color: var(--text-muted);
+}
+
+.monster-detail td {
+  padding: 0 0 12px 20px;
+  border-bottom: 1px solid var(--border);
+  white-space: normal;
+}
+
+.ally-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+/* ---- game data module: Zones/Items/NPCs, list -> full page -> back ---- */
+
+.gd-search {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  margin-bottom: 10px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.gd-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.pane.gamedata {
+  overflow-x: auto;
+}
+
+/* A segmented control, not the sidebar's own nav-item look -- this is a
+   sub-selection *within* one module, not a peer of Overview/Combat/etc. */
+.gd-tabs {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.gd-tab {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--panel);
+  border: none;
+  border-radius: 0;
+  padding: 7px 16px;
+  cursor: pointer;
+}
+
+.gd-tab + .gd-tab {
+  border-left: 1px solid var(--border);
+}
+
+.gd-tab:hover {
+  filter: none;
+  color: var(--text);
+}
+
+.gd-tab.active {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+#gd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+#gd-table th {
+  text-align: left;
+  font-family: var(--sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0 8px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#gd-table td {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#gd-table tbody tr.gd-row {
+  cursor: pointer;
+}
+
+#gd-table tbody tr.gd-row:hover {
+  background: var(--panel-alt);
+}
+
+/* A full page, not an inline expando -- cross-linked reference content
+   (a zone's notable NPCs, an NPC's own known-loot table, an item's drop
+   zones) wants real room, not an accordion row squeezed under a table. */
+.gd-page {
+  max-width: 760px;
+}
+
+.gd-page-title {
+  font-size: 18px;
+  margin: 0 0 12px;
+}
+
+#gd-back {
+  margin-bottom: 14px;
+}
+
+/* label:value rows for a page's own fields -- deliberately plain (no
+   card, no icon) since this is reference text, not something scanned at
+   a glance the way the doll's slots are. */
+.gd-fields {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 6px 12px;
+  font-size: 12.5px;
+  margin: 0 0 16px;
+}
+
+.gd-fields dt {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-top: 1px;
+}
+
+.gd-fields dd {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.gd-page h3 {
+  font-size: 13px;
+  margin: 18px 0 8px;
+}
+
+/* An AA's or spell's own free-text description -- prose, read at a
+   slower pace than the label:value fields above it, so it gets a wider
+   line length and more line-height rather than sharing .gd-fields' dense
+   grid. */
+.gd-description {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  max-width: 62ch;
+  margin: 0 0 16px;
+}
+
+/* Spells tab's default view (renderGdSpellsByClass) -- N thin columns of
+   spells plus an inline detail panel, the same list+side-panel shape
+   .gp-body already uses for the doll -- same grid ratio and the same
+   single-column collapse at 900px, for exactly the same reason. */
+.gd-spells-byclass {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .gd-spells-byclass {
+    grid-template-columns: 1fr;
+  }
+}
+
+.gd-spells-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.gd-spells-columns {
+  display: flex;
+  gap: 16px;
+}
+
+.gd-spell-slots-section {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.gd-spell-slots-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.gd-spell-slots-head h3 {
+  font-size: 13px;
+  margin: 0;
+}
+
+.gd-spell-slots-head span {
+  font-size: 11.5px;
+}
+
+.gd-spell-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.gd-spell-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 8px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: var(--panel-alt);
+  font-size: 11.5px;
+}
+
+.gd-spell-slot.empty::after {
+  content: 'empty';
+  color: var(--text-muted);
+  font-size: 10.5px;
+  margin: 0 auto;
+}
+
+.gd-spell-slot.filled {
+  border-style: solid;
+  border-color: var(--accent-soft);
+  cursor: grab;
+}
+
+.gd-spell-slot.drag-over {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.gd-spell-slot-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gd-spell-slot-remove {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.gd-spell-slot-remove:hover {
+  color: var(--warn);
+}
+
+.gd-spell-row[draggable='true'] {
+  cursor: grab;
+}
+
+.gd-spell-column {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.gd-spell-column h3 {
+  font-size: 12px;
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gd-spell-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Deliberately thin -- a whole class's worth of spells needs to fit
+   without scrolling forever, so each row is icon + name + level, one
+   line, small type. */
+.gd-spell-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.gd-spell-row:hover {
+  background: var(--panel-alt);
+}
+
+.gd-spell-row.active {
+  background: var(--panel-alt);
+  outline: 1px solid var(--accent);
+}
+
+.gd-spell-row-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  image-rendering: pixelated;
+  flex: 0 0 auto;
+}
+
+.gd-spell-row-icon-blank {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+}
+
+.gd-spell-row-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gd-spell-rank {
+  color: var(--accent-soft);
+  font-family: var(--mono);
+}
+
+/* Holds spellTagsHtml's own .aa-tag pills -- see spelleffect.rs's doc for
+   what "Damage"/"Mez"/"AE Damage over Time"/etc. actually mean and how
+   reliable each is. */
+.gd-spell-row-type {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 3px;
+}
+
+.gd-spell-row-type .aa-tag {
+  font-size: 9px;
+  padding: 1px 5px;
+}
+
+.gd-spells-detail-pane {
+  position: sticky;
+  top: 12px;
+}
+
+.gd-mob-list {
+  font-size: 12.5px;
+  line-height: 1.7;
+  margin: 0;
+}
+
+.gd-fields a,
+.gd-link {
+  color: var(--accent-soft);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+  border: none;
+  font: inherit;
+  padding: 0;
+}
+
+.gd-fields a:hover,
+.gd-link:hover {
+  color: var(--accent);
+}
+
+.gd-wiki-link {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* The wiki's own "Raid Encounters" category -- flagged wherever a raid
+   boss's name shows up (gdZoneOrMobLink's drop-source relabeling, and the
+   NPC page's own title) so a raid-only source doesn't read as an ordinary
+   zone drop. */
+.gd-raid-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--warn);
+  border: 1px solid var(--warn);
+  border-radius: 3px;
+  padding: 1px 5px;
+  vertical-align: middle;
+}
+
+/* An item page's personalized loot-history section -- real parse events,
+   set apart from the page's own (static, wiki-sourced) fields above it. */
+.gd-loot-history {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.gd-loot-blip {
+  font-size: 12px;
+  padding: 3px 0;
+  color: var(--text-muted);
+}
+
+.gd-loot-blip strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* The list itself -- a bounded, scrollable box (~5-6 collapsed rows tall)
+   rather than letting up to GD_ZONE_ENC_LIMIT cards stretch the page out;
+   an expanded card just scrolls further within the same box instead of
+   growing it. */
+#gd-zone-encounters {
+  max-height: 380px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--panel);
+}
+
+/* Zone page's own parsed-encounter list -- one card per fight, a compact
+   preview line by default, a little more (damage/drops with quantities,
+   the Combat link) once clicked open. */
+.gd-enc-row {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.gd-enc-row:last-child {
+  margin-bottom: 0;
+}
+
+.gd-enc-row:hover {
+  background: var(--panel-alt);
+}
+
+.gd-enc-row.expanded {
+  background: var(--panel-alt);
+  border-color: var(--accent);
+}
+
+.gd-enc-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gd-enc-target {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.gd-enc-meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.gd-enc-drops-preview {
+  font-size: 11px;
+  color: var(--accent-soft);
+}
+
+.gd-enc-detail {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ---- debug module -- plain and dense, a diagnostic table, not a feature page ---- */
+
+.pane.debug {
+  overflow-x: auto;
+}
+
+#debug-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+#debug-table th {
+  text-align: left;
+  font-family: var(--sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0 8px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#debug-table td {
+  padding: 3px 8px 3px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+#debug-table th.num,
+#debug-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* raw_zone present but resolved_zone missing -- a genuine unmatched zone
+   label, exactly what this table exists to surface, not a normal row. */
+#debug-table tr.zone-unmatched td.debug-resolved {
+  color: var(--err);
+}
+
+#debug-table td.debug-unknown {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+#unparsed-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+#unparsed-table th {
+  text-align: left;
+  font-family: var(--sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0 8px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#unparsed-table th.num,
+#unparsed-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  width: 1%;
+  white-space: nowrap;
+}
+
+#unparsed-table td {
+  padding: 4px 8px 4px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+/* The collapsed template -- the actual candidate to design a new rule's
+   pattern against, so it gets the emphasis; .unparsed-example (the real
+   line it came from) is reference material, muted and truncated. */
+.unparsed-shape {
+  color: var(--text);
+}
+
+.unparsed-example {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+
+#unparsed-summary {
+  margin-bottom: 10px;
+}
+
+/* Best-guess class combination -- see eqlp_session::classdetect. Muted by
+   default (an inference, not a log-stated fact, same visual register as
+   .muted elsewhere); the em-dash placeholder before the first successful
+   lookup and the "no evidence yet" case share the same look on purpose. */
+.ally-classes {
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.stat.stat-ally .num {
+  color: var(--ok);
+}
+
+.stat.stat-enemy .num {
+  color: var(--err);
+}
+
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.stat .num {
+  display: block;
+  font-family: var(--mono);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* A second, quieter line under a stat's number/label -- when/where it
+   happened, not part of the headline value itself. */
+.stat-sub {
+  display: block;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.panes {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.pane {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.pane h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+#kind-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+#kind-table td {
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#kind-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pane.feed {
+  height: 60vh;
+  overflow-y: auto;
+}
+
+#feed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+#feed-list li {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+#feed-list .kind {
+  flex: 0 0 auto;
+  color: var(--accent);
+  text-transform: uppercase;
+  font-size: 10px;
+  padding-top: 2px;
+}
+
+#feed-list .text {
+  color: var(--text);
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+/* ---- mob history ---- */
+
+.pane.history {
+  margin-top: 16px;
+}
+
+.pane.history h2 {
+  display: flex;
+  gap: 4px;
+}
+
+.pane.history h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 16px 0 8px;
+}
+
+.toggle-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+#history-table,
+#loadout-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+#history-table th,
+#loadout-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+#history-table td,
+#loadout-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+#history-table th.num,
+#history-table td.num,
+#loadout-table th.num,
+#loadout-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- fight timeline ---- */
+
+.pane.timeline {
+  margin-top: 16px;
+}
+
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.legend-chip .swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--series-color, var(--accent));
+  flex: 0 0 auto;
+}
+
+.legend-chip.dimmed {
+  color: var(--text-muted);
+  border-color: var(--border);
+  opacity: 0.5;
+}
+
+.timeline-chart {
+  height: 200px;
+  background: var(--panel-alt);
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.timeline-chart svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.series-line {
+  fill: none;
+  stroke: var(--series-color, var(--accent));
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+/* Selected via a legend click: solid and on top of the others. */
+.series-line.highlighted {
+  opacity: 1;
+  stroke-width: 3;
+}
+
+/* Every *other* line once one is selected -- faded back so the solid one
+   reads clearly against the overlap. */
+.series-line.dimmed {
+  opacity: 0.15;
+}
+
+.timeline-scrub {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
+}
+
+.timeline-state {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.timeline-state-header {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+#timeline-state-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+#timeline-state-table td {
+  padding: 3px 8px 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#timeline-state-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.state-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.state-badge.state-engaged {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.state-badge.state-mezzed,
+.state-badge.state-charmed {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.state-badge.state-dead,
+.state-badge.state-lost {
+  color: var(--err);
+  border-color: var(--err);
+}
+
+.state-badge.inferred {
+  border-style: dashed;
+}
+
+/* ---- gear planner module ---- */
+
+.gp-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+/* 4 columns, filled top-to-bottom within a column before moving to the
+   next (grid-auto-flow: column) -- GP_ALL_CLASSES is already ordered to
+   match: column 1 is its first 4 entries, column 2 the next 4, and so on. */
+.gp-classes {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(4, auto);
+  gap: 4px 6px;
+}
+
+.gp-class-chip {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.gp-class-chip.confirmed {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.gp-race,
+.char-race-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gp-race select,
+.char-race-field select {
+  background: var(--panel-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-family: inherit;
+  font-size: 12px;
+  text-transform: none;
+}
+
+.char-race-field {
+  margin: 4px 0 12px;
+}
+
+.gp-body {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+/* Paper-doll grid: 6 columns, exactly the physical layout order GP_SLOTS
+   builds (ear/neck/face/head/ear, finger/wrist/arm/hands/wrist/finger,
+   shoulders/chest/back/waist/legs/feet, primary/secondary/range/ammo/any/
+   any). Square cells, icon-only -- no name/score/source baked into the
+   cell itself, same as the game's own inventory grid; that detail lives
+   in the tooltip, the alt list, and the detail panel instead.
+   Fixed pixel cell size, deliberately not `1fr` + a container max-width:
+   an `fr` column has no ceiling of its own, so once the viewport got
+   narrow enough to trip the old max-width:none breakpoint below, cells
+   stretched to fill the row and aspect-ratio blew them up to match --
+   giant icons on a small window. A real inventory grid doesn't scale with
+   the window either; fixing the cell size outright removes the failure
+   mode instead of tuning around it. */
+/* A column of independent rows, not one big auto-flow grid -- each
+   .gp-doll-row lays out its own 6 squares, and an expanded .gp-slot-alts
+   panel is a sibling *after* that row's wrapper, not a 7th item interleaved
+   into a single flat grid. That isolation is the point: with everything in
+   one grid, a full-width panel inserted between square 2 and squares 3-6
+   of the same row didn't fit the row's remaining cells, so the browser's
+   auto-placement cursor bumped it to a new row -- and every square meant
+   for the rest of *that* row got shoved down into the row after the panel
+   along with it. Per-row wrappers can't do that; a panel can only ever
+   push the rows below its own down, which is what a real inventory-style
+   expand should do. */
+#gp-doll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.gp-doll-row {
+  display: flex;
+  gap: 6px;
+}
+
+/* Only the two-column layout collapses at a narrow width -- the doll's
+   own cells are a fixed size regardless (see #gp-doll's doc), so there's
+   nothing about *it* that needs a breakpoint any more. */
+@media (max-width: 900px) {
+  .gp-body { grid-template-columns: 1fr; }
+}
+
+.gp-slot {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gp-slot-spacer {
+  visibility: hidden;
+  cursor: default;
+  border: none;
+  background: none;
+}
+
+/* Secondary while Primary is wielded two-handed -- not independently
+   pickable, so it reads as occupied rather than empty: the primary's own
+   icon ghosted in, dashed border, no hover/click affordance. */
+.gp-slot-locked {
+  cursor: not-allowed;
+  border-style: dashed;
+  background: var(--bg);
+}
+
+.gp-slot-icon-ghost {
+  opacity: 0.4;
+  filter: grayscale(0.5);
+}
+
+/* Marks a square as showing what's actually equipped (from a loaded
+   inventory dump), not just the top-scored suggestion -- the two would
+   otherwise be visually identical, and "is this what I actually have on"
+   is exactly the thing a loaded inventory is supposed to answer. */
+.gp-slot-equipped::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+
+.gp-slot-2h {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 7.5px;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  pointer-events: none;
+  line-height: 1;
+}
+
+.gp-slot:hover {
+  border-color: var(--accent);
+}
+
+.gp-slot-locked:hover {
+  border-color: var(--border);
+}
+
+.gp-slot.expanded {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.gp-slot.empty {
+  border-style: dashed;
+}
+
+.gp-slot-label {
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-size: 7.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  pointer-events: none;
+  line-height: 1;
+}
+
+.gp-slot-icon {
+  width: 78%;
+  height: 78%;
+  border-radius: 3px;
+  image-rendering: pixelated;
+  object-fit: cover;
+}
+
+.gp-slot-icon-sm {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  image-rendering: pixelated;
+  flex: none;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+}
+
+.gp-slot-alts {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  cursor: default;
+}
+
+/* Icon at top-left, everything else stacked to its right: name+score on
+   one line, then where-it-drops (gp-alt-src), then the highlighted-stats
+   line -- in that order, so a source you might recognize on sight ("oh,
+   that zone") reads before the stat callouts you'd otherwise have to
+   parse one at a time. */
+.gp-alt-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 2px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.gp-alt-row:hover {
+  background: var(--panel);
+}
+
+.gp-alt-row.active {
+  background: var(--panel);
+  outline: 1px solid var(--accent);
+}
+
+.gp-alt-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.gp-alt-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gp-alt-row .name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Where it drops -- zone on one line, mobs on the next, each independently
+   truncated so a long mob list can't push the stat line (or the score
+   column) out of place. A lighter blue than the stats/accent color below
+   it, so the two don't blur into "everything blue" at a glance. */
+.gp-alt-src {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--accent-soft);
+}
+
+/* The stats line -- the reason a top pick outranked the rest, at a
+   glance, without opening the detail panel. */
+.gp-alt-row .stats {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gp-alt-row .score {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 3em;
+  text-align: right;
+}
+
+#gp-zones .zone-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+#gp-zones .zone-row:last-child {
+  border-bottom: none;
+}
+
+#gp-zones .zone-count {
+  font-family: var(--mono);
+  color: var(--accent);
+}
+
+.gp-detail {
+  margin-top: 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.gp-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.gp-detail-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  image-rendering: pixelated;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+}
+
+.gp-detail-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.gp-detail-name a {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 400;
+  margin-left: 8px;
+  text-decoration: none;
+}
+
+.gp-detail-name a:hover {
+  text-decoration: underline;
+}
+
+.gp-detail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.gp-detail-stats span {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.gp-detail-row {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* Tag pills: MAGIC/LORE get a strong color because they change how you
+   play the item; NO_DROP/NO_TRADE stay neutral (can't move it, not a
+   decision); NO_RENT is the one that can actually cost you the item, so
+   it borrows the warning color; everything else (weapon skill included)
+   falls back to muted -- bookkeeping, not something to react to. */
+.gp-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.gp-tag {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 1.5;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  background: transparent;
+  white-space: nowrap;
+}
+
+.gp-tag-blue {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.gp-tag-orange {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+}
+
+.gp-tag-white {
+  color: var(--text);
+  border-color: var(--text-muted);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.gp-tag-red {
+  color: var(--err);
+  border-color: var(--err);
+  background: color-mix(in srgb, var(--err) 14%, transparent);
+}
+
+.gp-tag-muted {
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+
+/* Deliberately dense -- a labeled 2.5-char input per stat, nothing else.
+   This is a tool for changing numbers, not a showcase; nothing here
+   should cost more space than the number itself needs. Grouped into
+   stats/attributes/other (GP_WEIGHT_GROUPS) rather than one flat run, so
+   AC/HP/Mana don't blur together with Str/Sta/Int at a glance. */
+.gp-weights {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.gp-weight-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.gp-weights .label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-right: 2px;
+  flex-basis: 100%;
+}
+
+.gp-weights .w-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.gp-weights .w-item input {
+  width: 3.4em;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+
+.gp-weights .w-item input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* The browser's default number-input spinner eats width a 3.4em box
+   doesn't have to spare -- at this size it was covering roughly half the
+   digits. These are still type="number" (keeps the numeric keyboard on
+   mobile and blocks non-numeric input), just without the stepper UI. */
+.gp-weights .w-item input::-webkit-outer-spin-button,
+.gp-weights .w-item input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.gp-weights .w-item input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.gp-weights #gp-weights-reset {
+  font-size: 10px;
+  padding: 0;
+}
+
+.gp-class-chip[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Character Planner -- reuses .gp-class-chip verbatim (same look) for its
+   own per-class toggle; the rules below are the parts that pattern
+   doesn't already cover: the toolbar, the full 16-class roster grid (one
+   level input per class, always shown, not just the 3 currently active),
+   and the sheet table. */
+.cp-planner {
+  margin-top: 12px;
+}
+
+.cp-toolbar {
+  margin: 4px 0 12px;
+}
+
+/* 4 columns x 4 rows, filled top-to-bottom within a column before moving
+   to the next -- GP_ALL_CLASSES is already grouped into 4 chunks of 4
+   (Bard/Beastlord/Berserker/Cleric | Druid/Enchanter/Magician/Monk | ...)
+   for exactly this layout, the same column-major convention .gp-classes
+   uses at its own smaller size. */
+.cp-roster {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, auto);
+  gap: 4px 20px;
+  margin-bottom: 14px;
+}
+
+.cp-roster-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cp-roster-row .gp-class-chip {
+  flex: 1 1 auto;
+  text-align: left;
+}
+
+.cp-roster-row input {
+  width: 3.2em;
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 4px;
+}
+
+.cp-roster-row input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* No stepper arrows -- 16 of these packed into a 4x4 grid have no width
+   to spare for them, and clicking through 1-50 one arrow-click at a time
+   isn't how anyone would actually set a level anyway. Still type="number"
+   underneath (numeric keyboard on mobile, blocks non-numeric input), just
+   without the spinner UI -- same trick .gp-weights .w-item input already
+   uses at a smaller scale. */
+.cp-roster-row input::-webkit-outer-spin-button,
+.cp-roster-row input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.cp-roster-row input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.cp-level-summary {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+/* .aa-table (AA History) shares this exact look -- same mono sheet-table
+   convention, not a coincidence: both are "compact rows of numbers under
+   a Character subpage" tables. */
+.cp-planner .sheet,
+.aa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
+
+.cp-planner .sheet th,
+.aa-table th {
+  text-align: right;
+  font-family: var(--sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 0 8px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.cp-planner .sheet th:first-child,
+.cp-planner .sheet td:first-child,
+.aa-table th:first-child,
+.aa-table td:first-child {
+  text-align: left;
+}
+
+.cp-planner .sheet td,
+.aa-table td {
+  text-align: right;
+  padding: 3px 8px 3px 0;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.cp-planner .sheet td.g {
+  color: var(--text-muted);
+}
+
+/* Ability name and Class badge are text, not figures -- only Rank/Cost
+   (marked .num) keep the table's default right-aligned, tabular-nums
+   convention. */
+.aa-table td:not(.num) {
+  text-align: left;
+}
+
+.aa-table td[title] {
+  cursor: help;
+}
+
+.aa-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-family: var(--sans);
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-alt);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.aa-tag-general {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.aa-tag-active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.aa-tag-past {
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.aa-tag-unknown {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+/* Character-sheet stat cross-links (aaRelevantStatsHtml) -- a distinct,
+   quieter accent from the class-relevance tags above so "this AA may
+   affect Mana Regen" doesn't visually compete with "this AA is from your
+   active/past class". */
+.aa-tag-stat {
+  border-color: var(--accent-soft);
+  color: var(--accent-soft);
+}
+
+/* A spell's own description, wrapped and clamped to one line inside its
+   table cell rather than blowing out the row -- the full text is still
+   there on hover via the cell's own title attribute. */
+.gd-spell-effect {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.cp-planner .sheet td.gear {
+  color: var(--accent-soft);
+}
+
+.cp-planner .sheet td.tot {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cp-planner .sheet td.tot.over {
+  color: var(--warn);
+}
+
+.cp-planner .data-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.cp-planner .empty {
+  padding: 10px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.cp-planner .empty b {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+/* The 4-module quick-glance sheet: top-left Char Vitals, top-right
+   Stat/Resist, bottom two reserved for later (drops/monsters, then a
+   blank progression module -- see eqlp-project memory). 2x2 on a wide
+   viewport, one column once it can't fit two side by side. */
+.cs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+@media (max-width: 820px) {
+  .cs-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cs-module {
+  min-height: 0;
+}
+
+.cs-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  text-align: center;
+}
+
+.cs-placeholder h2 {
+  color: var(--text-muted);
+}
+
+.cs-rows {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 14px;
+  row-gap: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.cs-rows .cs-label {
+  color: var(--text-muted);
+  font-family: var(--sans);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  align-self: center;
+}
+
+.cs-rows .cs-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+  align-self: center;
+}
+
+.cs-rows .cs-sep {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border);
+  margin: 4px 0 2px;
+}

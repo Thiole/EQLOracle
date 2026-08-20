@@ -34,17 +34,28 @@ impl Rng {
 
     #[inline]
     pub fn next_u64(&mut self) -> u64 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let x = self.0;
         (x >> 18) ^ x
     }
 
     pub fn below(&mut self, n: usize) -> usize {
-        if n == 0 { 0 } else { (self.next_u64() % n as u64) as usize }
+        if n == 0 {
+            0
+        } else {
+            (self.next_u64() % n as u64) as usize
+        }
     }
 
     pub fn range(&mut self, lo: u64, hi: u64) -> u64 {
-        if hi <= lo { lo } else { lo + self.next_u64() % (hi - lo) }
+        if hi <= lo {
+            lo
+        } else {
+            lo + self.next_u64() % (hi - lo)
+        }
     }
 
     pub fn bool(&mut self, pct: u64) -> bool {
@@ -61,18 +72,41 @@ impl Rng {
 }
 
 pub const ACTORS: &[&str] = &[
-    "You", "Kaeus", "Bravesirrobin", "Dippinsauce", "Sidhe", "Balanque",
-    "a decaying skeleton", "an abhorrent", "Footman of V`Zher", "the Ghoul Lord",
+    "You",
+    "Kaeus",
+    "Bravesirrobin",
+    "Dippinsauce",
+    "Sidhe",
+    "Balanque",
+    "a decaying skeleton",
+    "an abhorrent",
+    "Footman of V`Zher",
+    "the Ghoul Lord",
 ];
 pub const VERBS: &[&str] = &[
-    "slashes", "bashes", "kicks", "hits", "crushes", "pierces", "backstabs", "claws",
+    "slashes",
+    "bashes",
+    "kicks",
+    "hits",
+    "crushes",
+    "pierces",
+    "backstabs",
+    "claws",
 ];
 pub const FLAGS: &[&str] = &[
-    "", " (Critical)", " (Riposte)", " (Rampage)", " (Critical Double Bow Shot)",
+    "",
+    " (Critical)",
+    " (Riposte)",
+    " (Rampage)",
+    " (Critical Double Bow Shot)",
 ];
 pub const SPELLS: &[&str] = &[
-    "Ice Comet", "Garrison's Mighty Mana Shock", "Lifetap", "Minor Healing",
-    "Blessing of the Squire", "Elemental Maelstrom",
+    "Ice Comet",
+    "Garrison's Mighty Mana Shock",
+    "Lifetap",
+    "Minor Healing",
+    "Blessing of the Squire",
+    "Elemental Maelstrom",
 ];
 
 /// A timestamped log line plus the facts it encodes, so a test can assert the
@@ -86,8 +120,10 @@ pub struct GenLine {
     pub kind: &'static str,
 }
 
-const MONTHS: [&str; 12] = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const DAYS: [&str; 7] = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 pub fn stamp(secs: i64) -> String {
     let days = secs.div_euclid(86_400);
@@ -107,7 +143,11 @@ pub fn stamp(secs: i64) -> String {
         "[{} {} {:02} {:02}:{:02}:{:02} {}]",
         DAYS[(days.rem_euclid(7)) as usize],
         MONTHS[(m - 1) as usize],
-        d, tod / 3600, (tod % 3600) / 60, tod % 60, y
+        d,
+        tod / 3600,
+        (tod % 3600) / 60,
+        tod % 60,
+        y
     )
 }
 
@@ -120,26 +160,54 @@ pub fn damage_line(rng: &mut Rng, ts: i64) -> GenLine {
     let pts = if amount == 1 { "point" } else { "points" };
     let (body, kind) = match rng.below(4) {
         0 => (
-            format!("{} {} {} for {} {} of damage.{}",
-                actor, rng.pick(VERBS), target, amount, pts, rng.pick(FLAGS)),
+            format!(
+                "{} {} {} for {} {} of damage.{}",
+                actor,
+                rng.pick(VERBS),
+                target,
+                amount,
+                pts,
+                rng.pick(FLAGS)
+            ),
             "melee",
         ),
         1 => (
-            format!("{} hit {} for {} points of {} damage by {}.",
-                actor, target, amount, rng.pick(&["magic","fire","cold","poison"]), rng.pick(SPELLS)),
+            format!(
+                "{} hit {} for {} points of {} damage by {}.",
+                actor,
+                target,
+                amount,
+                rng.pick(&["magic", "fire", "cold", "poison"]),
+                rng.pick(SPELLS)
+            ),
             "spell",
         ),
         2 => (
-            format!("{} has taken {} damage from {} by {}.", target, amount, rng.pick(SPELLS), actor),
+            format!(
+                "{} has taken {} damage from {} by {}.",
+                target,
+                amount,
+                rng.pick(SPELLS),
+                actor
+            ),
             "dot",
         ),
         _ => (
-            format!("{} is burned by {}'s flames for {} points of non-melee damage.",
-                target, actor, amount),
+            format!(
+                "{} is burned by {}'s flames for {} points of non-melee damage.",
+                target, actor, amount
+            ),
             "ds",
         ),
     };
-    GenLine { line: format!("{} {}", stamp(ts), body), ts_secs: ts, actor, target, amount, kind }
+    GenLine {
+        line: format!("{} {}", stamp(ts), body),
+        ts_secs: ts,
+        actor,
+        target,
+        amount,
+        kind,
+    }
 }
 
 /// A whole synthetic session: random encounters, random participants, random
@@ -164,7 +232,11 @@ pub fn session(rng: &mut Rng, encounters: usize) -> (String, Vec<GenLine>) {
             }
         }
         t += rng.range(1, 6) as i64;
-        out.push_str(&format!("{} {} has been slain by Kaeus!\r\n", stamp(t), target));
+        out.push_str(&format!(
+            "{} {} has been slain by Kaeus!\r\n",
+            stamp(t),
+            target
+        ));
         t += rng.range(20, 300) as i64;
     }
     (out, facts)

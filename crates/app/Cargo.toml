@@ -9,6 +9,21 @@ description = "Desktop shell: first-launch directory picker, live log tailing, r
 name = "eqlp-app"
 path = "src/main.rs"
 
+# `custom-protocol` is what actually decides devUrl-vs-frontendDist -- not
+# the debug/release profile, a Cargo feature (see tauri's own build.rs).
+# On by default: a plain `cargo run -p eqlp-app` (debug or release, no
+# extra flags) should behave like the old static-file app always did --
+# read `ui/dist` straight off disk, no dev server, no network -- rather
+# than needing a flag nobody would remember to pass. `cargo tauri dev`
+# (`npm run tauri -- dev`) still gets live-reload: the Tauri CLI already
+# invokes cargo with `--no-default-features` for its own `dev` command
+# (confirmed via `-v` output), which turns this back off in favor of
+# `devUrl`. Needs `npm run build` in `ui/` to have produced `ui/dist`
+# before this crate builds -- there's nothing to embed otherwise.
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -22,3 +37,13 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["sync"] }
+# Already present in the lockfile as a transitive dep of tauri itself
+# (confirmed: base64 0.22.1) -- promoted to a direct dependency here
+# rather than duplicated, just to hand a custom notification sound's
+# bytes to the frontend as a data: URL (see settings::custom_sound_data_
+# url). No new dependency tree growth.
+base64 = "0.22"
+# Already present in the lockfile as a direct dep of eqlp-core (its own
+# rule engine) -- promoted here too rather than hand-rolling parsers for
+# spelldata's own messy duration/effect-text formats (see spelleffect.rs).
+regex = "1"

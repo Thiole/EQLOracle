@@ -65,7 +65,11 @@ fn a_multi_mob_pull_is_one_encounter_and_survives_a_death() {
     b.damage(0, "gnoll B", "You");
     assert_eq!(b.live_count(), 1, "both mobs linked through me");
     b.death(1000, "gnoll A");
-    assert_eq!(b.live_count(), 1, "one death must not end a multi-mob fight");
+    assert_eq!(
+        b.live_count(),
+        1,
+        "one death must not end a multi-mob fight"
+    );
     b.damage(2000, "You", "gnoll B");
     b.close_all(3000);
     let c = &b.closed[0];
@@ -78,12 +82,20 @@ fn an_interrupted_fight_links_to_its_predecessor() {
     let mut b = Builder::new(Policy::default().idle_secs(10.0).link_secs(60.0));
     b.entities.note_player_channel("You");
     b.damage(0, "You", "a gnoll");
-    b.expire(11_000);            // mob fled; encounter closes, nothing slain
+    b.expire(11_000); // mob fled; encounter closes, nothing slain
     b.damage(20_000, "You", "a gnoll");
     b.death(21_000, "a gnoll");
     b.close_all(40_000);
-    assert_eq!(b.closed.len(), 2, "still two encounters -- DPS windows stay separate");
-    assert_eq!(b.closed[1].links_to, Some(b.closed[0].id), "but they are one kill");
+    assert_eq!(
+        b.closed.len(),
+        2,
+        "still two encounters -- DPS windows stay separate"
+    );
+    assert_eq!(
+        b.closed[1].links_to,
+        Some(b.closed[0].id),
+        "but they are one kill"
+    );
 }
 
 #[test]
@@ -93,7 +105,7 @@ fn a_slain_target_does_not_link_forward() {
     b.damage(0, "You", "a gnoll");
     b.death(1000, "a gnoll");
     b.expire(20_000);
-    b.damage(30_000, "You", "a gnoll");   // a different gnoll, same name
+    b.damage(30_000, "You", "a gnoll"); // a different gnoll, same name
     b.close_all(45_000);
     assert_eq!(b.closed[1].links_to, None, "a corpse cannot be re-engaged");
 }
@@ -111,7 +123,10 @@ fn consecutive_fights_do_not_link_through_the_player() {
     b.death(26_000, "gnoll B");
     b.close_all(40_000);
     assert_eq!(b.closed.len(), 2);
-    assert_eq!(b.closed[1].links_to, None, "two separate kills must not link");
+    assert_eq!(
+        b.closed[1].links_to, None,
+        "two separate kills must not link"
+    );
 }
 
 #[test]
@@ -119,7 +134,7 @@ fn the_entity_cap_stops_runaway_merging() {
     let mut b = Builder::new(Policy::default().cap_entities(3));
     b.damage(0, "A", "m1");
     b.damage(0, "B", "m2");
-    b.damage(1000, "A", "m2");   // would merge to 4 entities; cap forbids it
+    b.damage(1000, "A", "m2"); // would merge to 4 entities; cap forbids it
     assert_eq!(b.live_count(), 2);
 }
 
@@ -148,14 +163,64 @@ fn merged_encounters_are_flagged() {
     assert!(b.closed.iter().any(|c| c.merged));
 }
 
+/// why: the merged-away side must still get a Closed record of its own,
+/// not sit orphaned forever -- see graph.rs's `merge` doc.
+#[test]
+fn the_merged_away_side_gets_its_own_closed_record_too() {
+    let mut b = Builder::default();
+    b.damage(0, "A", "m1"); // opens id 0
+    b.damage(0, "B", "m2"); // opens id 1
+    b.damage(1000, "A", "m2"); // merges id 1 into id 0
+                               // The merge itself must have already produced a Closed record for the
+                               // losing id -- not waiting on close_all/expire, which a merged-away id
+                               // (removed from `live`) would never reach.
+    assert_eq!(
+        b.closed.len(),
+        1,
+        "merge should close the losing side immediately"
+    );
+    let orphan = &b.closed[0];
+    assert_eq!(orphan.start_ms, 0);
+    assert_eq!(
+        orphan.end_ms, 0,
+        "closes at its own last touch, not merge time"
+    );
+    assert!(orphan.entities.iter().any(|e| e == "B") && orphan.entities.iter().any(|e| e == "m2"));
+
+    b.close_all(20_000);
+    assert_eq!(
+        b.closed.len(),
+        2,
+        "the surviving merged fight closes separately"
+    );
+}
+
 // ---- entity classification ----
 
 #[test]
-fn pets_name_their_owner_and_damage_credits_them() {
+fn a_players_pet_names_its_owner_and_damage_credits_them() {
+    // A player's pet is possessive: "<Owner>'s pet" (or this log's
+    // backtick-as-apostrophe stand-in, "<Owner>`s pet").
     let mut e = Entities::default();
-    assert_eq!(e.observe("Gynok Moltor pet"), Kind::Pet);
-    assert_eq!(e.owner_of("Gynok Moltor pet"), Some("Gynok Moltor"));
-    assert_eq!(e.credit("Gynok Moltor pet"), "Gynok Moltor");
+    assert_eq!(e.observe("Kaeus's pet"), Kind::Pet);
+    assert_eq!(e.owner_of("Kaeus's pet"), Some("Kaeus"));
+    assert_eq!(e.credit("Kaeus's pet"), "Kaeus");
+
+    assert_eq!(e.observe("Manipulator`s pet"), Kind::Pet);
+    assert_eq!(e.owner_of("Manipulator`s pet"), Some("Manipulator"));
+}
+
+#[test]
+fn a_bare_pet_suffix_with_no_possessive_is_a_mobs_own_pet_not_a_players() {
+    // "Gynok Moltor pet" is a real boss's own summoned add in the
+    // reference log (bare, no possessive) -- not a player's pet. An
+    // earlier version treated *any* " pet" suffix as ownership proof and
+    // read this as Kind::Pet, putting the boss's own add on the ally side
+    // of Allegiance::of.
+    let mut e = Entities::default();
+    assert_eq!(e.observe("Gynok Moltor pet"), Kind::Unproven);
+    assert_eq!(e.owner_of("Gynok Moltor pet"), None);
+    assert_eq!(e.credit("Gynok Moltor pet"), "Gynok Moltor pet");
 }
 
 #[test]

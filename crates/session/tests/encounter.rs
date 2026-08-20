@@ -1,7 +1,7 @@
 //! Tests for `encounter`. Kept out of the production module by
 //! convention: src/ contains shipping code only.
 
-use eqlp_session::encounter::{EndReason, Ttk, Tracker};
+use eqlp_session::encounter::{EndReason, Tracker, Ttk};
 
 #[test]
 fn death_closes_and_records_exactly() {

@@ -3,7 +3,7 @@
 //! Design notes: `docs/design/parsing.md`
 
 use crate::event::{Outcome, RuleIdx};
-use crate::shape::{Shaper, ShapeMode};
+use crate::shape::{ShapeMode, Shaper};
 use std::collections::HashMap;
 
 pub const DEFAULT_SHAPE_CAP: usize = 4096;
@@ -76,7 +76,10 @@ impl Coverage {
                 } else if self.shapes.len() < self.shape_cap {
                     self.shapes.insert(
                         self.scratch.clone(),
-                        ShapeStat { count: 1, example: b.to_vec() },
+                        ShapeStat {
+                            count: 1,
+                            example: b.to_vec(),
+                        },
                     );
                 } else {
                     self.shapes_overflow += 1;

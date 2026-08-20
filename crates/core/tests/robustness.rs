@@ -27,7 +27,10 @@ fn engine() -> Engine {
 struct Lcg(u64);
 impl Lcg {
     fn next_u32(&mut self) -> u32 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (self.0 >> 33) as u32
     }
     fn byte(&mut self) -> u8 {
@@ -102,7 +105,10 @@ fn matcher_state_does_not_leak_between_lines() {
     let lines: Vec<&[u8]> = frame::lines(&corpus).take(4000).collect();
 
     let mut shared = eng.matcher();
-    let shared_out: Vec<String> = lines.iter().map(|l| describe(&eng, &mut shared, l)).collect();
+    let shared_out: Vec<String> = lines
+        .iter()
+        .map(|l| describe(&eng, &mut shared, l))
+        .collect();
 
     // Same lines, but each through a virgin matcher.
     let fresh_out: Vec<String> = lines
@@ -116,8 +122,11 @@ fn matcher_state_does_not_leak_between_lines() {
 
     // And in reverse order, to catch anything order-dependent.
     let mut rev = eng.matcher();
-    let mut rev_out: Vec<String> =
-        lines.iter().rev().map(|l| describe(&eng, &mut rev, l)).collect();
+    let mut rev_out: Vec<String> = lines
+        .iter()
+        .rev()
+        .map(|l| describe(&eng, &mut rev, l))
+        .collect();
     rev_out.reverse();
     assert_eq!(shared_out, rev_out);
 }
@@ -155,7 +164,8 @@ fn arbitrary_bytes_never_panic() {
 
         // Truncations of a real line, which is exactly what a partial flush
         // looks like while tailing.
-        let full = b"[Wed Aug 06 21:14:33 2025] You slash a decaying skeleton for 12 points of damage.";
+        let full =
+            b"[Wed Aug 06 21:14:33 2025] You slash a decaying skeleton for 12 points of damage.";
         check_invariants(&eng, &mut m, &full[..len.min(full.len())]);
     }
 }
@@ -169,7 +179,10 @@ fn check_invariants(eng: &Engine, m: &mut eqlp_core::Matcher, line: &[u8]) {
             assert!(mm.body.start <= mm.body.end);
             assert!((mm.rule as usize) < eng.rules().len());
             for c in mm.caps.iter().flatten() {
-                assert!(c.start >= mm.body.start && c.end <= mm.body.end, "capture escapes body");
+                assert!(
+                    c.start >= mm.body.start && c.end <= mm.body.end,
+                    "capture escapes body"
+                );
                 assert!(c.start <= c.end);
                 let _ = c.slice(line); // must not panic
             }
@@ -196,7 +209,11 @@ fn streamed_framing_equals_batch_framing() {
             fr.push(c, |l| got.push(l.to_vec()));
         }
         fr.flush(|l| got.push(l.to_vec()));
-        assert_eq!(got.len(), batch.len(), "line count differs at chunk={chunk}");
+        assert_eq!(
+            got.len(),
+            batch.len(),
+            "line count differs at chunk={chunk}"
+        );
         assert_eq!(got, batch, "content differs at chunk={chunk}");
     }
 }

@@ -1,6 +1,15 @@
 //! Following a log file the game is actively writing. Polls rather than
 //! watching, and handles growth, truncation, replacement and absence.
 //!
+//! Hard invariant: this crate never opens the log for anything but reading.
+//! `TailEvent::Truncated`/`Replaced` above are read-side reactions to the
+//! game (or the player) changing the file out from under us -- eqlp itself
+//! has no write access to it and must never gain any, in this module or
+//! anywhere else in the app. Purging *eqlp's own* derived state (parsed
+//! history, caches) is fine and expected -- see `eqlp-app::history`'s
+//! module doc for a real instance -- but that's data this app produced
+//! about the log, never the log itself.
+//!
 //! Design notes: `docs/design/sources.md`
 
 use std::fs::{File, Metadata};

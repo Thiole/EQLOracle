@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EQLP Companion</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="titlebar">
+    <span class="title">EQLP Companion</span>
+    <span id="conn-status" class="status status-idle">not connected</span>
+  </header>
+
+  <div id="error-banner" class="error hidden"></div>
+
+  <div id="inv-toast" class="inv-toast" role="status">
+    <span id="inv-toast-text"></span>
+    <div class="inv-toast-actions">
+      <button id="inv-toast-load">Load into Gear</button>
+      <button id="inv-toast-dismiss" class="link-button">dismiss</button>
+    </div>
+  </div>
+
+  <div id="notif-toast" class="notif-toast" role="status"></div>
+
+  <section id="setup" class="screen hidden">
+    <div class="setup-card">
+      <h1>Find your install folder</h1>
+      <p>
+        Point EQLP Companion at your EverQuest Legends install folder --
+        the one that directly contains <code>Logs</code> (not the
+        <code>Logs</code> folder itself). It watches whichever
+        <code>eqlog_&lt;Character&gt;_&lt;Server&gt;.txt</code> file was
+        written to most recently, replays what it's already said, then
+        keeps parsing live as the game writes more -- and the install
+        folder itself is also where <code>/outputfile inventory</code>
+        writes its dump, which needs to be reachable from the same place.
+      </p>
+      <button id="choose-dir">Choose folder&hellip;</button>
+    </div>
+  </section>
+
+  <section id="main" class="screen hidden">
+    <div class="toolbar">
+      <div class="tail-info">
+        <span class="label">watching</span>
+        <span id="tail-file">—</span>
+        <span id="tail-char" class="muted"></span>
+        <span id="backfill-note" class="pill hidden">replaying history&hellip;</span>
+      </div>
+      <button id="change-dir" class="link-button">change folder</button>
+    </div>
+
+    <div id="nav-history" class="nav-history hidden"></div>
+
+    <div class="app-body">
+      <nav id="module-nav" class="sidebar">
+        <button class="nav-item active" data-module="overview">Overview</button>
+        <button class="nav-item" data-module="combat">Combat</button>
+        <button class="nav-item" data-module="monsters">Loot History</button>
+        <button class="nav-item" data-module="character">Character</button>
+        <button class="nav-item" data-module="gamedata">Game Data</button>
+        <button class="nav-item" data-module="settings">Settings</button>
+        <button class="nav-item" data-module="debug">Debug</button>
+      </nav>
+
+      <div class="content">
+        <section id="module-overview" class="module">
+          <div class="stats">
+            <div class="stat"><span id="stat-total" class="num">0</span><label>lines</label></div>
+            <div class="stat"><span id="stat-matched" class="num">0</span><label>matched</label></div>
+            <div class="stat"><span id="stat-unmatched" class="num">0</span><label>unmatched</label></div>
+            <div class="stat"><span id="stat-coverage" class="num">0.0%</span><label>coverage</label></div>
+            <div class="stat">
+              <span id="stat-pets" class="num">0</span>
+              <label>pets attributed</label>
+            </div>
+          </div>
+
+          <div class="pane session">
+            <div class="card-h">
+              <h2>Session</h2>
+              <div class="sub" id="session-sub">
+                No session yet -- this fills in once something's been parsed.
+              </div>
+            </div>
+            <div class="stats">
+              <div class="stat"><span id="session-duration" class="num">0:00</span><label>session length</label></div>
+              <div class="stat"><span id="session-plat" class="num">&mdash;</span><label>plat / hour</label></div>
+              <div class="stat"><span id="session-xp" class="num">&mdash;</span><label>xp% / hour</label></div>
+              <div class="stat"><span id="session-level" class="num">&mdash;</span><label>level</label></div>
+              <div class="stat"><span id="session-progress" class="num">&mdash;</span><label>into this level</label></div>
+              <div class="stat"><span id="session-eta" class="num">&mdash;</span><label>est. to next level</label></div>
+            </div>
+          </div>
+
+          <div class="panes">
+            <div class="pane by-kind">
+              <h2>by kind</h2>
+              <table id="kind-table"><tbody></tbody></table>
+            </div>
+            <div class="pane feed">
+              <h2>live feed</h2>
+              <ul id="feed-list"></ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="module-combat" class="module hidden">
+          <div class="combat-filters">
+            <label class="select-field">
+              <span>Zone / instance</span>
+              <select id="zone-select"></select>
+            </label>
+            <label class="select-field">
+              <span>Fight</span>
+              <select id="encounter-select"></select>
+            </label>
+          </div>
+
+          <div class="stats">
+            <div class="stat"><span id="combat-fights" class="num">0</span><label>fights</label></div>
+            <div class="stat"><span id="combat-duration" class="num">0:00</span><label>duration</label></div>
+            <div class="stat stat-ally"><span id="combat-damage" class="num">0</span><label>team damage</label></div>
+            <div class="stat stat-ally"><span id="combat-dps" class="num">0</span><label>team dps</label></div>
+            <div class="stat stat-enemy"><span id="combat-enemy-damage" class="num">0</span><label>incoming damage</label></div>
+            <div class="stat stat-enemy"><span id="combat-enemy-dps" class="num">0</span><label>incoming dps</label></div>
+          </div>
+
+          <div class="pane allies">
+            <h2>allies &mdash; click to see their abilities</h2>
+            <table id="ally-table">
+              <thead>
+                <tr>
+                  <th>name</th>
+                  <th>classes</th>
+                  <th class="num">total</th>
+                  <th class="num">%</th>
+                  <th class="num">dps</th>
+                  <th class="num">hits</th>
+                  <th class="num">crit%</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p id="combat-empty" class="muted hidden">No fights parsed for this selection yet.</p>
+          </div>
+
+          <div id="history-pane" class="pane history hidden">
+            <h2>past parses vs <span id="history-target">&mdash;</span></h2>
+            <div class="stats">
+              <div class="stat">
+                <span id="history-best-dps" class="num">&mdash;</span>
+                <label>highest dps vs target</label>
+                <span id="history-best-dps-sub" class="muted stat-sub"></span>
+              </div>
+            </div>
+            <label class="toggle-field">
+              <input type="checkbox" id="history-confirmed-only" checked />
+              confirmed kills only
+            </label>
+
+            <h3>bundled by class combination</h3>
+            <table id="loadout-table">
+              <thead>
+                <tr>
+                  <th>loadout</th>
+                  <th class="num">fights</th>
+                  <th class="num">kills</th>
+                  <th class="num">avg dps</th>
+                  <th class="num">avg vs. baseline</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p id="loadout-empty" class="muted hidden">No past parses recorded against this target yet.</p>
+
+            <h3>every parse</h3>
+            <table id="history-table">
+              <thead>
+                <tr>
+                  <th>when</th>
+                  <th>zone</th>
+                  <th>loadout</th>
+                  <th class="num">duration</th>
+                  <th class="num">your dps</th>
+                  <th class="num">vs. avg (this target, this tier)</th>
+                  <th>result</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p id="history-empty" class="muted hidden">No past parses recorded against this target yet.</p>
+          </div>
+
+          <div id="timeline-pane" class="pane timeline hidden">
+            <h2>fight timeline</h2>
+            <div id="timeline-legend" class="timeline-legend"></div>
+            <div id="timeline-chart" class="timeline-chart"></div>
+            <div id="timeline-hint" class="muted">click the chart to see who was doing what at that instant</div>
+            <div id="timeline-state" class="timeline-state hidden">
+              <div class="timeline-state-header">
+                <span id="timeline-state-time"></span>
+              </div>
+              <table id="timeline-state-table"><tbody></tbody></table>
+            </div>
+          </div>
+        </section>
+
+        <section id="module-monsters" class="module hidden">
+          <div class="stats">
+            <div class="stat"><span id="monsters-tracked" class="num">0</span><label>mob types</label></div>
+            <div class="stat"><span id="monsters-kills" class="num">0</span><label>confirmed kills</label></div>
+            <div class="stat"><span id="monsters-items" class="num">0</span><label>items looted</label></div>
+          </div>
+
+          <div class="pane monsters">
+            <h2>mobs &mdash; click to see what they've dropped</h2>
+            <table id="monster-table">
+              <thead>
+                <tr>
+                  <th>name</th>
+                  <th class="num">kills</th>
+                  <th class="num">pulls</th>
+                  <th class="num">items looted</th>
+                  <th class="num">avg % xp</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p id="monsters-empty" class="muted hidden">No fights parsed yet.</p>
+          </div>
+        </section>
+
+        <section id="module-character" class="module hidden">
+          <div class="gd-tabs" id="cs-tabs">
+            <button class="gd-tab active" data-sub="sheet">Character</button>
+            <button class="gd-tab" data-sub="gear">Gear</button>
+            <button class="gd-tab" data-sub="aa">AA</button>
+            <button class="gd-tab" data-sub="spellbook">Spellbook</button>
+          </div>
+
+          <div id="cs-sub-sheet" class="cs-subpage">
+            <div class="pane character">
+              <div class="card-h">
+                <h2>Character</h2>
+                <div class="sub">What's confirmed from your own parsed log, plus race -- the log never states that directly, so it's set here by hand. The Gear tab's own race picker reads and writes this exact same value.</div>
+              </div>
+              <label class="char-race-field">
+                race
+                <select id="char-race"></select>
+              </label>
+              <p id="char-config" class="muted"></p>
+            </div>
+
+            <div class="pane cp-planner">
+              <div class="card-h">
+                <h2>Character Planner</h2>
+              </div>
+              <div class="cp-toolbar">
+                <button id="cp-estimate" title="Fill every class's level with your most recently observed character level, as a starting guess to correct by hand">Estimate levels</button>
+              </div>
+              <div id="cp-roster" class="cp-roster"></div>
+              <div id="cp-sheet"></div>
+            </div>
+
+            <div class="cs-grid">
+              <div class="pane cs-module">
+                <div class="card-h">
+                  <h2>Char Vitals</h2>
+                </div>
+                <div id="cs-vitals" class="cs-rows"></div>
+              </div>
+              <div class="pane cs-module">
+                <div class="card-h">
+                  <h2>Stat / Resist</h2>
+                </div>
+                <div id="cs-statresist" class="cs-rows"></div>
+              </div>
+              <div class="pane cs-module cs-placeholder">
+                <div class="card-h">
+                  <h2>&mdash;</h2>
+                </div>
+                <p class="muted">Coming soon.</p>
+              </div>
+              <div class="pane cs-module cs-placeholder">
+                <div class="card-h">
+                  <h2>&mdash;</h2>
+                </div>
+                <p class="muted">Coming soon.</p>
+              </div>
+            </div>
+          </div>
+
+          <div id="cs-sub-gear" class="cs-subpage hidden">
+            <p class="gp-notice">
+              Please use the in-game command <code>/outputfile inventory</code> to pull in your recent equipped gear.
+            </p>
+            <div class="gp-controls">
+              <div class="gp-classes" id="gp-classes"></div>
+              <label class="gp-race">
+                race
+                <select id="gp-race"></select>
+              </label>
+              <span class="muted" id="gp-classes-note"></span>
+            </div>
+            <div class="gp-body">
+              <div class="doll" id="gp-doll"></div>
+              <div class="pane">
+                <div class="card-h">
+                  <h2>Suggested zones</h2>
+                  <div class="sub">where your top pick for each empty/upgradeable slot actually drops</div>
+                </div>
+                <div id="gp-zones"></div>
+
+                <div id="gp-detail" class="gp-detail hidden"></div>
+              </div>
+            </div>
+            <div class="gp-weights" id="gp-weights"></div>
+          </div>
+
+          <div id="cs-sub-aa" class="cs-subpage hidden">
+            <div class="pane">
+              <div class="card-h">
+                <h2>AA History</h2>
+                <div class="sub">Every AA rank purchase this session, from the log's own "gained the ability"/"improved" lines. Buying an AA is gated on your active trio at the time, but a purchase never gets undone by a later loadout swap -- so an ability tagged for a class you're not currently playing is a past build, not a mistake. Cross-referenced against the Character tab's active classes and your confirmed class history.</div>
+              </div>
+              <div id="cs-aa"></div>
+            </div>
+          </div>
+
+          <div id="cs-sub-spellbook" class="cs-subpage hidden">
+            <div class="pane">
+              <div class="card-h">
+                <h2>Spellbook</h2>
+                <div class="sub">Every spell confirmed known this session, from the log's own "You have finished memorizing X." lines. EQL has no separate "scribed into spellbook" event, but a spell can only complete memorization if it's already known -- so this is exactly as good a proof as a scribe line would be. A spell you own but never once memorized this session won't show up here yet.</div>
+              </div>
+              <div id="cs-spellbook"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="module-gamedata" class="module hidden">
+          <div class="pane gamedata">
+            <div class="card-h">
+              <h2>Game Data</h2>
+              <div class="sub">Zones, Items, NPCs, AAs, and Spells, cross-linked and browsable without leaving the app. eqlwiki links on each page are a backup, not the primary way through.</div>
+            </div>
+
+            <div class="gd-tabs" id="gd-tabs">
+              <button class="gd-tab active" data-category="zones">Zones</button>
+              <button class="gd-tab" data-category="items">Items</button>
+              <button class="gd-tab" data-category="npcs">NPCs</button>
+              <button class="gd-tab" data-category="aas">AAs</button>
+              <button class="gd-tab" data-category="spells">Spells</button>
+            </div>
+
+            <div id="gd-list">
+              <input id="gd-search" type="text" placeholder="filter by name&hellip;" class="gd-search" />
+              <table id="gd-table">
+                <thead id="gd-table-head"></thead>
+                <tbody></tbody>
+              </table>
+              <p id="gd-empty" class="muted hidden"></p>
+            </div>
+
+            <!-- Spells tab's default view once Character (race/classes/
+                 levels) is set up: one thin column per active class,
+                 spells it actually has, a shared row of spell-gem slots
+                 below them (drag a spell in from any of the 3 books --
+                 there's no per-slot restriction the way gear has), and an
+                 inline detail panel -- the same list+side-panel idiom the
+                 Gear tab's doll uses, not the list->full-page navigation
+                 every other Game Data category uses. Falls back to the
+                 flat #gd-list above (filterable, no class scoping) until
+                 Character is configured. -->
+            <div id="gd-spells-byclass" class="gd-spells-byclass hidden">
+              <div class="gd-spells-main">
+                <div class="gd-spells-columns" id="gd-spells-columns"></div>
+                <div class="gd-spell-slots-section">
+                  <div class="gd-spell-slots-head">
+                    <h3>Spell Slots</h3>
+                    <span id="gd-spell-slots-summary" class="muted"></span>
+                  </div>
+                  <div class="gd-spell-slots" id="gd-spell-slots"></div>
+                </div>
+              </div>
+              <div class="pane gd-spells-detail-pane">
+                <div class="card-h">
+                  <h2>Spell detail</h2>
+                </div>
+                <div id="gd-spell-detail" class="muted">Select a spell to see its details, or drag it into a slot.</div>
+              </div>
+            </div>
+
+            <div id="gd-page" class="gd-page hidden">
+              <button id="gd-back" class="link-button">&larr; back to <span id="gd-back-label"></span></button>
+              <div id="gd-page-body"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="module-settings" class="module hidden">
+          <div class="pane">
+            <div class="card-h">
+              <h2>Notification Sounds</h2>
+              <div class="sub">Plays a short sound the moment one of these happens, whether or not the game window is focused. Each one has a default tone built in; upload your own audio file to override it, per notification.</div>
+            </div>
+            <div id="notif-kinds" class="notif-kinds"></div>
+          </div>
+        </section>
+
+        <section id="module-debug" class="module hidden">
+          <div class="gd-tabs" id="debug-tabs">
+            <button class="gd-tab active" data-sub="encounters">Encounters</button>
+            <button class="gd-tab" data-sub="unparsed">Unparsed</button>
+          </div>
+
+          <div id="debug-sub-encounters" class="debug-subpage">
+            <div class="pane debug">
+              <div class="card-h">
+                <h2>Debug</h2>
+                <div class="sub">what each parsed encounter is actually tagged with, zone-wise -- raw log label next to what it resolved to (or didn't).</div>
+              </div>
+              <table id="debug-table">
+                <thead>
+                  <tr>
+                    <th>id</th>
+                    <th>target</th>
+                    <th>start</th>
+                    <th class="num">duration</th>
+                    <th class="num">tier</th>
+                    <th>raw zone</th>
+                    <th>resolved zone id</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <p id="debug-empty" class="muted hidden">No encounters parsed yet.</p>
+            </div>
+          </div>
+
+          <div id="debug-sub-unparsed" class="debug-subpage hidden">
+            <div class="pane debug">
+              <div class="card-h">
+                <h2>Unparsed</h2>
+                <div class="sub">Every line that never matched a rule, clustered into shapes (names/numbers collapsed to one template) the same way the offline <code>eqlp coverage</code> tool does -- one row per real, distinct line pattern, ranked by how often it fired, so the biggest coverage gaps sort to the top. Each is a candidate for a new rule in <code>packs/eql.toml</code>.</div>
+              </div>
+              <p id="unparsed-summary" class="muted"></p>
+              <table id="unparsed-table">
+                <thead>
+                  <tr>
+                    <th class="num">count</th>
+                    <th>shape</th>
+                    <th>example</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <p id="unparsed-empty" class="muted hidden">No unmatched lines yet.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

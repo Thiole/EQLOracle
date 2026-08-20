@@ -42,7 +42,10 @@ fn end_to_end() {
             }
         }
     });
-    assert_eq!(kinds, ["matched", "matched", "unmatched", "headerless", "blank"]);
+    assert_eq!(
+        kinds,
+        ["matched", "matched", "unmatched", "headerless", "blank"]
+    );
     assert_eq!(cov.total, 5);
     assert_eq!(cov.matched, 2);
     assert_eq!(cov.unmatched, 1);

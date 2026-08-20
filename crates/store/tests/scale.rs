@@ -27,7 +27,7 @@ fn build(events: usize) -> Store {
     let mut k = 0u32;
     while i < events {
         let mob = s.sym(&format!("mob{k}"));
-        let e = s.open_encounter(mob, i as i64 * 250, s.len() as u32);
+        let e = s.open_encounter(mob, i as i64 * 250, s.len() as u32, None);
         for j in 0..per.min(events - i) {
             let idx = s.push(
                 (i + j) as i64 * 250,
@@ -36,12 +36,17 @@ fn build(events: usize) -> Store {
                 mob,
                 abils[(i * 7 + j) % abils.len()],
                 ((i + j) % 900 + 50) as u64,
-                if j % 11 == 0 { eqlp_store::flag::CRITICAL } else { 0 },
+                if j % 11 == 0 {
+                    eqlp_store::flag::CRITICAL
+                } else {
+                    0
+                },
                 e.0,
+                0,
             );
             s.extend_encounter(e, idx);
         }
-        s.close_encounter(e, (i + per) as i64 * 250, true);
+        s.close_encounter(e, (i + per) as i64 * 250, true, false);
         i += per;
         k += 1;
     }
@@ -69,7 +74,11 @@ fn full_scan_is_cheap_enough_to_need_no_materialised_aggregates() {
     let t = Instant::now();
     let rows = by_ability(&s, &f);
     let whole = t.elapsed();
-    eprintln!("by_ability, whole store : {:?} ({} rows)", whole, rows.len());
+    eprintln!(
+        "by_ability, whole store : {:?} ({} rows)",
+        whole,
+        rows.len()
+    );
 
     let last = s.encounters.last().unwrap().id;
     let t = Instant::now();
@@ -86,7 +95,11 @@ fn full_scan_is_cheap_enough_to_need_no_materialised_aggregates() {
     for _ in 0..10 {
         d += dps_window(&s, &f, now, 10_000);
     }
-    eprintln!("dps_window x10          : {:?} (dps {:.0})", t.elapsed(), d / 10.0);
+    eprintln!(
+        "dps_window x10          : {:?} (dps {:.0})",
+        t.elapsed(),
+        d / 10.0
+    );
 
     // A per-encounter query is what the live panel actually runs; it must be
     // comfortably inside a frame budget.

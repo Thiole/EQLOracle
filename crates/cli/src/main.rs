@@ -14,9 +14,9 @@ use eqlp_core::{
     coverage::Coverage,
     engine::Engine,
     event::Outcome,
-    frame, field,
+    field, frame,
     rule::{Pack, ResolvedPack},
-    shape::{Shaper, ShapeMode},
+    shape::{ShapeMode, Shaper},
 };
 use std::collections::HashMap;
 use std::io::{BufWriter, Write};
@@ -83,7 +83,11 @@ struct Args {
 
 impl Args {
     fn parse(v: &[String]) -> Args {
-        let mut a = Args { top: 20, iters: 5, ..Default::default() };
+        let mut a = Args {
+            top: 20,
+            iters: 5,
+            ..Default::default()
+        };
         let mut i = 0;
         while i < v.len() {
             match v[i].as_str() {
@@ -183,7 +187,12 @@ fn cmd_lint(a: &Args) -> Result<(), String> {
                 }
                 other => {
                     errors += 1;
-                    println!("ERROR {}: example is {} \n      {}", r.id, other.kind_str(), ex);
+                    println!(
+                        "ERROR {}: example is {} \n      {}",
+                        r.id,
+                        other.kind_str(),
+                        ex
+                    );
                 }
             }
         }
@@ -205,7 +214,10 @@ fn cmd_lint(a: &Args) -> Result<(), String> {
             for ex in &r.def.examples {
                 if !ex.contains(anc.as_str()) {
                     errors += 1;
-                    println!("ERROR {}: anchor {:?} absent from its own example", r.id, anc);
+                    println!(
+                        "ERROR {}: anchor {:?} absent from its own example",
+                        r.id, anc
+                    );
                 }
             }
         }
@@ -251,7 +263,11 @@ fn cmd_lint(a: &Args) -> Result<(), String> {
     if let Some(p) = &a.against {
         let buf = std::fs::read(p).map_err(|e| format!("{p}: {e}"))?;
         let cov = run(&eng, &buf, a.mode, |_, _| {});
-        println!("\nagainst {p}: {:.2}% of {} event lines", cov.rate() * 100.0, cov.matched + cov.unmatched);
+        println!(
+            "\nagainst {p}: {:.2}% of {} event lines",
+            cov.rate() * 100.0,
+            cov.matched + cov.unmatched
+        );
         let cold = cov.cold_rules();
         if !cold.is_empty() {
             warnings += cold.len();
@@ -261,7 +277,11 @@ fn cmd_lint(a: &Args) -> Result<(), String> {
         if let Some(min) = a.min_rate {
             if cov.rate() < min {
                 errors += 1;
-                println!("ERROR coverage {:.4} below --min-rate {:.4}", cov.rate(), min);
+                println!(
+                    "ERROR coverage {:.4} below --min-rate {:.4}",
+                    cov.rate(),
+                    min
+                );
             }
         }
     }
@@ -315,7 +335,12 @@ fn cmd_parse(a: &Args) -> Result<(), String> {
     let _ = out.flush();
     eprintln!(
         "{} lines: {} matched, {} unmatched, {} headerless, {} blank ({:.2}%)",
-        cov.total, cov.matched, cov.unmatched, cov.headerless, cov.blank, cov.rate() * 100.0
+        cov.total,
+        cov.matched,
+        cov.unmatched,
+        cov.headerless,
+        cov.blank,
+        cov.rate() * 100.0
     );
     Ok(())
 }
@@ -344,7 +369,10 @@ fn cmd_coverage(a: &Args) -> Result<(), String> {
         println!("{c:>10}  {}", eng.rule(*i as u32).id);
     }
 
-    println!("\ntop unmatched shapes ({} distinct)", cov.distinct_shapes());
+    println!(
+        "\ntop unmatched shapes ({} distinct)",
+        cov.distinct_shapes()
+    );
     for (sh, st) in cov.top_shapes(a.top) {
         println!("{:>10}  {}", st.count, lossy(sh));
         println!("            e.g. {}", lossy(&st.example));
@@ -355,7 +383,10 @@ fn cmd_coverage(a: &Args) -> Result<(), String> {
 
     if let Some(min) = a.min_rate {
         if cov.rate() < min {
-            return Err(format!("coverage {:.4} below --min-rate {min:.4}", cov.rate()));
+            return Err(format!(
+                "coverage {:.4} below --min-rate {min:.4}",
+                cov.rate()
+            ));
         }
     }
     Ok(())
@@ -398,13 +429,20 @@ fn cmd_shapes(a: &Args) -> Result<(), String> {
 
     let mut v: Vec<_> = counts.into_iter().collect();
     v.sort_unstable_by(|x, y| y.1 .0.cmp(&x.1 .0));
-    println!("{total} lines, {headerless} headerless, {} distinct shapes\n", v.len());
+    println!(
+        "{total} lines, {headerless} headerless, {} distinct shapes\n",
+        v.len()
+    );
     let shown: u64 = v.iter().take(a.top).map(|(_, (c, _))| *c).sum();
     for (sh, (c, ex)) in v.iter().take(a.top) {
         println!("{c:>10}  {}", lossy(sh));
         println!("            e.g. {}", lossy(ex));
     }
-    println!("\ntop {} shapes cover {:.1}% of lines", a.top, 100.0 * shown as f64 / total.max(1) as f64);
+    println!(
+        "\ntop {} shapes cover {:.1}% of lines",
+        a.top,
+        100.0 * shown as f64 / total.max(1) as f64
+    );
     Ok(())
 }
 
@@ -450,13 +488,21 @@ fn cmd_bench(a: &Args) -> Result<(), String> {
     }
 
     let mib = buf.len() as f64 / (1024.0 * 1024.0);
-    println!("{} rules, {nlines} lines, {:.2} MiB", eng.rules().len(), mib);
+    println!(
+        "{} rules, {nlines} lines, {:.2} MiB",
+        eng.rules().len(),
+        mib
+    );
     println!("best of {}: {:.4} s", a.iters.max(1), best);
     println!("  {:.1} MiB/s", mib / best);
     println!("  {:.2} M lines/s", nlines as f64 / best / 1e6);
     println!("  {:.0} ns/line", best * 1e9 / nlines.max(1) as f64);
-    println!("capture mask off:  {:.0} ns/line  [{:.1} MiB/s]  ({:.1}x)",
-        best_mo * 1e9 / nlines.max(1) as f64, mib / best_mo, best / best_mo);
+    println!(
+        "capture mask off:  {:.0} ns/line  [{:.1} MiB/s]  ({:.1}x)",
+        best_mo * 1e9 / nlines.max(1) as f64,
+        mib / best_mo,
+        best / best_mo
+    );
     Ok(())
 }
 

@@ -40,7 +40,9 @@ pub struct VirtualClock {
 
 impl VirtualClock {
     pub fn new(start_ms: Millis) -> Self {
-        VirtualClock { ms: AtomicI64::new(start_ms) }
+        VirtualClock {
+            ms: AtomicI64::new(start_ms),
+        }
     }
 
     pub fn at_unix_secs(s: i64) -> Self {
@@ -55,7 +57,10 @@ impl VirtualClock {
     pub fn set_at_least(&self, ms: Millis) {
         let mut cur = self.ms.load(Ordering::Relaxed);
         while ms > cur {
-            match self.ms.compare_exchange_weak(cur, ms, Ordering::Relaxed, Ordering::Relaxed) {
+            match self
+                .ms
+                .compare_exchange_weak(cur, ms, Ordering::Relaxed, Ordering::Relaxed)
+            {
                 Ok(_) => return,
                 Err(actual) => cur = actual,
             }

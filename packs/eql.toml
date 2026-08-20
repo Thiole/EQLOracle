@@ -31,6 +31,14 @@ priority = 100
 anchors = [" tells "]
 pattern = '''^(?P<who>.+?) tells (?P<chan>[A-Za-z0-9_]+):(?P<num>[0-9]+), '(?P<text>.*)'$'''
 examples = ["[Tue Jul 28 15:02:15 2026] Moosey tells NewPlayers:1, 'sneak is critical to most spell acquisition at this point'"]
+# Was captured by the pattern but never exposed here -- `extract_action`'s
+# "chat.channel" arm reads `who` to build `Action::PlayerProof`, but with
+# no `[rule.fields]` block at all every field lookup silently returned
+# `Value::Missing`, so this rule could never actually prove a player via
+# a numbered channel -- confirmed directly (not assumed): a debug probe
+# showed the rule matching correctly but `str_field("who")` still `None`.
+[rule.fields]
+who = { from = "who", as = "str" }
 
 [[rule]]
 id = "chat.directed"
@@ -46,6 +54,16 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] You say, 'send'",
   "[Tue Jul 28 15:02:15 2026] Dead Doug says, 'Ahh Dougrick, I knew him well'",
 ]
+# Same real, previously-undiscovered gap as "chat.channel" above -- no
+# `[rule.fields]` block meant `extract_action`'s "chat.directed" arm could
+# never actually read `who`/`chan`, so `Action::PlayerProof` (the whole
+# chat-proof half of ally detection, `Entities::note_player_channel`) was
+# silently dead code this entire project's history -- confirmed via a
+# direct debug probe against a real matched line, not assumed from reading
+# the code.
+[rule.fields]
+who = { from = "who", as = "str" }
+chan = { from = "chan", as = "str" }
 
 # ============================================================ combat
 
@@ -78,20 +96,95 @@ amount = { from = "amt", as = "u64" }
 # string: enumerating the set here would be an assumption the log does not
 # license, and a new one shipping in a patch must not drop the line.
 flag = { from = "flag", as = "str" }
+# Was captured by the pattern but never exposed here -- every landed
+# melee swing silently fell back to a single generic "Melee" ability
+# bucket (`Ingest::canonical_melee_ability`'s own default arm) instead of
+# "Punch"/"Slash"/"Kick"/etc, real per-verb tracking never actually ran.
+verb = { from = "verb", as = "str" }
 
 [[rule]]
 id = "melee.miss"
 kind = "miss"
 priority = 30
 anchors = ["but miss"]
-pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but miss(?:es)?!$'''
+# Trailing "(Riposte)"/"(Rampage)"/"(Flurry)"/"(Wild Rampage)" -- a special
+# attack type can trigger on a swing that still misses, same as a landed
+# one. The bare `!$` anchor used to hard-require nothing follow it at all,
+# so all 5,022 real flagged misses fell straight through to unmatched
+# entirely, not even counted as a plain miss -- see `melee.hit`'s own
+# `flag` field for the precedent this mirrors.
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but miss(?:es)?!(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Abes tries to slash Bouncer Krik, but misses!",
   "[Tue Jul 28 15:02:15 2026] Bravesirrobin tries to slash Footman of V`Zher, but misses!",
+  "[Fri Aug 07 00:00:07 2026] Socho Darkpaw tries to hit Bravesirrobin, but misses! (Riposte)",
 ]
 [rule.fields]
 source = { from = "src", as = "str" }
 target = { from = "dst", as = "str" }
+verb = { from = "verb", as = "str" }
+flag = { from = "flag", as = "str" }
+
+[[rule]]
+id = "melee.blocked"
+kind = "block"
+priority = 30
+anchors = ["blocks!"]
+# Same swing-attempt shape as melee.miss, but the target actively avoided
+# it -- kept as its own kind so a per-source accuracy breakdown can say
+# "blocked" rather than lumping it in with a plain miss. `blocker` is
+# expected to equal `dst` (the target blocking its own attacker); captured
+# as a separate group rather than a backreference since this engine's
+# regex has none. Trailing flag same as melee.miss's own note.
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<blocker>.+?) block(?:s)?!(?: \((?P<flag>[^()]+)\))?$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Refuse tries to punch Refugee Splitpaw, but Refugee Splitpaw blocks!",
+  "[Tue Jul 28 15:02:15 2026] Refuse tries to kick Refugee Splitpaw, but Refugee Splitpaw blocks!",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+verb = { from = "verb", as = "str" }
+flag = { from = "flag", as = "str" }
+
+[[rule]]
+id = "melee.dodged"
+kind = "block"
+priority = 30
+anchors = ["dodge"]
+# Same shape as melee.blocked, different avoidance type. "dodges" (3rd
+# person) and "dodge" (the "YOU dodge!"/self form) both appear for real --
+# same tr(?:ies|y) split covers the attacker's own conjugation already.
+# Trailing flag same as melee.miss's own note.
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<dodger>.+?) dodges?!(?: \((?P<flag>[^()]+)\))?$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Ice boned skeleton tries to punch YOU, but YOU dodge!",
+  "[Tue Jul 28 15:02:15 2026] Baron Telyx V`Zher tries to slash YOU, but YOU dodge!",
+  "[Tue Jul 28 15:02:15 2026] A leering gargoyle tries to hit Bravesirrobin, but Bravesirrobin dodges!",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+verb = { from = "verb", as = "str" }
+flag = { from = "flag", as = "str" }
+
+[[rule]]
+id = "melee.parried"
+kind = "block"
+priority = 30
+anchors = ["parries!"]
+# Same shape as melee.blocked/melee.dodged, the 4th real avoidance type.
+# Trailing flag same as melee.miss's own note.
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<parrier>.+?) parries!(?: \((?P<flag>[^()]+)\))?$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] a rattlesnake tries to bite Kabn, but Kabn parries!",
+  "[Tue Jul 28 15:02:15 2026] a rattlesnake tries to slash Vonektik, but Vonektik parries!",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+flag = { from = "flag", as = "str" }
+verb = { from = "verb", as = "str" }
 
 [[rule]]
 id = "spell.damage"
@@ -224,6 +317,8 @@ priority = 30
 anchors = ["Beginning to memorize"]
 pattern = '''^Beginning to memorize (?P<spell>.+?)\.\.\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] Beginning to memorize Color Flux..."]
+[rule.fields]
+spell = { from = "spell", as = "str" }
 
 [[rule]]
 id = "spell.memorize_done"
@@ -232,6 +327,33 @@ priority = 30
 anchors = ["finished memorizing"]
 pattern = '''^You have finished memorizing (?P<spell>.+?)\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You have finished memorizing Color Flux."]
+[rule.fields]
+spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "spell.scribe_start"
+kind = "spell"
+priority = 30
+# The real "added to spellbook" event -- confirmed against the reference
+# log (596 occurrences), superseding an earlier assumption in this pack
+# that no such line existed. See `ingest::SpellLog`'s own doc for how
+# this pairs with spell.scribe_done to distinguish "known" (finished) from
+# "possible" (began, never confirmed finished).
+anchors = ["Beginning to scribe"]
+pattern = '''^Beginning to scribe (?P<spell>.+?)\.\.\.$'''
+examples = ["[Wed Jul 29 17:02:20 2026] Beginning to scribe Project Lightning..."]
+[rule.fields]
+spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "spell.scribe_done"
+kind = "spell"
+priority = 30
+anchors = ["finished scribing"]
+pattern = '''^You have finished scribing (?P<spell>.+?)\.$'''
+examples = ["[Wed Jul 29 17:02:20 2026] You have finished scribing Project Lightning."]
+[rule.fields]
+spell = { from = "spell", as = "str" }
 
 [[rule]]
 id = "spell.forget"
@@ -309,6 +431,22 @@ examples = ["[Tue Jul 28 15:02:15 2026] You have gained a level! Welcome to leve
 level = { from = "level", as = "u64" }
 
 [[rule]]
+id = "afk.on"
+kind = "afk"
+priority = 40
+anchors = ["You are now A.F.K."]
+pattern = '''^You are now A\.F\.K\. \(Away From Keyboard\)\.$'''
+examples = ["[Sun Aug 16 19:43:02 2026] You are now A.F.K. (Away From Keyboard)."]
+
+[[rule]]
+id = "afk.off"
+kind = "afk"
+priority = 40
+anchors = ["You are no longer A.F.K."]
+pattern = '''^You are no longer A\.F\.K\. \(Away From Keyboard\)\.$'''
+examples = ["[Sun Aug 16 19:43:03 2026] You are no longer A.F.K. (Away From Keyboard)."]
+
+[[rule]]
 id = "skill.up"
 kind = "skill"
 priority = 40
@@ -318,6 +456,53 @@ examples = ["[Tue Jul 28 15:02:15 2026] You have become better at Meditate! (11)
 [rule.fields]
 skill = { from = "skill", as = "str" }
 level = { from = "level", as = "u64" }
+
+[[rule]]
+id = "aa.gained"
+kind = "aa"
+priority = 40
+# Rank 1 of an AA, first purchase ever -- distinct from "aa.improved"
+# below (rank 2+), which uses "improved <name> <rank>" instead of a
+# quoted name and has no rank-1 case of its own. Cost is "N ability
+# points." even at cost 0 or 1 -- always plural here, unlike
+# aa.improved's own "1 ability point." singular at exactly cost 1 --
+# confirmed against the real reference log, not assumed grammar.
+anchors = [" at a cost of "]
+pattern = '''^You have gained the ability "(?P<name>.+?)" at a cost of (?P<cost>[0-9]+) ability points?\.$'''
+examples = [
+  "[Fri Aug 07 00:25:51 2026] You have gained the ability \"Unbound Drain\" at a cost of 0 ability points.",
+  "[Fri Aug 07 21:00:06 2026] You have gained the ability \"Innate Regeneration\" at a cost of 1 ability points.",
+  "[Fri Jul 31 16:55:33 2026] You have gained the ability \"Spell Casting Deftness\" at a cost of 2 ability points.",
+]
+counterexamples = [
+  # Innate skill grants (Bash, Riposte, Dodge, ...) -- no quotes, no
+  # cost clause, not a real AA purchase. Never matches this pattern
+  # since there's nothing to fill `name`/`cost` from.
+  "[Sat Aug 08 00:36:12 2026] You have gained the ability to use Double Attack.",
+]
+[rule.fields]
+name = { from = "name", as = "str" }
+cost = { from = "cost", as = "u64" }
+
+[[rule]]
+id = "aa.improved"
+kind = "aa"
+priority = 40
+# Rank 2+ of an AA already owned -- "improved <name> <rank>", not
+# "gained the ability". No AA name in the catalog ends in a digit (see
+# aadata.rs's module doc), so the non-greedy `name` capture followed by
+# a bare rank number never mis-splits.
+anchors = [" at a cost of "]
+pattern = '''^You have improved (?P<name>.+?) (?P<rank>[0-9]+) at a cost of (?P<cost>[0-9]+) ability points?\.$'''
+examples = [
+  "[Fri Aug 07 21:00:06 2026] You have improved Innate Regeneration 2 at a cost of 1 ability point.",
+  "[Mon Aug 03 18:13:44 2026] You have improved Adamant Will 2 at a cost of 4 ability points.",
+  "[Mon Aug 03 18:13:44 2026] You have improved Harm Touch 8 at a cost of 0 ability points.",
+]
+[rule.fields]
+name = { from = "name", as = "str" }
+rank = { from = "rank", as = "u64" }
+cost = { from = "cost", as = "u64" }
 
 [[rule]]
 id = "faction.adjust"
@@ -340,11 +525,109 @@ id = "loot.self"
 kind = "loot"
 priority = 50
 anchors = ["You have looted"]
-pattern = '''^--You have looted (?:a|an) (?P<item>.+?) from (?P<corpse>.+?)\.--$'''
-examples = ["[Tue Jul 28 15:02:15 2026] --You have looted a Fragile Pet's Skull from a fragile pet's corpse.--"]
+# A stack loots as "You have looted 2 Bone Chips from ..." -- no article, a
+# leading count instead. A single item loots as "a"/"an" with no count at
+# all. `qty` only participates in the numeral branch; absent (the singular
+# case) defaults to 1 in ingest.rs, the same way cast.interrupted's `who`
+# only participates in its own branch and defaults to "You" there.
+pattern = '''^--You have looted (?:(?P<qty>[0-9]+)|a|an) (?P<item>.+?) from (?P<corpse>.+?)\.--$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] --You have looted a Fragile Pet's Skull from a fragile pet's corpse.--",
+  "[Tue Jul 28 15:02:15 2026] --You have looted 2 Bone Chips from a cracked skeleton's corpse.--",
+]
 [rule.fields]
+qty = { from = "qty", as = "u64" }
 item = { from = "item", as = "str" }
 corpse = { from = "corpse", as = "str" }
+
+[[rule]]
+id = "loot.self.direct"
+kind = "loot"
+priority = 50
+anchors = ["You looted"]
+# loot.self (above) only ever matches one specific client message -- the
+# "--...--" bracketed "You have looted X from Y's corpse.--" form. There
+# is a second, completely different message the client also sends on an
+# ordinary loot, and checked against a real long-lived log
+# (eqlog_Manipulator_rivervale.txt, 2.27M lines): 7,576 lines matched this
+# second form against only 546 for the first. The vast majority of real
+# loot events were silently invisible to this app before this rule
+# existed -- not a mis-attribution bug, a coverage gap.
+#
+# This second form has no "--" bracketing, says "looted" not "have
+# looted", and its trailing clause varies by what happened to the item
+# after: sold automatically to a vendor ("and sold it for <currency>."),
+# banked as currency ("and stored it in your currency", no trailing
+# period), stashed in a tradeskill depot or Dragon Hoard, or combined into
+# a higher tier ("to create a <item> +N", also no trailing period). Rather
+# than one rule per trailing clause (a new one needed every time the
+# client adds another auto-handling option), item/corpse/qty are captured
+# up through "'s corpse" and everything after that is matched but mostly
+# discarded (`.*$`) -- permissive on purpose, so a trailing clause this
+# session's log doesn't happen to contain still parses correctly. The one
+# exception: an auto-sell's own "and sold it for <amount>" clause is
+# pulled out as `sold_for` -- still just the raw denomination text
+# (Ingest::parse_currency_copper does the actual parsing, same "capture
+# stays a pure read" reason `corpse` isn't stripped of its "'s corpse"
+# suffix here either), but naming it is what lets `record_loot` also
+# record the platinum earned, not just the item.
+pattern = '''^You looted (?:(?P<qty>[0-9]+)|a|an) (?P<item>.+?) from (?P<corpse>.+?'s corpse)(?: and sold it for (?P<sold_for>[^.]+))?.*$'''
+examples = [
+  "[Tue Jul 28 15:10:44 2026] You looted a Chunk of Meat from a coyote's corpse and sold it for 1 silver.",
+  "[Tue Jul 28 15:31:55 2026] You looted a Mote of Infinitesimal Potential from a dune spiderling's corpse and stored it in your currency",
+  "[Tue Jul 28 20:00:22 2026] You looted a Rusty Mace +2 from a patrolling gnoll's corpse to create a Rusty Mace +3",
+  "[Tue Jul 28 15:13:00 2026] You looted 2 Deepwater Ink from a swirlspine seahorse's corpse and stored it in your tradeskill depot",
+  "[Tue Jul 28 15:10:08 2026] You looted 2 Phosphorous Powder from a zol ghoul knight's corpse and sold it for 2 platinum, 5 gold, 7 silver and 2 copper.",
+]
+[rule.fields]
+qty = { from = "qty", as = "u64" }
+item = { from = "item", as = "str" }
+corpse = { from = "corpse", as = "str" }
+sold_for = { from = "sold_for", as = "str" }
+
+[[rule]]
+id = "money.vendor_sell"
+kind = "money"
+priority = 50
+anchors = ["You receive"]
+# A direct sale to an NPC vendor (not a loot auto-sell -- see `loot.self.
+# direct`'s own `sold_for` for that one): "You receive <amount> from
+# <vendor> for <item>(s)." `amount` is captured lazily up through the
+# first " from " -- the denomination text itself never contains that
+# substring, so this is safe regardless of how many denominations are
+# present or how they're joined (confirmed against the real log: this
+# server phrases the same 4-denomination list two different ways --
+# "9 platinum 5 gold 7 silver" here, vs "2 platinum, 5 gold, 7 silver and
+# 2 copper" on an auto-sell -- which is exactly why parsing the list's
+# internal structure is left to Ingest::parse_currency_copper rather than
+# encoded into this pattern).
+pattern = '''^You receive (?P<amount>.+?) from .+ for .+\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You receive 9 platinum 5 gold 7 silver from Klok Koglin for the Gold Malachite Bracelet(s).",
+  "[Tue Jul 28 15:02:15 2026] You receive 70 platinum 2 gold from Canarie for the Golden Star Ruby Ring(s).",
+  "[Tue Jul 28 15:02:15 2026] You receive 185 platinum from Klok Koglin for the Fire Emerald Platinum Ring(s).",
+]
+[rule.fields]
+amount = { from = "amount", as = "str" }
+
+[[rule]]
+id = "outputfile.complete"
+kind = "outputfile"
+priority = 50
+anchors = ["Outputfile Complete"]
+# The client's own confirmation that a /outputfile command finished
+# writing -- for /outputfile inventory specifically, this is the only log
+# signal that a fresh inventory dump exists at all, and the only place its
+# exact filename is ever stated. The dump itself lands one directory above
+# Logs (the game's base install folder, see AppConfig's doc in
+# eqlp-app::config), never in the log stream -- this line is a pointer to
+# it, not the data itself.
+pattern = '''^Outputfile Complete: (?P<file>.+)$'''
+examples = [
+  "[Sun Aug 16 08:24:59 2026] Outputfile Complete: Manipulator_rivervale-Inventory.txt",
+]
+[rule.fields]
+file = { from = "file", as = "str" }
 
 [[rule]]
 id = "money.corpse"
@@ -369,6 +652,24 @@ examples = [
 ]
 [rule.fields]
 zone = { from = "zone", as = "str" }
+
+[[rule]]
+id = "state.location"
+kind = "state"
+priority = 40
+anchors = ["Your Location is"]
+# The "/loc" command's own output. Rare -- only appears when the player
+# types it manually (confirmed: once in 2.8M lines of the reference log)
+# -- so this is a "last known position" snapshot, not continuous
+# tracking. Fields mix bare integers and decimals in real map data (see
+# packs/eql.toml's mapsdata.rs sibling), so the coordinate group accepts
+# both.
+pattern = '''^Your Location is (?P<x>-?[0-9]+(?:\.[0-9]+)?), (?P<y>-?[0-9]+(?:\.[0-9]+)?), (?P<z>-?[0-9]+(?:\.[0-9]+)?)$'''
+examples = ["[Tue Aug 18 22:28:36 2026] Your Location is 216.51, -103.09, -20.19"]
+[rule.fields]
+x = { from = "x", as = "f64" }
+y = { from = "y", as = "f64" }
+z = { from = "z", as = "f64" }
 
 [[rule]]
 id = "proc.item"
@@ -411,6 +712,92 @@ examples = [
 ]
 
 [[rule]]
+id = "noise.loading"
+kind = "noise"
+priority = 60
+anchors = ["LOADING, PLEASE WAIT"]
+# No explicit signal of what triggered it -- likely a zone transfer, not
+# confirmed. Claimed here so it stops crowding the unmatched list; nothing
+# downstream reads it yet.
+pattern = '''^LOADING, PLEASE WAIT\.\.\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] LOADING, PLEASE WAIT..."]
+
+[[rule]]
+id = "noise.right_click_hint"
+kind = "noise"
+priority = 60
+anchors = ["Stand close to and right click on the"]
+# The UI's own context-sensitive hint (Banker/Corpse/Merchant/Player, each
+# with its own trailing text) -- pure client tutorial text, not game
+# state. 2,058 real occurrences. Broad on purpose rather than enumerating
+# every subject: real unrelated content ("right click on the X" inside
+# player chat) never starts a line with this exact fixed prefix, so
+# there's no ambiguity to guard against.
+pattern = '''^Stand close to and right click on the .+\.$'''
+examples = [
+  "[Fri Aug 07 16:39:00 2026] Stand close to and right click on the Player to inspect him. Use the /toggleinspect command to enable or disable right-click inspecting.",
+  "[Fri Aug 07 16:43:07 2026] Stand close to and right click on the Merchant to begin a transaction.",
+]
+
+[[rule]]
+id = "noise.spell_set_loaded"
+kind = "noise"
+priority = 60
+anchors = ["Spell set "]
+# The hotbar/spellbar UI's own load confirmation, not game state. 616 real
+# occurrences.
+pattern = '''^Spell set .+ loaded\.$'''
+examples = ["[Fri Aug 07 00:47:50 2026] Spell set WED_29_Grind loaded."]
+
+[[rule]]
+id = "noise.no_open_slots"
+kind = "noise"
+priority = 60
+anchors = ["no open slots for the held item"]
+pattern = '''^There are no open slots for the held item in your inventory\.$'''
+examples = ["[Fri Aug 14 16:32:24 2026] There are no open slots for the held item in your inventory."]
+
+[[rule]]
+id = "noise.out_of_range"
+kind = "noise"
+priority = 60
+anchors = ["target is out of range"]
+pattern = '''^Your target is out of range, get closer!$'''
+examples = ["[Fri Aug 07 16:58:14 2026] Your target is out of range, get closer!"]
+
+[[rule]]
+id = "noise.missing_component"
+kind = "noise"
+priority = 60
+anchors = ["You are missing"]
+# Covers both the named-item form ("You are missing Platinum Bar.") and
+# the generic form ("You are missing some required components.") -- a
+# tradeskill/quest system message, not game state.
+pattern = '''^You are missing .+\.$'''
+examples = [
+  "[Fri Aug 07 16:36:07 2026] You are missing Platinum Bar.",
+  "[Fri Aug 07 16:36:07 2026] You are missing some required components.",
+]
+
+[[rule]]
+id = "noise.invocation_switch_blocked"
+kind = "noise"
+priority = 60
+anchors = ["cannot switch invocations"]
+pattern = '''^You cannot switch invocations while casting!$'''
+examples = ["[Fri Aug 07 17:10:56 2026] You cannot switch invocations while casting!"]
+
+[[rule]]
+id = "noise.invocation_menu"
+kind = "noise"
+priority = 60
+anchors = ["begin to change your invocation"]
+# No name -- just the "menu opened" line, distinct from the real
+# selection event (state.invocation, "begin reciting the X invocation.").
+pattern = '''^You begin to change your invocation\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You begin to change your invocation."]
+
+[[rule]]
 id = "cast.interrupted_recover"
 kind = "cast"
 priority = 40
@@ -437,15 +824,69 @@ amount = { from = "amt", as = "u64" }
 spell = { from = "spell", as = "str" }
 
 [[rule]]
+id = "dot.damage_from_you"
+kind = "damage"
+priority = 40
+anchors = ["damage from your "]
+# A third shape alongside dot.damage/dot.damage_uncredited above: the
+# caster is named via the possessive "your" instead of a trailing "by
+# <caster>" clause, so `dot.damage`'s own pattern (which requires that
+# clause) never matches these -- they fell straight through both existing
+# rules. 8,621 real occurrences across 12 distinct real DoTs (Elemental
+# Maelstrom, Suffocating Sphere, Leech, Harm Touch, Clinging Darkness,
+# Choke, Gasping Embrace, Stinging Swarm, Suffocate), all silently missing
+# from the player's own DPS until now.
+pattern = '''^(?P<dst>.+?) ha[sv]e? taken (?P<amt>[0-9,]+) damage from your (?P<spell>.+?)\.(?: \((?P<flag>[^()]+)\))?$'''
+examples = [
+  "[Fri Aug 07 00:00:07 2026] Orc scoutsman has taken 104 damage from your Elemental Maelstrom X.",
+  "[Sun Aug 09 04:21:39 2026] Orc legionnaire has taken 16 damage from your Leech. (Critical)",
+]
+[rule.fields]
+target = { from = "dst", as = "str" }
+amount = { from = "amt", as = "u64" }
+spell = { from = "spell", as = "str" }
+flag = { from = "flag", as = "str" }
+
+[[rule]]
 id = "cast.interrupted"
 kind = "cast"
 priority = 40
 anchors = ["spell is interrupted"]
-pattern = '''^(?P<who>.+?) (?P<spell>.+?) spell is interrupted\.$'''
+pattern = '''^(?:Your|(?P<who>.+?)'s) (?P<spell>.+?) spell is interrupted\.$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Your Burst of Flame spell is interrupted.",
   "[Tue Jul 28 15:02:15 2026] Cylic's Burst of Flame spell is interrupted.",
+  "[Tue Jul 28 15:02:15 2026] a frightfinger's Elnerick's Entombment of Ice spell is interrupted.",
 ]
+note = '''
+Fields were never wired up before eqlp_session::cast::Resolver needed them --
+see BACKLOG.md's cast-outcome work. Splitting on a bare space (the original
+form) put src="a" and spell="frightfinger's Elnerick's Entombment of Ice" for
+every article-prefixed caster ("a boogeyman", "a frightfinger", ...) --
+confirmed wrong on 261 of 9,022 real occurrences. Splitting on the literal 's
+instead of any space fixes it: the caster's own possessive is always the
+first one in the line, even when the spell name carries its own ("Kragg's
+Salve"). `who` doesn't participate on the `Your` branch -- see
+`Ingest::extract_action`, which defaults it to "You".
+'''
+[rule.fields]
+source = { from = "who", as = "str" }
+spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "cast.fizzled"
+kind = "cast"
+priority = 40
+anchors = ["spell fizzles!"]
+pattern = '''^(?:Your|(?P<src>.+?)'s) (?P<spell>.+?) spell fizzles!$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Your Burst of Flame spell fizzles!",
+  "[Tue Jul 28 15:02:15 2026] Aahz's Kragg's Salve spell fizzles!",
+]
+note = "974 occurrences, previously unmatched. Splits on the literal 's rather than the first space -- see cast.interrupted's note for why: a bare-space split silently truncates article-prefixed casters ('a boogeyman') to just their article. No article-prefixed caster happens to fizzle in the reference log (0/974), but nothing here should rely on that being true of every log."
+[rule.fields]
+source = { from = "src", as = "str" }
+spell = { from = "spell", as = "str" }
 
 [[rule]]
 id = "spell.warded"
@@ -562,6 +1003,104 @@ pattern = '''^You are no longer mesmerized\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You are no longer mesmerized."]
 
 [[rule]]
+id = "state.you_poisoned"
+kind = "state"
+priority = 50
+anchors = ["You have been poisoned"]
+pattern = '''^You have been poisoned\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have been poisoned."]
+note = "First person -- 'has been poisoned' (state.poisoned) is the third-person form, same split this pack already uses for death.you_died/death.other."
+
+[[rule]]
+id = "state.poisoned"
+kind = "state"
+priority = 50
+anchors = ["has been poisoned"]
+pattern = '''^(?P<who>.+?) has been poisoned\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] a rattlesnake has been poisoned."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "state.you_diseased"
+kind = "state"
+priority = 50
+anchors = ["You have been diseased"]
+# Same split as state.you_poisoned/state.poisoned -- 363 real first-person
+# occurrences.
+pattern = '''^You have been diseased\.$'''
+examples = ["[Fri Aug 07 19:38:37 2026] You have been diseased."]
+
+[[rule]]
+id = "state.diseased"
+kind = "state"
+priority = 50
+anchors = ["has been diseased"]
+pattern = '''^(?P<who>.+?) has been diseased\.$'''
+examples = ["[Fri Aug 07 19:52:48 2026] Dojii has been diseased."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "state.spell_overwritten"
+kind = "state"
+priority = 50
+anchors = ["has been overwritten"]
+pattern = '''^Your (?P<spell>.+?) spell on (?P<who>.+?) has been overwritten\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your Allure spell on an abhorrent has been overwritten."]
+note = "Doesn't name what overwrote it -- that's presumably the immediately preceding cast line, not reconstructed here. Self-only phrasing seen so far."
+[rule.fields]
+spell = { from = "spell", as = "str" }
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "state.stance"
+kind = "state"
+priority = 50
+anchors = ["You assume"]
+# Self only -- the log doesn't report anyone else's stance changes.
+# Stance name captured generically, not a fixed list, so a real stance
+# this pack hasn't explicitly seen yet still parses (see stancedata.rs
+# for which names actually have class data behind them).
+pattern = '''^You assume an? (?P<stance>.+?) stance\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You assume an evasive stance.",
+  "[Tue Jul 28 15:02:15 2026] You assume a channeler stance.",
+  "[Tue Jul 28 15:02:15 2026] You assume a balanced stance.",
+]
+[rule.fields]
+stance = { from = "stance", as = "str" }
+
+[[rule]]
+id = "state.invocation"
+kind = "state"
+priority = 50
+anchors = ["reciting the"]
+# Self only -- same stance the log takes on stances, no equivalent for
+# anyone else's invocation changes. Name captured generically (see
+# invocationdata.rs for the real spelling quirks the log itself uses).
+pattern = '''^You begin reciting the (?P<invocation>.+?) invocation\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You begin reciting the arcane mastery invocation.",
+  "[Tue Jul 28 15:02:15 2026] You begin reciting the inviolable invocation.",
+  "[Tue Jul 28 15:02:15 2026] You begin reciting the overchannel invocation.",
+]
+[rule.fields]
+invocation = { from = "invocation", as = "str" }
+
+[[rule]]
+id = "invis.fading"
+kind = "state"
+priority = 40
+# The real early-warning line invisibility gives before it actually
+# breaks -- confirmed against the reference log (9 real occurrences), and
+# distinct from "You appear." (the line for when it's already gone, not
+# tracked as its own rule yet -- nothing in this app needs it today).
+anchors = ["starting to appear"]
+pattern = '''^You feel yourself starting to appear\.$'''
+examples = ["[Fri Jul 31 00:20:03 2026] You feel yourself starting to appear."]
+
+[[rule]]
 id = "spell.resisted"
 kind = "resist"
 priority = 40
@@ -572,6 +1111,27 @@ note = "Carries the rank numeral, which landed damage lines drop. A second rank 
 [rule.fields]
 who = { from = "who", as = "str" }
 spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "cast.blocked"
+kind = "cast"
+priority = 40
+anchors = ["did not take hold on"]
+# Always "Your <spell>" -- only ever shown to the caster about their own
+# spell, never a third-person form (confirmed: 0/482 real occurrences are
+# anything but "Your"). The trailing "(Blocked by <blocker>.)" names a
+# buff already active on the target (a stacking conflict, not a resist)
+# -- optional, since a real minority of these have no parenthetical at
+# all ("...did not take hold on Bravesirrobin." and nothing else).
+pattern = '''^Your (?P<spell>.+?) spell did not take hold on (?P<target>.+?)\.(?: \(Blocked by (?P<blocker>.+?)\.\))?$'''
+examples = [
+  "[Fri Aug 14 21:11:25 2026] Your Berserker Strength spell did not take hold on Hakujin. (Blocked by Berserker Spirit.)",
+  "[Sat Aug 15 09:49:02 2026] Your Shield of Lava spell did not take hold on Bravesirrobin.",
+]
+[rule.fields]
+spell = { from = "spell", as = "str" }
+target = { from = "target", as = "str" }
+blocker = { from = "blocker", as = "str" }
 
 [[rule]]
 id = "pet.summoned"
@@ -594,3 +1154,60 @@ examples = [
 [rule.fields]
 who = { from = "who", as = "str" }
 flavor = { from = "flavor", as = "str" }
+
+[[rule]]
+id = "ability.quickbuff"
+kind = "ability"
+priority = 40
+anchors = ["Quick Buff"]
+# Class-agnostic AA -- anyone can activate it -- that silently applies
+# whatever buffs the activator already knows, with no "begins casting"
+# line for any of them. Kept as its own rule rather than folded into
+# ability.activated below: this is the one activation that opens a Quick
+# Buff window (`Ingest::note_quickbuff`), a behavior no other ability
+# activation has.
+#
+# `activates?` -- the log conjugates this by person: "You activate Quick
+# Buff." for the log owner's own activation, "<Name> activates Quick
+# Buff." third-person for anyone else. An earlier version only matched the
+# third-person form, so the player's *own* Quick Buff bursts -- the
+# highest-value evidence, since it's provably their own known spells --
+# never opened a window at all. Caught by a real-data test, not
+# inspection: confirmed against the reference log, which has both forms.
+
+pattern = '''^(?P<who>.+?) activates? Quick Buff\.$'''
+examples = [
+  "[Wed Jul 29 16:03:53 2026] Dippinsauce activates Quick Buff.",
+  "[Tue Jul 28 21:13:56 2026] You activate Quick Buff.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "ability.activated"
+kind = "ability"
+priority = 40
+anchors = ["activates "]
+excludes = ["Quick Buff"]
+# General discipline/poison activation -- 1,846 real occurrences across 23
+# distinct abilities, 100% third-person (the log owner never sees their
+# *own* activation this way -- only other players'). classdata::
+# classes_for recognizes 9 of the 23 (all Rogue poisons: Antimagic,
+# Binding, Clumsiness, Concussive, Fettering, Mage Bane, Neurotoxic,
+# Paralytic, Thought Drain); the rest just yield no evidence, same as any
+# unrecognized spell name -- not a guess, a real lookup against the same
+# data every other cast already uses.
+#
+# The real value here isn't the log owner's own state (they're never the
+# `who`) -- it's identifying *other players'* classes from something they
+# visibly did, and confirming what's now on their weapon (fed to
+# `Effects` as a self-directed state fact on the activator, same
+# mechanism as any other recognized state).
+pattern = '''^(?P<who>.+?) activates? (?P<ability>.+?)\.$'''
+examples = [
+  "[Thu Aug 13 21:46:48 2026] Aella activates Asp Venom.",
+  "[Thu Aug 13 21:46:57 2026] Aella activates Blood Siphon Venom.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+ability = { from = "ability", as = "str" }

@@ -77,7 +77,10 @@ pub mod tag {
     ];
 
     pub fn names(t: Tags) -> Vec<&'static str> {
-        ALL.iter().filter(|(b, _)| t & b != 0).map(|(_, n)| *n).collect()
+        ALL.iter()
+            .filter(|(b, _)| t & b != 0)
+            .map(|(_, n)| *n)
+            .collect()
     }
 }
 
@@ -110,7 +113,12 @@ impl Abilities {
             return AbilityId(i);
         }
         let i = self.rows.len() as u32;
-        self.rows.push(Ability { name, tags, ceiling: 0, seen_cast: false });
+        self.rows.push(Ability {
+            name,
+            tags,
+            ceiling: 0,
+            seen_cast: false,
+        });
         self.by_sym.insert(name, i);
         AbilityId(i)
     }
@@ -150,6 +158,9 @@ impl Abilities {
         self.rows.is_empty()
     }
     pub fn iter(&self) -> impl Iterator<Item = (AbilityId, &Ability)> {
-        self.rows.iter().enumerate().map(|(i, a)| (AbilityId(i as u32), a))
+        self.rows
+            .iter()
+            .enumerate()
+            .map(|(i, a)| (AbilityId(i as u32), a))
     }
 }

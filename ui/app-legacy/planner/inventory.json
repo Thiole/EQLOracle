@@ -1,0 +1,90 @@
+{
+  "RANGE": {
+    "name": "Soldier's Brooch of the Arcane",
+    "tier": 4
+  },
+  "WAIST": {
+    "name": "Bone-Clasped Girdle",
+    "tier": 4
+  },
+  "NECK": {
+    "name": "Bloodstar Pendant",
+    "tier": 5
+  },
+  "BACK": {
+    "name": "Shield of the Immaculate",
+    "tier": 3
+  },
+  "WRIST1": {
+    "name": "Bracelet of Quiescence",
+    "tier": 3
+  },
+  "WRIST2": {
+    "name": "Golden Chitin Bracer",
+    "tier": 3
+  },
+  "ANY1": {
+    "name": "Crimson Robe of Alendine",
+    "tier": 5
+  },
+  "ARMS": {
+    "name": "Insidious Sleeves",
+    "tier": 4
+  },
+  "FEET": {
+    "name": "Golden Efreeti Boots",
+    "tier": 6
+  },
+  "HEAD": {
+    "name": "Midnight Clad Headband",
+    "tier": 1
+  },
+  "SHOULDERS": {
+    "name": "Pauldrons of Power",
+    "tier": 5
+  },
+  "LEGS": {
+    "name": "Ishva Mas Leggings",
+    "tier": 4
+  },
+  "PRIMARY": {
+    "name": "Eye of Innoruuk",
+    "tier": 7
+  },
+  "SECONDARY": {
+    "name": "Rokyls Channelling Crystal",
+    "tier": 5
+  },
+  "EAR2": {
+    "name": "Ivandyr's Hoop",
+    "tier": 5
+  },
+  "FINGER2": {
+    "name": "Engineer's Ring",
+    "tier": 5
+  },
+  "EAR1": {
+    "name": "Earring of Displacement",
+    "tier": 2
+  },
+  "FACE": {
+    "name": "Tobrin's Mystical Eyepatch",
+    "tier": 1
+  },
+  "CHEST": {
+    "name": "Crimson Robe of Alendine",
+    "tier": 5
+  },
+  "ANY2": {
+    "name": "Talisman of Kejaar Kerrath",
+    "tier": 7
+  },
+  "HANDS": {
+    "name": "Slime Blood of Cazic-Thule",
+    "tier": 4
+  },
+  "FINGER1": {
+    "name": "Ring of Pureblood",
+    "tier": 4
+  }
+}

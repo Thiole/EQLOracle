@@ -27,10 +27,31 @@ pub enum ShapeMode {
 fn is_function_word(w: &[u8]) -> bool {
     matches!(
         w,
-        b"You" | b"YOU" | b"Your" | b"YOUR" | b"Yours" | b"I"
-            | b"A" | b"An" | b"The" | b"It" | b"Its" | b"This" | b"That"
-            | b"He" | b"She" | b"His" | b"Her" | b"Hers" | b"Him"
-            | b"They" | b"Them" | b"Their" | b"We" | b"Our" | b"Us"
+        b"You"
+            | b"YOU"
+            | b"Your"
+            | b"YOUR"
+            | b"Yours"
+            | b"I"
+            | b"A"
+            | b"An"
+            | b"The"
+            | b"It"
+            | b"Its"
+            | b"This"
+            | b"That"
+            | b"He"
+            | b"She"
+            | b"His"
+            | b"Her"
+            | b"Hers"
+            | b"Him"
+            | b"They"
+            | b"Them"
+            | b"Their"
+            | b"We"
+            | b"Our"
+            | b"Us"
     )
 }
 
@@ -69,7 +90,9 @@ pub struct Shaper {
 
 impl Shaper {
     pub fn new() -> Self {
-        Shaper { toks: Vec::with_capacity(48) }
+        Shaper {
+            toks: Vec::with_capacity(48),
+        }
     }
 
     pub fn shape_into(&mut self, body: &[u8], mode: ShapeMode, out: &mut Vec<u8>) {
@@ -98,7 +121,10 @@ impl Shaper {
 
             // Peel surrounding punctuation so "damage." and "damage" agree.
             let cs = tok.iter().position(|c| c.is_ascii_alphanumeric());
-            let ce = tok.iter().rposition(|c| c.is_ascii_alphanumeric()).map(|p| p + 1);
+            let ce = tok
+                .iter()
+                .rposition(|c| c.is_ascii_alphanumeric())
+                .map(|p| p + 1);
             let (cs, ce) = match (cs, ce) {
                 (Some(a), Some(b)) => (a, b),
                 _ => (tok.len(), tok.len()),

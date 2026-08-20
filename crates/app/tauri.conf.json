@@ -4,10 +4,13 @@
   "version": "0.1.0",
   "identifier": "com.eqlp.companion",
   "build": {
-    "frontendDist": "../../ui/app"
+    "frontendDist": "../../ui/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": { "script": "npm run dev", "cwd": "../../ui", "wait": false },
+    "beforeBuildCommand": { "script": "npm run build", "cwd": "../../ui" }
   },
   "app": {
-    "withGlobalTauri": true,
+    "withGlobalTauri": false,
     "windows": [
       {
         "label": "main",

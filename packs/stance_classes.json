@@ -1,0 +1,11 @@
+{
+  "Balanced": ["Berserker", "Bard", "Beastlord", "Monk", "Paladin", "Ranger", "Rogue", "Shadow Knight", "Warrior"],
+  "Berserker": ["Berserker"],
+  "Channeler": ["Cleric", "Druid", "Enchanter", "Magician", "Necromancer", "Shaman", "Wizard"],
+  "Defensive": ["Paladin", "Shadow Knight", "Warrior"],
+  "Evasive": ["Bard", "Monk", "Ranger", "Beastlord", "Rogue"],
+  "Mage Hunter": ["Berserker", "Paladin", "Shadow Knight"],
+  "Offensive": ["Berserker", "Bard", "Beastlord", "Monk", "Paladin", "Ranger", "Rogue", "Shadow Knight", "Warrior"],
+  "Ranged": ["Berserker", "Monk", "Ranger", "Rogue"],
+  "Striker": ["Berserker", "Monk", "Rogue", "Warrior"]
+}

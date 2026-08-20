@@ -98,7 +98,10 @@ impl HpModel {
 
     /// Median observed kill damage, once there is enough to mean anything.
     pub fn estimate(&self, target: &str) -> Option<u64> {
-        let v = self.kills.get(target).or_else(|| self.kills.get(&key(target)))?;
+        let v = self
+            .kills
+            .get(target)
+            .or_else(|| self.kills.get(&key(target)))?;
         if v.len() < 3 {
             return None;
         }
