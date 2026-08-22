@@ -823,7 +823,10 @@ pub fn summarize(
             // `EventKind::Miss`, not `Damage` -- see `flag::MITIGATED`'s
             // own doc for why it still lands on the *same* ability row
             // once merged here (`merge_ability_rows` combines both).
-            let avoided = by_ability(&ing.store, &Filter::encounter(id).kind(EventKind::Miss).by(sym));
+            let avoided = by_ability(
+                &ing.store,
+                &Filter::encounter(id).kind(EventKind::Miss).by(sym),
+            );
             merge_ability_rows(&mut merged, avoided);
         } else {
             // Team aggregate: everyone in the fight, minus whatever the
@@ -835,7 +838,10 @@ pub fn summarize(
             merge_ability_rows(&mut merged, all);
             subtract_ability_rows(&mut merged, enemy_rows);
             let all_avoided = by_ability(&ing.store, &Filter::encounter(id).kind(EventKind::Miss));
-            let enemy_avoided = by_ability(&ing.store, &Filter::encounter(id).kind(EventKind::Miss).by(enc.target));
+            let enemy_avoided = by_ability(
+                &ing.store,
+                &Filter::encounter(id).kind(EventKind::Miss).by(enc.target),
+            );
             merge_ability_rows(&mut merged, all_avoided);
             subtract_ability_rows(&mut merged, enemy_avoided);
         }
@@ -1420,7 +1426,11 @@ mod level_range_tests {
         let ing = run(text, 45);
         let visits: Vec<ZoneVisit> = vec![Some(0)];
         let range = level_range_for(&ing, &visits).expect("the 15:30 ding is real evidence");
-        assert_eq!(range, (46, 46), "45 was never observed *during* this visit -- only 46 was");
+        assert_eq!(
+            range,
+            (46, 46),
+            "45 was never observed *during* this visit -- only 46 was"
+        );
     }
 
     /// A visit with no ding of its own contributes nothing -- not the
@@ -1457,8 +1467,13 @@ mod level_range_tests {
 
         // Befallen (index 0) is the only zone visit here.
         let visits: Vec<ZoneVisit> = vec![Some(0)];
-        let range = level_range_for(&ing, &visits).expect("3 real dings happened inside this visit");
-        assert_eq!(range, (11, 18), "30 belongs to whatever was active before this visit opened, not this one");
+        let range =
+            level_range_for(&ing, &visits).expect("3 real dings happened inside this visit");
+        assert_eq!(
+            range,
+            (11, 18),
+            "30 belongs to whatever was active before this visit opened, not this one"
+        );
     }
 }
 
@@ -1565,7 +1580,9 @@ mod outcome_tests {
     /// The trailing filler line (see `ingest_from`) is its own encounter --
     /// find the one under test by name rather than assuming position.
     fn find<'a>(list: &'a [EncounterDto], target: &str) -> &'a EncounterDto {
-        list.iter().find(|e| e.target == target).expect("target should have its own encounter")
+        list.iter()
+            .find(|e| e.target == target)
+            .expect("target should have its own encounter")
     }
 
     #[test]
@@ -1590,7 +1607,10 @@ mod outcome_tests {
         );
         let list = list_encounters(&ing, None, 0, usize::MAX);
         let e = find(&list, "a rock golem");
-        assert!(!e.slain, "the target survived -- this must not read as a kill");
+        assert!(
+            !e.slain,
+            "the target survived -- this must not read as a kill"
+        );
         assert!(e.wiped);
     }
 }
@@ -1627,7 +1647,10 @@ mod ability_mitigation_dto_tests {
             .expect("a Punch row should reach the DTO");
         assert_eq!(punch.hits, 1);
         assert_eq!(punch.total, 5);
-        assert_eq!(punch.blocked, 1, "the mitigated swing must reach the DTO too");
+        assert_eq!(
+            punch.blocked, 1,
+            "the mitigated swing must reach the DTO too"
+        );
         assert_eq!(punch.missed, 0);
         assert_eq!(punch.dodged, 0);
         assert_eq!(punch.parried, 0);
@@ -1657,6 +1680,9 @@ mod ability_mitigation_dto_tests {
             .expect("a Punch row should reach the DTO");
         assert_eq!(punch.hits, 1);
         assert_eq!(punch.blocked, 1);
-        assert_eq!(punch.dodged, 0, "the target's own dodged swing belongs to them, not the team");
+        assert_eq!(
+            punch.dodged, 0,
+            "the target's own dodged swing belongs to them, not the team"
+        );
     }
 }

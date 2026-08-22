@@ -70,7 +70,10 @@ fn cached_map(base_dir: &Path, shortname: &str) -> Option<Arc<mapsdata::ParsedZo
         return Some(m.clone());
     }
     let map = Arc::new(mapsdata::load_zone_map(base_dir, None, shortname).ok()?);
-    cache.lock().unwrap().insert(shortname.to_string(), map.clone());
+    cache
+        .lock()
+        .unwrap()
+        .insert(shortname.to_string(), map.clone());
     Some(map)
 }
 
@@ -204,9 +207,17 @@ fn walk_graph() -> &'static HashMap<String, Vec<Edge>> {
         // and doesn't cover.
         for z in zonedata::zones() {
             for adj in &z.adjacent_zones {
-                let Some(resolved) = resolve_zone_name(adj) else { continue };
-                g.entry(z.name.clone()).or_default().push(Edge { to: resolved.to_string(), kind: EdgeKind::Walk });
-                g.entry(resolved.to_string()).or_default().push(Edge { to: z.name.clone(), kind: EdgeKind::Walk });
+                let Some(resolved) = resolve_zone_name(adj) else {
+                    continue;
+                };
+                g.entry(z.name.clone()).or_default().push(Edge {
+                    to: resolved.to_string(),
+                    kind: EdgeKind::Walk,
+                });
+                g.entry(resolved.to_string()).or_default().push(Edge {
+                    to: z.name.clone(),
+                    kind: EdgeKind::Walk,
+                });
             }
         }
         g
@@ -232,13 +243,18 @@ fn zone_graph_for(player_classes: &[String], player_level: u8) -> HashMap<String
     let mut g = walk_graph().clone();
     for (spell, landing) in teleportdata::all_landings() {
         let class_name = landing.class.as_str();
-        if !player_classes.iter().any(|c| c.eq_ignore_ascii_case(class_name)) {
+        if !player_classes
+            .iter()
+            .any(|c| c.eq_ignore_ascii_case(class_name))
+        {
             continue;
         }
         if player_level < landing.level {
             continue;
         }
-        let Some(dest) = resolve_zone_name(&landing.zone) else { continue };
+        let Some(dest) = resolve_zone_name(&landing.zone) else {
+            continue;
+        };
         for z in zonedata::zones() {
             if z.name == dest {
                 continue; // already there, not a real hop
@@ -316,7 +332,10 @@ fn resolve_zone_name(raw: &str) -> Option<&'static str> {
     if let Some(z) = zones.iter().find(|z| z.name.eq_ignore_ascii_case(raw)) {
         return Some(z.name.as_str());
     }
-    if let Some(&(_, canonical)) = ZONE_NAME_ALIASES.iter().find(|&&(alias, _)| alias.eq_ignore_ascii_case(raw)) {
+    if let Some(&(_, canonical)) = ZONE_NAME_ALIASES
+        .iter()
+        .find(|&&(alias, _)| alias.eq_ignore_ascii_case(raw))
+    {
         if let Some(z) = zones.iter().find(|z| z.name == canonical) {
             return Some(z.name.as_str());
         }
@@ -349,9 +368,15 @@ fn resolve_zone_name(raw: &str) -> Option<&'static str> {
 /// divergence, not an oversight -- porting the alias table to
 /// `zoneMatch.ts` too is a reasonable follow-up if that display gap ever
 /// matters, not required for this module's own real-distance correctness.
-fn entrance_markers<'a>(map: &'a mapsdata::ParsedZoneMap, target_zone: &str) -> Vec<&'a mapsdata::MapMarker> {
+fn entrance_markers<'a>(
+    map: &'a mapsdata::ParsedZoneMap,
+    target_zone: &str,
+) -> Vec<&'a mapsdata::MapMarker> {
     fn normalize(s: &str) -> String {
-        s.chars().filter(|c| c.is_ascii_alphanumeric()).map(|c| c.to_ascii_lowercase()).collect()
+        s.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .map(|c| c.to_ascii_lowercase())
+            .collect()
     }
     fn strip_to_prefix(label: &str) -> &str {
         let lower = label.to_ascii_lowercase();
@@ -376,7 +401,10 @@ fn entrance_markers<'a>(map: &'a mapsdata::ParsedZoneMap, target_zone: &str) -> 
             }
             let marker = normalize(&readable);
             !marker.is_empty()
-                && (marker.starts_with(&target) || target.starts_with(&marker) || marker.contains(&target) || target.contains(&marker))
+                && (marker.starts_with(&target)
+                    || target.starts_with(&marker)
+                    || marker.contains(&target)
+                    || target.contains(&marker))
         })
         .collect()
 }
@@ -426,7 +454,11 @@ enum WalkOutcome {
 /// closure, not a plain value, so the (mildly expensive) euclidean
 /// distance it computes is never paid unless both real options are
 /// unavailable.
-fn choose_walk_outcome(direct: Option<f64>, succor_walk: Option<f64>, fallback: impl FnOnce() -> f64) -> WalkOutcome {
+fn choose_walk_outcome(
+    direct: Option<f64>,
+    succor_walk: Option<f64>,
+    fallback: impl FnOnce() -> f64,
+) -> WalkOutcome {
     match (direct, succor_walk) {
         (Some(a), Some(b)) if b + SUCCOR_WARP_COST < a => WalkOutcome::ViaSuccor(b),
         (Some(a), _) => WalkOutcome::Direct(a),
@@ -448,13 +480,23 @@ fn choose_walk_outcome(direct: Option<f64>, succor_walk: Option<f64>, fallback: 
 /// (skipped at least one real search it would otherwise have run) --
 /// `cached_hop_distance` uses it to avoid permanently caching a
 /// time-pressured, possibly-worse-than-achievable answer.
-fn hop_distance(base_dir: &Path, from_zone: &str, from: (f32, f32, f32), to_zone: &str, deadline: std::time::Instant) -> ((f32, f32, f32), WalkOutcome, bool) {
+fn hop_distance(
+    base_dir: &Path,
+    from_zone: &str,
+    from: (f32, f32, f32),
+    to_zone: &str,
+    deadline: std::time::Instant,
+) -> ((f32, f32, f32), WalkOutcome, bool) {
     let Some(z) = zonedata::zones().iter().find(|z| z.name == from_zone) else {
         return (from, WalkOutcome::Fallback(straight_line_fallback()), false);
     };
-    let Some(who_name) = z.who_name.as_deref() else { return (from, WalkOutcome::Fallback(straight_line_fallback()), false) };
+    let Some(who_name) = z.who_name.as_deref() else {
+        return (from, WalkOutcome::Fallback(straight_line_fallback()), false);
+    };
     let shortnames = zonedata::map_shortnames(who_name);
-    let Some(shortname) = shortnames.first() else { return (from, WalkOutcome::Fallback(straight_line_fallback()), false) };
+    let Some(shortname) = shortnames.first() else {
+        return (from, WalkOutcome::Fallback(straight_line_fallback()), false);
+    };
     let Some(map) = cached_map(base_dir, shortname) else {
         return (from, WalkOutcome::Fallback(straight_line_fallback()), false);
     };
@@ -489,7 +531,9 @@ fn hop_distance(base_dir: &Path, from_zone: &str, from: (f32, f32, f32), to_zone
             }
             walk_distance(&map, (sp.x, sp.y, from.2), exit)
         })
-        .fold(None::<f64>, |best, d| Some(best.map_or(d, |b: f64| b.min(d))));
+        .fold(None::<f64>, |best, d| {
+            Some(best.map_or(d, |b: f64| b.min(d)))
+        });
 
     let outcome = choose_walk_outcome(direct, succor_relay, || euclid(from, exit) as f64);
     (exit, outcome, truncated)
@@ -505,13 +549,23 @@ fn hop_distance(base_dir: &Path, from_zone: &str, from: (f32, f32, f32), to_zone
 /// any in practice, since callers always pass through the exact same
 /// value, but nothing about `f32` guarantees that) can't split one real
 /// cache entry into two.
-fn cached_hop_distance(base_dir: &Path, from_zone: &str, from: (f32, f32, f32), to_zone: &str, deadline: std::time::Instant) -> ((f32, f32, f32), WalkOutcome) {
+fn cached_hop_distance(
+    base_dir: &Path,
+    from_zone: &str,
+    from: (f32, f32, f32),
+    to_zone: &str,
+    deadline: std::time::Instant,
+) -> ((f32, f32, f32), WalkOutcome) {
     type Key = (String, (i64, i64, i64), String);
     static CACHE: OnceLock<Mutex<HashMap<Key, ((f32, f32, f32), WalkOutcome)>>> = OnceLock::new();
     fn quantize(v: f32) -> i64 {
         (v as f64 * 100.0).round() as i64
     }
-    let key: Key = (from_zone.to_string(), (quantize(from.0), quantize(from.1), quantize(from.2)), to_zone.to_string());
+    let key: Key = (
+        from_zone.to_string(),
+        (quantize(from.0), quantize(from.1), quantize(from.2)),
+        to_zone.to_string(),
+    );
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(&v) = cache.lock().unwrap().get(&key) {
         return v;
@@ -532,7 +586,11 @@ fn cached_hop_distance(base_dir: &Path, from_zone: &str, from: (f32, f32, f32), 
 /// comparing several real options (direct walk vs. a succor relay) can
 /// each apply their own fallback, rather than one baked-in euclidean
 /// substitution hiding which option actually failed.
-fn walk_distance(map: &mapsdata::ParsedZoneMap, from: (f32, f32, f32), to: (f32, f32, f32)) -> Option<f64> {
+fn walk_distance(
+    map: &mapsdata::ParsedZoneMap,
+    from: (f32, f32, f32),
+    to: (f32, f32, f32),
+) -> Option<f64> {
     let path = pathfind::find_path(map, from, to)?;
     Some(path.windows(2).map(|w| euclid(w[0], w[1])).sum())
 }
@@ -569,7 +627,10 @@ impl PartialEq for Frontier {
 impl Eq for Frontier {}
 impl Ord for Frontier {
     fn cmp(&self, other: &Self) -> Ordering {
-        other.priority.partial_cmp(&self.priority).unwrap_or(Ordering::Equal)
+        other
+            .priority
+            .partial_cmp(&self.priority)
+            .unwrap_or(Ordering::Equal)
     }
 }
 impl PartialOrd for Frontier {
@@ -688,7 +749,10 @@ pub fn find_zone_route(
     known_start: Option<(f32, f32, f32)>,
 ) -> Option<ZoneRoute> {
     if from_zone == to_zone {
-        return Some(ZoneRoute { hops: Vec::new(), total_distance: 0.0 });
+        return Some(ZoneRoute {
+            hops: Vec::new(),
+            total_distance: 0.0,
+        });
     }
     let graph = zone_graph_for(player_classes, player_level);
     if !graph.contains_key(from_zone) || !graph.contains_key(to_zone) {
@@ -703,14 +767,25 @@ pub fn find_zone_route(
     if !h_to_target.contains_key(from_zone) {
         return None;
     }
-    let heuristic = |zone: &str| -> f64 { h_to_target.get(zone).map(|&h| h as f64 * HEURISTIC_HOP_COST).unwrap_or(f64::INFINITY) };
+    let heuristic = |zone: &str| -> f64 {
+        h_to_target
+            .get(zone)
+            .map(|&h| h as f64 * HEURISTIC_HOP_COST)
+            .unwrap_or(f64::INFINITY)
+    };
 
     let mut best_cost: HashMap<String, f64> = HashMap::from([(from_zone.to_string(), 0.0)]);
-    let mut best_hops: HashMap<String, Vec<RouteHop>> = HashMap::from([(from_zone.to_string(), Vec::new())]);
+    let mut best_hops: HashMap<String, Vec<RouteHop>> =
+        HashMap::from([(from_zone.to_string(), Vec::new())]);
     let start_pos = known_start.unwrap_or_else(|| best_start_position(base_dir, from_zone));
-    let mut best_pos: HashMap<String, (f32, f32, f32)> = HashMap::from([(from_zone.to_string(), start_pos)]);
+    let mut best_pos: HashMap<String, (f32, f32, f32)> =
+        HashMap::from([(from_zone.to_string(), start_pos)]);
     let mut settled: HashSet<String> = HashSet::new();
-    let mut open = BinaryHeap::from([Frontier { priority: heuristic(from_zone), g: 0.0, zone: from_zone.to_string() }]);
+    let mut open = BinaryHeap::from([Frontier {
+        priority: heuristic(from_zone),
+        g: 0.0,
+        zone: from_zone.to_string(),
+    }]);
 
     // Belt-and-suspenders cap, same "generous but bounded" shape used
     // throughout this codebase (`pathfind::find_path`'s own
@@ -769,13 +844,18 @@ pub fn find_zone_route(
         }
         settled.insert(zone.clone());
         if zone == to_zone {
-            return Some(ZoneRoute { hops: best_hops.remove(&zone).unwrap_or_default(), total_distance: g });
+            return Some(ZoneRoute {
+                hops: best_hops.remove(&zone).unwrap_or_default(),
+                total_distance: g,
+            });
         }
         if settled.len() > MAX_SETTLED {
             break;
         }
 
-        let Some(edges) = graph.get(&zone) else { continue };
+        let Some(edges) = graph.get(&zone) else {
+            continue;
+        };
         let cur_pos = best_pos[&zone];
         let cur_hops = best_hops[&zone].clone();
         for e in edges {
@@ -784,7 +864,9 @@ pub fn find_zone_route(
             }
             // No path from `e.to` reaches `to_zone` at all -- never worth
             // relaxing, real cost or not (see `hops_to_target`'s own doc).
-            let Some(&h) = h_to_target.get(e.to.as_str()) else { continue };
+            let Some(&h) = h_to_target.get(e.to.as_str()) else {
+                continue;
+            };
             // Past deadline: teleport edges stay free to relax (O(1), no
             // real cost), but stop paying for further real pathfinding.
             // Checked per-edge, not once per zone -- a single zone can
@@ -803,18 +885,40 @@ pub fn find_zone_route(
             // stay one blended number the way it used to.
             let (new_pos, new_hops) = match &e.kind {
                 EdgeKind::Teleport(spell) => {
-                    let landing = teleportdata::landing_for(spell).map(|l| (l.x as f32, l.y as f32, l.z as f32)).unwrap_or(cur_pos);
-                    (landing, vec![RouteHop { zone: e.to.clone(), kind: HopKind::Teleport(spell.clone()), distance: TELEPORT_HOP_COST }])
+                    let landing = teleportdata::landing_for(spell)
+                        .map(|l| (l.x as f32, l.y as f32, l.z as f32))
+                        .unwrap_or(cur_pos);
+                    (
+                        landing,
+                        vec![RouteHop {
+                            zone: e.to.clone(),
+                            kind: HopKind::Teleport(spell.clone()),
+                            distance: TELEPORT_HOP_COST,
+                        }],
+                    )
                 }
                 EdgeKind::Walk => {
-                    let (arrive_at, outcome) = cached_hop_distance(base_dir, &zone, cur_pos, &e.to, deadline);
+                    let (arrive_at, outcome) =
+                        cached_hop_distance(base_dir, &zone, cur_pos, &e.to, deadline);
                     let hops = match outcome {
                         WalkOutcome::Direct(d) | WalkOutcome::Fallback(d) => {
-                            vec![RouteHop { zone: e.to.clone(), kind: HopKind::Walk, distance: d }]
+                            vec![RouteHop {
+                                zone: e.to.clone(),
+                                kind: HopKind::Walk,
+                                distance: d,
+                            }]
                         }
                         WalkOutcome::ViaSuccor(walk_dist) => vec![
-                            RouteHop { zone: zone.clone(), kind: HopKind::Succor, distance: SUCCOR_WARP_COST },
-                            RouteHop { zone: e.to.clone(), kind: HopKind::Walk, distance: walk_dist },
+                            RouteHop {
+                                zone: zone.clone(),
+                                kind: HopKind::Succor,
+                                distance: SUCCOR_WARP_COST,
+                            },
+                            RouteHop {
+                                zone: e.to.clone(),
+                                kind: HopKind::Walk,
+                                distance: walk_dist,
+                            },
                         ],
                     };
                     (arrive_at, hops)
@@ -828,7 +932,11 @@ pub fn find_zone_route(
                 hops.extend(new_hops);
                 best_hops.insert(e.to.clone(), hops);
                 best_pos.insert(e.to.clone(), new_pos);
-                open.push(Frontier { priority: tentative + h as f64 * HEURISTIC_HOP_COST, g: tentative, zone: e.to.clone() });
+                open.push(Frontier {
+                    priority: tentative + h as f64 * HEURISTIC_HOP_COST,
+                    g: tentative,
+                    zone: e.to.clone(),
+                });
             }
         }
     }
@@ -838,7 +946,10 @@ pub fn find_zone_route(
     // the comment above `deadline`'s own declaration).
     best_hops.remove(to_zone).map(|hops| {
         let total = hops.iter().map(|h| h.distance).sum();
-        ZoneRoute { hops, total_distance: total }
+        ZoneRoute {
+            hops,
+            total_distance: total,
+        }
     })
 }
 
@@ -864,23 +975,40 @@ pub fn find_zone_route(
 /// "where in that zone" is exactly this function's own question -- no
 /// second implementation needed.
 pub(crate) fn best_start_position(base_dir: &Path, zone_name: &str) -> (f32, f32, f32) {
-    let Some(z) = zonedata::zones().iter().find(|z| z.name == zone_name) else { return (0.0, 0.0, 0.0) };
-    let Some(who_name) = z.who_name.as_deref() else { return (0.0, 0.0, 0.0) };
-    let Some(shortname) = zonedata::map_shortnames(who_name).into_iter().next() else { return (0.0, 0.0, 0.0) };
-    let Some(map) = cached_map(base_dir, &shortname) else { return (0.0, 0.0, 0.0) };
+    let Some(z) = zonedata::zones().iter().find(|z| z.name == zone_name) else {
+        return (0.0, 0.0, 0.0);
+    };
+    let Some(who_name) = z.who_name.as_deref() else {
+        return (0.0, 0.0, 0.0);
+    };
+    let Some(shortname) = zonedata::map_shortnames(who_name).into_iter().next() else {
+        return (0.0, 0.0, 0.0);
+    };
+    let Some(map) = cached_map(base_dir, &shortname) else {
+        return (0.0, 0.0, 0.0);
+    };
     let avg_z = if map.lines.is_empty() {
         0.0
     } else {
         map.lines.iter().map(|l| l.a.z + l.b.z).sum::<f32>() / (map.lines.len() * 2) as f32
     };
-    if let Some(sp) = z.succor_evacuate.as_deref().map(zonedata::succor_points).unwrap_or_default().into_iter().next() {
+    if let Some(sp) = z
+        .succor_evacuate
+        .as_deref()
+        .map(zonedata::succor_points)
+        .unwrap_or_default()
+        .into_iter()
+        .next()
+    {
         return (sp.x, sp.y, avg_z);
     }
     if map.lines.is_empty() {
         return (0.0, 0.0, 0.0);
     }
     let n = (map.lines.len() * 2) as f32;
-    let (sx, sy): (f32, f32) = map.lines.iter().fold((0.0, 0.0), |(sx, sy), l| (sx + l.a.x + l.b.x, sy + l.a.y + l.b.y));
+    let (sx, sy): (f32, f32) = map.lines.iter().fold((0.0, 0.0), |(sx, sy), l| {
+        (sx + l.a.x + l.b.x, sy + l.a.y + l.b.y)
+    });
     (sx / n, sy / n, avg_z)
 }
 
@@ -896,7 +1024,15 @@ mod tests {
     /// all this test needs (hop *structure*, not real distance).
     #[test]
     fn a_real_direct_adjacency_is_a_single_walk_hop() {
-        let route = find_zone_route(Path::new("/nonexistent"), "Ak'Anon", "Steamfont Mountains", &[], 0, None).expect("route exists");
+        let route = find_zone_route(
+            Path::new("/nonexistent"),
+            "Ak'Anon",
+            "Steamfont Mountains",
+            &[],
+            0,
+            None,
+        )
+        .expect("route exists");
         assert_eq!(route.hops.len(), 1, "expected a 1-hop route, got {route:?}");
     }
 
@@ -910,7 +1046,10 @@ mod tests {
         let graph = zone_graph_for(&["Wizard".to_string()], 99);
         let edges = &graph["Ak'Anon"];
         assert!(
-            edges.iter().any(|e| e.to == "Northern Plains of Karana" && matches!(e.kind, EdgeKind::Teleport(_))),
+            edges
+                .iter()
+                .any(|e| e.to == "Northern Plains of Karana"
+                    && matches!(e.kind, EdgeKind::Teleport(_))),
             "expected a teleport edge from an unrelated zone to Northern Plains of Karana"
         );
     }
@@ -922,13 +1061,19 @@ mod tests {
     #[test]
     fn teleport_edges_are_excluded_when_the_player_cannot_cast_them() {
         let too_low_level = zone_graph_for(&["Wizard".to_string()], 1);
-        assert!(!too_low_level["Ak'Anon"].iter().any(|e| matches!(&e.kind, EdgeKind::Teleport(s) if s == "North Karana Gate")));
+        assert!(!too_low_level["Ak'Anon"]
+            .iter()
+            .any(|e| matches!(&e.kind, EdgeKind::Teleport(s) if s == "North Karana Gate")));
 
         let wrong_class = zone_graph_for(&["Warrior".to_string()], 99);
-        assert!(!wrong_class["Ak'Anon"].iter().any(|e| matches!(&e.kind, EdgeKind::Teleport(s) if s == "North Karana Gate")));
+        assert!(!wrong_class["Ak'Anon"]
+            .iter()
+            .any(|e| matches!(&e.kind, EdgeKind::Teleport(s) if s == "North Karana Gate")));
 
         let no_classes_known = zone_graph_for(&[], 0);
-        assert!(no_classes_known["Ak'Anon"].iter().all(|e| matches!(e.kind, EdgeKind::Walk)));
+        assert!(no_classes_known["Ak'Anon"]
+            .iter()
+            .all(|e| matches!(e.kind, EdgeKind::Walk)));
     }
 
     /// `resolve_zone_name` must handle all three real shapes confirmed in
@@ -938,8 +1083,14 @@ mod tests {
     /// string the wiki left unlinked.
     #[test]
     fn resolve_zone_name_handles_all_real_shapes() {
-        assert_eq!(resolve_zone_name("Northern Plains of Karana"), Some("Northern Plains of Karana"));
-        assert_eq!(resolve_zone_name("North Karana"), Some("Northern Plains of Karana"));
+        assert_eq!(
+            resolve_zone_name("Northern Plains of Karana"),
+            Some("Northern Plains of Karana")
+        );
+        assert_eq!(
+            resolve_zone_name("North Karana"),
+            Some("Northern Plains of Karana")
+        );
         // "butcher" is Butcherblock Mountains' real who_name shortname,
         // confirmed directly against packs/zones.json.
         assert_eq!(resolve_zone_name("butcher"), Some("Butcherblock Mountains"));
@@ -971,7 +1122,11 @@ mod tests {
         let map = mapsdata::ParsedZoneMap {
             lines: vec![],
             markers: vec![mapsdata::MapMarker {
-                pos: mapsdata::MapPoint3 { x: 1.0, y: 2.0, z: 3.0 },
+                pos: mapsdata::MapPoint3 {
+                    x: 1.0,
+                    y: 2.0,
+                    z: 3.0,
+                },
                 r: 150,
                 g: 0,
                 b: 200,
@@ -980,12 +1135,24 @@ mod tests {
             }],
         };
         let found = entrance_markers(&map, "Upper Guk");
-        assert_eq!(found.len(), 1, "classic name 'The City of Guk' should resolve to Upper Guk");
+        assert_eq!(
+            found.len(),
+            1,
+            "classic name 'The City of Guk' should resolve to Upper Guk"
+        );
     }
 
     #[test]
     fn an_unknown_zone_name_has_no_route() {
-        assert!(find_zone_route(Path::new("/nonexistent"), "Not A Real Zone", "Northern Plains of Karana", &[], 0, None).is_none());
+        assert!(find_zone_route(
+            Path::new("/nonexistent"),
+            "Not A Real Zone",
+            "Northern Plains of Karana",
+            &[],
+            0,
+            None
+        )
+        .is_none());
     }
 
     /// Real, reported bug: the user pointed out a real, valid walking
@@ -1009,11 +1176,15 @@ mod tests {
     fn cazic_thule_and_feerrott_are_walk_connected_despite_the_real_naming_mismatch() {
         let graph = walk_graph();
         assert!(
-            graph["Cazic Thule (Zone)"].iter().any(|e| e.to == "The Feerrott"),
+            graph["Cazic Thule (Zone)"]
+                .iter()
+                .any(|e| e.to == "The Feerrott"),
             "Cazic Thule (Zone) should have a walk edge to The Feerrott"
         );
         assert!(
-            graph["The Feerrott"].iter().any(|e| e.to == "Cazic Thule (Zone)"),
+            graph["The Feerrott"]
+                .iter()
+                .any(|e| e.to == "Cazic Thule (Zone)"),
             "The Feerrott should have a walk edge back to Cazic Thule (Zone)"
         );
     }
@@ -1041,13 +1212,27 @@ mod tests {
             Path::new("/nonexistent"),
             "The Northern Desert of Ro",
             "Lower Guk",
-            &["Wizard".to_string(), "Enchanter".to_string(), "Magician".to_string()],
+            &[
+                "Wizard".to_string(),
+                "Enchanter".to_string(),
+                "Magician".to_string(),
+            ],
             99,
             None,
         );
-        assert!(start.elapsed() < std::time::Duration::from_secs(2), "took {:?}, should resolve near-instantly", start.elapsed());
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "took {:?}, should resolve near-instantly",
+            start.elapsed()
+        );
         let route = route.expect("route exists");
-        assert!(route.hops.windows(2).any(|w| w[0].zone == "Upper Guk" && w[1].zone == "Lower Guk") || route.hops.last().is_some_and(|h| h.zone == "Lower Guk"));
+        assert!(
+            route
+                .hops
+                .windows(2)
+                .any(|w| w[0].zone == "Upper Guk" && w[1].zone == "Lower Guk")
+                || route.hops.last().is_some_and(|h| h.zone == "Lower Guk")
+        );
     }
 
     /// Real, measured bug this fixes, kept as the regression guard: a
@@ -1066,8 +1251,19 @@ mod tests {
     #[test]
     fn a_direct_adjacency_does_not_pay_for_losing_multihop_alternates() {
         let start = std::time::Instant::now();
-        let route = find_zone_route(Path::new("/nonexistent"), "The Northern Desert of Ro", "Oasis of Marr", &[], 0, None);
-        assert!(start.elapsed() < std::time::Duration::from_secs(1), "took {:?}, should resolve near-instantly", start.elapsed());
+        let route = find_zone_route(
+            Path::new("/nonexistent"),
+            "The Northern Desert of Ro",
+            "Oasis of Marr",
+            &[],
+            0,
+            None,
+        );
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(1),
+            "took {:?}, should resolve near-instantly",
+            start.elapsed()
+        );
         assert_eq!(route.expect("route exists").hops.len(), 1);
     }
 
@@ -1083,21 +1279,36 @@ mod tests {
     fn succor_relay_wins_only_when_it_genuinely_beats_the_direct_walk() {
         // Succor relay (50) + its cost (100) = 150, strictly cheaper than
         // walking directly (500) -- must win.
-        assert!(matches!(choose_walk_outcome(Some(500.0), Some(50.0), || 0.0), WalkOutcome::ViaSuccor(50.0)));
+        assert!(matches!(
+            choose_walk_outcome(Some(500.0), Some(50.0), || 0.0),
+            WalkOutcome::ViaSuccor(50.0)
+        ));
         // Succor relay (50) + its cost (100) = 150, *not* cheaper than a
         // short direct walk (120) -- must lose, direct wins.
-        assert!(matches!(choose_walk_outcome(Some(120.0), Some(50.0), || 0.0), WalkOutcome::Direct(120.0)));
+        assert!(matches!(
+            choose_walk_outcome(Some(120.0), Some(50.0), || 0.0),
+            WalkOutcome::Direct(120.0)
+        ));
     }
 
     #[test]
     fn no_succor_data_falls_back_to_whichever_real_option_exists() {
-        assert!(matches!(choose_walk_outcome(Some(300.0), None, || 0.0), WalkOutcome::Direct(300.0)));
-        assert!(matches!(choose_walk_outcome(None, Some(80.0), || 0.0), WalkOutcome::ViaSuccor(80.0)));
+        assert!(matches!(
+            choose_walk_outcome(Some(300.0), None, || 0.0),
+            WalkOutcome::Direct(300.0)
+        ));
+        assert!(matches!(
+            choose_walk_outcome(None, Some(80.0), || 0.0),
+            WalkOutcome::ViaSuccor(80.0)
+        ));
     }
 
     #[test]
     fn neither_real_option_available_uses_the_fallback() {
-        assert!(matches!(choose_walk_outcome(None, None, || 2000.0), WalkOutcome::Fallback(2000.0)));
+        assert!(matches!(
+            choose_walk_outcome(None, None, || 2000.0),
+            WalkOutcome::Fallback(2000.0)
+        ));
     }
 
     /// Real, full-corpus audit, per the user's own direct ask ("try to go
@@ -1121,6 +1332,10 @@ mod tests {
             .filter(|(_, landing)| resolve_zone_name(&landing.zone).is_none())
             .map(|(spell, landing)| (spell, landing.zone.as_str()))
             .collect();
-        assert_eq!(unresolved, vec![("Grimling Gate", "Grimling Forest")], "unresolved teleport landings changed -- see this test's own doc");
+        assert_eq!(
+            unresolved,
+            vec![("Grimling Gate", "Grimling Forest")],
+            "unresolved teleport landings changed -- see this test's own doc"
+        );
     }
 }

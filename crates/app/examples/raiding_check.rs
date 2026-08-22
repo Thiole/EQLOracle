@@ -28,7 +28,9 @@ fn print_target(zone: &str, kind: &str, t: &RaidTargetDto) {
 }
 
 fn main() {
-    let path = std::env::args().nth(1).expect("usage: raiding_check <path-to-log>");
+    let path = std::env::args()
+        .nth(1)
+        .expect("usage: raiding_check <path-to-log>");
     let raw = std::fs::read(&path).unwrap_or_else(|e| panic!("couldn't read {path}: {e}"));
     let lines = framed_lines(&raw);
     let engine = build_engine().expect("pack builds");
@@ -44,9 +46,32 @@ fn main() {
     for row in list_raid_rows(&ing) {
         println!("=== {} ===", row.row);
         for raid in &row.raids {
-            let solo: Vec<String> = raid.times.solo.iter().map(|t| t.as_ref().map(|t| fmt(t.duration_ms)).unwrap_or_else(|| "--".into())).collect();
-            let group: Vec<String> = raid.times.group.iter().map(|t| t.as_ref().map(|t| fmt(t.duration_ms)).unwrap_or_else(|| "--".into())).collect();
-            println!("  [{} solo=[{}] group=[{}]]", raid.zone, solo.join(","), group.join(","));
+            let solo: Vec<String> = raid
+                .times
+                .solo
+                .iter()
+                .map(|t| {
+                    t.as_ref()
+                        .map(|t| fmt(t.duration_ms))
+                        .unwrap_or_else(|| "--".into())
+                })
+                .collect();
+            let group: Vec<String> = raid
+                .times
+                .group
+                .iter()
+                .map(|t| {
+                    t.as_ref()
+                        .map(|t| fmt(t.duration_ms))
+                        .unwrap_or_else(|| "--".into())
+                })
+                .collect();
+            println!(
+                "  [{} solo=[{}] group=[{}]]",
+                raid.zone,
+                solo.join(","),
+                group.join(",")
+            );
             print_target(&raid.zone, "boss", &raid.boss);
             for m in &raid.minibosses {
                 print_target(&raid.zone, "miniboss", m);

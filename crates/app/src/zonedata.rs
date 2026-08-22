@@ -192,12 +192,20 @@ pub fn succor_points(raw: &str) -> Vec<SuccorPoint> {
     let mut out = Vec::new();
     let normalized = raw.replace("<br />", "<br>").replace("<br/>", "<br>");
     for part in normalized.split("<br>") {
-        let Some(comma) = find_coord_comma(part) else { continue };
+        let Some(comma) = find_coord_comma(part) else {
+            continue;
+        };
         let (before, after) = part.split_at(comma);
-        let Some(x_str) = last_number(before) else { continue };
+        let Some(x_str) = last_number(before) else {
+            continue;
+        };
         let after = &after[1..]; // skip the comma itself
-        let Some((y_str, rest)) = first_number(after) else { continue };
-        let (Ok(x), Ok(y)) = (parse_coord(x_str), parse_coord(y_str)) else { continue };
+        let Some((y_str, rest)) = first_number(after) else {
+            continue;
+        };
+        let (Ok(x), Ok(y)) = (parse_coord(x_str), parse_coord(y_str)) else {
+            continue;
+        };
         let label = rest
             .trim_start()
             .strip_prefix('(')
@@ -282,14 +290,28 @@ mod succor_tests {
     #[test]
     fn a_single_real_succor_point_parses() {
         let points = succor_points("47, -35 (Zone line to Steamfont)");
-        assert_eq!(points, vec![SuccorPoint { x: 47.0, y: -35.0, label: "Zone line to Steamfont".to_string() }]);
+        assert_eq!(
+            points,
+            vec![SuccorPoint {
+                x: 47.0,
+                y: -35.0,
+                label: "Zone line to Steamfont".to_string()
+            }]
+        );
     }
 
     /// Real decimal-coordinate case, confirmed against the actual pack.
     #[test]
     fn decimal_coordinates_parse() {
         let points = succor_points("-1410.00, -395.00 (zone entrance)");
-        assert_eq!(points, vec![SuccorPoint { x: -1410.0, y: -395.0, label: "zone entrance".to_string() }]);
+        assert_eq!(
+            points,
+            vec![SuccorPoint {
+                x: -1410.0,
+                y: -395.0,
+                label: "zone entrance".to_string()
+            }]
+        );
     }
 
     /// Real multi-part-zone case, `<br>`-separated, each with its own
@@ -302,8 +324,16 @@ mod succor_tests {
         assert_eq!(
             points,
             vec![
-                SuccorPoint { x: 1362.0, y: -417.0, label: "Zone line to Field of Bone".to_string() },
-                SuccorPoint { x: -783.0, y: 767.0, label: "Zone line to Lake of Ill Omen".to_string() },
+                SuccorPoint {
+                    x: 1362.0,
+                    y: -417.0,
+                    label: "Zone line to Field of Bone".to_string()
+                },
+                SuccorPoint {
+                    x: -783.0,
+                    y: 767.0,
+                    label: "Zone line to Lake of Ill Omen".to_string()
+                },
             ]
         );
     }
@@ -341,7 +371,14 @@ mod succor_tests {
     #[test]
     fn a_doubled_minus_sign_typo_still_parses() {
         let points = succor_points("-1201, --259 (Southeast of the bridge)");
-        assert_eq!(points, vec![SuccorPoint { x: -1201.0, y: -259.0, label: "Southeast of the bridge".to_string() }]);
+        assert_eq!(
+            points,
+            vec![SuccorPoint {
+                x: -1201.0,
+                y: -259.0,
+                label: "Southeast of the bridge".to_string()
+            }]
+        );
     }
 }
 
@@ -384,7 +421,11 @@ mod tests {
     fn a_three_way_who_name_splits_on_comma_into_three_shortnames() {
         assert_eq!(
             map_shortnames("freporte, freportw, freportn"),
-            vec!["freporte".to_string(), "freportw".to_string(), "freportn".to_string()]
+            vec![
+                "freporte".to_string(),
+                "freportw".to_string(),
+                "freportn".to_string()
+            ]
         );
     }
 
@@ -401,8 +442,18 @@ mod tests {
         // in this repo), just enough real names to prove parsing lines up
         // with what the map files actually use.
         let known_real_shortnames: HashSet<&str> = [
-            "befallen", "gukbottom", "guktop", "cabwest", "cabeast", "hateplane", "hateplaneb",
-            "airplane", "freporte", "freportw", "freportn", "innothule",
+            "befallen",
+            "gukbottom",
+            "guktop",
+            "cabwest",
+            "cabeast",
+            "hateplane",
+            "hateplaneb",
+            "airplane",
+            "freporte",
+            "freportw",
+            "freportn",
+            "innothule",
         ]
         .into_iter()
         .collect();
@@ -411,7 +462,10 @@ mod tests {
         for z in zones() {
             let Some(who) = &z.who_name else { continue };
             total += 1;
-            if map_shortnames(who).iter().any(|s| known_real_shortnames.contains(s.as_str())) {
+            if map_shortnames(who)
+                .iter()
+                .any(|s| known_real_shortnames.contains(s.as_str()))
+            {
                 resolved += 1;
             }
         }
@@ -419,6 +473,9 @@ mod tests {
         // in the wiki data at all -- this isn't asserting the full 110/112
         // figure (that needs the real maps/ folder this test has no access
         // to), just that parsing correctly recognises the ones it's given.
-        assert!(resolved >= 4, "expected at least the sampled zones to resolve, got {resolved}/{total}");
+        assert!(
+            resolved >= 4,
+            "expected at least the sampled zones to resolve, got {resolved}/{total}"
+        );
     }
 }

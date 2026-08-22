@@ -13,7 +13,9 @@ use eqlp_app::parser::build_engine;
 use eqlp_app::progression::spell_ranks;
 
 fn main() {
-    let path = std::env::args().nth(1).expect("usage: spellrank_check <path-to-log>");
+    let path = std::env::args()
+        .nth(1)
+        .expect("usage: spellrank_check <path-to-log>");
     let raw = std::fs::read(&path).unwrap_or_else(|e| panic!("couldn't read {path}: {e}"));
     let lines = framed_lines(&raw);
     let engine = build_engine().expect("pack builds");
@@ -25,7 +27,10 @@ fn main() {
     let mut ranks: Vec<(String, u8)> = spell_ranks(&ing).into_iter().collect();
     ranks.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
-    println!("{} spells with an observed live rank this replay:", ranks.len());
+    println!(
+        "{} spells with an observed live rank this replay:",
+        ranks.len()
+    );
     for (name, rank) in &ranks {
         println!("  {name:<40} rank {rank}");
     }

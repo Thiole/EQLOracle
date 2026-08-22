@@ -358,9 +358,11 @@ export interface DamageSpellDto {
   recast_time: number;
   /** Full damage from one application, rank-adjusted. */
   total_damage: number;
+  /** Portion of total_damage that's genuinely instant -- all of it for a nuke; for a DoT, just its one-time "on cast" component (0 for most). */
+  instant_damage: number;
   dpm: number;
   dps_with_reuse: number;
-  /** No reuse wait -- damage per second of casting time invested; for a DoT, its upkeep efficiency. */
+  /** No reuse wait -- instant_damage per second of casting time invested. For a DoT this is NOT its tick-stream rate (see instant_damage's own doc); use dps_with_reuse for "is this DoT worth maintaining". */
   dps_ignoring_reuse: number;
 }
 

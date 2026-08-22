@@ -486,7 +486,10 @@ impl Effects {
     /// that wants the whole history rather than one instant's trailing
     /// window (e.g. a future full buff log view).
     pub fn all(&self, entity: u32) -> &[EffectPing] {
-        self.by_entity.get(&entity).map(|v| v.as_slice()).unwrap_or(&[])
+        self.by_entity
+            .get(&entity)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 }
 
@@ -546,10 +549,17 @@ fn conjugate_third_person(verb: &str) -> Option<String> {
     Some(match verb {
         "are" => "is".to_string(),
         "have" => "has".to_string(),
-        v if v.ends_with(['s', 'x', 'z']) || v.ends_with("sh") || v.ends_with("ch") || v.ends_with('o') => {
+        v if v.ends_with(['s', 'x', 'z'])
+            || v.ends_with("sh")
+            || v.ends_with("ch")
+            || v.ends_with('o') =>
+        {
             format!("{v}es")
         }
-        v if v.ends_with('y') && v.len() > 1 && !matches!(v.as_bytes()[v.len() - 2], b'a' | b'e' | b'i' | b'o' | b'u') => {
+        v if v.ends_with('y')
+            && v.len() > 1
+            && !matches!(v.as_bytes()[v.len() - 2], b'a' | b'e' | b'i' | b'o' | b'u') =>
+        {
             format!("{}ies", &v[..v.len() - 1])
         }
         v => format!("{v}s"),
@@ -572,7 +582,10 @@ const THIRD_PERSON_VERB_ALIASES: &[(&str, &str)] = &[
     // effect as "You feel a surge of strength as you let forth a mighty
     // yaulp.", just reworded ("let forth" -> "lets loose") rather than
     // conjugated.
-    ("lets loose a mighty yaulp.", "You feel a surge of strength as you let forth a mighty yaulp."),
+    (
+        "lets loose a mighty yaulp.",
+        "You feel a surge of strength as you let forth a mighty yaulp.",
+    ),
 ];
 
 /// Third-person-suffix -> canonical first-person `spell_flavor.json` key,
@@ -663,7 +676,8 @@ fn verb_suffix_table() -> &'static HashMap<String, &'static str> {
                 None => continue,
             };
             let mut parts = rest.splitn(3, ' ');
-            let (Some(_noun), Some(verb), Some(tail)) = (parts.next(), parts.next(), parts.next()) else {
+            let (Some(_noun), Some(verb), Some(tail)) = (parts.next(), parts.next(), parts.next())
+            else {
                 continue;
             };
             if let Some(conj) = conjugate_third_person(verb) {
@@ -1417,18 +1431,30 @@ impl Ingest {
                 let spell_sym = self.store.sym(base_spell_name(&ability)).0;
                 self.casts.confirm_landed(ts, src_sym, spell_sym);
             }
-            Action::Miss { src, dst, verb, flags } => {
-                self.record_avoided(ts, &src, &dst, &verb, flag::MISSED | flags)
-            }
-            Action::Block { src, dst, verb, flags } => {
-                self.record_avoided(ts, &src, &dst, &verb, flag::BLOCKED | flags)
-            }
-            Action::Dodge { src, dst, verb, flags } => {
-                self.record_avoided(ts, &src, &dst, &verb, flag::DODGED | flags)
-            }
-            Action::Parry { src, dst, verb, flags } => {
-                self.record_avoided(ts, &src, &dst, &verb, flag::PARRIED | flags)
-            }
+            Action::Miss {
+                src,
+                dst,
+                verb,
+                flags,
+            } => self.record_avoided(ts, &src, &dst, &verb, flag::MISSED | flags),
+            Action::Block {
+                src,
+                dst,
+                verb,
+                flags,
+            } => self.record_avoided(ts, &src, &dst, &verb, flag::BLOCKED | flags),
+            Action::Dodge {
+                src,
+                dst,
+                verb,
+                flags,
+            } => self.record_avoided(ts, &src, &dst, &verb, flag::DODGED | flags),
+            Action::Parry {
+                src,
+                dst,
+                verb,
+                flags,
+            } => self.record_avoided(ts, &src, &dst, &verb, flag::PARRIED | flags),
             Action::Death { victim } => self.record_death(ts, &victim),
             Action::Zone { zone } => {
                 // why: stop fights bleeding across zone changes
@@ -1443,7 +1469,10 @@ impl Ingest {
                 // wiki-fixed teleports above, just recording *which zone*
                 // instead of looking one up, since there's nothing to look
                 // up.
-                if self.last_origin_cast.is_some_and(|cast_ts| ts - cast_ts <= TELEPORT_WINDOW_MS) {
+                if self
+                    .last_origin_cast
+                    .is_some_and(|cast_ts| ts - cast_ts <= TELEPORT_WINDOW_MS)
+                {
                     self.learned_origin = Some((ts, zone.clone()));
                 }
                 self.zone.enter(ts, zone);
@@ -1544,7 +1573,11 @@ impl Ingest {
                 let spell_sym = self.store.sym(base_spell_name(&spell)).0;
                 self.casts.resolve(ts, src, spell_sym, CastOutcome::Fizzled);
             }
-            Action::CastBlocked { spell, target, blocker } => {
+            Action::CastBlocked {
+                spell,
+                target,
+                blocker,
+            } => {
                 // Deliberately doesn't call `self.casts.resolve(...)` --
                 // "blocked by a stacking conflict" isn't the same failure
                 // `CastOutcome::Resisted` means (a target's resist roll),
@@ -1803,7 +1836,9 @@ impl Ingest {
         let a = self.sym(src);
         let t = self.sym(dst);
         self.clear_dead_if_acting(ts, a);
-        let ab = self.store.ability_id(canonical_melee_ability(verb), tag::MELEE);
+        let ab = self
+            .store
+            .ability_id(canonical_melee_ability(verb), tag::MELEE);
         let tier = self.current_tier(ts);
         let idx = self.store.push(
             ts,
@@ -1982,8 +2017,17 @@ impl Ingest {
         // Currency-row correlation, which a busy multi-item corpse could
         // make ambiguous. See `flag::LOOT_AUTO_SOLD`'s own doc.
         let flags = if sold { flag::LOOT_AUTO_SOLD } else { 0 };
-        self.store
-            .push(ts, EventKind::Loot, looter, target, ab, qty, flags, enc, tier);
+        self.store.push(
+            ts,
+            EventKind::Loot,
+            looter,
+            target,
+            ab,
+            qty,
+            flags,
+            enc,
+            tier,
+        );
     }
 
     /// How long a gap between two loot lines against the same mob name
@@ -2302,17 +2346,20 @@ impl Ingest {
         // closed (the longer of the two checks above, since either can
         // still cancel right up to its own deadline) with nothing showing
         // up to disprove them.
-        let (still_pending, ready): (Vec<_>, Vec<_>) = std::mem::take(&mut self.pending_quickbuff_evidence)
-            .into_iter()
-            .partition(|p| ts - p.ts <= PULSE_WINDOW_MS);
+        let (still_pending, ready): (Vec<_>, Vec<_>) =
+            std::mem::take(&mut self.pending_quickbuff_evidence)
+                .into_iter()
+                .partition(|p| ts - p.ts <= PULSE_WINDOW_MS);
         self.pending_quickbuff_evidence = still_pending;
         for p in ready {
             self.classes
                 .observe_cast(p.who, self.zone.index_at(p.ts), p.classes);
         }
 
-        self.recent_flavor_landings.retain(|(t, ..)| ts - *t <= GROUP_CAST_WINDOW_MS);
-        self.recent_flavor_landings.push((ts, sym, text.to_string()));
+        self.recent_flavor_landings
+            .retain(|(t, ..)| ts - *t <= GROUP_CAST_WINDOW_MS);
+        self.recent_flavor_landings
+            .push((ts, sym, text.to_string()));
     }
 
     /// The order-dependent half: *tentatively* attributes `classes` as
@@ -2381,12 +2428,13 @@ impl Ingest {
         if group_cast_already || already_pulsing {
             return;
         }
-        self.pending_quickbuff_evidence.push(PendingQuickbuffEvidence {
-            ts,
-            who: sym,
-            classes,
-            text: text.to_string(),
-        });
+        self.pending_quickbuff_evidence
+            .push(PendingQuickbuffEvidence {
+                ts,
+                who: sym,
+                classes,
+                text: text.to_string(),
+            });
     }
 
     /// `name` resolved through inferred pet ownership, for callers outside
@@ -3108,24 +3156,60 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             })
         }
         "melee.miss" => {
-            let (src, dst, verb) = (str_field("source")?, str_field("target")?, str_field("verb")?);
+            let (src, dst, verb) = (
+                str_field("source")?,
+                str_field("target")?,
+                str_field("verb")?,
+            );
             let flags = str_field("flag").map(|s| flag::parse(&s)).unwrap_or(0);
-            Some(Action::Miss { src, dst, verb, flags })
+            Some(Action::Miss {
+                src,
+                dst,
+                verb,
+                flags,
+            })
         }
         "melee.blocked" => {
-            let (src, dst, verb) = (str_field("source")?, str_field("target")?, str_field("verb")?);
+            let (src, dst, verb) = (
+                str_field("source")?,
+                str_field("target")?,
+                str_field("verb")?,
+            );
             let flags = str_field("flag").map(|s| flag::parse(&s)).unwrap_or(0);
-            Some(Action::Block { src, dst, verb, flags })
+            Some(Action::Block {
+                src,
+                dst,
+                verb,
+                flags,
+            })
         }
         "melee.dodged" => {
-            let (src, dst, verb) = (str_field("source")?, str_field("target")?, str_field("verb")?);
+            let (src, dst, verb) = (
+                str_field("source")?,
+                str_field("target")?,
+                str_field("verb")?,
+            );
             let flags = str_field("flag").map(|s| flag::parse(&s)).unwrap_or(0);
-            Some(Action::Dodge { src, dst, verb, flags })
+            Some(Action::Dodge {
+                src,
+                dst,
+                verb,
+                flags,
+            })
         }
         "melee.parried" => {
-            let (src, dst, verb) = (str_field("source")?, str_field("target")?, str_field("verb")?);
+            let (src, dst, verb) = (
+                str_field("source")?,
+                str_field("target")?,
+                str_field("verb")?,
+            );
             let flags = str_field("flag").map(|s| flag::parse(&s)).unwrap_or(0);
-            Some(Action::Parry { src, dst, verb, flags })
+            Some(Action::Parry {
+                src,
+                dst,
+                verb,
+                flags,
+            })
         }
         "cast.begin" | "sing.begin" => {
             let who = str_field("source")?;
@@ -3422,7 +3506,9 @@ fn split_cast_rank(name: &str) -> (&str, Option<u8>) {
         return (name, None);
     }
     match name.rsplit_once(' ') {
-        Some((base, tail)) if is_roman_numeral(tail) && crate::spelldata::spell_by_name(base).is_some() => {
+        Some((base, tail))
+            if is_roman_numeral(tail) && crate::spelldata::spell_by_name(base).is_some() =>
+        {
             (base, roman_to_u8(tail))
         }
         _ => (name, None),
@@ -3452,7 +3538,11 @@ fn roman_to_u8(s: &str) -> Option<u8> {
     let mut i = 0;
     while i < bytes.len() {
         let cur = value(bytes[i]);
-        let next = if i + 1 < bytes.len() { value(bytes[i + 1]) } else { 0 };
+        let next = if i + 1 < bytes.len() {
+            value(bytes[i + 1])
+        } else {
+            0
+        };
         if cur < next {
             total += next - cur;
             i += 2;
@@ -3471,7 +3561,10 @@ mod spell_rank_tests {
     #[test]
     fn a_live_cast_rank_is_split_off_a_real_base_spell() {
         assert_eq!(split_cast_rank("Ice Comet X"), ("Ice Comet", Some(10)));
-        assert_eq!(split_cast_rank("Garrison's Mighty Mana Shock IX"), ("Garrison's Mighty Mana Shock", Some(9)));
+        assert_eq!(
+            split_cast_rank("Garrison's Mighty Mana Shock IX"),
+            ("Garrison's Mighty Mana Shock", Some(9))
+        );
     }
 
     #[test]
@@ -3479,8 +3572,14 @@ mod spell_rank_tests {
         // why: the exact bug reported -- "Monster Summoning" alone isn't
         // a real spell, only "Monster Summoning II"/"III" are, each its
         // own catalog entry; same for the Yaulp line.
-        assert_eq!(split_cast_rank("Monster Summoning II"), ("Monster Summoning II", None));
-        assert_eq!(split_cast_rank("Monster Summoning III"), ("Monster Summoning III", None));
+        assert_eq!(
+            split_cast_rank("Monster Summoning II"),
+            ("Monster Summoning II", None)
+        );
+        assert_eq!(
+            split_cast_rank("Monster Summoning III"),
+            ("Monster Summoning III", None)
+        );
         assert_eq!(split_cast_rank("Yaulp II"), ("Yaulp II", None));
         assert_eq!(split_cast_rank("Yaulp III"), ("Yaulp III", None));
     }
@@ -3494,7 +3593,10 @@ mod spell_rank_tests {
     fn an_unrecognized_name_never_fabricates_a_rank() {
         // why: charset-valid roman numeral, but the stripped base isn't a
         // real catalog spell either -- must not guess.
-        assert_eq!(split_cast_rank("Some Made Up Ability X"), ("Some Made Up Ability X", None));
+        assert_eq!(
+            split_cast_rank("Some Made Up Ability X"),
+            ("Some Made Up Ability X", None)
+        );
     }
 
     #[test]
@@ -3624,11 +3726,17 @@ enum Classified {
     /// Buff attribution (`Ingest::attribute_flavor_hit`); `text` (owned,
     /// since it has to survive the thread boundary) feeds the
     /// unconditional state ping (`Ingest::record_effect_ping`).
-    SelfFlavorHit { classes: &'static [String], text: String },
+    SelfFlavorHit {
+        classes: &'static [String],
+        text: String,
+    },
     /// `text`'s first-person reconstruction is a known landing message --
     /// about `who`, not "You". Never class evidence -- see
     /// `third_person_flavor`'s own doc.
-    ThirdPersonFlavorHit { who: String, text: String },
+    ThirdPersonFlavorHit {
+        who: String,
+        text: String,
+    },
 }
 
 /// One chunk's worth of classification, ready to be replayed sequentially.
@@ -3695,21 +3803,30 @@ fn classify_chunk(engine: &Engine, lines: &[&[u8]]) -> ChunkResult {
                     let ts_ms = ts.secs() * 1000;
                     matched.push((
                         ts_ms,
-                        Some(Classified::SelfFlavorHit { classes, text: text.to_string() }),
+                        Some(Classified::SelfFlavorHit {
+                            classes,
+                            text: text.to_string(),
+                        }),
                     ));
                     true
                 } else if let Some((who, canonical)) = third_person_flavor(&text) {
                     let ts_ms = ts.secs() * 1000;
                     matched.push((
                         ts_ms,
-                        Some(Classified::ThirdPersonFlavorHit { who, text: canonical }),
+                        Some(Classified::ThirdPersonFlavorHit {
+                            who,
+                            text: canonical,
+                        }),
                     ));
                     true
                 } else if let Some((who, canonical)) = verb_conjugated_flavor(&text) {
                     let ts_ms = ts.secs() * 1000;
                     matched.push((
                         ts_ms,
-                        Some(Classified::ThirdPersonFlavorHit { who, text: canonical }),
+                        Some(Classified::ThirdPersonFlavorHit {
+                            who,
+                            text: canonical,
+                        }),
                     ));
                     true
                 } else {
@@ -4146,7 +4263,10 @@ mod exaltation_proc_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         assert_eq!(ing.exaltation_procs.count("Flowing Black Robe"), 3);
-        assert_eq!(ing.exaltation_procs.count("Black Tome with Silver Runes"), 1);
+        assert_eq!(
+            ing.exaltation_procs.count("Black Tome with Silver Runes"),
+            1
+        );
         assert_eq!(ing.exaltation_procs.count("Something Never Seen"), 0);
     }
 
@@ -4373,7 +4493,9 @@ mod unmatched_shape_tests {
             "the genuinely-unrecognized pair should be kept as the example"
         );
         assert!(
-            !examples.iter().any(|e| e.contains("jig") || e.ends_with("voice booms.")),
+            !examples
+                .iter()
+                .any(|e| e.contains("jig") || e.ends_with("voice booms.")),
             "flavor-recognized lines are understood -- they must not appear as unparsed"
         );
         assert!(
@@ -4407,7 +4529,9 @@ mod unmatched_shape_tests {
             "only the genuinely-unrecognized dull-aura line should show up"
         );
         let top = ing.unmatched_shapes_top(10);
-        assert!(top.iter().any(|(_, s)| String::from_utf8_lossy(&s.example).contains("dull aura")));
+        assert!(top
+            .iter()
+            .any(|(_, s)| String::from_utf8_lossy(&s.example).contains("dull aura")));
         assert!(
             !top.iter().any(|(_, s)| {
                 let e = String::from_utf8_lossy(&s.example);
@@ -4637,7 +4761,11 @@ mod newly_recognized_line_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let refuse = ing.store.names.get("Refuse").expect("Refuse should be interned");
+        let refuse = ing
+            .store
+            .names
+            .get("Refuse")
+            .expect("Refuse should be interned");
         let punch_rows = by_ability(&ing.store, &Filter::default().by(refuse));
         let punch = punch_rows
             .iter()
@@ -4650,7 +4778,11 @@ mod newly_recognized_line_tests {
         assert_eq!(punch.dodged, 0);
         assert_eq!(punch.attempts(), 3, "1 landed + 1 blocked + 1 missed");
 
-        let skeleton = ing.store.names.get("Ice boned skeleton").expect("skeleton should be interned");
+        let skeleton = ing
+            .store
+            .names
+            .get("Ice boned skeleton")
+            .expect("skeleton should be interned");
         let skel_rows = by_ability(&ing.store, &Filter::default().by(skeleton));
         let skel_punch = skel_rows
             .iter()
@@ -4659,7 +4791,11 @@ mod newly_recognized_line_tests {
         assert_eq!(skel_punch.dodged, 1);
         assert_eq!(skel_punch.hits, 0, "never actually landed");
 
-        let snake = ing.store.names.get("a rattlesnake").expect("rattlesnake should be interned");
+        let snake = ing
+            .store
+            .names
+            .get("a rattlesnake")
+            .expect("rattlesnake should be interned");
         let snake_rows = by_ability(&ing.store, &Filter::default().by(snake));
         let snake_slash = snake_rows
             .iter()
@@ -4687,7 +4823,11 @@ mod newly_recognized_line_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let socho = ing.store.names.get("Socho Darkpaw").expect("Socho Darkpaw should be interned");
+        let socho = ing
+            .store
+            .names
+            .get("Socho Darkpaw")
+            .expect("Socho Darkpaw should be interned");
         let rows = by_ability(&ing.store, &Filter::default().by(socho));
         let hit = rows
             .iter()
@@ -4697,19 +4837,41 @@ mod newly_recognized_line_tests {
         assert_eq!(hit.blocked, 1);
         assert_eq!(hit.dodged, 1);
         assert_eq!(hit.parried, 1);
-        assert_eq!(hit.attempts(), 4, "none of the 4 flagged swings should be lost");
+        assert_eq!(
+            hit.attempts(),
+            4,
+            "none of the 4 flagged swings should be lost"
+        );
 
         // Confirm the flag itself, not just that the swing landed on a
         // row -- walk the raw store rows for the four Miss-kind events.
         let miss_flags: Vec<eqlp_store::Flags> = (0..ing.store.kind.len())
-            .filter(|&i| ing.store.kind[i] == eqlp_store::EventKind::Miss && ing.store.actor[i] == socho)
+            .filter(|&i| {
+                ing.store.kind[i] == eqlp_store::EventKind::Miss && ing.store.actor[i] == socho
+            })
             .map(|i| ing.store.flags[i])
             .collect();
         assert_eq!(miss_flags.len(), 4);
-        assert!(miss_flags[0] & eqlp_store::flag::RIPOSTE != 0, "{:#x}", miss_flags[0]);
-        assert!(miss_flags[1] & eqlp_store::flag::RAMPAGE != 0, "{:#x}", miss_flags[1]);
-        assert!(miss_flags[2] & eqlp_store::flag::FLURRY != 0, "{:#x}", miss_flags[2]);
-        assert!(miss_flags[3] & eqlp_store::flag::RIPOSTE != 0, "{:#x}", miss_flags[3]);
+        assert!(
+            miss_flags[0] & eqlp_store::flag::RIPOSTE != 0,
+            "{:#x}",
+            miss_flags[0]
+        );
+        assert!(
+            miss_flags[1] & eqlp_store::flag::RAMPAGE != 0,
+            "{:#x}",
+            miss_flags[1]
+        );
+        assert!(
+            miss_flags[2] & eqlp_store::flag::FLURRY != 0,
+            "{:#x}",
+            miss_flags[2]
+        );
+        assert!(
+            miss_flags[3] & eqlp_store::flag::RIPOSTE != 0,
+            "{:#x}",
+            miss_flags[3]
+        );
     }
 }
 
@@ -4793,8 +4955,13 @@ mod stance_evidence_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let you = ing.store.names.get("You").expect("You should be interned");
-        let configured = ing.classes.configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
-        assert!(configured.contains(&"Berserker".to_string()), "{configured:?}");
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        assert!(
+            configured.contains(&"Berserker".to_string()),
+            "{configured:?}"
+        );
     }
 
     /// The mirror case: one occurrence isn't enough evidence yet, same bar
@@ -4807,8 +4974,13 @@ mod stance_evidence_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let you = ing.store.names.get("You").expect("You should be interned");
-        let configured = ing.classes.configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
-        assert!(!configured.contains(&"Berserker".to_string()), "{configured:?}");
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        assert!(
+            !configured.contains(&"Berserker".to_string()),
+            "{configured:?}"
+        );
     }
 }
 
@@ -4851,10 +5023,16 @@ mod skill_evidence_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let you = ing.store.names.get("You").expect("You should be interned");
-        let configured = ing.classes.configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
         assert_eq!(
             configured,
-            vec!["Enchanter".to_string(), "Ranger".to_string(), "Wizard".to_string()],
+            vec![
+                "Enchanter".to_string(),
+                "Ranger".to_string(),
+                "Wizard".to_string()
+            ],
             "{configured:?}"
         );
     }
@@ -4898,10 +5076,16 @@ mod invocation_evidence_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let you = ing.store.names.get("You").expect("You should be interned");
-        let configured = ing.classes.configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
         assert_eq!(
             configured,
-            vec!["Enchanter".to_string(), "Ranger".to_string(), "Wizard".to_string()],
+            vec![
+                "Enchanter".to_string(),
+                "Ranger".to_string(),
+                "Wizard".to_string()
+            ],
             "{configured:?}"
         );
     }
@@ -4927,7 +5111,10 @@ mod effect_ping_tests {
 
         let you = ing.store.names.get("You").expect("You should be interned");
         let recent = ing.effects.recent(you.0, ing.now_ms(), 1_000);
-        assert_eq!(recent, vec!["A burst of strength surges through your body."]);
+        assert_eq!(
+            recent,
+            vec!["A burst of strength surges through your body."]
+        );
     }
 
     /// The other half of the same correction: recognizing the line as state
@@ -4948,7 +5135,9 @@ mod effect_ping_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let you = ing.store.names.get("You").expect("You should be interned");
-        let configured = ing.classes.configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
         assert!(configured.is_empty(), "{configured:?}");
 
         // But the ping itself still landed both times.
@@ -4985,7 +5174,9 @@ mod effect_ping_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let you = ing.store.names.get("You").expect("You should be interned");
-        let configured = ing.classes.configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
         assert!(
             configured.contains(&"Necromancer".to_string()),
             "{configured:?}"
@@ -5039,7 +5230,11 @@ mod effect_ping_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let handstuff = ing.store.names.get("Handstuff").expect("Handstuff should be interned");
+        let handstuff = ing
+            .store
+            .names
+            .get("Handstuff")
+            .expect("Handstuff should be interned");
         assert_eq!(
             ing.effects.recent(handstuff.0, ing.now_ms(), 60_000),
             vec!["Your voice booms.", "Your voice booms."],
@@ -5106,11 +5301,14 @@ mod effect_ping_tests {
     fn a_conjugated_third_person_landing_pings_state_on_the_actual_target() {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
-        let lines: Vec<&[u8]> =
-            vec![b"[Fri Aug 07 16:30:31 2026] Draxiz N`Ryt feels much faster."];
+        let lines: Vec<&[u8]> = vec![b"[Fri Aug 07 16:30:31 2026] Draxiz N`Ryt feels much faster."];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let draxiz = ing.store.names.get("Draxiz N`Ryt").expect("Draxiz N`Ryt should be interned");
+        let draxiz = ing
+            .store
+            .names
+            .get("Draxiz N`Ryt")
+            .expect("Draxiz N`Ryt should be interned");
         assert_eq!(
             ing.effects.recent(draxiz.0, ing.now_ms(), 60_000),
             vec!["You feel much faster."]
@@ -5132,7 +5330,11 @@ mod effect_ping_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let prophet = ing.store.names.get("The Prophet").expect("The Prophet should be interned");
+        let prophet = ing
+            .store
+            .names
+            .get("The Prophet")
+            .expect("The Prophet should be interned");
         assert_eq!(
             ing.effects.recent(prophet.0, ing.now_ms(), 60_000),
             vec![
@@ -5151,7 +5353,11 @@ mod effect_ping_tests {
         let lines: Vec<&[u8]> = vec![b"[Fri Aug 07 16:30:31 2026] Akkirus adheres to the ground."];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let akkirus = ing.store.names.get("Akkirus").expect("Akkirus should be interned");
+        let akkirus = ing
+            .store
+            .names
+            .get("Akkirus")
+            .expect("Akkirus should be interned");
         assert_eq!(
             ing.effects.recent(akkirus.0, ing.now_ms(), 60_000),
             vec!["Your feet adhere to the ground."]
@@ -5169,7 +5375,11 @@ mod effect_ping_tests {
         let lines: Vec<&[u8]> = vec![b"[Fri Aug 07 16:30:31 2026] Baron Telyx V`Zher combusts."];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let baron = ing.store.names.get("Baron Telyx V`Zher").expect("Baron Telyx V`Zher should be interned");
+        let baron = ing
+            .store
+            .names
+            .get("Baron Telyx V`Zher")
+            .expect("Baron Telyx V`Zher should be interned");
         assert_eq!(
             ing.effects.recent(baron.0, ing.now_ms(), 60_000),
             vec!["You feel your skin combust."]
@@ -5205,7 +5415,11 @@ mod effect_ping_tests {
             vec![b"[Fri Aug 07 16:30:31 2026] orc legionnaire's body pulses with energy."];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let orc = ing.store.names.get("orc legionnaire").expect("orc legionnaire should be interned");
+        let orc = ing
+            .store
+            .names
+            .get("orc legionnaire")
+            .expect("orc legionnaire should be interned");
         assert_eq!(
             ing.effects.recent(orc.0, ing.now_ms(), 60_000),
             vec!["You feel your body pulse with energy."]
@@ -5223,7 +5437,11 @@ mod effect_ping_tests {
             vec![b"[Fri Aug 07 16:30:31 2026] Dreadmoon feels the favor of the gods upon them."];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let dreadmoon = ing.store.names.get("Dreadmoon").expect("Dreadmoon should be interned");
+        let dreadmoon = ing
+            .store
+            .names
+            .get("Dreadmoon")
+            .expect("Dreadmoon should be interned");
         assert_eq!(
             ing.effects.recent(dreadmoon.0, ing.now_ms(), 60_000),
             vec!["You feel the favor of the gods upon you."]
@@ -5240,7 +5458,11 @@ mod effect_ping_tests {
         let lines: Vec<&[u8]> = vec![b"[Fri Aug 07 16:30:31 2026] Draxiz N`Ryt looks dexterous."];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let draxiz = ing.store.names.get("Draxiz N`Ryt").expect("Draxiz N`Ryt should be interned");
+        let draxiz = ing
+            .store
+            .names
+            .get("Draxiz N`Ryt")
+            .expect("Draxiz N`Ryt should be interned");
         assert_eq!(
             ing.effects.recent(draxiz.0, ing.now_ms(), 60_000),
             vec!["You feel dexterous."]
@@ -5267,7 +5489,9 @@ mod effect_ping_tests {
         // its name -- confirmed directly against packs/spell_classes.json,
         // not assumed from the name.
         let you = ing.store.names.get("You").expect("You should be interned");
-        let configured = ing.classes.configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
         assert!(
             configured.contains(&"Enchanter".to_string()),
             "{configured:?}"
@@ -5286,8 +5510,15 @@ mod effect_ping_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let joneker = ing.store.names.get("Joneker").expect("Joneker should be interned");
-        assert_eq!(ing.effects.recent(joneker.0, ing.now_ms(), 60_000), vec!["Clarity"]);
+        let joneker = ing
+            .store
+            .names
+            .get("Joneker")
+            .expect("Joneker should be interned");
+        assert_eq!(
+            ing.effects.recent(joneker.0, ing.now_ms(), 60_000),
+            vec!["Clarity"]
+        );
     }
 
     /// The real minority with no trailing parenthetical at all -- class
@@ -5357,10 +5588,24 @@ mod effect_ping_tests {
             ing.effects.recent(you.0, ing.now_ms(), 60_000),
             vec!["Diseased", "Poisoned"]
         );
-        let dojii = ing.store.names.get("Dojii").expect("Dojii should be interned");
-        assert_eq!(ing.effects.recent(dojii.0, ing.now_ms(), 60_000), vec!["Diseased"]);
-        let snake = ing.store.names.get("a rattlesnake").expect("rattlesnake should be interned");
-        assert_eq!(ing.effects.recent(snake.0, ing.now_ms(), 60_000), vec!["Poisoned"]);
+        let dojii = ing
+            .store
+            .names
+            .get("Dojii")
+            .expect("Dojii should be interned");
+        assert_eq!(
+            ing.effects.recent(dojii.0, ing.now_ms(), 60_000),
+            vec!["Diseased"]
+        );
+        let snake = ing
+            .store
+            .names
+            .get("a rattlesnake")
+            .expect("rattlesnake should be interned");
+        assert_eq!(
+            ing.effects.recent(snake.0, ing.now_ms(), 60_000),
+            vec!["Poisoned"]
+        );
     }
 
     /// The named `yaulp` alias: same effect as the scraped first-person
@@ -5369,10 +5614,15 @@ mod effect_ping_tests {
     fn the_named_yaulp_alias_pings_the_canonical_first_person_text() {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
-        let lines: Vec<&[u8]> = vec![b"[Fri Aug 07 16:33:09 2026] Flewdur lets loose a mighty yaulp."];
+        let lines: Vec<&[u8]> =
+            vec![b"[Fri Aug 07 16:33:09 2026] Flewdur lets loose a mighty yaulp."];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let flewdur = ing.store.names.get("Flewdur").expect("Flewdur should be interned");
+        let flewdur = ing
+            .store
+            .names
+            .get("Flewdur")
+            .expect("Flewdur should be interned");
         assert_eq!(
             ing.effects.recent(flewdur.0, ing.now_ms(), 60_000),
             vec!["You feel a surge of strength as you let forth a mighty yaulp."]
@@ -5386,10 +5636,15 @@ mod effect_ping_tests {
     fn a_feel_x_buff_recognizes_its_is_x_form() {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
-        let lines: Vec<&[u8]> = vec![b"[Fri Aug 07 16:30:31 2026] Bravesirrobin is protected from magic."];
+        let lines: Vec<&[u8]> =
+            vec![b"[Fri Aug 07 16:30:31 2026] Bravesirrobin is protected from magic."];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let bravesirrobin = ing.store.names.get("Bravesirrobin").expect("Bravesirrobin should be interned");
+        let bravesirrobin = ing
+            .store
+            .names
+            .get("Bravesirrobin")
+            .expect("Bravesirrobin should be interned");
         assert_eq!(
             ing.effects.recent(bravesirrobin.0, ing.now_ms(), 60_000),
             vec!["You feel protected from magic."]
@@ -5413,13 +5668,22 @@ mod effect_ping_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let aella = ing.store.names.get("Aella").expect("Aella should be interned");
-        let configured = ing.classes.configuration_of_visit(aella.0, ing.zone.index_at(ing.now_ms()));
+        let aella = ing
+            .store
+            .names
+            .get("Aella")
+            .expect("Aella should be interned");
+        let configured = ing
+            .classes
+            .configuration_of_visit(aella.0, ing.zone.index_at(ing.now_ms()));
         assert!(configured.contains(&"Rogue".to_string()), "{configured:?}");
 
         // "Aella" herself, not "You" -- the log owner gets no evidence at
         // all from a line they were never the subject of.
-        assert!(ing.store.names.get("You").is_none(), "You should never be interned by this");
+        assert!(
+            ing.store.names.get("You").is_none(),
+            "You should never be interned by this"
+        );
     }
 
     /// The state-ping half: fed to `Effects` on the activator regardless
@@ -5432,8 +5696,15 @@ mod effect_ping_tests {
         let lines: Vec<&[u8]> = vec![b"[Fri Aug 07 00:00:00 2026] Bigneum activates Skull Bash."];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let bigneum = ing.store.names.get("Bigneum").expect("Bigneum should be interned");
-        assert_eq!(ing.effects.recent(bigneum.0, ing.now_ms(), 60_000), vec!["Skull Bash"]);
+        let bigneum = ing
+            .store
+            .names
+            .get("Bigneum")
+            .expect("Bigneum should be interned");
+        assert_eq!(
+            ing.effects.recent(bigneum.0, ing.now_ms(), 60_000),
+            vec!["Skull Bash"]
+        );
     }
 
     /// Regression guard: the general rule must never shadow Quick Buff's
@@ -5458,8 +5729,13 @@ mod effect_ping_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let you = ing.store.names.get("You").expect("You should be interned");
-        let configured = ing.classes.configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
-        assert!(configured.contains(&"Necromancer".to_string()), "{configured:?}");
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        assert!(
+            configured.contains(&"Necromancer".to_string()),
+            "{configured:?}"
+        );
     }
 
     /// The exact real false positive the user caught: a group-wide buff
@@ -5485,7 +5761,9 @@ mod effect_ping_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let you = ing.store.names.get("You").expect("You should be interned");
-        let configured = ing.classes.configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
         assert!(
             !configured.contains(&"Magician".to_string()),
             "a group cast on Kabanab too must never confirm Magician for the player: {configured:?}"
@@ -5524,8 +5802,13 @@ mod effect_ping_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let you = ing.store.names.get("You").expect("You should be interned");
-        let configured = ing.classes.configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
-        assert!(configured.contains(&"Necromancer".to_string()), "{configured:?}");
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        assert!(
+            configured.contains(&"Necromancer".to_string()),
+            "{configured:?}"
+        );
     }
 
     /// The other real false-positive shape: a single-target ally buff
@@ -5555,7 +5838,9 @@ mod effect_ping_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let you = ing.store.names.get("You").expect("You should be interned");
-        let configured = ing.classes.configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
         assert!(
             !configured.contains(&"Bard".to_string()),
             "a maintained ally song must never confirm Bard for the player: {configured:?}"
@@ -5575,7 +5860,9 @@ mod effect_ping_tests {
             vec![b"[Tue Aug 18 22:28:36 2026] Your Location is 216.51, -103.09, -20.19"];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let (ts, x, y, z) = ing.last_loc.expect("a /loc reading should have been captured");
+        let (ts, x, y, z) = ing
+            .last_loc
+            .expect("a /loc reading should have been captured");
         assert_eq!(ts, ing.now_ms());
         assert_eq!(x, 216.51);
         assert_eq!(y, -103.09);
@@ -5596,7 +5883,9 @@ mod effect_ping_tests {
             b"[Sat Aug 01 13:20:01 2026] You have entered The Northern Plains of Karana.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
-        let (_, landing) = ing.entered_via_teleport.expect("should be marked teleported");
+        let (_, landing) = ing
+            .entered_via_teleport
+            .expect("should be marked teleported");
         assert_eq!(landing.class, teleportdata::TeleportClass::Wizard);
         assert_eq!((landing.x, landing.y, landing.z), (-3685.0, 1209.0, -5.0));
     }
@@ -5613,7 +5902,9 @@ mod effect_ping_tests {
             b"[Sat Aug 01 13:20:01 2026] You have entered The Northern Plains of Karana.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
-        let (_, landing) = ing.entered_via_teleport.expect("should be marked teleported");
+        let (_, landing) = ing
+            .entered_via_teleport
+            .expect("should be marked teleported");
         assert_eq!(landing.class, teleportdata::TeleportClass::Druid);
         assert_eq!((landing.x, landing.y, landing.z), (-2706.0, -1494.0, -4.0));
     }
@@ -5632,7 +5923,9 @@ mod effect_ping_tests {
             b"[Sat Aug 01 13:20:01 2026] You have entered The Northern Plains of Karana.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
-        let (_, landing) = ing.entered_via_teleport.expect("should be marked teleported");
+        let (_, landing) = ing
+            .entered_via_teleport
+            .expect("should be marked teleported");
         assert_eq!(landing.class, teleportdata::TeleportClass::Wizard);
     }
 
@@ -5691,7 +5984,9 @@ mod effect_ping_tests {
             b"[Thu Jul 30 17:28:05 2026] You have entered Cazic Thule.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
-        let (_, landing) = ing.entered_via_teleport.expect("should be marked teleported");
+        let (_, landing) = ing
+            .entered_via_teleport
+            .expect("should be marked teleported");
         assert_eq!(landing.class, teleportdata::TeleportClass::Wizard);
     }
 
@@ -5745,7 +6040,9 @@ mod effect_ping_tests {
             b"[Tue Jul 28 15:51:46 2026] You have entered Oggok.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
-        let (_, zone) = ing.learned_origin.expect("should have learned an origin zone");
+        let (_, zone) = ing
+            .learned_origin
+            .expect("should have learned an origin zone");
         assert_eq!(zone, "Oggok");
         // Origin has no fixed coordinate -- unlike Gate/Translocate, this
         // must stay `None` (the confirmed zone is enough on its own;
@@ -5771,7 +6068,9 @@ mod effect_ping_tests {
             b"[Wed Jul 29 17:00:18 2026] You have entered Neriak - Commons.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
-        let (_, zone) = ing.learned_origin.expect("should have learned an origin zone");
+        let (_, zone) = ing
+            .learned_origin
+            .expect("should have learned an origin zone");
         assert_eq!(zone, "Neriak - Commons");
     }
 
@@ -5814,7 +6113,9 @@ mod effect_ping_tests {
             b"[Tue Jul 28 16:28:20 2026] You have entered Oggok.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
-        let (_, zone) = ing.learned_origin.expect("the retry should have learned a zone");
+        let (_, zone) = ing
+            .learned_origin
+            .expect("the retry should have learned a zone");
         assert_eq!(zone, "Oggok");
     }
 

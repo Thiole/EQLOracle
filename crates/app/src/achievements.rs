@@ -56,7 +56,11 @@ pub fn find_existing(base_dir: &Path) -> Option<PathBuf> {
     let entries = std::fs::read_dir(base_dir).ok()?;
     entries
         .filter_map(Result::ok)
-        .filter(|e| e.file_name().to_str().is_some_and(|n| n.ends_with("-Achievements.txt")))
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .is_some_and(|n| n.ends_with("-Achievements.txt"))
+        })
         .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok())
         .map(|e| e.path())
 }
@@ -82,7 +86,10 @@ mod tests {
     use super::*;
 
     fn scratch_file(name: &str, text: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("eqlp-achievements-{name}-{}.txt", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "eqlp-achievements-{name}-{}.txt",
+            std::process::id()
+        ));
         std::fs::write(&path, text).unwrap();
         path
     }
@@ -107,7 +114,11 @@ mod tests {
     fn a_complete_line_reports_true() {
         let path = scratch_file("complete", "C\tPrimary Class Unlock - Wizard\r\n");
         let a = parse(&path).unwrap();
-        assert_eq!(a.is_complete("primary class unlock - wizard"), Some(true), "lookup should be case-insensitive too");
+        assert_eq!(
+            a.is_complete("primary class unlock - wizard"),
+            Some(true),
+            "lookup should be case-insensitive too"
+        );
         std::fs::remove_file(&path).ok();
     }
 
@@ -123,7 +134,10 @@ mod tests {
     /// must not panic or get misread as real achievement text.
     #[test]
     fn a_bare_category_header_line_is_skipped_without_panicking() {
-        let path = scratch_file("header", "Untapped Potential: Races\r\nI\tRace Unlock - Barbarian\r\n");
+        let path = scratch_file(
+            "header",
+            "Untapped Potential: Races\r\nI\tRace Unlock - Barbarian\r\n",
+        );
         let a = parse(&path).unwrap();
         assert_eq!(a.is_complete("Untapped Potential: Races"), None);
         assert_eq!(a.is_complete("Race Unlock - Barbarian"), Some(false));

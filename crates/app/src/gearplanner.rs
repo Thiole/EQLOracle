@@ -787,10 +787,7 @@ fn item_effect(item: &Item, key: &str) -> Option<ItemEffectDto> {
     let v = item.effects.get(key)?;
     Some(ItemEffectDto {
         name: v.get("name")?.as_str()?.to_string(),
-        detail: v
-            .get("detail")
-            .and_then(|d| d.as_str())
-            .map(String::from),
+        detail: v.get("detail").and_then(|d| d.as_str()).map(String::from),
     })
 }
 
@@ -1030,7 +1027,8 @@ fn exalt_slots_with_assignments(
             let effect = if !unlocked {
                 None
             } else if let Some(source_id) = assignments.get(key) {
-                itemdata::by_id(source_id).and_then(|src| effect_key.and_then(|k| item_effect(src, k)))
+                itemdata::by_id(source_id)
+                    .and_then(|src| effect_key.and_then(|k| item_effect(src, k)))
             } else {
                 effect_key.and_then(|k| item_effect(item, k))
             };
@@ -1051,7 +1049,11 @@ fn exalt_slots_with_assignments(
 /// other field (`stats`/`dmg`/`wt`/`tier`) is unaffected by exaltation --
 /// only the socket contents change, which is exactly what
 /// `exalt_slots_with_assignments` recomputes.
-pub fn item_with_exalts(id: &str, tier: u8, assignments: &HashMap<String, String>) -> Option<ItemDto> {
+pub fn item_with_exalts(
+    id: &str,
+    tier: u8,
+    assignments: &HashMap<String, String>,
+) -> Option<ItemDto> {
     let item = itemdata::by_id(id)?;
     let tier = tier.min(10);
     let mut dto = to_dto(item, tier, 0);
@@ -1091,10 +1093,12 @@ pub fn exalt_candidates(
     let Some(item) = itemdata::by_id(item_id) else {
         return Vec::new();
     };
-    let Some(&(_, _, _, Some(effect_key))) = EXALT_SLOTS.iter().find(|&&(k, ..)| k == socket_key) else {
+    let Some(&(_, _, _, Some(effect_key))) = EXALT_SLOTS.iter().find(|&&(k, ..)| k == socket_key)
+    else {
         return Vec::new(); // unknown socket, or ornament (no effect_key -- nothing to source)
     };
-    let (eff_classes, eff_slots) = effective_classes_slots(item, other_assignments, Some(socket_key));
+    let (eff_classes, eff_slots) =
+        effective_classes_slots(item, other_assignments, Some(socket_key));
     let codes = names_to_codes(classes);
     itemdata::items()
         .iter()
@@ -1157,11 +1161,15 @@ pub struct InventoryDumpDto {
 /// look up -- that socket falls back to reporting the equipped item's
 /// own native effect (`exalt_slots_with_assignments`' default when a key
 /// is simply absent), not a wrong one.
-fn resolve_exalt_assignments(exalted_for_slot: &HashMap<String, String>) -> HashMap<String, String> {
+fn resolve_exalt_assignments(
+    exalted_for_slot: &HashMap<String, String>,
+) -> HashMap<String, String> {
     exalted_for_slot
         .iter()
         .filter_map(|(socket_key, source_name)| {
-            let src = itemdata::items().iter().find(|it| it.name.eq_ignore_ascii_case(source_name))?;
+            let src = itemdata::items()
+                .iter()
+                .find(|it| it.name.eq_ignore_ascii_case(source_name))?;
             Some((socket_key.clone(), src.id.clone()))
         })
         .collect()
@@ -1199,7 +1207,8 @@ pub fn resolve_inventory(
                 if let Some(exalted) = parsed.exalted.get(slot) {
                     let assignments = resolve_exalt_assignments(exalted);
                     if !assignments.is_empty() {
-                        item_dto.exalts = exalt_slots_with_assignments(it, inv_item.tier, &assignments);
+                        item_dto.exalts =
+                            exalt_slots_with_assignments(it, inv_item.tier, &assignments);
                     }
                 }
                 if let Some(procs) = proc_evidence {
@@ -1560,8 +1569,15 @@ mod scale_stat_tests {
             exalted,
         };
         let dto = resolve_inventory(&parsed, None);
-        let item = dto.resolved.get("BACK").expect("Shield of the Immaculate is a real catalog item");
-        let focus = item.exalts.iter().find(|e| e.key == "focus").expect("focus socket");
+        let item = dto
+            .resolved
+            .get("BACK")
+            .expect("Shield of the Immaculate is a real catalog item");
+        let focus = item
+            .exalts
+            .iter()
+            .find(|e| e.key == "focus")
+            .expect("focus socket");
         assert_eq!(focus.effect.as_ref().map(|e| e.name.as_str()), Some("Improved Damage III"), "the socketed source's own effect, not Shield of the Immaculate's own (it has no native focus effect at all)");
     }
 }
@@ -1943,7 +1959,10 @@ mod exalt_slot_tests {
         let at = exalt_slots(item, 4);
         let proc = at.iter().find(|s| s.key == "proc").unwrap();
         assert!(proc.unlocked);
-        assert_eq!(proc.effect.as_ref().map(|e| e.name.as_str()), Some("Steal Strength"));
+        assert_eq!(
+            proc.effect.as_ref().map(|e| e.name.as_str()),
+            Some("Steal Strength")
+        );
     }
 
     /// Ornamentation has no effect key at all -- it's a cosmetic token
@@ -2142,7 +2161,9 @@ mod exalt_candidate_tests {
             &["Warrior".to_string()],
             Some("All"),
         );
-        assert!(!candidates.iter().any(|c| c.name == "Band of Screaming Winds"));
+        assert!(!candidates
+            .iter()
+            .any(|c| c.name == "Band of Screaming Winds"));
         // "Berserkers Ring" -- WAR is one of its classes -- must still show up.
         assert!(candidates.iter().any(|c| c.name == "Berserkers Ring"));
     }
@@ -2155,7 +2176,14 @@ mod exalt_candidate_tests {
 
     #[test]
     fn an_unknown_socket_key_returns_nothing() {
-        assert!(exalt_candidates("Brass_Ring", "not-a-real-socket", &HashMap::new(), &[], None).is_empty());
+        assert!(exalt_candidates(
+            "Brass_Ring",
+            "not-a-real-socket",
+            &HashMap::new(),
+            &[],
+            None
+        )
+        .is_empty());
     }
 
     #[test]
@@ -2175,7 +2203,10 @@ mod exalt_candidate_tests {
         assignments.insert("focus".to_string(), "Adamantite_Band".to_string());
         let dto = item_with_exalts("Brass_Ring", 5, &assignments).expect("real catalog id");
         let focus = dto.exalts.iter().find(|e| e.key == "focus").unwrap();
-        assert!(focus.unlocked, "tier 5 is well past focus's own +1 requirement");
+        assert!(
+            focus.unlocked,
+            "tier 5 is well past focus's own +1 requirement"
+        );
         assert_eq!(
             focus.effect.as_ref().map(|e| e.name.as_str()),
             Some("Summoning Haste I"),
@@ -2193,6 +2224,9 @@ mod exalt_candidate_tests {
         // "Berserkers Ring" has a real native click effect of its own.
         let dto = item_with_exalts("Berserkers_Ring", 5, &assignments).expect("real catalog id");
         let click = dto.exalts.iter().find(|e| e.key == "click").unwrap();
-        assert_eq!(click.effect.as_ref().map(|e| e.name.as_str()), Some("Firefist"));
+        assert_eq!(
+            click.effect.as_ref().map(|e| e.name.as_str()),
+            Some("Firefist")
+        );
     }
 }

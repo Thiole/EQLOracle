@@ -115,8 +115,7 @@ impl Grid {
             .map(|l| (l.a.x, l.a.y, l.b.x, l.b.y))
             .collect();
 
-        let (mut min_x, mut min_y, mut max_x, mut max_y) =
-            (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        let (mut min_x, mut min_y, mut max_x, mut max_y) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
         for &(x1, y1, x2, y2) in &segments {
             min_x = min_x.min(x1).min(x2);
             max_x = max_x.max(x1).max(x2);
@@ -130,7 +129,13 @@ impl Grid {
         let span = (max_x - min_x).max(max_y - min_y).max(1.0);
         let cell = (span / TARGET_CELLS_PER_AXIS).clamp(MIN_CELL_SIZE, MAX_CELL_SIZE);
 
-        let mut grid = Grid { origin_x: min_x, origin_y: min_y, cell, buckets: HashMap::new(), segments };
+        let mut grid = Grid {
+            origin_x: min_x,
+            origin_y: min_y,
+            cell,
+            buckets: HashMap::new(),
+            segments,
+        };
         for (idx, &(x1, y1, x2, y2)) in grid.segments.iter().enumerate() {
             let (c1i, c1j) = grid.cell_of(x1, y1);
             let (c2i, c2j) = grid.cell_of(x2, y2);
@@ -210,7 +215,9 @@ impl Grid {
         let c2 = self.cell_of(x2, y2);
         let mut checked = std::collections::HashSet::new();
         for c in [c1, c2] {
-            let Some(bucket) = self.buckets.get(&c) else { continue };
+            let Some(bucket) = self.buckets.get(&c) else {
+                continue;
+            };
             for &idx in bucket {
                 if !checked.insert(idx) {
                     continue;
@@ -227,7 +234,16 @@ impl Grid {
 
 /// Standard orientation-based segment-segment intersection test (proper
 /// crossing or an endpoint landing exactly on the other segment).
-fn segments_intersect(ax1: f32, ay1: f32, ax2: f32, ay2: f32, bx1: f32, by1: f32, bx2: f32, by2: f32) -> bool {
+fn segments_intersect(
+    ax1: f32,
+    ay1: f32,
+    ax2: f32,
+    ay2: f32,
+    bx1: f32,
+    by1: f32,
+    bx2: f32,
+    by2: f32,
+) -> bool {
     fn orient(ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32) -> f32 {
         (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
     }
@@ -259,7 +275,10 @@ impl Eq for QueueEntry {}
 impl Ord for QueueEntry {
     fn cmp(&self, other: &Self) -> Ordering {
         // Reversed: BinaryHeap is a max-heap, A* wants the lowest cost first.
-        other.cost.partial_cmp(&self.cost).unwrap_or(Ordering::Equal)
+        other
+            .cost
+            .partial_cmp(&self.cost)
+            .unwrap_or(Ordering::Equal)
     }
 }
 impl PartialOrd for QueueEntry {
@@ -268,8 +287,16 @@ impl PartialOrd for QueueEntry {
     }
 }
 
-const NEIGHBOR_OFFSETS: [(i32, i32); 8] =
-    [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)];
+const NEIGHBOR_OFFSETS: [(i32, i32); 8] = [
+    (1, 0),
+    (-1, 0),
+    (0, 1),
+    (0, -1),
+    (1, 1),
+    (1, -1),
+    (-1, 1),
+    (-1, -1),
+];
 
 /// A real walking route from `from` to `to` within `map`, or `None` if no
 /// route exists (unreachable on the same floor, or `from`/`to` themselves
@@ -306,7 +333,10 @@ pub fn find_path(
     };
 
     let mut open = BinaryHeap::new();
-    open.push(QueueEntry { cost: heuristic(start), cell: start });
+    open.push(QueueEntry {
+        cost: heuristic(start),
+        cell: start,
+    });
     let mut g_score: HashMap<Cell, f32> = HashMap::from([(start, 0.0)]);
     let mut came_from: HashMap<Cell, Cell> = HashMap::new();
     // Safety cap: a genuinely unreachable goal on a huge zone should fail
@@ -348,12 +378,19 @@ pub fn find_path(
             if grid.blocked(cx, cy, nx, ny) {
                 continue;
             }
-            let step_cost = if di != 0 && dj != 0 { std::f32::consts::SQRT_2 } else { 1.0 } * grid.cell;
+            let step_cost = if di != 0 && dj != 0 {
+                std::f32::consts::SQRT_2
+            } else {
+                1.0
+            } * grid.cell;
             let tentative = current_g + step_cost;
             if tentative < *g_score.get(&next).unwrap_or(&f32::INFINITY) {
                 g_score.insert(next, tentative);
                 came_from.insert(next, current);
-                open.push(QueueEntry { cost: tentative + heuristic(next), cell: next });
+                open.push(QueueEntry {
+                    cost: tentative + heuristic(next),
+                    cell: next,
+                });
             }
         }
     }
@@ -416,7 +453,21 @@ mod tests {
     use crate::mapsdata::MapPoint3;
 
     fn line(ax: f32, ay: f32, bx: f32, by: f32) -> MapLine {
-        MapLine { a: MapPoint3 { x: ax, y: ay, z: 0.0 }, b: MapPoint3 { x: bx, y: by, z: 0.0 }, r: 0, g: 0, b_: 0 }
+        MapLine {
+            a: MapPoint3 {
+                x: ax,
+                y: ay,
+                z: 0.0,
+            },
+            b: MapPoint3 {
+                x: bx,
+                y: by,
+                z: 0.0,
+            },
+            r: 0,
+            g: 0,
+            b_: 0,
+        }
     }
 
     /// An open square room, no obstacles inside -- a straight-line-shaped
@@ -430,7 +481,10 @@ mod tests {
             line(100.0, 100.0, -100.0, 100.0),
             line(-100.0, 100.0, -100.0, -100.0),
         ];
-        let map = ParsedZoneMap { lines, markers: vec![] };
+        let map = ParsedZoneMap {
+            lines,
+            markers: vec![],
+        };
         let path = find_path(&map, (-80.0, -80.0, 0.0), (80.0, 80.0, 0.0)).expect("route exists");
         assert_eq!(path.first().copied(), Some((-80.0, -80.0, 0.0)));
         assert_eq!(path.last().copied(), Some((80.0, 80.0, 0.0)));
@@ -451,7 +505,10 @@ mod tests {
             line(-100.0, 100.0, -100.0, -100.0),
             line(0.0, -100.0, 0.0, 100.0),
         ];
-        let map = ParsedZoneMap { lines, markers: vec![] };
+        let map = ParsedZoneMap {
+            lines,
+            markers: vec![],
+        };
         assert!(find_path(&map, (-50.0, 0.0, 0.0), (50.0, 0.0, 0.0)).is_none());
     }
 
@@ -473,14 +530,23 @@ mod tests {
             line(0.0, -100.0, 0.0, -20.0),
             line(0.0, 20.0, 0.0, 100.0),
         ];
-        let map = ParsedZoneMap { lines, markers: vec![] };
-        let path = find_path(&map, (-50.0, 0.0, 0.0), (50.0, 0.0, 0.0)).expect("route exists via the gap");
+        let map = ParsedZoneMap {
+            lines,
+            markers: vec![],
+        };
+        let path =
+            find_path(&map, (-50.0, 0.0, 0.0), (50.0, 0.0, 0.0)).expect("route exists via the gap");
         // Every consecutive leg of the simplified path must itself be
         // unobstructed -- the real assertion that this isn't just "a path
         // was returned" but "a path that actually respects the wall".
         let grid = Grid::build(&map.lines, 0.0);
         for w in path.windows(2) {
-            assert!(!grid.blocked(w[0].0, w[0].1, w[1].0, w[1].1), "leg {:?}->{:?} crosses the wall", w[0], w[1]);
+            assert!(
+                !grid.blocked(w[0].0, w[0].1, w[1].0, w[1].1),
+                "leg {:?}->{:?} crosses the wall",
+                w[0],
+                w[1]
+            );
         }
     }
 
@@ -493,15 +559,26 @@ mod tests {
     fn a_different_floor_at_the_same_xy_is_not_treated_as_the_same_level() {
         let lower = vec![line(-100.0, -100.0, 100.0, -100.0)];
         let upper = vec![MapLine {
-            a: MapPoint3 { x: 0.0, y: -200.0, z: 500.0 },
-            b: MapPoint3 { x: 0.0, y: 200.0, z: 500.0 },
+            a: MapPoint3 {
+                x: 0.0,
+                y: -200.0,
+                z: 500.0,
+            },
+            b: MapPoint3 {
+                x: 0.0,
+                y: 200.0,
+                z: 500.0,
+            },
             r: 0,
             g: 0,
             b_: 0,
         }];
         let mut lines = lower;
         lines.extend(upper);
-        let map = ParsedZoneMap { lines, markers: vec![] };
+        let map = ParsedZoneMap {
+            lines,
+            markers: vec![],
+        };
         // Both points are on the lower floor (Z=0); the upper-floor wall
         // (Z=500) is far outside Z_BAND and must be filtered out, so this
         // route must succeed exactly as if the upper wall didn't exist.

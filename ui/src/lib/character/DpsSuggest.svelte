@@ -85,7 +85,7 @@
   }
 
   function applyInvocation(s: DamageSpellDto): DamageSpellDto {
-    let { total_damage, mana, casting_time, recast_time } = s;
+    let { total_damage, instant_damage, mana, casting_time, recast_time } = s;
     if (invocation === 'arcane_mastery') {
       const n = countInSet(INTEL_CLASSES);
       if (n > 0) {
@@ -98,7 +98,14 @@
     } else if (invocation === 'empower') {
       const n = countInSet(NON_HYBRID_CASTERS);
       if (n > 0) {
-        total_damage *= 1 + (0.2 + 0.1 * (n - 1));
+        // why: applied to both total_damage and instant_damage
+        // proportionally -- the wiki's own wording is "adds N% to
+        // Damage effects" generally, not scoped to only the DoT tick or
+        // only an instant hit, so a DoT's own "on cast" burst (if any)
+        // gets boosted the same rate its tick stream does.
+        const mult = 1 + (0.2 + 0.1 * (n - 1));
+        total_damage *= mult;
+        instant_damage *= mult;
         mana *= 1.2;
       }
     }
@@ -108,12 +115,17 @@
     return {
       ...s,
       total_damage,
+      instant_damage,
       mana,
       casting_time,
       recast_time,
       dpm: total_damage / mana,
       dps_with_reuse: total_damage / cycle,
-      dps_ignoring_reuse: total_damage / casting_time,
+      // why: same rule as the Rust side -- a DoT's "no reuse" rate is
+      // only ever its instant component, never the whole tick-stream
+      // total (that's `dps_with_reuse`'s job). See `instant_damage`'s
+      // own doc in api.ts.
+      dps_ignoring_reuse: instant_damage / casting_time,
     };
   }
 
@@ -137,23 +149,38 @@
     return [...groups.values()];
   });
 
+  // why: "worth maintaining" per-DoT test, direct correction applied --
+  // a DoT's own `dps_ignoring_reuse` excludes its tick stream entirely
+  // now (see api.ts's own doc on `instant_damage`), so it can no longer
+  // be compared against a nuke's rate the way it used to be. Reworked
+  // around the real opportunity-cost question instead: casting a DoT
+  // commits `casting_time` seconds that could otherwise have gone to
+  // nuking at the nuke's own real sustained rate (`dps_with_reuse`).
+  // Assuming the DoT is refreshed right as it expires (never early --
+  // "reapplying before duration runs out hurts DPS" is exactly the
+  // assumption already built into `duration_secs` cost of nothing else
+  // happening), its *own* full lifetime `total_damage` is what that
+  // commitment buys. So the DoT is worth it exactly when
+  // `total_damage / casting_time` (damage bought per second of that
+  // commitment) beats what nuking that same stretch of time would have
+  // earned (`bestNuke.dps_with_reuse`) -- the DoT's own recast timer
+  // doesn't enter into this at all, since duration (not recast) is what
+  // paces a "never refresh early" DoT.
+  function dotValuePerCastSecond(d: DamageSpellDto): number {
+    return d.total_damage / d.casting_time;
+  }
+
   // why: the actual auto-suggest -- best nuke by the chosen metric, plus
-  // any DoT whose own upkeep efficiency (damage per second of *casting
-  // time* spent, `dps_ignoring_reuse`) beats what that same casting
-  // time would earn spamming the best nuke instead. That's the real
-  // "worth maintaining" test: refreshing a DoT early wastes duration
-  // ("reapplying before duration runs out hurts DPS"), but a DoT that
-  // clears this bar is still a strictly better use of that button-press
-  // than nuking would have been, reuse timers aside. Capped at 3 DoTs +
+  // any DoT clearing the opportunity-cost bar above. Capped at 3 DoTs +
   // 1 nuke so this stays a short rotation, not the whole spellbook.
   const rotation = $derived.by(() => {
     const nukes = deduped.filter((s) => !s.is_dot);
     const dots = deduped.filter((s) => s.is_dot);
     const bestNuke = nukes.length ? nukes.reduce((a, b) => (metricOf(b) > metricOf(a) ? b : a)) : null;
-    const threshold = bestNuke?.dps_ignoring_reuse ?? 0;
+    const threshold = bestNuke?.dps_with_reuse ?? 0;
     const worthwhileDots = dots
-      .filter((d) => d.dps_ignoring_reuse > threshold)
-      .sort((a, b) => b.dps_ignoring_reuse - a.dps_ignoring_reuse)
+      .filter((d) => dotValuePerCastSecond(d) > threshold)
+      .sort((a, b) => dotValuePerCastSecond(b) - dotValuePerCastSecond(a))
       .slice(0, 3);
     return bestNuke ? [...worthwhileDots, bestNuke] : worthwhileDots;
   });
@@ -198,6 +225,21 @@
   function fmt(n: number): string {
     return n.toLocaleString(undefined, { maximumFractionDigits: 1 });
   }
+
+  // why: the rotation chip's own displayed rate -- for a nuke, whatever
+  // metric the toggle above has selected, same as everywhere else. For
+  // a DoT specifically, always its `dps_with_reuse` regardless of that
+  // toggle: that's the number the "worth maintaining" decision itself
+  // was made on, and showing `dps_ignoring_reuse` here (0 for most real
+  // DoTs, since it excludes the tick stream on purpose) would make a
+  // DoT that's genuinely earning its slot in the rotation look like it
+  // contributes nothing.
+  function rotationMetric(s: DamageSpellDto): number {
+    return s.is_dot ? s.dps_with_reuse : metricOf(s);
+  }
+  function rotationMetricLabel(s: DamageSpellDto): string {
+    return s.is_dot ? 'DPS' : metricLabel();
+  }
 </script>
 
 <Card class="rounded-sm">
@@ -207,7 +249,9 @@
       Damage/mana math for every damage spell you can currently cast (level {MAX_CHARACTER_LEVEL} cap, same as the picker above).
       Nuke damage is rank-adjusted at +10% of base per live rank tier -- measured against your own log, not the wiki's guide page.
       A DoT's own <i>per-tick</i> damage doesn't scale with rank; only its one-time "on cast" hit (if any) does, though its cast
-      time/mana/duration still shrink or grow with rank (wiki-sourced estimate, unverified).
+      time/mana/duration still shrink or grow with rank (wiki-sourced estimate, unverified). A DoT already ticks on its own once
+      cast, so its "DPS (no reuse)" column only ever reflects that one-time hit (0 for most real DoTs) -- its real sustained rate
+      is the plain "DPS" column instead, which is what the rotation below actually weighs it against.
     </p>
 
     <div class="mb-2 flex flex-wrap items-start gap-x-3 gap-y-1.5">
@@ -282,7 +326,7 @@
               {/if}
               <span class="text-foreground">{s.name}</span>
               {#if s.is_dot}<span class="rounded-sm bg-muted px-1 text-[9px] text-muted-foreground">DoT</span>{/if}
-              <span class="tabular-nums text-muted-foreground">{fmt(metricOf(s))} {metricLabel()}</span>
+              <span class="tabular-nums text-muted-foreground">{fmt(rotationMetric(s))} {rotationMetricLabel(s)}</span>
             </div>
           {/each}
         </div>

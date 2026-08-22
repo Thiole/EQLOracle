@@ -270,7 +270,12 @@ fn build_item_loot_index(ing: &Ingest) -> HashMap<String, (u64, bool)> {
     out
 }
 
-fn resolve_item(name: &str, source: Option<&str>, looted: &HashMap<String, (u64, bool)>, owned_ci: Option<&HashMap<String, u32>>) -> TurnInItemDto {
+fn resolve_item(
+    name: &str,
+    source: Option<&str>,
+    looted: &HashMap<String, (u64, bool)>,
+    owned_ci: Option<&HashMap<String, u32>>,
+) -> TurnInItemDto {
     let key = name.to_ascii_lowercase();
     let (looted_count, sold_without_keeping) = looted.get(&key).copied().unwrap_or((0, false));
     TurnInItemDto {
@@ -303,15 +308,30 @@ fn build_context(ing: &Ingest, base_dir: Option<&Path>) -> Context {
         .and_then(|dir| inventory::find_existing_dump(dir))
         .and_then(|(file, _character)| inventory::dump_path(base_dir.unwrap(), &file).ok())
         .and_then(|path| inventory::parse(&path).ok())
-        .map(|parsed| parsed.owned.into_iter().map(|(k, v)| (k.to_ascii_lowercase(), v)).collect());
-    let achievements = base_dir.and_then(crate::achievements::find_existing).and_then(|path| crate::achievements::parse(&path).ok());
-    Context { looted, owned_ci, achievements }
+        .map(|parsed| {
+            parsed
+                .owned
+                .into_iter()
+                .map(|(k, v)| (k.to_ascii_lowercase(), v))
+                .collect()
+        });
+    let achievements = base_dir
+        .and_then(crate::achievements::find_existing)
+        .and_then(|path| crate::achievements::parse(&path).ok());
+    Context {
+        looted,
+        owned_ci,
+        achievements,
+    }
 }
 
 fn unlocked_status(ctx: &Context, wiki_class: &str) -> Option<bool> {
-    ctx.achievements
-        .as_ref()
-        .and_then(|a| a.is_complete(&format!("Primary Class Unlock - {}", achievement_class_name(wiki_class))))
+    ctx.achievements.as_ref().and_then(|a| {
+        a.is_complete(&format!(
+            "Primary Class Unlock - {}",
+            achievement_class_name(wiki_class)
+        ))
+    })
 }
 
 /// The "Sky - Quests" tab's whole data source -- every individual
@@ -332,16 +352,27 @@ pub fn list_quests(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClassDto> {
                 .map(|q| TurnInDto {
                     quest: q.quest.clone(),
                     trigger: q.trigger.clone(),
-                    rune: q.rune.as_deref().map(|r| resolve_item(r, None, &ctx.looted, ctx.owned_ci.as_ref())),
+                    rune: q
+                        .rune
+                        .as_deref()
+                        .map(|r| resolve_item(r, None, &ctx.looted, ctx.owned_ci.as_ref())),
                     items: q
                         .items
                         .iter()
-                        .map(|it| resolve_item(&it.item, it.source.as_deref(), &ctx.looted, ctx.owned_ci.as_ref()))
+                        .map(|it| {
+                            resolve_item(
+                                &it.item,
+                                it.source.as_deref(),
+                                &ctx.looted,
+                                ctx.owned_ci.as_ref(),
+                            )
+                        })
                         .collect(),
-                    completed: q
-                        .reward
-                        .as_ref()
-                        .and_then(|r| ctx.achievements.as_ref().and_then(|a| a.is_complete(&format!("Obtain {}", achievement_reward_name(r))))),
+                    completed: q.reward.as_ref().and_then(|r| {
+                        ctx.achievements.as_ref().and_then(|a| {
+                            a.is_complete(&format!("Obtain {}", achievement_reward_name(r)))
+                        })
+                    }),
                     reward: q.reward.clone(),
                 })
                 .collect(),
@@ -366,7 +397,10 @@ pub fn list_class_unlocks(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClass
                     let materials = q
                         .rune
                         .as_deref()
-                        .map(|r| QuestMaterialDto { item: r.to_string(), source: None })
+                        .map(|r| QuestMaterialDto {
+                            item: r.to_string(),
+                            source: None,
+                        })
                         .into_iter()
                         .chain(q.items.iter().map(|qi| QuestMaterialDto {
                             item: qi.item.clone(),
@@ -380,10 +414,9 @@ pub fn list_class_unlocks(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClass
                         looted_count: it.looted_count,
                         currently_owned: it.currently_owned,
                         sold_without_keeping: it.sold_without_keeping,
-                        completed: ctx
-                            .achievements
-                            .as_ref()
-                            .and_then(|a| a.is_complete(&format!("Obtain {}", achievement_reward_name(reward)))),
+                        completed: ctx.achievements.as_ref().and_then(|a| {
+                            a.is_complete(&format!("Obtain {}", achievement_reward_name(reward)))
+                        }),
                         materials,
                     })
                 })
@@ -412,7 +445,11 @@ mod tests {
     #[test]
     fn shadow_knight_resolves_against_the_one_word_achievement_spelling() {
         assert_eq!(achievement_class_name("Shadow Knight"), "Shadowknight");
-        assert_eq!(achievement_class_name("Wizard"), "Wizard", "everything else passes through unchanged");
+        assert_eq!(
+            achievement_class_name("Wizard"),
+            "Wizard",
+            "everything else passes through unchanged"
+        );
     }
 
     /// Same regression, reward side -- the 3 known wiki/achievement
@@ -422,8 +459,14 @@ mod tests {
     #[test]
     fn known_reward_name_drifts_resolve_to_their_real_achievement_text() {
         assert_eq!(achievement_reward_name("Fae Amulet"), "Amulet of the Fae");
-        assert_eq!(achievement_reward_name("Griffon Wing Spauldors"), "Griffon Wing Spaulders");
-        assert_eq!(achievement_reward_name("Windhowl"), "Windhowl and Spirit Render");
+        assert_eq!(
+            achievement_reward_name("Griffon Wing Spauldors"),
+            "Griffon Wing Spaulders"
+        );
+        assert_eq!(
+            achievement_reward_name("Windhowl"),
+            "Windhowl and Spirit Render"
+        );
         assert_eq!(achievement_reward_name("Mask of Song"), "Mask of Song");
     }
 
@@ -449,7 +492,12 @@ mod tests {
         for c in classes() {
             for q in &c.quests {
                 assert!(q.rune.is_some(), "{} {} has no rune", c.class, q.quest);
-                assert!(!q.items.is_empty(), "{} {} has no quest items", c.class, q.quest);
+                assert!(
+                    !q.items.is_empty(),
+                    "{} {} has no quest items",
+                    c.class,
+                    q.quest
+                );
             }
         }
     }
@@ -485,7 +533,8 @@ mod tests {
         let ing = Ingest::default();
         let unlocks = list_class_unlocks(&ing, None);
         let bard = unlocks.iter().find(|c| c.class == "Bard").expect("Bard");
-        let names: std::collections::HashSet<&str> = bard.rewards.iter().map(|r| r.name.as_str()).collect();
+        let names: std::collections::HashSet<&str> =
+            bard.rewards.iter().map(|r| r.name.as_str()).collect();
         // why: "Fae Amulet" (not "Amulet of the Fae") -- the wiki's own
         // reward-page name, confirmed by the scrape itself; the real
         // Achievements dump phrases it the other way around, one of the
@@ -503,8 +552,14 @@ mod tests {
         .into_iter()
         .collect();
         assert_eq!(names, expected);
-        assert!(!names.contains("Wind Rune Meda"), "raw materials must not appear on the unlocks tab");
-        assert!(!names.contains("Light Woolen Mask"), "raw materials must not appear on the unlocks tab");
+        assert!(
+            !names.contains("Wind Rune Meda"),
+            "raw materials must not appear on the unlocks tab"
+        );
+        assert!(
+            !names.contains("Light Woolen Mask"),
+            "raw materials must not appear on the unlocks tab"
+        );
     }
 
     /// A reward not yet secured has to say where it actually comes from
@@ -516,7 +571,11 @@ mod tests {
         let ing = Ingest::default();
         let unlocks = list_class_unlocks(&ing, None);
         let bard = unlocks.iter().find(|c| c.class == "Bard").expect("Bard");
-        let mask = bard.rewards.iter().find(|r| r.name == "Mask of Song").expect("Mask of Song");
+        let mask = bard
+            .rewards
+            .iter()
+            .find(|r| r.name == "Mask of Song")
+            .expect("Mask of Song");
         assert_eq!(mask.quest, "Bard Test of Tone");
         assert_eq!(mask.materials.len(), 2, "one rune + one drop item");
         assert_eq!(mask.materials[0].item, "Wind Rune Meda");

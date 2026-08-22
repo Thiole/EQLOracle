@@ -100,7 +100,12 @@ fn strip_trailing_numbered_slot(location: &str) -> Option<&str> {
 /// even consistent (`Head-Slot1`, `Back-Slot2`, absent entirely for
 /// `Primary`) and no real filled example has been seen to confirm its
 /// naming convention against.
-const EXALT_SOCKET_SUFFIXES: &[(&str, &str)] = &[("-Slot7", "focus"), ("-Slot8", "click"), ("-Slot9", "worn"), ("-Slot10", "proc")];
+const EXALT_SOCKET_SUFFIXES: &[(&str, &str)] = &[
+    ("-Slot7", "focus"),
+    ("-Slot8", "click"),
+    ("-Slot9", "worn"),
+    ("-Slot10", "proc"),
+];
 
 /// A dump-reported exalt source's own display name always carries this
 /// literal suffix (confirmed against every real example seen) -- the
@@ -205,9 +210,18 @@ pub fn parse(path: &Path) -> std::io::Result<ParsedInventory> {
         if let Some(base) = strip_trailing_numbered_slot(location) {
             if base == last_base_location {
                 if name != "Empty" {
-                    if let (Some(equip_key), Some(socket_key)) = (last_equip_key, EXALT_SOCKET_SUFFIXES.iter().find(|(suffix, _)| location.ends_with(suffix)).map(|&(_, k)| k)) {
+                    if let (Some(equip_key), Some(socket_key)) = (
+                        last_equip_key,
+                        EXALT_SOCKET_SUFFIXES
+                            .iter()
+                            .find(|(suffix, _)| location.ends_with(suffix))
+                            .map(|&(_, k)| k),
+                    ) {
                         let source_name = name.strip_suffix(EXALTATION_SUFFIX).unwrap_or(name);
-                        out.exalted.entry(equip_key.to_string()).or_default().insert(socket_key.to_string(), source_name.to_string());
+                        out.exalted
+                            .entry(equip_key.to_string())
+                            .or_default()
+                            .insert(socket_key.to_string(), source_name.to_string());
                     }
                 }
                 continue;
@@ -354,10 +368,25 @@ mod parse_tests {
              Back-Slot9\tEmpty\t0\t0\t0\n",
         );
         let parsed = parse(&path).unwrap();
-        let back = parsed.exalted.get("BACK").expect("Back should have exalt sockets recorded");
-        assert_eq!(back.get("focus"), Some(&"White Dragonscale Cloak".to_string()), "Slot7 -- confirmed focus-effect item");
-        assert_eq!(back.get("click"), Some(&"Shield of the Immaculate".to_string()), "Slot8 -- confirmed click-effect item");
-        assert_eq!(back.len(), 2, "the two Empty sockets (2 and 9) shouldn't produce entries");
+        let back = parsed
+            .exalted
+            .get("BACK")
+            .expect("Back should have exalt sockets recorded");
+        assert_eq!(
+            back.get("focus"),
+            Some(&"White Dragonscale Cloak".to_string()),
+            "Slot7 -- confirmed focus-effect item"
+        );
+        assert_eq!(
+            back.get("click"),
+            Some(&"Shield of the Immaculate".to_string()),
+            "Slot8 -- confirmed click-effect item"
+        );
+        assert_eq!(
+            back.len(),
+            2,
+            "the two Empty sockets (2 and 9) shouldn't produce entries"
+        );
     }
 
     /// Two copies of the same equip-doll slot (Ear1/Ear2), each with
@@ -377,8 +406,14 @@ mod parse_tests {
              Ear-Slot9\tEmpty\t0\t0\t0\n",
         );
         let parsed = parse(&path).unwrap();
-        assert_eq!(parsed.exalted.get("EAR1").unwrap().get("click"), Some(&"Earring of Displacement".to_string()));
-        assert!(!parsed.exalted.contains_key("EAR2"), "the second Ear had nothing real socketed");
+        assert_eq!(
+            parsed.exalted.get("EAR1").unwrap().get("click"),
+            Some(&"Earring of Displacement".to_string())
+        );
+        assert!(
+            !parsed.exalted.contains_key("EAR2"),
+            "the second Ear had nothing real socketed"
+        );
     }
 
     /// A bag item's own nested exalt sockets (`General 1-Slot3-Slot2`,
@@ -399,9 +434,19 @@ mod parse_tests {
              General 1-Slot3-Slot7\tSome Other Exaltation (Exaltation)\t9999\t1\t10\n",
         );
         let parsed = parse(&path).unwrap();
-        let back = parsed.exalted.get("BACK").expect("Back's own real exalt socket");
-        assert_eq!(back.len(), 1, "only Back's own real socket, not the bag item's nested one too");
-        assert!(!parsed.exalted.contains_key("General 1"), "a bag is never an equip-doll slot");
+        let back = parsed
+            .exalted
+            .get("BACK")
+            .expect("Back's own real exalt socket");
+        assert_eq!(
+            back.len(),
+            1,
+            "only Back's own real socket, not the bag item's nested one too"
+        );
+        assert!(
+            !parsed.exalted.contains_key("General 1"),
+            "a bag is never an equip-doll slot"
+        );
     }
 
     /// A socketed exaltation source must never also inflate `owned` --
@@ -416,7 +461,10 @@ mod parse_tests {
         );
         let parsed = parse(&path).unwrap();
         assert_eq!(parsed.owned.get("White Dragonscale Cloak"), None);
-        assert_eq!(parsed.owned.get("White Dragonscale Cloak (Exaltation)"), None);
+        assert_eq!(
+            parsed.owned.get("White Dragonscale Cloak (Exaltation)"),
+            None
+        );
     }
 }
 

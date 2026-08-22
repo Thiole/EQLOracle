@@ -104,8 +104,16 @@ pub fn parse_map_text(text: &str) -> ParsedZoneMap {
                 continue;
             };
             out.lines.push(MapLine {
-                a: MapPoint3 { x: x1, y: y1, z: z1 },
-                b: MapPoint3 { x: x2, y: y2, z: z2 },
+                a: MapPoint3 {
+                    x: x1,
+                    y: y1,
+                    z: z1,
+                },
+                b: MapPoint3 {
+                    x: x2,
+                    y: y2,
+                    z: z2,
+                },
                 r,
                 g,
                 b_,
@@ -185,7 +193,11 @@ pub fn list_map_packs(base_dir: &Path) -> Vec<String> {
 /// `"befallen"`, `"befallen"` -> `"befallen"` (no suffix to strip).
 fn zone_stem(file_stem: &str) -> &str {
     match file_stem.rsplit_once('_') {
-        Some((base, suffix)) if !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit()) => base,
+        Some((base, suffix))
+            if !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit()) =>
+        {
+            base
+        }
         _ => file_stem,
     }
 }
@@ -243,7 +255,10 @@ pub fn list_zone_versions(base_dir: &Path, zone: &str) -> Vec<Option<String>> {
         out.push(None);
     }
     for pack in list_map_packs(base_dir) {
-        if list_zone_names(base_dir, Some(&pack)).iter().any(|z| z == zone) {
+        if list_zone_names(base_dir, Some(&pack))
+            .iter()
+            .any(|z| z == zone)
+        {
             out.push(Some(pack));
         }
     }
@@ -256,9 +271,17 @@ pub fn list_zone_versions(base_dir: &Path, zone: &str) -> Vec<Option<String>> {
 /// empty vecs if `zone` has files but they're all unparseable garbage;
 /// `Err` only if the directory itself can't be listed (missing/
 /// unreadable `maps/` folder).
-pub fn load_zone_map(base_dir: &Path, pack: Option<&str>, zone: &str) -> std::io::Result<ParsedZoneMap> {
-    let zone = safe_component(zone)
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("not a plain zone name: {zone}")))?;
+pub fn load_zone_map(
+    base_dir: &Path,
+    pack: Option<&str>,
+    zone: &str,
+) -> std::io::Result<ParsedZoneMap> {
+    let zone = safe_component(zone).ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("not a plain zone name: {zone}"),
+        )
+    })?;
     let mut root = maps_root(base_dir);
     if let Some(p) = pack.and_then(safe_component) {
         root.push(p);
@@ -391,7 +414,8 @@ L -115.0100, 493.1600, -87.4200, -123.6500, 482, -87.3500, 128, 128, 128
     /// convention `inventory.rs`'s `find_existing_dump_tests` uses, not a
     /// new `tempfile` dependency for two tests.
     fn scratch_maps_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("eqlp-mapsdata-test-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("eqlp-mapsdata-test-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("maps")).unwrap();
         dir

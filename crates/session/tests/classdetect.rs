@@ -68,8 +68,14 @@ fn a_second_occasion_confirms_the_class_retroactively() {
     d.observe_cast(YOU, V1, &w("Magician"));
     assert!(d.configuration_of_visit(YOU, V1).is_empty());
     d.observe_cast(YOU, V2, &w("Magician"));
-    assert_eq!(d.configuration_of_visit(YOU, V1), vec!["Magician".to_string()]);
-    assert_eq!(d.configuration_of_visit(YOU, V2), vec!["Magician".to_string()]);
+    assert_eq!(
+        d.configuration_of_visit(YOU, V1),
+        vec!["Magician".to_string()]
+    );
+    assert_eq!(
+        d.configuration_of_visit(YOU, V2),
+        vec!["Magician".to_string()]
+    );
 }
 
 #[test]
@@ -201,7 +207,10 @@ fn a_class_confirmed_before_any_zone_line_groups_under_the_none_visit() {
     d.observe_cast(YOU, None, &w("Wizard"));
     d.observe_cast(YOU, V1, &w("Wizard"));
     assert_eq!(dominant(&d, YOU), vec!["Wizard"]);
-    assert_eq!(d.configuration_of_visit(YOU, None), vec!["Wizard".to_string()]);
+    assert_eq!(
+        d.configuration_of_visit(YOU, None),
+        vec!["Wizard".to_string()]
+    );
 }
 
 #[test]

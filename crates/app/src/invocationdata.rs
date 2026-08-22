@@ -30,7 +30,10 @@ static INVOCATION_DATA: OnceLock<HashMap<String, Vec<String>>> = OnceLock::new()
 static NORMALIZED_INDEX: OnceLock<HashMap<String, String>> = OnceLock::new();
 
 fn normalize(s: &str) -> String {
-    s.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_lowercase()
+    s.chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_lowercase()
 }
 
 /// Classes that grant `invocation`, or an empty slice if the name isn't
@@ -42,7 +45,8 @@ pub fn classes_for(invocation: &str) -> &'static [String] {
             .unwrap_or_else(|e| panic!("packs/invocation_classes.json failed to parse: {e}"))
     });
     let index = NORMALIZED_INDEX.get_or_init(|| {
-        let mut idx: HashMap<String, String> = map.keys().map(|k| (normalize(k), k.clone())).collect();
+        let mut idx: HashMap<String, String> =
+            map.keys().map(|k| (normalize(k), k.clone())).collect();
         // Real word-form difference confirmed in a real log: the client
         // prints "empowering", the wiki's own page title is "Empower".
         idx.insert(normalize("empowering"), "Empower".to_string());

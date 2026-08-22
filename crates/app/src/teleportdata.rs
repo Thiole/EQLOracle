@@ -168,11 +168,21 @@ fn data() -> &'static HashMap<String, TeleportLanding> {
                 let class = match r.class.as_str() {
                     "wizard" => TeleportClass::Wizard,
                     "druid" => TeleportClass::Druid,
-                    other => panic!(
-                        "packs/teleport_landings.json: unknown class {other:?} for {name:?}"
-                    ),
+                    other => {
+                        panic!("packs/teleport_landings.json: unknown class {other:?} for {name:?}")
+                    }
                 };
-                (name, TeleportLanding { class, x: r.x, y: r.y, z: r.z, zone: r.zone, level: r.level })
+                (
+                    name,
+                    TeleportLanding {
+                        class,
+                        x: r.x,
+                        y: r.y,
+                        z: r.z,
+                        zone: r.zone,
+                        level: r.level,
+                    },
+                )
             })
             .collect()
     })
@@ -192,7 +202,9 @@ pub fn landing_for(spell_name: &str) -> Option<TeleportLanding> {
 /// consumer `landing_for`'s single-lookup shape can't serve, since it
 /// needs *all* of them, not one at a time).
 pub fn all_landings() -> impl Iterator<Item = (&'static str, &'static TeleportLanding)> {
-    data().iter().map(|(name, landing)| (name.as_str(), landing))
+    data()
+        .iter()
+        .map(|(name, landing)| (name.as_str(), landing))
 }
 
 #[cfg(test)]

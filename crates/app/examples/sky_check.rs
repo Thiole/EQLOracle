@@ -9,7 +9,9 @@ use eqlp_app::skyquests::list_class_unlocks;
 use std::path::Path;
 
 fn main() {
-    let base_dir = std::env::args().nth(1).expect("usage: sky_check <base_dir>");
+    let base_dir = std::env::args()
+        .nth(1)
+        .expect("usage: sky_check <base_dir>");
     let ing = Ingest::default();
     let classes = list_class_unlocks(&ing, Some(Path::new(&base_dir)));
 

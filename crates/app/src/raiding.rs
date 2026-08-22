@@ -151,7 +151,11 @@ const CURATED_ROWS: &[(&str, &[(&str, &str, &[&str])])] = &[
     (
         "Planes",
         &[
-            ("Plane of Fear", "Cazic Thule", &["Fright", "Dread", "Terror", "a dracoliche"]),
+            (
+                "Plane of Fear",
+                "Cazic Thule",
+                &["Fright", "Dread", "Terror", "a dracoliche"],
+            ),
             (
                 "Plane of Hate",
                 "Innoruuk",
@@ -194,7 +198,10 @@ fn find_npc(name: &str) -> Option<&'static npcdata::Npc> {
 /// keyed by. Absent from this table means the two already agree -- true
 /// for every miniboss checked so far (all 15 named minibosses across
 /// Fear and Hate matched real kills on their curated name directly).
-const LOG_NAME_ALIASES: &[(&str, &str)] = &[("Cazic Thule", "Cazic-Thule"), ("Innoruuk", "Innoruuk, the Prince of Hate")];
+const LOG_NAME_ALIASES: &[(&str, &str)] = &[
+    ("Cazic Thule", "Cazic-Thule"),
+    ("Innoruuk", "Innoruuk, the Prince of Hate"),
+];
 
 fn log_name(curated_name: &str) -> &str {
     LOG_NAME_ALIASES
@@ -230,7 +237,9 @@ fn build_kill_grid(ing: &Ingest, you: Sym, xp_credited: &HashSet<u32>) -> KillGr
         // why: the raw zone label this encounter actually opened under --
         // "- Group" is a real, distinct instance-type marker, separate
         // from the 0-4 tier suffix (see this module's own doc).
-        let is_group = e.zone.is_some_and(|z| ing.store.name(z).contains("- Group"));
+        let is_group = e
+            .zone
+            .is_some_and(|z| ing.store.name(z).contains("- Group"));
         let slots = if is_group {
             grid.group_tiers.entry(key).or_insert([false; 5])
         } else {
@@ -269,7 +278,13 @@ fn build_kill_grid(ing: &Ingest, you: Sym, xp_credited: &HashSet<u32>) -> KillGr
 /// pass over `ing.zone` times one pass over `ing.store.encounters` per
 /// visit -- bounded the same way `build_kill_grid`'s own single pass is,
 /// not a per-query full-store scan.
-fn build_times(ing: &Ingest, zone: &str, boss_log_name: &str, you: Sym, xp_credited: &HashSet<u32>) -> RaidTimesDto {
+fn build_times(
+    ing: &Ingest,
+    zone: &str,
+    boss_log_name: &str,
+    you: Sym,
+    xp_credited: &HashSet<u32>,
+) -> RaidTimesDto {
     let spans: Vec<(eqlp_source::Millis, &str)> = ing.zone.iter().collect();
     let mut times = RaidTimesDto::default();
 
@@ -300,9 +315,16 @@ fn build_times(ing: &Ingest, zone: &str, boss_log_name: &str, you: Sym, xp_credi
         if let (Some(fa), Some(bk)) = (first_action, boss_kill) {
             if bk > fa {
                 let dur = bk - fa;
-                let slot = if is_group { &mut times.group[tier] } else { &mut times.solo[tier] };
+                let slot = if is_group {
+                    &mut times.group[tier]
+                } else {
+                    &mut times.solo[tier]
+                };
                 if slot.as_ref().is_none_or(|best| dur < best.duration_ms) {
-                    *slot = Some(BestTimeDto { duration_ms: dur, achieved_ms: fa });
+                    *slot = Some(BestTimeDto {
+                        duration_ms: dur,
+                        achieved_ms: fa,
+                    });
                 }
             }
         }
@@ -331,14 +353,19 @@ fn build_loot_index(ing: &Ingest) -> HashMap<String, HashMap<String, u64>> {
             // the same reason) normalizes both to the base name; tiers
             // looted at different "+N" still sum into one total here,
             // same as inventory ownership already does.
-            let (base_item, _tier) = crate::inventory::strip_tier(ing.store.ability_name(r.ability));
+            let (base_item, _tier) =
+                crate::inventory::strip_tier(ing.store.ability_name(r.ability));
             *entry.entry(base_item.to_string()).or_insert(0) += r.total;
         }
     }
     out
 }
 
-fn target_dto(name: &str, grid: &KillGrid, loot: &HashMap<String, HashMap<String, u64>>) -> RaidTargetDto {
+fn target_dto(
+    name: &str,
+    grid: &KillGrid,
+    loot: &HashMap<String, HashMap<String, u64>>,
+) -> RaidTargetDto {
     // why: kills/tiers/loot are keyed by whatever the combat log itself
     // calls this entity, which is not always the curated/wiki name --
     // see `LOG_NAME_ALIASES`'s own doc. The drop *list* itself still
@@ -379,8 +406,12 @@ pub fn list_raid_rows(ing: &Ingest) -> Vec<RaidRowDto> {
     // `xp_credited_encounters` is a real full-store pass (see its own
     // doc), and this module only ever needs one copy of either per query.
     let you = ing.store.names.get("You");
-    let xp_credited = you.map(|_| monsters::xp_credited_encounters(ing)).unwrap_or_default();
-    let grid = you.map(|y| build_kill_grid(ing, y, &xp_credited)).unwrap_or_default();
+    let xp_credited = you
+        .map(|_| monsters::xp_credited_encounters(ing))
+        .unwrap_or_default();
+    let grid = you
+        .map(|y| build_kill_grid(ing, y, &xp_credited))
+        .unwrap_or_default();
     let loot = build_loot_index(ing);
 
     CURATED_ROWS
@@ -392,7 +423,10 @@ pub fn list_raid_rows(ing: &Ingest) -> Vec<RaidRowDto> {
                 .map(|&(zone, boss, minibosses)| RaidDto {
                     zone: zone.to_string(),
                     boss: target_dto(boss, &grid, &loot),
-                    minibosses: minibosses.iter().map(|m| target_dto(m, &grid, &loot)).collect(),
+                    minibosses: minibosses
+                        .iter()
+                        .map(|m| target_dto(m, &grid, &loot))
+                        .collect(),
                     times: you
                         .map(|y| build_times(ing, zone, log_name(boss), y, &xp_credited))
                         .unwrap_or_default(),
@@ -441,10 +475,26 @@ mod tests {
 ";
         let ing = run(text);
         let rows = list_raid_rows(&ing);
-        let hate = rows.iter().flat_map(|r| &r.raids).find(|r| r.zone == "Plane of Hate").expect("Plane of Hate");
-        let looted: Vec<&str> = hate.boss.drops.iter().filter(|d| d.looted).map(|d| d.item.as_str()).collect();
-        assert!(looted.contains(&"Ring of Pureblood"), "looted drops were: {looted:?}");
-        assert!(looted.contains(&"Engineer's Ring"), "looted drops were: {looted:?}");
+        let hate = rows
+            .iter()
+            .flat_map(|r| &r.raids)
+            .find(|r| r.zone == "Plane of Hate")
+            .expect("Plane of Hate");
+        let looted: Vec<&str> = hate
+            .boss
+            .drops
+            .iter()
+            .filter(|d| d.looted)
+            .map(|d| d.item.as_str())
+            .collect();
+        assert!(
+            looted.contains(&"Ring of Pureblood"),
+            "looted drops were: {looted:?}"
+        );
+        assert!(
+            looted.contains(&"Engineer's Ring"),
+            "looted drops were: {looted:?}"
+        );
     }
 
     /// Two full clears of the same raid, same tier + mode (both base/
@@ -471,12 +521,25 @@ mod tests {
 ";
         let ing = run(text);
         let rows = list_raid_rows(&ing);
-        let hate = rows.iter().flat_map(|r| &r.raids).find(|r| r.zone == "Plane of Hate").expect("Plane of Hate");
+        let hate = rows
+            .iter()
+            .flat_map(|r| &r.raids)
+            .find(|r| r.zone == "Plane of Hate")
+            .expect("Plane of Hate");
         // First run: 17:00:05 -> 17:10:00 = 595s. Second: 17:25:05 ->
         // 17:30:00 = 295s -- the second, faster run should win.
-        assert_eq!(hate.times.solo[0].as_ref().map(|t| t.duration_ms), Some(295_000));
-        assert!(hate.times.group.iter().all(Option::is_none), "no Group run happened -- that whole row should stay empty");
-        assert!(hate.times.solo[1..].iter().all(Option::is_none), "only the base/D0 tier was actually run");
+        assert_eq!(
+            hate.times.solo[0].as_ref().map(|t| t.duration_ms),
+            Some(295_000)
+        );
+        assert!(
+            hate.times.group.iter().all(Option::is_none),
+            "no Group run happened -- that whole row should stay empty"
+        );
+        assert!(
+            hate.times.solo[1..].iter().all(Option::is_none),
+            "only the base/D0 tier was actually run"
+        );
     }
 
     /// Asked directly ("is that per difficulty/solo v group or just
@@ -498,9 +561,21 @@ mod tests {
 ";
         let ing = run(text);
         let rows = list_raid_rows(&ing);
-        let hate = rows.iter().flat_map(|r| &r.raids).find(|r| r.zone == "Plane of Hate").expect("Plane of Hate");
-        assert_eq!(hate.times.solo[0].as_ref().map(|t| t.duration_ms), Some(595_000), "the Solo/D0 run");
-        assert_eq!(hate.times.group[4].as_ref().map(|t| t.duration_ms), Some(655_000), "the Group/D4 run");
+        let hate = rows
+            .iter()
+            .flat_map(|r| &r.raids)
+            .find(|r| r.zone == "Plane of Hate")
+            .expect("Plane of Hate");
+        assert_eq!(
+            hate.times.solo[0].as_ref().map(|t| t.duration_ms),
+            Some(595_000),
+            "the Solo/D0 run"
+        );
+        assert_eq!(
+            hate.times.group[4].as_ref().map(|t| t.duration_ms),
+            Some(655_000),
+            "the Group/D4 run"
+        );
     }
 
     /// A raid whose boss has never been killed reports `None` in every
@@ -512,8 +587,16 @@ mod tests {
         let rows = list_raid_rows(&ing);
         for row in &rows {
             for raid in &row.raids {
-                assert!(raid.times.solo.iter().all(Option::is_none), "{} solo should report no time yet", raid.zone);
-                assert!(raid.times.group.iter().all(Option::is_none), "{} group should report no time yet", raid.zone);
+                assert!(
+                    raid.times.solo.iter().all(Option::is_none),
+                    "{} solo should report no time yet",
+                    raid.zone
+                );
+                assert!(
+                    raid.times.group.iter().all(Option::is_none),
+                    "{} group should report no time yet",
+                    raid.zone
+                );
             }
         }
     }
@@ -526,9 +609,15 @@ mod tests {
     fn every_curated_boss_and_miniboss_name_resolves_to_a_real_npc() {
         for &(_, raids) in CURATED_ROWS {
             for &(zone, boss, minibosses) in raids {
-                assert!(find_npc(boss).is_some(), "{boss} (main boss of {zone}) not found in the real NPC catalog");
+                assert!(
+                    find_npc(boss).is_some(),
+                    "{boss} (main boss of {zone}) not found in the real NPC catalog"
+                );
                 for m in minibosses {
-                    assert!(find_npc(m).is_some(), "{m} (miniboss of {zone}) not found in the real NPC catalog");
+                    assert!(
+                        find_npc(m).is_some(),
+                        "{m} (miniboss of {zone}) not found in the real NPC catalog"
+                    );
                 }
             }
         }
@@ -587,7 +676,10 @@ mod tests {
                 .flat_map(|r| &r.raids)
                 .find(|r| r.zone == zone)
                 .unwrap_or_else(|| panic!("expected a {zone} raid"));
-            assert!(raid.minibosses.is_empty(), "{zone} should have no minibosses");
+            assert!(
+                raid.minibosses.is_empty(),
+                "{zone} should have no minibosses"
+            );
         }
     }
 

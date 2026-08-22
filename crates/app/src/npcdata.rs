@@ -104,7 +104,8 @@ pub fn npcs() -> &'static [Npc] {
 pub fn parse_locations(location: &str) -> Vec<(f32, f32, Option<f32>)> {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| {
-        Regex::new(r"\(?(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)(?:,\s*(-?\d+(?:\.\d+)?))?\)?").unwrap()
+        Regex::new(r"\(?(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)(?:,\s*(-?\d+(?:\.\d+)?))?\)?")
+            .unwrap()
     });
     re.captures_iter(location)
         .filter_map(|c| {
@@ -131,7 +132,10 @@ pub fn parse_locations(location: &str) -> Vec<(f32, f32, Option<f32>)> {
 /// here silently mislabels data.
 pub fn candidate_zones(target: &str) -> Vec<String> {
     fn norm(s: &str) -> String {
-        s.chars().filter(|c| c.is_ascii_alphanumeric()).map(|c| c.to_ascii_lowercase()).collect()
+        s.chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .map(|c| c.to_ascii_lowercase())
+            .collect()
     }
     let t = norm(target);
     if t.is_empty() {
@@ -176,23 +180,48 @@ mod location_tests {
     /// Real strings pulled straight from packs/npcs.json.
     #[test]
     fn parses_every_real_shape_seen_in_the_scrape() {
-        assert_eq!(parse_locations("(836, -2879)"), vec![(836.0, -2879.0, None)]);
-        assert_eq!(parse_locations("25% @ (55, -573)"), vec![(55.0, -573.0, None)]);
+        assert_eq!(
+            parse_locations("(836, -2879)"),
+            vec![(836.0, -2879.0, None)]
+        );
+        assert_eq!(
+            parse_locations("25% @ (55, -573)"),
+            vec![(55.0, -573.0, None)]
+        );
         assert_eq!(
             parse_locations("-59.93, 433.90, 9.75"),
             vec![(-59.93, 433.90, Some(9.75))]
         );
-        assert_eq!(parse_locations("(667, 146, -51.59)"), vec![(667.0, 146.0, Some(-51.59))]);
+        assert_eq!(
+            parse_locations("(667, 146, -51.59)"),
+            vec![(667.0, 146.0, Some(-51.59))]
+        );
         assert_eq!(parse_locations("1182, -834"), vec![(1182.0, -834.0, None)]);
 
         let multi = parse_locations("8% @ (-78, 164), 8% @ (-20, 1), 8% @ (-389, 2804)");
-        assert_eq!(multi, vec![(-78.0, 164.0, None), (-20.0, 1.0, None), (-389.0, 2804.0, None)]);
+        assert_eq!(
+            multi,
+            vec![
+                (-78.0, 164.0, None),
+                (-20.0, 1.0, None),
+                (-389.0, 2804.0, None)
+            ]
+        );
     }
 
     #[test]
     fn descriptive_text_yields_no_points() {
-        for text in ["Various", "Roams the zone", "Need Info", "?", "Inner Sanctum"] {
-            assert!(parse_locations(text).is_empty(), "{text:?} should yield no points");
+        for text in [
+            "Various",
+            "Roams the zone",
+            "Need Info",
+            "?",
+            "Inner Sanctum",
+        ] {
+            assert!(
+                parse_locations(text).is_empty(),
+                "{text:?} should yield no points"
+            );
         }
     }
 
@@ -202,7 +231,10 @@ mod location_tests {
     #[test]
     fn candidate_zones_finds_a_real_exact_match() {
         let candidates = candidate_zones("Howling Stones");
-        assert!(candidates.contains(&"Howling Stones".to_string()), "{candidates:?}");
+        assert!(
+            candidates.contains(&"Howling Stones".to_string()),
+            "{candidates:?}"
+        );
     }
 
     /// The honest negative: no derivable relationship between "East
@@ -217,7 +249,10 @@ mod location_tests {
     #[test]
     fn markers_for_zone_returns_only_that_zones_own_npcs() {
         let markers = markers_for_zone("Howling Stones");
-        assert!(!markers.is_empty(), "Howling Stones should have real parseable NPC spawns");
+        assert!(
+            !markers.is_empty(),
+            "Howling Stones should have real parseable NPC spawns"
+        );
         // Sanity: every returned marker really is a real NPC name, not an
         // empty/garbage row.
         assert!(markers.iter().all(|(name, ..)| !name.is_empty()));

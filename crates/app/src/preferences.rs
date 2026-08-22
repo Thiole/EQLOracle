@@ -111,8 +111,14 @@ mod tests {
     fn a_fresh_install_defaults_to_full_volume_and_no_era_preference() {
         let p = Preferences::default();
         assert_eq!(p.volume, 100);
-        assert_eq!(p.era, None, "None -- in_era's own CURRENT_ERA default, not a baked-in era string");
-        assert!(!p.save_profile, "off by default -- every launch infers fresh unless the user opts in");
+        assert_eq!(
+            p.era, None,
+            "None -- in_era's own CURRENT_ERA default, not a baked-in era string"
+        );
+        assert!(
+            !p.save_profile,
+            "off by default -- every launch infers fresh unless the user opts in"
+        );
     }
 
     #[test]

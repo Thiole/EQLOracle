@@ -836,9 +836,16 @@ mod tests {
     /// anything statistically meaningful about.
     #[test]
     fn only_two_real_spells_are_still_slotless_and_neither_is_damage_shaped() {
-        let slotless: Vec<&Spell> = crate::spelldata::spells().iter().filter(|s| s.slots.is_empty()).collect();
+        let slotless: Vec<&Spell> = crate::spelldata::spells()
+            .iter()
+            .filter(|s| s.slots.is_empty())
+            .collect();
         let names: Vec<&str> = slotless.iter().map(|s| s.name.as_str()).collect();
-        assert_eq!(names, vec!["Instill", "Resurrection Effects"], "the real slotless-spell population changed -- see this test's own doc");
+        assert_eq!(
+            names,
+            vec!["Instill", "Resurrection Effects"],
+            "the real slotless-spell population changed -- see this test's own doc"
+        );
         for s in &slotless {
             assert!(
                 description_damage(s.description.as_deref().unwrap_or("")).is_none(),

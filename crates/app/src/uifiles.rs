@@ -58,7 +58,12 @@ pub struct UiFileInfoDto {
 
 fn name_pattern() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"^(?P<ui>UI_)?(?P<char>[^_]+)_(?P<zone>[^_]+)_LO1(?P<backup>_Backup_\d+)?\.ini$").unwrap())
+    RE.get_or_init(|| {
+        Regex::new(
+            r"^(?P<ui>UI_)?(?P<char>[^_]+)_(?P<zone>[^_]+)_LO1(?P<backup>_Backup_\d+)?\.ini$",
+        )
+        .unwrap()
+    })
 }
 
 /// Every real `<Character>_<Zone>_LO1.ini` / `UI_<Character>_<Zone>_
@@ -78,12 +83,29 @@ pub fn list_ui_files(base_dir: &Path) -> Vec<UiFileInfoDto> {
             let caps = re.captures(&name)?;
             let character = caps["char"].to_string();
             let zone = caps["zone"].to_string();
-            let kind = if caps.name("ui").is_some() { "layout" } else { "hotbuttons" };
+            let kind = if caps.name("ui").is_some() {
+                "layout"
+            } else {
+                "hotbuttons"
+            };
             let is_backup = caps.name("backup").is_some();
-            Some(UiFileInfoDto { file: name, character, zone, kind, is_backup })
+            Some(UiFileInfoDto {
+                file: name,
+                character,
+                zone,
+                kind,
+                is_backup,
+            })
         })
         .collect();
-    out.sort_by(|a, b| (a.character.as_str(), a.zone.as_str(), a.kind, a.is_backup).cmp(&(b.character.as_str(), b.zone.as_str(), b.kind, b.is_backup)));
+    out.sort_by(|a, b| {
+        (a.character.as_str(), a.zone.as_str(), a.kind, a.is_backup).cmp(&(
+            b.character.as_str(),
+            b.zone.as_str(),
+            b.kind,
+            b.is_backup,
+        ))
+    });
     out
 }
 
@@ -111,7 +133,9 @@ pub struct ParsedUiFileDto {
 /// `list_ui_files` itself already found on disk, but staying defensive
 /// costs nothing).
 pub fn ui_file_path(base_dir: &Path, file: &str) -> std::io::Result<PathBuf> {
-    let name_only = Path::new(file).file_name().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a bare filename"))?;
+    let name_only = Path::new(file).file_name().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a bare filename")
+    })?;
     Ok(base_dir.join(name_only))
 }
 
@@ -126,7 +150,10 @@ pub fn parse_ini(path: &Path) -> std::io::Result<ParsedUiFileDto> {
             continue;
         }
         if line.starts_with('[') && line.ends_with(']') && line.len() > 2 {
-            sections.push(UiSectionDto { name: line[1..line.len() - 1].to_string(), entries: Vec::new() });
+            sections.push(UiSectionDto {
+                name: line[1..line.len() - 1].to_string(),
+                entries: Vec::new(),
+            });
             continue;
         }
         let Some(current) = sections.last_mut() else {
@@ -143,7 +170,10 @@ pub fn parse_ini(path: &Path) -> std::io::Result<ParsedUiFileDto> {
         current.entries.push((key.to_string(), value.to_string()));
     }
 
-    Ok(ParsedUiFileDto { sections, skipped_garbage_lines: skipped })
+    Ok(ParsedUiFileDto {
+        sections,
+        skipped_garbage_lines: skipped,
+    })
 }
 
 #[cfg(test)]
@@ -152,7 +182,8 @@ mod tests {
     use std::path::PathBuf;
 
     fn scratch_file(name: &str, text: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("eqlp-uifiles-{name}-{}.ini", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("eqlp-uifiles-{name}-{}.ini", std::process::id()));
         std::fs::write(&path, text).unwrap();
         path
     }
@@ -167,8 +198,17 @@ mod tests {
         assert_eq!(parsed.skipped_garbage_lines, 0);
         assert_eq!(parsed.sections.len(), 2);
         assert_eq!(parsed.sections[0].name, "HotButtons");
-        assert_eq!(parsed.sections[0].entries[1], ("Page1Button2".to_string(), "G4,@-1,0000000000000000,0,,".to_string()));
-        assert_eq!(parsed.sections[1].entries, vec![("AttackOnAssist".to_string(), "1".to_string())]);
+        assert_eq!(
+            parsed.sections[0].entries[1],
+            (
+                "Page1Button2".to_string(),
+                "G4,@-1,0000000000000000,0,,".to_string()
+            )
+        );
+        assert_eq!(
+            parsed.sections[1].entries,
+            vec![("AttackOnAssist".to_string(), "1".to_string())]
+        );
     }
 
     /// The exact real corruption found: a large pasted-text prefix with
@@ -185,7 +225,10 @@ mod tests {
         assert_eq!(parsed.skipped_garbage_lines, 2);
         assert_eq!(parsed.sections.len(), 1);
         assert_eq!(parsed.sections[0].name, "Main");
-        assert_eq!(parsed.sections[0].entries, vec![("UISkin".to_string(), "default_modern".to_string())]);
+        assert_eq!(
+            parsed.sections[0].entries,
+            vec![("UISkin".to_string(), "default_modern".to_string())]
+        );
     }
 
     #[test]
@@ -202,14 +245,23 @@ mod tests {
         }
         let files = list_ui_files(&base);
         assert_eq!(files.len(), 3, "the non-matching file must not appear");
-        let hotbuttons = files.iter().find(|f| f.file == "Manipulator_rivervale_LO1.ini").expect("hotbuttons file");
+        let hotbuttons = files
+            .iter()
+            .find(|f| f.file == "Manipulator_rivervale_LO1.ini")
+            .expect("hotbuttons file");
         assert_eq!(hotbuttons.character, "Manipulator");
         assert_eq!(hotbuttons.zone, "rivervale");
         assert_eq!(hotbuttons.kind, "hotbuttons");
         assert!(!hotbuttons.is_backup);
-        let layout = files.iter().find(|f| f.file == "UI_Manipulator_rivervale_LO1.ini").expect("layout file");
+        let layout = files
+            .iter()
+            .find(|f| f.file == "UI_Manipulator_rivervale_LO1.ini")
+            .expect("layout file");
         assert_eq!(layout.kind, "layout");
-        let backup = files.iter().find(|f| f.file == "UI_Manipulator_qeynos_LO1_Backup_1.ini").expect("backup file");
+        let backup = files
+            .iter()
+            .find(|f| f.file == "UI_Manipulator_qeynos_LO1_Backup_1.ini")
+            .expect("backup file");
         assert!(backup.is_backup);
         std::fs::remove_dir_all(&base).ok();
     }

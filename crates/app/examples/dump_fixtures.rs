@@ -79,7 +79,15 @@ fn main() {
     for v in &visits {
         if let Some(idx) = v.index {
             let key = format!("zoneVisit={idx}&offset=null&limit=null");
-            encounters_by_visit.insert(key, json!(combat::list_encounters(&ing, Some(idx as i64), 0, usize::MAX)));
+            encounters_by_visit.insert(
+                key,
+                json!(combat::list_encounters(
+                    &ing,
+                    Some(idx as i64),
+                    0,
+                    usize::MAX
+                )),
+            );
         }
     }
     out.insert(
@@ -381,7 +389,10 @@ fn main() {
         "get_mob_aliases".to_string(),
         json!({ "": eqlp_app::mobalias::all() }),
     );
-    out.insert("list_spells".to_string(), json!({ "": spelldata::spells() }));
+    out.insert(
+        "list_spells".to_string(),
+        json!({ "": spelldata::spells() }),
+    );
     out.insert(
         "list_spell_effects".to_string(),
         json!({ "": spelleffect::all_effects() }),

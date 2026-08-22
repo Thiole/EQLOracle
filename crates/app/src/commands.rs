@@ -294,7 +294,12 @@ pub fn get_raids(state: State<AppState>) -> Vec<RaidRowDto> {
 /// rewards only, never the raw materials (that's `get_sky_quests`).
 #[tauri::command]
 pub fn get_sky_class_unlocks(state: State<AppState>) -> Vec<skyquests::SkyClassUnlockDto> {
-    let base_dir = state.config.lock().unwrap().as_ref().map(|c| c.base_dir.clone());
+    let base_dir = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|c| c.base_dir.clone());
     skyquests::list_class_unlocks(&state.ingest.lock().unwrap(), base_dir.as_deref())
 }
 
@@ -303,7 +308,12 @@ pub fn get_sky_class_unlocks(state: State<AppState>) -> Vec<skyquests::SkyClassU
 /// `skyquests::list_quests`'s own doc.
 #[tauri::command]
 pub fn get_sky_quests(state: State<AppState>) -> Vec<skyquests::SkyClassDto> {
-    let base_dir = state.config.lock().unwrap().as_ref().map(|c| c.base_dir.clone());
+    let base_dir = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|c| c.base_dir.clone());
     skyquests::list_quests(&state.ingest.lock().unwrap(), base_dir.as_deref())
 }
 
@@ -653,7 +663,10 @@ pub struct EraOptionsDto {
 #[tauri::command]
 pub fn get_era_options() -> EraOptionsDto {
     EraOptionsDto {
-        eras: gearplanner::ERA_ORDER.iter().map(|s| s.to_string()).collect(),
+        eras: gearplanner::ERA_ORDER
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
         current: gearplanner::CURRENT_ERA.to_string(),
     }
 }
@@ -735,7 +748,13 @@ pub fn find_existing_inventory_dump(state: State<AppState>) -> Option<ExistingIn
 /// only, no community pack installed. See `mapsdata::list_map_packs`.
 #[tauri::command]
 pub fn list_map_packs(state: State<AppState>) -> Vec<String> {
-    let Some(base_dir) = state.config.lock().unwrap().as_ref().map(|c| c.base_dir.clone()) else {
+    let Some(base_dir) = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|c| c.base_dir.clone())
+    else {
         return Vec::new();
     };
     mapsdata::list_map_packs(&base_dir)
@@ -746,7 +765,13 @@ pub fn list_map_packs(state: State<AppState>) -> Vec<String> {
 /// `mapsdata::list_zone_names`.
 #[tauri::command]
 pub fn list_map_zones(state: State<AppState>, pack: Option<String>) -> Vec<String> {
-    let Some(base_dir) = state.config.lock().unwrap().as_ref().map(|c| c.base_dir.clone()) else {
+    let Some(base_dir) = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|c| c.base_dir.clone())
+    else {
         return Vec::new();
     };
     mapsdata::list_zone_names(&base_dir, pack.as_deref())
@@ -758,7 +783,13 @@ pub fn list_map_zones(state: State<AppState>, pack: Option<String>) -> Vec<Strin
 /// even see whether their zone has a map. See `mapsdata::list_all_zone_names`.
 #[tauri::command]
 pub fn list_all_map_zones(state: State<AppState>) -> Vec<String> {
-    let Some(base_dir) = state.config.lock().unwrap().as_ref().map(|c| c.base_dir.clone()) else {
+    let Some(base_dir) = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|c| c.base_dir.clone())
+    else {
         return Vec::new();
     };
     mapsdata::list_all_zone_names(&base_dir)
@@ -770,7 +801,13 @@ pub fn list_all_map_zones(state: State<AppState>) -> Vec<String> {
 /// zone is chosen. See `mapsdata::list_zone_versions`.
 #[tauri::command]
 pub fn list_zone_versions(state: State<AppState>, zone: String) -> Vec<Option<String>> {
-    let Some(base_dir) = state.config.lock().unwrap().as_ref().map(|c| c.base_dir.clone()) else {
+    let Some(base_dir) = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|c| c.base_dir.clone())
+    else {
         return Vec::new();
     };
     mapsdata::list_zone_versions(&base_dir, &zone)
@@ -821,13 +858,18 @@ pub fn find_walk_path(
 ) -> Result<PathDto, String> {
     let base_dir = {
         let cfg = state.config.lock().unwrap();
-        cfg.as_ref().ok_or("no install folder configured yet")?.base_dir.clone()
+        cfg.as_ref()
+            .ok_or("no install folder configured yet")?
+            .base_dir
+            .clone()
     };
     let parsed =
         mapsdata::load_zone_map(&base_dir, pack.as_deref(), &zone).map_err(|e| e.to_string())?;
     let path = pathfind::find_path(&parsed, (from[0], from[1], from[2]), (to[0], to[1], to[2]))
         .ok_or("no walkable route found between those points")?;
-    Ok(PathDto { waypoints: path.into_iter().map(|(x, y, z)| [x, y, z]).collect() })
+    Ok(PathDto {
+        waypoints: path.into_iter().map(|(x, y, z)| [x, y, z]).collect(),
+    })
 }
 
 /// One leg of a `ZoneRouteDto` -- see `routing::HopKind`'s own doc for
@@ -860,7 +902,12 @@ impl From<routing::ZoneRoute> for ZoneRouteDto {
                         routing::HopKind::Teleport(spell) => ("teleport".to_string(), Some(spell)),
                         routing::HopKind::Succor => ("succor".to_string(), None),
                     };
-                    RouteHopDto { zone: h.zone, kind, via_spell, distance: h.distance }
+                    RouteHopDto {
+                        zone: h.zone,
+                        kind,
+                        via_spell,
+                        distance: h.distance,
+                    }
                 })
                 .collect(),
             total_distance: r.total_distance,
@@ -899,7 +946,11 @@ impl From<routing::ZoneRoute> for ZoneRouteDto {
 /// `/loc` reading and the current teleport landing can each be stale in
 /// different ways -- a `/loc` typed in a zone visited hours ago is not
 /// "now", and neither is a landing from a zone visit that's already over).
-fn live_start_position(ing: &crate::ingest::Ingest, base_dir: &std::path::Path, from_zone: &str) -> Option<(f32, f32, f32)> {
+fn live_start_position(
+    ing: &crate::ingest::Ingest,
+    base_dir: &std::path::Path,
+    from_zone: &str,
+) -> Option<(f32, f32, f32)> {
     // Real, reported bug this fixes: a real `/loc` reading used to win
     // unconditionally whenever its own zone matched, even when a *later*
     // teleport/Origin confirmation existed for the same zone -- an old
@@ -918,13 +969,24 @@ fn live_start_position(ing: &crate::ingest::Ingest, base_dir: &std::path::Path, 
     };
 
     if let Some((ts, x, y, z)) = ing.last_loc {
-        if ing.zone.at(ts).is_some_and(|raw| crate::zone::zone_matches(raw, from_zone)) {
+        if ing
+            .zone
+            .at(ts)
+            .is_some_and(|raw| crate::zone::zone_matches(raw, from_zone))
+        {
             consider(ts, (-y as f32, -x as f32, z as f32));
         }
     }
     if let Some((ts, landing)) = &ing.entered_via_teleport {
-        if ing.zone.at(*ts).is_some_and(|raw| crate::zone::zone_matches(raw, from_zone)) {
-            consider(*ts, (-landing.y as f32, -landing.x as f32, landing.z as f32));
+        if ing
+            .zone
+            .at(*ts)
+            .is_some_and(|raw| crate::zone::zone_matches(raw, from_zone))
+        {
+            consider(
+                *ts,
+                (-landing.y as f32, -landing.x as f32, landing.z as f32),
+            );
         }
     }
     // Origin's own learned landing (see `Ingest::learned_origin`'s own
@@ -949,7 +1011,10 @@ pub fn find_zone_route(
 ) -> Result<ZoneRouteDto, String> {
     let base_dir = {
         let cfg = state.config.lock().unwrap();
-        cfg.as_ref().ok_or("no install folder configured yet")?.base_dir.clone()
+        cfg.as_ref()
+            .ok_or("no install folder configured yet")?
+            .base_dir
+            .clone()
     };
     let (player_classes, player_level, known_start) = {
         let ing = state.ingest.lock().unwrap();
@@ -957,7 +1022,12 @@ pub fn find_zone_route(
         let (live_classes, level) = dto
             .configurations
             .first()
-            .map(|c| (c.classes.clone(), c.level_range.map(|(_, hi)| hi).unwrap_or(0)))
+            .map(|c| {
+                (
+                    c.classes.clone(),
+                    c.level_range.map(|(_, hi)| hi).unwrap_or(0),
+                )
+            })
             .unwrap_or_default();
         // why: level always comes from *this* live session, never the
         // saved profile -- level changes constantly and `profile.rs`
@@ -982,11 +1052,22 @@ pub fn find_zone_route(
         } else {
             Vec::new()
         };
-        (player_classes, level, live_start_position(&ing, &base_dir, &from_zone))
+        (
+            player_classes,
+            level,
+            live_start_position(&ing, &base_dir, &from_zone),
+        )
     };
-    routing::find_zone_route(&base_dir, &from_zone, &to_zone, &player_classes, player_level, known_start)
-        .map(ZoneRouteDto::from)
-        .ok_or_else(|| format!("no route found from {from_zone} to {to_zone}"))
+    routing::find_zone_route(
+        &base_dir,
+        &from_zone,
+        &to_zone,
+        &player_classes,
+        player_level,
+        known_start,
+    )
+    .map(ZoneRouteDto::from)
+    .ok_or_else(|| format!("no route found from {from_zone} to {to_zone}"))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1022,7 +1103,14 @@ pub fn get_last_location(state: State<AppState>) -> Option<LastLocationDto> {
     let (ts_ms, x, y, z) = ing.last_loc?;
     let zone = ing.zone.at(ts_ms).map(str::to_string);
     let map_zones = map_zones_for_raw_label(zone.as_deref());
-    Some(LastLocationDto { ts_ms, x, y, z, zone, map_zones })
+    Some(LastLocationDto {
+        ts_ms,
+        x,
+        y,
+        z,
+        zone,
+        map_zones,
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1286,15 +1374,32 @@ pub fn get_notification_sound_data(app: AppHandle, kind: String) -> Option<Strin
 /// kind actually holds.
 #[tauri::command]
 pub fn list_ui_files(state: State<AppState>) -> Result<Vec<uifiles::UiFileInfoDto>, String> {
-    let base_dir = state.config.lock().unwrap().as_ref().ok_or("no install folder configured yet")?.base_dir.clone();
+    let base_dir = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .ok_or("no install folder configured yet")?
+        .base_dir
+        .clone();
     Ok(uifiles::list_ui_files(&base_dir))
 }
 
 /// One UI file's real content, read-only -- see `uifiles::parse_ini`'s
 /// own doc for why this doesn't write anything back yet.
 #[tauri::command]
-pub fn get_ui_file(state: State<AppState>, file: String) -> Result<uifiles::ParsedUiFileDto, String> {
-    let base_dir = state.config.lock().unwrap().as_ref().ok_or("no install folder configured yet")?.base_dir.clone();
+pub fn get_ui_file(
+    state: State<AppState>,
+    file: String,
+) -> Result<uifiles::ParsedUiFileDto, String> {
+    let base_dir = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .ok_or("no install folder configured yet")?
+        .base_dir
+        .clone();
     let path = uifiles::ui_file_path(&base_dir, &file).map_err(|e| e.to_string())?;
     uifiles::parse_ini(&path).map_err(|e| e.to_string())
 }
@@ -1330,7 +1435,11 @@ mod live_start_position_tests {
         ));
         let pos = live_start_position(&ing, Path::new("/nonexistent"), "Oggok");
         // /loc-space -> map-file transform: (-y, -x, z).
-        assert_eq!(pos, Some((-400.0, -300.0, 10.0)), "the fresher teleport landing should win, not the earlier /loc");
+        assert_eq!(
+            pos,
+            Some((-400.0, -300.0, 10.0)),
+            "the fresher teleport landing should win, not the earlier /loc"
+        );
     }
 
     /// The reverse must also hold: a genuinely *fresher* `/loc` reading
@@ -1353,6 +1462,10 @@ mod live_start_position_tests {
         ));
         ing.last_loc = Some((2_000, 100.0, 200.0, 5.0));
         let pos = live_start_position(&ing, Path::new("/nonexistent"), "Oggok");
-        assert_eq!(pos, Some((-200.0, -100.0, 5.0)), "the fresher /loc reading should win, not the earlier teleport landing");
+        assert_eq!(
+            pos,
+            Some((-200.0, -100.0, 5.0)),
+            "the fresher /loc reading should win, not the earlier teleport landing"
+        );
     }
 }

@@ -67,7 +67,10 @@ pub fn list_debug_encounters(ing: &Ingest, limit: usize) -> Vec<DebugEncounterDt
                 .map(str::to_string),
             tier: ing.store.tier.get(e.first as usize).copied().unwrap_or(0),
             player_classes: you
-                .map(|y| ing.classes.configuration_of_visit(y.0, ing.zone.index_at(e.start_ms)))
+                .map(|y| {
+                    ing.classes
+                        .configuration_of_visit(y.0, ing.zone.index_at(e.start_ms))
+                })
                 .unwrap_or_default(),
         })
         .collect()

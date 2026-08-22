@@ -65,7 +65,11 @@ pub fn for_character(app: &AppHandle, character: &str) -> Option<CharacterProfil
 /// emit_tick` on every tick while `save_profile` is on, so a no-op write
 /// every few seconds through an ordinary play session would otherwise be
 /// pure disk churn for no reason. Returns whether it actually wrote.
-pub fn save_if_changed(app: &AppHandle, character: &str, classes: &[String]) -> Result<bool, String> {
+pub fn save_if_changed(
+    app: &AppHandle,
+    character: &str,
+    classes: &[String],
+) -> Result<bool, String> {
     let mut all = load_all(app);
     if all.get(character).is_some_and(|p| p.classes == classes) {
         return Ok(false);
@@ -92,7 +96,11 @@ mod tests {
     #[test]
     fn round_trips_through_serde() {
         let p = CharacterProfile {
-            classes: vec!["Enchanter".to_string(), "Magician".to_string(), "Wizard".to_string()],
+            classes: vec![
+                "Enchanter".to_string(),
+                "Magician".to_string(),
+                "Wizard".to_string(),
+            ],
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: CharacterProfile = serde_json::from_str(&json).unwrap();
@@ -110,7 +118,10 @@ mod tests {
         });
         let all: HashMap<String, CharacterProfile> = serde_json::from_value(raw).unwrap();
         assert_eq!(all["Aeliana"].classes, vec!["Cleric", "Paladin", "Warrior"]);
-        assert_eq!(all["Borgak"].classes, vec!["Necromancer", "Shadow Knight", "Wizard"]);
+        assert_eq!(
+            all["Borgak"].classes,
+            vec!["Necromancer", "Shadow Knight", "Wizard"]
+        );
     }
 
     #[test]

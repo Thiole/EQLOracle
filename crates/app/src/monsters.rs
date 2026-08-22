@@ -113,7 +113,12 @@ pub struct MobDto {
 /// module: a linear scan of the full store per encounter would be
 /// exactly the O(encounters * store length) cost this module's own doc
 /// already flags as the real, measured cause of a past slowdown.
-pub(crate) fn counts_as_pull(ing: &Ingest, e: &eqlp_store::Encounter, you: Sym, xp_credited: &std::collections::HashSet<u32>) -> bool {
+pub(crate) fn counts_as_pull(
+    ing: &Ingest,
+    e: &eqlp_store::Encounter,
+    you: Sym,
+    xp_credited: &std::collections::HashSet<u32>,
+) -> bool {
     let name = ing.store.name(e.target);
     let kind = ing.encounters.entities.kind(name);
     let state = ing
@@ -124,7 +129,8 @@ pub(crate) fn counts_as_pull(ing: &Ingest, e: &eqlp_store::Encounter, you: Sym, 
     if !Allegiance::of(kind, state).is_enemy() {
         return false;
     }
-    total(&ing.store, &Filter::encounter(e.id).damage().by(you)) != 0 || xp_credited.contains(&e.id.0)
+    total(&ing.store, &Filter::encounter(e.id).damage().by(you)) != 0
+        || xp_credited.contains(&e.id.0)
 }
 
 /// Every real `EncounterId` (as its raw `u32`) that earned "You" any XP
@@ -165,7 +171,9 @@ pub fn mob_stats(ing: &Ingest, name: &str) -> MobStatsDto {
     let mut kills = 0u64;
     let mut pulls = 0u64;
     for e in &ing.store.encounters {
-        if !ing.store.name(e.target).eq_ignore_ascii_case(name) || !counts_as_pull(ing, e, you, &xp_credited) {
+        if !ing.store.name(e.target).eq_ignore_ascii_case(name)
+            || !counts_as_pull(ing, e, you, &xp_credited)
+        {
             continue;
         }
         pulls += 1;
@@ -430,12 +438,18 @@ mod pull_credit_tests {
     fn a_party_credited_kill_counts_even_with_zero_personal_damage() {
         let ing = run(PARTY_CREDITED_KILL_NO_PERSONAL_DAMAGE);
         let stats = mob_stats(&ing, "Fright");
-        assert_eq!(stats.kills, 1, "party XP credit alone should be enough to count this as your kill");
+        assert_eq!(
+            stats.kills, 1,
+            "party XP credit alone should be enough to count this as your kill"
+        );
         assert_eq!(stats.pulls, 1);
 
         let mobs = list_mobs(&ing);
         let fright = mobs.iter().find(|m| m.name.eq_ignore_ascii_case("Fright"));
-        assert!(fright.is_some(), "list_mobs should surface Fright too, not just mob_stats");
+        assert!(
+            fright.is_some(),
+            "list_mobs should surface Fright too, not just mob_stats"
+        );
         assert_eq!(fright.unwrap().kills, 1);
     }
 
@@ -452,7 +466,10 @@ mod pull_credit_tests {
 ";
         let ing = run(text);
         let stats = mob_stats(&ing, "Fright");
-        assert_eq!(stats.kills, 0, "no personal damage and no party XP credit -- not the player's kill");
+        assert_eq!(
+            stats.kills, 0,
+            "no personal damage and no party XP credit -- not the player's kill"
+        );
         assert_eq!(stats.pulls, 0);
     }
 }
