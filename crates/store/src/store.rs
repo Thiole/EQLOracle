@@ -65,6 +65,15 @@ pub mod flag {
     /// same one.
     pub const FLURRY: Flags = 1 << 17;
 
+    /// `EventKind::Loot` only: this exact item was auto-sold to a vendor
+    /// the instant it was looted ("...and sold it for 2 platinum..."),
+    /// never actually kept -- see `Ingest::record_loot`'s own doc. Real,
+    /// load-bearing distinction for anything checking "do I still have
+    /// this to turn in": a loot row alone only proves the item was once
+    /// picked up, not that it's still sitting in a bag or bank -- an
+    /// auto-sold one demonstrably isn't.
+    pub const LOOT_AUTO_SOLD: Flags = 1 << 18;
+
     /// `EventKind::Cast` outcome, from `eqlp_session::cast::Resolver`.
     /// Mutually exclusive -- exactly one is set once a cast resolves, never
     /// zero and never more than one. A `Cast` row with none of these set is

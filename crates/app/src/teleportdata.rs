@@ -16,7 +16,11 @@
 //!
 //! `packs/teleport_landings.json` is generated, not hand-written -- built
 //! by `~/eql/build_teleport_landings.py` from the raw scrape
-//! (`~/eql/spells.json`), 105 entries as of the 2026-08-20 build. Re-run
+//! (`~/eql/spells.json`), 103 entries as of the 2026-08-21 build (105
+//! minus 2 real losses -- `level` addition below found two entries whose
+//! own `classes` field came back empty in the raw scrape, so no level
+//! requirement could be determined; see `TeleportLanding::level`'s own
+//! doc). Re-run
 //! that script whenever `spells.json` is refreshed. Keyed by the spell's
 //! full name (not rank-stripped -- these destination-zone spells are
 //! terminal, not part of a Roman-numeral rank family the way most spells
@@ -35,16 +39,18 @@
 //! guess on top of this, that would reintroduce the exact bug this exists
 //! to fix.
 //!
-//! Known, stated gap, not hidden: 6 name-shape matches during the build
-//! had no parseable coordinate and are absent from this pack -- three are
-//! the false positives above, one (`Iceclad Portal`) and one
-//! (`Cazic Gate`) are genuine upstream wiki data gaps (the effect text
-//! itself is missing its coordinates), and `Ring of North Karana` never
-//! surfaced in the `Category:Spells` scrape at all despite a real page
-//! existing. A cast of one of these six is invisible to the Maps module's
-//! entrance guess entirely (no landing, and no marker-guess fallback
-//! either -- see this module's own history for why that fallback was
-//! removed rather than kept as a second, weaker tier).
+//! Known, stated gap, not hidden: 8 name-shape matches during the build
+//! are absent from this pack -- six for the reasons already documented
+//! (three false positives above, `Iceclad Portal`/`Cazic Gate` missing
+//! their own coordinates in the wiki's own effect text, `Ring of North
+//! Karana` never surfaced in the `Category:Spells` scrape at all despite
+//! a real page existing), plus two more (`Ring of Faydark`, `Thurgadin
+//! Gate`) added when the `level` field below needed a real per-class
+//! level the raw scrape's own `classes` field came back empty for. A cast
+//! of one of these eight is invisible to the Maps module's entrance guess
+//! entirely (no landing, and no marker-guess fallback either -- see this
+//! module's own history for why that fallback was removed rather than
+//! kept as a second, weaker tier).
 //!
 //! Coordinate space, stated not proven: these values are assumed to be in
 //! the same space the game's own `/loc` command reports (matching how
@@ -75,18 +81,65 @@ const TELEPORT_DATA_JSON: &str = include_str!("../../../packs/teleport_landings.
 pub enum TeleportClass {
     Wizard,
     Druid,
+    /// Not from this module's own static, wiki-scraped pack -- built at
+    /// runtime for the one real teleport that genuinely has no fixed
+    /// class or destination: `Origin` (see `Ingest::learned_origin`'s own
+    /// doc). Every class can use it, so it deliberately isn't gated the
+    /// way `Wizard`/`Druid` are wherever a `TeleportLanding`'s class gets
+    /// checked against a player's own confirmed classes.
+    Any,
+}
+
+impl TeleportClass {
+    /// The full class name, matching how every other class-evidence
+    /// consumer in this app names it (`classdetect`'s confirmed
+    /// configurations, `packs/spell_classes.json`'s own `VALID_CLASSES`)
+    /// -- used by `routing.rs` to check a teleport edge against a
+    /// player's own confirmed class list.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TeleportClass::Wizard => "Wizard",
+            TeleportClass::Druid => "Druid",
+            TeleportClass::Any => "Any",
+        }
+    }
 }
 
 /// One teleport spell's exact, wiki-confirmed landing spot. Coordinate
 /// order/meaning matches `Ingest::last_loc`'s own `/loc`-space fields --
 /// see this module's own top doc for the "assumed, not proven" caveat on
 /// that.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TeleportLanding {
     pub class: TeleportClass,
     pub x: f64,
     pub y: f64,
     pub z: f64,
+    /// The destination zone, as `build_teleport_landings.py` scraped it
+    /// out of the wiki's own `... in [[Zone]]`/`... in zone` slot text --
+    /// added for `routing.rs`'s zone-graph (a teleport is a real
+    /// zone-to-zone edge), the first consumer that's ever needed *which*
+    /// zone a landing is in rather than just the landing point itself.
+    /// **Not a clean, single format** -- confirmed directly against the
+    /// real pack: sometimes the wiki's own display name (`"North Karana"`,
+    /// `"Dreadlands"`), sometimes a bare map-shortname-looking string the
+    /// wiki page left unlinked (`"butcher"`, `"commons"` -- these read
+    /// exactly like `zonedata::map_shortnames` output, not coincidentally,
+    /// since that's genuinely what the wiki editor typed). `routing.rs`
+    /// resolves either shape against real `zonedata::Zone` data rather
+    /// than assuming one format.
+    pub zone: String,
+    /// The minimum level `class` needs to have this spell -- straight
+    /// from `spells.json`'s own real `classes: [{class, level}]` field
+    /// (matched by class name, not just the first entry, since a spell
+    /// can list several classes each at their own level). Used by
+    /// `routing.rs` to filter which teleport shortcuts a *specific*
+    /// player's assumed class/level combination could actually cast --
+    /// see `routing::filter_castable`'s own doc. Two real entries
+    /// (`"Ring of Faydark"`, `"Thurgadin Gate"`) are absent from the pack
+    /// entirely because the raw scrape's own `classes` field came back
+    /// empty for them -- a genuine upstream gap, not guessed around.
+    pub level: u8,
 }
 
 #[derive(Deserialize)]
@@ -95,17 +148,14 @@ struct RawLanding {
     x: f64,
     y: f64,
     z: f64,
+    zone: String,
+    level: u8,
 }
 
 static TELEPORT_DATA: OnceLock<HashMap<String, TeleportLanding>> = OnceLock::new();
 
-/// The exact landing spot for a recognized teleport cast, by the spell's
-/// full (un-rank-stripped) name -- `None` for anything not in the pack,
-/// which includes both ordinary non-teleport spells and the six real,
-/// documented gaps this module's own doc lists. See this module's own doc
-/// for why this is the sole recognizer, not a name-shape heuristic.
-pub fn landing_for(spell_name: &str) -> Option<TeleportLanding> {
-    let map = TELEPORT_DATA.get_or_init(|| {
+fn data() -> &'static HashMap<String, TeleportLanding> {
+    TELEPORT_DATA.get_or_init(|| {
         let raw: HashMap<String, RawLanding> = serde_json::from_str(TELEPORT_DATA_JSON)
             .unwrap_or_else(|e| {
                 // A malformed embedded file is a build-time data bug, not a
@@ -122,11 +172,27 @@ pub fn landing_for(spell_name: &str) -> Option<TeleportLanding> {
                         "packs/teleport_landings.json: unknown class {other:?} for {name:?}"
                     ),
                 };
-                (name, TeleportLanding { class, x: r.x, y: r.y, z: r.z })
+                (name, TeleportLanding { class, x: r.x, y: r.y, z: r.z, zone: r.zone, level: r.level })
             })
             .collect()
-    });
-    map.get(spell_name).copied()
+    })
+}
+
+/// The exact landing spot for a recognized teleport cast, by the spell's
+/// full (un-rank-stripped) name -- `None` for anything not in the pack,
+/// which includes both ordinary non-teleport spells and the six real,
+/// documented gaps this module's own doc lists. See this module's own doc
+/// for why this is the sole recognizer, not a name-shape heuristic.
+pub fn landing_for(spell_name: &str) -> Option<TeleportLanding> {
+    data().get(spell_name).cloned()
+}
+
+/// Every known teleport spell and its landing, spell name first -- used by
+/// `routing.rs` to seed the zone-graph with teleport-shortcut edges (a
+/// consumer `landing_for`'s single-lookup shape can't serve, since it
+/// needs *all* of them, not one at a time).
+pub fn all_landings() -> impl Iterator<Item = (&'static str, &'static TeleportLanding)> {
+    data().iter().map(|(name, landing)| (name.as_str(), landing))
 }
 
 #[cfg(test)]
@@ -141,6 +207,9 @@ mod tests {
         let landing = landing_for("North Karana Gate").expect("known teleport spell");
         assert_eq!(landing.class, TeleportClass::Wizard);
         assert_eq!((landing.x, landing.y, landing.z), (-3685.0, 1209.0, -5.0));
+        // Real level requirement, confirmed against the raw scrape's own
+        // classes field directly (Wizard 18) -- not guessed.
+        assert_eq!(landing.level, 18);
     }
 
     /// Same real-log cross-check for the Druid side.

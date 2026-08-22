@@ -34,6 +34,29 @@ export function zoneMatches(mapZones: string[] | undefined, rawLabel: string | n
 
 export const normalizeWord = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
+/** why: a TS port of `zonedata::map_shortnames` (Rust) -- the Maps
+ * module's zone list is keyed by real map-file shortname (e.g.
+ * "northkarana"), but `find_zone_route` needs `ZoneDto.name`
+ * (e.g. "Northern Plains of Karana"). Rather than adding a new backend
+ * command just to resolve one string, this mirrors the Rust splitting
+ * logic (comma/slash-separated, `<tag>`-annotations and trailing
+ * `(parenthetical)` notes stripped) so the frontend can find, from
+ * `listZones()`'s own `who_name` field, which `ZoneDto` a given shortname
+ * belongs to -- kept deliberately in sync with the Rust version, same
+ * reasoning `looksLikeEntranceFor`'s own doc gives for mirroring
+ * `routing.rs`'s server-side entrance matching. */
+export function mapShortnames(whoName: string): string[] {
+  const out: string[] = [];
+  for (const part of whoName.split(',')) {
+    const cleaned = part.replace(/<[^>]*>/g, '');
+    for (const sub of cleaned.split('/')) {
+      const name = sub.split('(')[0].trim();
+      if (name) out.push(name);
+    }
+  }
+  return out;
+}
+
 /** why: EQ map files label zone-line markers "to_<Zone_Name>" by
  * long-standing community convention (confirmed in this app's own bundled
  * data, e.g. befallen_1.txt's one "to_West_Commonlands" marker) --

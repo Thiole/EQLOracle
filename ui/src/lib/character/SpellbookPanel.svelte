@@ -8,7 +8,7 @@
 
 <Card>
   <CardContent class="px-3 py-2">
-    <h2 class="text-[11px] uppercase tracking-wide text-muted-foreground">Spellbook</h2>
+    <h2 class="text-[11px] uppercase tracking-wide text-muted-foreground">Known Spells</h2>
     <p class="mb-2 text-[11px] text-muted-foreground">
       Every spell with at least Possible-tier evidence this session, from the log's own scribe/memorize begin and finish lines. "Known" means a
       finish was confirmed; "possible" means only a begin line landed, never confirmed complete.

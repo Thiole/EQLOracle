@@ -128,6 +128,223 @@ pub fn map_shortnames(who_name: &str) -> Vec<String> {
     out
 }
 
+/// A real, in-game safe point within a zone -- where Lesser Evacuate (or
+/// changing the zone's difficulty tier, per the user's own confirmation of
+/// the mechanic) drops you, from anywhere in the zone, for a real if not
+/// literally free cost. `label` is whatever free-text landmark description
+/// the wiki gave it ("Zone line to Steamfont", "Outside the Kaladim
+/// gates") -- kept for display, not parsed further.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SuccorPoint {
+    pub x: f32,
+    pub y: f32,
+    pub label: String,
+}
+
+/// Parses `Zone::succor_evacuate`'s real, messy wiki text into structured
+/// points -- confirmed against the *entire* real pack, not a sample. Per
+/// the user's own direct confirmation, every real zone genuinely has a
+/// succor point in-game, so a `Zone::succor_evacuate` field that's
+/// entirely absent from the scrape is a real data gap, not a fact about
+/// the zone -- see `scrape_eqlwiki_zones.py`'s own `parse_zone_table` doc
+/// for the real, confirmed wiki-editing mistake (a table split into two
+/// blocks by a stray `|}`) that caused exactly this for one real zone
+/// (Blackburrow) until fixed; after that fix and a fresh re-scrape, the
+/// field is present for all 116 zones in the current pack, 0 absent.
+/// - Most zones have exactly one point, `"X, Y (description)"`.
+/// - 6 real multi-part zones (Cabilis, Felwithe, Freeport, Kaladim,
+///   Neriak, and one more) list several, `<br>`-separated -- and at least
+///   one real case (`"North Felwithe -25, 94 (Zone line to Greater
+///   Faydark<br> South Felwithe ..."`) is missing its own closing `)`
+///   before the `<br>` cut it off, a genuine wiki-editing artifact, not a
+///   parsing choice -- handled by treating an unclosed `(` as running to
+///   the end of its own segment rather than failing to match at all.
+/// - Coordinates are usually integers, confirmed at least one real case
+///   uses decimals (`"-1410.00, -395.00 (zone entrance)"`) -- the number
+///   pattern accepts both.
+/// - 4 real entries, even with the field present, carry no coordinate at
+///   all on the wiki itself (`"?"`, `"N/A"`, a bare landmark description
+///   with no numbers -- New Sebilis Expedition, Tutorial Zone, Sleeper's
+///   Tomb, Plane of Sky) -- checked directly against the live wiki page
+///   for each one, including the separate `== Safe/Evac Spot ==` prose
+///   section `parse_zone`'s own fallback also checks, genuinely
+///   undocumented on this source either way. These correctly produce no
+///   points rather than a garbage match, an honest "don't know" the same
+///   way every other real gap in this pack is handled -- 112/116 zones
+///   have a real, usable coordinate.
+/// - One real entry (Nektulos Forest: `"-1201, --259 (Southeast of the
+///   bridge)"`) has a doubled minus sign on one coordinate -- a plain
+///   wiki-authoring typo, confirmed by the fact every sibling entry and
+///   every other coordinate in this same field uses a single sign.
+///   `last_number`/`first_number` both tolerate one extra leading `-` so
+///   this is still recognized as a real number rather than silently
+///   dropping the whole point; `parse_coord` collapses it before parsing.
+pub fn succor_points(raw: &str) -> Vec<SuccorPoint> {
+    fn parse_coord(s: &str) -> Result<f32, std::num::ParseFloatError> {
+        match s.strip_prefix("--") {
+            // Collapse a doubled leading minus to one real negative sign,
+            // rather than dropping it (which would silently flip the
+            // coordinate positive) or leaving both (which fails to parse).
+            Some(rest) => format!("-{rest}").parse::<f32>(),
+            None => s.parse::<f32>(),
+        }
+    }
+    let mut out = Vec::new();
+    let normalized = raw.replace("<br />", "<br>").replace("<br/>", "<br>");
+    for part in normalized.split("<br>") {
+        let Some(comma) = find_coord_comma(part) else { continue };
+        let (before, after) = part.split_at(comma);
+        let Some(x_str) = last_number(before) else { continue };
+        let after = &after[1..]; // skip the comma itself
+        let Some((y_str, rest)) = first_number(after) else { continue };
+        let (Ok(x), Ok(y)) = (parse_coord(x_str), parse_coord(y_str)) else { continue };
+        let label = rest
+            .trim_start()
+            .strip_prefix('(')
+            .map(|s| s.split(')').next().unwrap_or(s))
+            .unwrap_or(rest)
+            .trim()
+            .to_string();
+        out.push(SuccorPoint { x, y, label });
+    }
+    out
+}
+
+/// The index of the comma that separates a coordinate pair's X and Y --
+/// the last comma before a `(` (if any), since a description itself can
+/// contain commas ("Zone line to X, near Y") that must never be mistaken
+/// for the coordinate separator.
+fn find_coord_comma(s: &str) -> Option<usize> {
+    let paren = s.find('(').unwrap_or(s.len());
+    s[..paren].rfind(',')
+}
+
+/// The last run of digits (with an optional leading `-` and decimal
+/// point) in `s` -- the X coordinate sits at the end of whatever
+/// sub-area-name prefix a multi-part zone's entry carries ("North
+/// Felwithe -25").
+fn last_number(s: &str) -> Option<&str> {
+    let bytes = s.as_bytes();
+    let mut end = bytes.len();
+    while end > 0 && !(bytes[end - 1] as char).is_ascii_digit() {
+        end -= 1;
+    }
+    if end == 0 {
+        return None;
+    }
+    let mut start = end;
+    while start > 0 && ((bytes[start - 1] as char).is_ascii_digit() || bytes[start - 1] == b'.') {
+        start -= 1;
+    }
+    if start > 0 && bytes[start - 1] == b'-' {
+        start -= 1;
+        // Real, confirmed wiki typo (see `succor_points`'s own doc): a
+        // doubled minus sign. Included in the returned slice here so this
+        // still recognizes a real number instead of stopping short of
+        // it -- `succor_points`' own `parse_coord` collapses it before
+        // parsing.
+        if start > 0 && bytes[start - 1] == b'-' {
+            start -= 1;
+        }
+    }
+    Some(&s[start..end])
+}
+
+/// The first run of digits (with an optional leading `-`/decimal point)
+/// at the start of `s`, plus everything after it -- the Y coordinate,
+/// immediately following the comma.
+fn first_number(s: &str) -> Option<(&str, &str)> {
+    let s = s.trim_start();
+    let bytes = s.as_bytes();
+    let mut end = 0;
+    if bytes.first() == Some(&b'-') {
+        end += 1;
+        // See `last_number`'s own comment on the same doubled-minus case.
+        if bytes.get(1) == Some(&b'-') {
+            end += 1;
+        }
+    }
+    let digit_start = end;
+    while end < bytes.len() && ((bytes[end] as char).is_ascii_digit() || bytes[end] == b'.') {
+        end += 1;
+    }
+    if end == digit_start {
+        return None;
+    }
+    Some((&s[..end], &s[end..]))
+}
+
+#[cfg(test)]
+mod succor_tests {
+    use super::*;
+
+    /// The common real shape: one point, integer coordinates.
+    #[test]
+    fn a_single_real_succor_point_parses() {
+        let points = succor_points("47, -35 (Zone line to Steamfont)");
+        assert_eq!(points, vec![SuccorPoint { x: 47.0, y: -35.0, label: "Zone line to Steamfont".to_string() }]);
+    }
+
+    /// Real decimal-coordinate case, confirmed against the actual pack.
+    #[test]
+    fn decimal_coordinates_parse() {
+        let points = succor_points("-1410.00, -395.00 (zone entrance)");
+        assert_eq!(points, vec![SuccorPoint { x: -1410.0, y: -395.0, label: "zone entrance".to_string() }]);
+    }
+
+    /// Real multi-part-zone case, `<br>`-separated, each with its own
+    /// sub-area name prefix.
+    #[test]
+    fn a_real_multi_point_zone_parses_every_point() {
+        let points = succor_points(
+            "Cabilis East 1362, -417 (Zone line to Field of Bone)<br> Cabilis West -783, 767 (Zone line to Lake of Ill Omen)",
+        );
+        assert_eq!(
+            points,
+            vec![
+                SuccorPoint { x: 1362.0, y: -417.0, label: "Zone line to Field of Bone".to_string() },
+                SuccorPoint { x: -783.0, y: 767.0, label: "Zone line to Lake of Ill Omen".to_string() },
+            ]
+        );
+    }
+
+    /// Real, confirmed wiki-editing artifact: a multi-part entry's first
+    /// segment is missing its own closing `)` before the `<br>` cuts it
+    /// off -- must still parse the coordinate and take whatever
+    /// description text exists, not fail outright.
+    #[test]
+    fn a_segment_missing_its_closing_paren_still_parses() {
+        let points = succor_points(
+            "North Felwithe -25, 94 (Zone line to Greater Faydark<br> South Felwithe 320, -790 (Zone line to Northern Felwithe)",
+        );
+        assert_eq!(points.len(), 2);
+        assert_eq!((points[0].x, points[0].y), (-25.0, 94.0));
+        assert_eq!(points[0].label, "Zone line to Greater Faydark");
+        assert_eq!((points[1].x, points[1].y), (320.0, -790.0));
+    }
+
+    /// Real, genuinely non-coordinate entries -- must produce no points
+    /// at all, not a garbage match.
+    #[test]
+    fn non_coordinate_text_produces_no_points() {
+        assert_eq!(succor_points("?"), vec![]);
+        assert_eq!(succor_points("N/A"), vec![]);
+        assert_eq!(succor_points("Island 1 near the [[Key Master]]"), vec![]);
+    }
+
+    /// Real, confirmed wiki-authoring typo, verbatim from the actual
+    /// pack: Nektulos Forest's own `succor_evacuate` has a doubled minus
+    /// sign on its Y coordinate. Must still parse to the real (negative)
+    /// value, not silently drop the whole point the way the un-tolerant
+    /// version of `first_number` used to (any doubled sign anywhere in
+    /// this field made the entire entry unparseable).
+    #[test]
+    fn a_doubled_minus_sign_typo_still_parses() {
+        let points = succor_points("-1201, --259 (Southeast of the bridge)");
+        assert_eq!(points, vec![SuccorPoint { x: -1201.0, y: -259.0, label: "Southeast of the bridge".to_string() }]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

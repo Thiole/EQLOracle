@@ -2,6 +2,7 @@
   import { Card, CardContent } from '$lib/components/ui/card';
   import { npcs, type GdKind } from '$lib/stores/gamedata';
   import type { ZoneDto } from '$lib/tauri/api';
+  import { displayZoneName } from '$lib/utils';
   import GdField from './GdField.svelte';
   import GdLinkList from './GdLinkList.svelte';
   import EncounterHistory from './EncounterHistory.svelte';
@@ -25,7 +26,7 @@
 
 <Card class="rounded-sm">
   <CardContent class="px-3 py-2.5">
-    <h2 class="stat-figure text-[18px]">{zone.name}</h2>
+    <h2 class="stat-figure text-[18px]">{displayZoneName(zone.name)}</h2>
 
     <div class="mt-2 flex flex-col">
       <GdField label="Zone ID">
@@ -53,7 +54,7 @@
         </GdField>
       {/if}
       <GdField label="Spawn timer" value={zone.spawn_timer} />
-      <GdField label="Succor/Evac" value={zone.succor_evacuate} />
+      <GdField label="Succor/Difficulty Change" value={zone.succor_evacuate} />
       <GdField label="/who name" value={zone.who_name} />
     </div>
 

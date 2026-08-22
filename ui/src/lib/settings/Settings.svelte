@@ -1,8 +1,20 @@
 <script lang="ts">
   import * as Select from '$lib/components/ui/select';
   import { Button } from '$lib/components/ui/button';
+  import { Checkbox } from '$lib/components/ui/checkbox';
   import { Card, CardContent } from '$lib/components/ui/card';
-  import { volume, era, eraOptions, currentEra, settingsLoaded, setVolume, setEra, loadPreferences } from '$lib/stores/settings';
+  import {
+    volume,
+    era,
+    eraOptions,
+    currentEra,
+    saveProfile,
+    settingsLoaded,
+    setVolume,
+    setEra,
+    setSaveProfile,
+    loadPreferences,
+  } from '$lib/stores/settings';
   import { mapPacks, rescanMapFolder } from '$lib/stores/maps';
 
   $effect(() => {
@@ -75,6 +87,22 @@
           Caps what Game Data and the Gear Planner show to gear/zones/NPCs/spells that exist at or before this era.
           "All eras" turns that off entirely. Defaults to whatever era EQ Legends is actually on right now
           (<b class="text-foreground">{$currentEra}</b>).
+        </p>
+      </CardContent>
+    </Card>
+
+    <Card class="rounded-sm">
+      <CardContent class="px-3 py-2.5">
+        <h2 class="panel-title mb-1.5">character profile</h2>
+        <label class="flex items-center gap-1.5 text-[12px]">
+          <Checkbox checked={$saveProfile} onCheckedChange={(v: boolean) => setSaveProfile(v)} />
+          save your profile across launches
+        </label>
+        <p class="mt-1.5 text-[11px] text-muted-foreground">
+          Off (default): every launch replays the whole log and figures out your classes fresh from what it actually
+          sees, same as always. On: also remembers your last-confirmed classes between launches, and falls back to
+          them for zone routing on a new launch until this session's own replay reconfirms them itself -- it never
+          overrides a class the current session has already confirmed on its own.
         </p>
       </CardContent>
     </Card>

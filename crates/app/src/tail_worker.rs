@@ -298,6 +298,17 @@ fn emit_tick(
     let finished = std::mem::take(&mut ing.pending_history);
     let inventory_files = std::mem::take(&mut ing.pending_inventory_files);
     let notifications = std::mem::take(&mut ing.pending_notifications);
+    // why: computed under the same lock hold as everything else above
+    // (one `ingest.lock()`, not a second just for this) -- `None` unless
+    // `save_profile` is on, so a feature that's off by default never pays
+    // for `class_configurations`'s own reconciliation work on every tick.
+    // See `preferences::Preferences::save_profile`'s own doc for the full
+    // policy this is one half of.
+    let profile_classes = crate::preferences::load(app)
+        .save_profile
+        .then(|| crate::combat::class_configurations(&ing, "You"))
+        .and_then(|dto| dto.configurations.into_iter().next())
+        .map(|c| c.classes);
     drop(ing);
 
     if !notifications.is_empty() {
@@ -323,6 +334,16 @@ fn emit_tick(
         // revisiting if history ever looks incomplete.
         if let Err(e) = crate::history::append(app, record) {
             eprintln!("parse history write failed for {}: {e}", record.target);
+        }
+    }
+    // why: same best-effort stance as the history write just above -- a
+    // failed profile save must not interrupt live tailing either. `st.
+    // character` is `None` before the first zone/cast line has been seen
+    // at all (see `identity_from_filename`'s own doc); nothing to key a
+    // profile on yet in that window.
+    if let (Some(classes), Some(character)) = (&profile_classes, &st.character) {
+        if let Err(e) = crate::profile::save_if_changed(app, character, classes) {
+            eprintln!("profile save failed for {character}: {e}");
         }
     }
     // why: only readable dumps notify; frontend fetches via IPC

@@ -12,12 +12,14 @@
 //! exactly once, and `main.rs` reuses them via `use eqlp_app::*`.
 
 pub mod aadata;
+pub mod achievements;
 pub mod character;
 pub mod classdata;
 pub mod combat;
 pub mod commands;
 pub mod config;
 pub mod debugview;
+pub mod dpscalc;
 pub mod flavordata;
 pub mod gearplanner;
 pub mod history;
@@ -35,15 +37,21 @@ pub mod notifications;
 pub mod npcdata;
 pub mod overview;
 pub mod parser;
+pub mod pathfind;
 pub mod preferences;
+pub mod profile;
 pub mod progression;
+pub mod raiding;
+pub mod routing;
 pub mod settings;
 pub mod skilldata;
+pub mod skyquests;
 pub mod spelldata;
 pub mod spelleffect;
 pub mod stancedata;
 pub mod state;
 pub mod tail_worker;
 pub mod teleportdata;
+pub mod uifiles;
 pub mod zone;
 pub mod zonedata;

@@ -21,3 +21,18 @@ export type WithElementRef<T, E extends HTMLElement = HTMLElement> = T & { ref?:
 export type WithoutChild<T> = T extends { child?: any } ? Omit<T, 'child'> : T;
 export type WithoutChildren<T> = T extends { children?: any } ? Omit<T, 'children'> : T;
 export type WithoutChildrenOrChild<T> = WithoutChildren<WithoutChild<T>>;
+
+/** why: the scrape disambiguates a real zone-name collision ("Cazic
+ * Thule" the playable zone vs. an unrelated wiki deity/lore page also
+ * titled "Cazic Thule") by appending " (Zone)" to that one zone's own
+ * canonical `Zone::name` -- meaningful for exact-name matching
+ * everywhere in the backend, meaningless (and confusing) to show a
+ * player. Strips *only* that exact literal suffix, never any other
+ * parenthetical -- `Chardok (Post-Revamp)` / `Chardok (Pre-Revamp)`
+ * carry real information (two genuinely different zone versions) and
+ * must never be silently hidden the same way. Display-only: never call
+ * this on a name before sending it back to a Tauri command, which needs
+ * the real canonical string. */
+export function displayZoneName(name: string): string {
+  return name.endsWith(' (Zone)') ? name.slice(0, -' (Zone)'.length) : name;
+}

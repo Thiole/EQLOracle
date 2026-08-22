@@ -15,6 +15,7 @@ use crate::combat::{
 };
 use crate::config::{self, AppConfig};
 use crate::debugview::{self, DebugEncounterDto, UnmatchedCoverageDto};
+use crate::dpscalc::{self, DamageSpellDto};
 use crate::gearplanner::{self, InventoryDumpDto, ItemDto, SlotRecommendationDto};
 use crate::history::{self, ParseRecord};
 use crate::ingest::LineCounts;
@@ -25,15 +26,22 @@ use crate::monsters::{self, LootEventDto, MobDto, MobStatsDto};
 use crate::notifications;
 use crate::npcdata;
 use crate::overview::{self, SessionDto};
+use crate::pathfind;
 use crate::preferences::{self, Preferences};
+use crate::profile;
 use crate::progression::{self, AaLogDto, SpellbookEntryDto};
+use crate::raiding::{self, RaidRowDto};
+use crate::routing;
 use crate::settings;
+use crate::skyquests;
 use crate::spelldata;
 use crate::spelleffect;
 use crate::state::AppState;
 use crate::tail_worker::{self, TailStatus};
+use crate::uifiles;
 use crate::zonedata;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, State};
 
@@ -271,6 +279,34 @@ pub fn get_class_configurations(state: State<AppState>, name: String) -> ClassCo
     combat::class_configurations(&state.ingest.lock().unwrap(), &name)
 }
 
+/// The Endgame module's Raiding tab: the curated row/raid/boss/miniboss
+/// list, with this character's own confirmed kills/tiers/loot folded in
+/// -- see `raiding::list_raid_rows`'s own doc.
+#[tauri::command]
+pub fn get_raids(state: State<AppState>) -> Vec<RaidRowDto> {
+    raiding::list_raid_rows(&state.ingest.lock().unwrap())
+}
+
+/// The Endgame module's "Sky - Primary Class Unlocks" tab: just the
+/// final reward items each class's quests earn, cross-referenced
+/// against this character's own loot/inventory/achievements -- see
+/// `skyquests::list_class_unlocks`'s own doc for why this is scoped to
+/// rewards only, never the raw materials (that's `get_sky_quests`).
+#[tauri::command]
+pub fn get_sky_class_unlocks(state: State<AppState>) -> Vec<skyquests::SkyClassUnlockDto> {
+    let base_dir = state.config.lock().unwrap().as_ref().map(|c| c.base_dir.clone());
+    skyquests::list_class_unlocks(&state.ingest.lock().unwrap(), base_dir.as_deref())
+}
+
+/// The Endgame module's "Sky - Quests" tab: every individual material
+/// turn-in (rune + drop items -> one gear reward), full detail -- see
+/// `skyquests::list_quests`'s own doc.
+#[tauri::command]
+pub fn get_sky_quests(state: State<AppState>) -> Vec<skyquests::SkyClassDto> {
+    let base_dir = state.config.lock().unwrap().as_ref().map(|c| c.base_dir.clone());
+    skyquests::list_quests(&state.ingest.lock().unwrap(), base_dir.as_deref())
+}
+
 /// One configuration's own zone visits, for drilling from a configuration
 /// row down to the specific visits (and from there, via
 /// `list_encounters(zoneVisit)`, the fights) that make it up.
@@ -366,6 +402,25 @@ pub fn get_aa_log(state: State<AppState>) -> AaLogDto {
 #[tauri::command]
 pub fn get_spellbook(state: State<AppState>) -> Vec<SpellbookEntryDto> {
     progression::spellbook(&state.ingest.lock().unwrap())
+}
+
+/// Highest live in-game rank observed cast this session, "You" only, by
+/// catalog base spell name -- see `progression::spell_ranks`' own doc.
+/// The Spellbook builder's suggestion picker, so a spell already ranked
+/// up shows that instead of implying it's freshly unranked.
+#[tauri::command]
+pub fn get_spell_ranks(state: State<AppState>) -> HashMap<String, u8> {
+    progression::spell_ranks(&state.ingest.lock().unwrap())
+}
+
+/// Every catalog spell with a parseable damage effect, rank-adjusted --
+/// see `dpscalc`'s own module doc for the (stated, not hidden) model
+/// this uses. Unfiltered by class/level; the Spellbook builder's DPS
+/// auto-suggest applies the same class/level-cap filtering it already
+/// uses for its spell picker.
+#[tauri::command]
+pub fn get_damage_spells(state: State<AppState>) -> Vec<DamageSpellDto> {
+    dpscalc::list_damage_spells(&state.ingest.lock().unwrap())
 }
 
 /// Every mob type fought so far, kill counts and loot -- the Loot History
@@ -743,6 +798,197 @@ pub fn get_map_file(
     Ok(parsed.into())
 }
 
+/// A real walking route within one zone's map, waypoint by waypoint --
+/// see `pathfind::find_path`'s own doc for what "real" means here (grid
+/// A* over the zone's own wall geometry, Z-banded to the *starting*
+/// point's own floor) and its stated limits (a route needing a floor
+/// change within the zone isn't found).
+#[derive(Debug, Clone, Serialize)]
+pub struct PathDto {
+    pub waypoints: Vec<[f32; 3]>,
+}
+
+/// Same `base_dir`-required shape as `get_map_file` -- a missing route is
+/// a real, retryable outcome (no path exists on this floor, or an install
+/// isn't configured yet), not folded into a generic "empty result".
+#[tauri::command]
+pub fn find_walk_path(
+    state: State<AppState>,
+    pack: Option<String>,
+    zone: String,
+    from: [f32; 3],
+    to: [f32; 3],
+) -> Result<PathDto, String> {
+    let base_dir = {
+        let cfg = state.config.lock().unwrap();
+        cfg.as_ref().ok_or("no install folder configured yet")?.base_dir.clone()
+    };
+    let parsed =
+        mapsdata::load_zone_map(&base_dir, pack.as_deref(), &zone).map_err(|e| e.to_string())?;
+    let path = pathfind::find_path(&parsed, (from[0], from[1], from[2]), (to[0], to[1], to[2]))
+        .ok_or("no walkable route found between those points")?;
+    Ok(PathDto { waypoints: path.into_iter().map(|(x, y, z)| [x, y, z]).collect() })
+}
+
+/// One leg of a `ZoneRouteDto` -- see `routing::HopKind`'s own doc for
+/// why a teleport hop is never folded into a generic "shortcut": it names
+/// its own spell so the frontend (and the player) can judge whether they
+/// actually have access to it, rather than the backend assuming they do.
+#[derive(Debug, Clone, Serialize)]
+pub struct RouteHopDto {
+    pub zone: String,
+    pub kind: String,
+    pub via_spell: Option<String>,
+    pub distance: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ZoneRouteDto {
+    pub hops: Vec<RouteHopDto>,
+    pub total_distance: f64,
+}
+
+impl From<routing::ZoneRoute> for ZoneRouteDto {
+    fn from(r: routing::ZoneRoute) -> Self {
+        ZoneRouteDto {
+            hops: r
+                .hops
+                .into_iter()
+                .map(|h| {
+                    let (kind, via_spell) = match h.kind {
+                        routing::HopKind::Walk => ("walk".to_string(), None),
+                        routing::HopKind::Teleport(spell) => ("teleport".to_string(), Some(spell)),
+                        routing::HopKind::Succor => ("succor".to_string(), None),
+                    };
+                    RouteHopDto { zone: h.zone, kind, via_spell, distance: h.distance }
+                })
+                .collect(),
+            total_distance: r.total_distance,
+        }
+    }
+}
+
+/// A route from `from_zone` to `to_zone` across zone lines and/or
+/// teleport shortcuts, weighted by real in-zone walking distance -- see
+/// `routing::find_zone_route`'s own doc for the two-stage (cheap
+/// candidates, then real-distance scoring) design. Which teleport
+/// shortcuts even get considered is gated by the log owner's own *assumed*
+/// class/level -- the dominant (most zone-visits) confirmed configuration
+/// from `combat::class_configurations`, and that configuration's own
+/// `level_range` upper bound as the assumed level, the same "assumed"
+/// framing the user asked for rather than chasing an exact per-class
+/// level this app has no way to derive (`Ingest::levels` only ever tracks
+/// one *effective* level across the whole loadout, not one per class --
+/// see that struct's own doc). No confirmed configuration yet (a fresh
+/// session, or a character below the level-10 fixed-3-classes rule) means
+/// no teleport shortcuts are offered at all -- walk-only, not a guess.
+/// The player's real, confirmed position in `from_zone` right now, in
+/// map-file space -- a real `/loc` reading or a confirmed teleport
+/// landing, whichever is more specific, or `None` if neither is available
+/// *for that zone specifically*. Per the user's own direct point: a zone
+/// entered via a recognized teleport cast, or a real `/loc` reading, is
+/// 100% known -- exactly the "confirmed" tier docs/design/maps.md's "You
+/// are here" ladder already uses for the map marker, now also feeding
+/// `routing::find_zone_route`'s own first-hop distance rather than only
+/// the visual overlay. Both sources need the same real, verified
+/// transform a raw reading needs before it means anything in map-file
+/// space -- see `Ingest::last_loc`'s own doc for the `(-y, -x, z)` mapping
+/// this reapplies, and `entered_via_teleport`'s own callers (`MapViewer.
+/// svelte`) for why that field shares the same raw coordinate space.
+/// Zone-matched against `from_zone` independently for each source (a
+/// `/loc` reading and the current teleport landing can each be stale in
+/// different ways -- a `/loc` typed in a zone visited hours ago is not
+/// "now", and neither is a landing from a zone visit that's already over).
+fn live_start_position(ing: &crate::ingest::Ingest, base_dir: &std::path::Path, from_zone: &str) -> Option<(f32, f32, f32)> {
+    // Real, reported bug this fixes: a real `/loc` reading used to win
+    // unconditionally whenever its own zone matched, even when a *later*
+    // teleport/Origin confirmation existed for the same zone -- an old
+    // `/loc` typed before teleporting/Origin-ing back to a zone kept
+    // outranking a fresher, equally-real confirmation just because `/loc`
+    // was checked first, not because it was actually more recent. All
+    // three real sources now compete on timestamp alone -- whichever one
+    // is genuinely the newest *for this zone* wins, full stop. No
+    // separate "prefer /loc, fall back to teleport" tiering left to get
+    // this backwards again.
+    let mut best: Option<(eqlp_source::Millis, (f32, f32, f32))> = None;
+    let mut consider = |ts: eqlp_source::Millis, pos: (f32, f32, f32)| {
+        if best.is_none_or(|(best_ts, _)| ts > best_ts) {
+            best = Some((ts, pos));
+        }
+    };
+
+    if let Some((ts, x, y, z)) = ing.last_loc {
+        if ing.zone.at(ts).is_some_and(|raw| crate::zone::zone_matches(raw, from_zone)) {
+            consider(ts, (-y as f32, -x as f32, z as f32));
+        }
+    }
+    if let Some((ts, landing)) = &ing.entered_via_teleport {
+        if ing.zone.at(*ts).is_some_and(|raw| crate::zone::zone_matches(raw, from_zone)) {
+            consider(*ts, (-landing.y as f32, -landing.x as f32, landing.z as f32));
+        }
+    }
+    // Origin's own learned landing (see `Ingest::learned_origin`'s own
+    // doc) -- a real zone, confirmed by direct observation, but no
+    // wiki-quoted coordinate the way the two sources above have; `routing::
+    // best_start_position`'s own succor-point lookup stands in once the
+    // zone itself is known.
+    if let Some((ts, raw)) = &ing.learned_origin {
+        if crate::zone::zone_matches(raw, from_zone) {
+            consider(*ts, routing::best_start_position(base_dir, from_zone));
+        }
+    }
+    best.map(|(_, pos)| pos)
+}
+
+#[tauri::command]
+pub fn find_zone_route(
+    app: AppHandle,
+    state: State<AppState>,
+    from_zone: String,
+    to_zone: String,
+) -> Result<ZoneRouteDto, String> {
+    let base_dir = {
+        let cfg = state.config.lock().unwrap();
+        cfg.as_ref().ok_or("no install folder configured yet")?.base_dir.clone()
+    };
+    let (player_classes, player_level, known_start) = {
+        let ing = state.ingest.lock().unwrap();
+        let dto = combat::class_configurations(&ing, "You");
+        let (live_classes, level) = dto
+            .configurations
+            .first()
+            .map(|c| (c.classes.clone(), c.level_range.map(|(_, hi)| hi).unwrap_or(0)))
+            .unwrap_or_default();
+        // why: level always comes from *this* live session, never the
+        // saved profile -- level changes constantly and `profile.rs`
+        // never stores it (see that module's own doc). Classes fall back
+        // to the saved profile only when this session's own replay
+        // hasn't confirmed a configuration for "You" yet at all -- once
+        // it has, live evidence wins outright, full stop, regardless of
+        // what's saved. See `preferences::Preferences::save_profile`'s
+        // own doc for the whole policy this is one half of.
+        let player_classes = if !live_classes.is_empty() {
+            live_classes
+        } else if preferences::load(&app).save_profile {
+            state
+                .status
+                .lock()
+                .unwrap()
+                .character
+                .as_deref()
+                .and_then(|c| profile::for_character(&app, c))
+                .map(|p| p.classes)
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        (player_classes, level, live_start_position(&ing, &base_dir, &from_zone))
+    };
+    routing::find_zone_route(&base_dir, &from_zone, &to_zone, &player_classes, player_level, known_start)
+        .map(ZoneRouteDto::from)
+        .ok_or_else(|| format!("no route found from {from_zone} to {to_zone}"))
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct LastLocationDto {
     pub ts_ms: eqlp_source::Millis,
@@ -793,6 +1039,20 @@ pub struct ZoneContextDto {
     /// plots this coordinate directly instead of the weaker `previous`-
     /// zone entrance guess.
     pub teleport_landing: Option<crate::teleportdata::TeleportLanding>,
+    /// The confirming `zone.enter`'s own timestamp -- whichever source
+    /// `teleport_landing` actually reflects, a real Gate/Translocate/
+    /// Circle/Ring landing or an Origin-derived one, both count equally
+    /// here. `None` exactly when `teleport_landing` is `None`. Real,
+    /// reported bug this exists to fix: the frontend used to prefer a
+    /// real `/loc` reading unconditionally whenever its own zone matched,
+    /// even when a *later* teleport/Origin confirmation existed for that
+    /// same zone -- an old `/loc` outranking fresher, equally-real
+    /// evidence just because `/loc` was checked first, not because it was
+    /// actually more recent. The frontend now compares this against its
+    /// own `/loc` reading's timestamp and uses whichever is genuinely
+    /// newer, the same "freshest wins" rule `commands::live_start_position`
+    /// already applies backend-side for routing.
+    pub teleport_landing_ts: Option<eqlp_source::Millis>,
     /// Real map-file shortname(s) for `current` (e.g. `["gukbottom"]` for
     /// "The Ruins of Old Guk 4 (Refined)"), via the wiki's own scraped
     /// `who_name` field -- see `zonedata::map_shortnames`'s own doc for
@@ -845,10 +1105,47 @@ pub fn get_zone_context(state: State<AppState>) -> ZoneContextDto {
     let ts = ing.now_ms();
     let current = ing.zone.at(ts).map(str::to_string);
     let current_map_zones = map_zones_for_raw_label(current.as_deref());
+    // Two real, independent confirmation sources -- a wiki-fixed teleport
+    // (`entered_via_teleport`) and Origin's own learned landing (see
+    // `Ingest::learned_origin`'s own doc) -- compete on timestamp, same
+    // "freshest wins" rule `commands::live_start_position` applies for
+    // routing. In practice they're almost never both set for the same
+    // zone visit (each only fires from its own recent cast), but when
+    // they are, recency decides it honestly rather than one kind always
+    // beating the other. No `base_dir` configured yet is a real, honest
+    // "can't compute a position" for the Origin side specifically, not an
+    // error -- falls through to whichever other source is available.
+    let wiki_landing = ing.entered_via_teleport.clone();
+    let origin_landing = (|| {
+        let (origin_ts, raw) = ing.learned_origin.as_ref()?;
+        if !crate::zone::zone_matches(raw, current.as_deref()?) {
+            return None;
+        }
+        let base_dir = state.config.lock().unwrap().as_ref()?.base_dir.clone();
+        let (x, y, z) = routing::best_start_position(&base_dir, current.as_deref()?);
+        Some((
+            *origin_ts,
+            crate::teleportdata::TeleportLanding {
+                class: crate::teleportdata::TeleportClass::Any,
+                x: x as f64,
+                y: y as f64,
+                z: z as f64,
+                zone: current.clone().unwrap_or_default(),
+                level: 1,
+            },
+        ))
+    })();
+    let (teleport_landing, teleport_landing_ts) = match (wiki_landing, origin_landing) {
+        (Some((wts, _)), Some((ots, ol))) if ots > wts => (Some(ol), Some(ots)),
+        (Some((wts, wl)), _) => (Some(wl), Some(wts)),
+        (None, Some((ots, ol))) => (Some(ol), Some(ots)),
+        (None, None) => (None, None),
+    };
     ZoneContextDto {
         current,
         previous: ing.zone.label_before(ts).map(str::to_string),
-        teleport_landing: ing.entered_via_teleport,
+        teleport_landing,
+        teleport_landing_ts,
         current_map_zones,
     }
 }
@@ -981,4 +1278,81 @@ pub fn clear_notification_sound(
 pub fn get_notification_sound_data(app: AppHandle, kind: String) -> Option<String> {
     let s = settings::load(&app);
     settings::custom_sound_data_url(&app, &kind, &s)
+}
+
+/// The Spellbook builder's own file picker: every real `<Character>_
+/// <Zone>_LO1.ini`/`UI_<Character>_<Zone>_LO1.ini` sitting in the game's
+/// base folder -- see `uifiles::list_ui_files`'s own doc for what each
+/// kind actually holds.
+#[tauri::command]
+pub fn list_ui_files(state: State<AppState>) -> Result<Vec<uifiles::UiFileInfoDto>, String> {
+    let base_dir = state.config.lock().unwrap().as_ref().ok_or("no install folder configured yet")?.base_dir.clone();
+    Ok(uifiles::list_ui_files(&base_dir))
+}
+
+/// One UI file's real content, read-only -- see `uifiles::parse_ini`'s
+/// own doc for why this doesn't write anything back yet.
+#[tauri::command]
+pub fn get_ui_file(state: State<AppState>, file: String) -> Result<uifiles::ParsedUiFileDto, String> {
+    let base_dir = state.config.lock().unwrap().as_ref().ok_or("no install folder configured yet")?.base_dir.clone();
+    let path = uifiles::ui_file_path(&base_dir, &file).map_err(|e| e.to_string())?;
+    uifiles::parse_ini(&path).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod live_start_position_tests {
+    use super::*;
+    use std::path::Path;
+
+    /// Real, reported bug this fixes: a real `/loc` reading used to win
+    /// unconditionally whenever its own zone matched, even when a *later*
+    /// teleport confirmation existed for that same zone -- an old `/loc`
+    /// outranking fresher, equally-real evidence just because `/loc` was
+    /// checked first, not because it was actually more recent. Recency
+    /// alone must decide it now.
+    #[test]
+    fn a_later_teleport_confirmation_wins_over_an_earlier_loc_reading() {
+        let mut ing = crate::ingest::Ingest::default();
+        ing.zone.enter(1_000, "Oggok".to_string());
+        ing.last_loc = Some((1_000, 100.0, 200.0, 5.0));
+        // A later, fresher confirmation for the same zone.
+        ing.zone.enter(2_000, "Oggok".to_string());
+        ing.entered_via_teleport = Some((
+            2_000,
+            crate::teleportdata::TeleportLanding {
+                class: crate::teleportdata::TeleportClass::Wizard,
+                x: 300.0,
+                y: 400.0,
+                z: 10.0,
+                zone: "Oggok".to_string(),
+                level: 1,
+            },
+        ));
+        let pos = live_start_position(&ing, Path::new("/nonexistent"), "Oggok");
+        // /loc-space -> map-file transform: (-y, -x, z).
+        assert_eq!(pos, Some((-400.0, -300.0, 10.0)), "the fresher teleport landing should win, not the earlier /loc");
+    }
+
+    /// The reverse must also hold: a genuinely *fresher* `/loc` reading
+    /// (typed after teleporting somewhere and then walking around) beats
+    /// a now-stale teleport confirmation from earlier in the same visit.
+    #[test]
+    fn a_later_loc_reading_wins_over_an_earlier_teleport_confirmation() {
+        let mut ing = crate::ingest::Ingest::default();
+        ing.zone.enter(1_000, "Oggok".to_string());
+        ing.entered_via_teleport = Some((
+            1_000,
+            crate::teleportdata::TeleportLanding {
+                class: crate::teleportdata::TeleportClass::Wizard,
+                x: 300.0,
+                y: 400.0,
+                z: 10.0,
+                zone: "Oggok".to_string(),
+                level: 1,
+            },
+        ));
+        ing.last_loc = Some((2_000, 100.0, 200.0, 5.0));
+        let pos = live_start_position(&ing, Path::new("/nonexistent"), "Oggok");
+        assert_eq!(pos, Some((-200.0, -100.0, 5.0)), "the fresher /loc reading should win, not the earlier teleport landing");
+    }
 }

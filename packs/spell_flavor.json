@@ -1,2206 +1,2206 @@
 {
-  "A Halo of Light solidifies in your hand.": [
-    "Cleric",
-    "Druid",
-    "Paladin",
-    "Wizard"
-  ],
-  "A blast of acid eats at your skin.": [
-    "Necromancer"
-  ],
-  "A blast of poison eats at your skin.": [
-    "Necromancer"
-  ],
-  "A blistering wind envelops your body.": [
-    "Magician"
-  ],
-  "A brilliant blue aura surrounds your weapon.": [
-    "Paladin"
-  ],
-  "A bulwark of faith protects you.": [
-    "Cleric"
-  ],
-  "A burst of speed surges through your body.": [
-    "Bard"
-  ],
-  "A burst of strength surges through your body.": [
-    "Bard"
-  ],
-  "A coat of shimmering runes surround you.": [
-    "Enchanter"
-  ],
-  "A concussion of air knocks you backwards.": [
-    "Ranger"
-  ],
-  "A cool breeze slips through your mind.": [
-    "Enchanter"
-  ],
-  "A dark shimmer of runes surround you.": [
-    "Enchanter"
-  ],
-  "A dark voice beckons to you.": [
-    "Shadow Knight"
-  ],
-  "A darkness falls over your soul.": [
-    "Necromancer"
-  ],
-  "A dull aura covers your hand.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "A dull blue aura surrounds you.": [
-    "Wizard"
-  ],
-  "A dull white aura surrounds you.": [
-    "Cleric"
-  ],
-  "A faint blue aura surrounds you.": [
-    "Enchanter"
-  ],
-  "A faint white aura surrounds you.": [
-    "Cleric"
-  ],
-  "A feeling of temperance washes over you.": [
-    "Cleric"
-  ],
-  "A flame of divine light erupts around you.": [
-    "Paladin"
-  ],
-  "A flame of divine purpose compels you.": [
-    "Paladin"
-  ],
-  "A foreign surge of mana refreshes your mind.": [
-    "Necromancer"
-  ],
-  "A globe of cold light forms in your hand.": [
-    "Necromancer"
-  ],
-  "A globe of stars forms within your hands.": [
-    "Druid"
-  ],
-  "A light breeze slips through your mind.": [
-    "Enchanter"
-  ],
-  "A light shimmer of runes surround you.": [
-    "Enchanter"
-  ],
-  "A magical hammer appears in your hand.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "A mellifluous melody sweeps you away.": [
-    "Bard"
-  ],
-  "A mystic force shields your skin.": [
-    "Necromancer",
-    "Shadow Knight",
-    "Wizard"
-  ],
-  "A mystic symbol flashes before your eyes.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "A nimbus of deathly darkness covers your body.": [
-    "Shadow Knight"
-  ],
-  "A nimbus of deathly darkness covers your hands.": [
-    "Shadow Knight"
-  ],
-  "A protective aura settles over you.": [
-    "Beastlord",
-    "Shaman"
-  ],
-  "A protective spirit shroud cloaks you.": [
-    "Shaman"
-  ],
-  "A pulse of static energy slams through you.": [
-    "Wizard"
-  ],
-  "A reflective aura surrounds you.": [
-    "Enchanter",
-    "Magician",
-    "Necromancer",
-    "Wizard"
-  ],
-  "A scythe of darkness tears through you.": [
-    "Shadow Knight"
-  ],
-  "A seething mass of darkness engulfs you.": [
-    "Shadow Knight"
-  ],
-  "A shifting spirit shield surrounds you.": [
-    "Shaman"
-  ],
-  "A shimmer of runes surround you.": [
-    "Enchanter"
-  ],
-  "A shrieking aura surrounds you.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "A silvery force slicks your skin.": [
-    "Wizard"
-  ],
-  "A soft breeze slips through your mind.": [
-    "Enchanter"
-  ],
-  "A soft mist surrounds you.": [
-    "Bard"
-  ],
-  "A song of inspiration fills your weapon arm with strength.": [
-    "Bard"
-  ],
-  "A spear of disease sears your flesh.": [
-    "Shadow Knight"
-  ],
-  "A spear of pain sears your flesh.": [
-    "Shadow Knight"
-  ],
-  "A stream of fire washes over you.": [
-    "Magician",
-    "Wizard"
-  ],
-  "A sudden flare of cosmic energy pierces your defenses.": [
-    "Wizard"
-  ],
-  "A sudden flare of extraplanar energy pierces your defenses.": [
-    "Wizard"
-  ],
-  "A swarm of fireflies shimmers around your hand.": [
-    "Druid",
-    "Ranger"
-  ],
-  "A swarm of nifiliks crawl through your armor.": [
-    "Ranger"
-  ],
-  "A swirling orb of elements forms in your hand.": [
-    "Magician"
-  ],
-  "A tune pervades your mind and beckons you.": [
-    "Bard"
-  ],
-  "A wave of flame washes over you.": [
-    "Ranger"
-  ],
-  "A wave of healing washes over you.": [
-    "Paladin"
-  ],
-  "A wave of heat screams through you.": [
-    "Wizard"
-  ],
-  "A wisp settles into your hand.": [
-    "Magician"
-  ],
-  "A zephyr of ice tears through you.": [
-    "Wizard"
-  ],
-  "An aegis of faith engulfs you.": [
-    "Cleric"
-  ],
-  "An aura of fortitude fills you.": [
-    "Cleric"
-  ],
-  "An aura of spiritual light envelops you.": [
-    "Beastlord"
-  ],
-  "Barbs spring from your skin.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Blades spring from your skin.": [
-    "Druid"
-  ],
-  "Bonds of force bind your feet to the ground.": [
-    "Wizard"
-  ],
-  "Brambles spring from your skin.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Celestial Elixir pumps through your body.": [
-    "Cleric"
-  ],
-  "Celestial light pumps through your body.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "Chords of music bind your hands.": [
-    "Bard"
-  ],
-  "Dancing lights flicker in and out of your vision.": [
-    "Enchanter"
-  ],
-  "Dark albatross circle overhead.": [
-    "Necromancer"
-  ],
-  "Dark terror fills your mind.": [
-    "Shadow Knight"
-  ],
-  "Dark vines drag your feet into the ground.": [
-    "Druid"
-  ],
-  "Debris smashes against your body.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Energy races across your body.": [
-    "Wizard"
-  ],
-  "Ethereal light pumps through your body.": [
-    "Paladin"
-  ],
-  "Flames dance across your body.": [
-    "Wizard"
-  ],
-  "Flames race across your body.": [
-    "Magician"
-  ],
-  "Freezing winds rend your body.": [
-    "Wizard"
-  ],
-  "Hatred fuels your arms.": [
-    "Shadow Knight"
-  ],
-  "Healing water flows over you.": [
-    "Druid"
-  ],
-  "Insidious imagery clouds your mind.": [
-    "Enchanter"
-  ],
-  "Jagged notes tear through your body.": [
-    "Bard"
-  ],
-  "Jagged notes tear through your mind.": [
-    "Bard"
-  ],
-  "Lightning flashes through your body.": [
-    "Wizard"
-  ],
-  "Lightning surges through your body.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Long forgotten knowledge sifts through your mind.": [
-    "Bard"
-  ],
-  "Music floods your mind and sharpens your sight.": [
-    "Bard"
-  ],
-  "Nature's strength flows through your muscles.": [
-    "Ranger"
-  ],
-  "Notes of purity cleanse your body.": [
-    "Bard"
-  ],
-  "Part of your image fades away.": [
-    "Druid",
-    "Shaman"
-  ],
-  "People look at you with unfailing reverence.": [
-    "Shaman"
-  ],
-  "Reality runs amok.": [
-    "Enchanter"
-  ],
-  "Rizlona's embers pulse through your body.": [
-    "Bard"
-  ],
-  "Scintillating colors dazzle your brain.": [
-    "Enchanter"
-  ],
-  "Scintillating colors pound through your brain.": [
-    "Enchanter"
-  ],
-  "Scintillating flames race across your body.": [
-    "Magician"
-  ],
-  "Shadowed terror fills your mind.": [
-    "Shadow Knight"
-  ],
-  "Silver strands of music bind you.": [
-    "Bard"
-  ],
-  "Sionachie's dreams invade your mind.": [
-    "Bard"
-  ],
-  "Solist's spear of ice strikes you down.": [
-    "Wizard"
-  ],
-  "Spectral shackles bind your feet to the ground.": [
-    "Wizard"
-  ],
-  "Spikes spring from your skin.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Strands of music cover your eyes.": [
-    "Bard"
-  ],
-  "Strands of solid music bind your body.": [
-    "Bard"
-  ],
-  "The Call of Earth surrounds your body protectively.": [
-    "Ranger"
-  ],
-  "The Call of Fire fills your weapons with power.": [
-    "Ranger"
-  ],
-  "The Call of Sky fills your weapons with power..": [
-    "Ranger"
-  ],
-  "The Scars of Sigil burn you.": [
-    "Magician"
-  ],
-  "The air crackles around you.": [
-    "Enchanter"
-  ],
-  "The aria lifts you into the air..": [
-    "Bard"
-  ],
-  "The beat of your heart increases to match the music.": [
-    "Bard"
-  ],
-  "The bile wells up in your throat.": [
-    "Necromancer",
-    "Shaman"
-  ],
-  "The blood of pain burns in your veins.": [
-    "Shadow Knight"
-  ],
-  "The blood stops flowing in your veins.": [
-    "Necromancer"
-  ],
-  "The gods have rendered you invulnerable.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "The harmony surrounds you.": [
-    "Bard"
-  ],
-  "The jig sends energy zinging through your body.": [
-    "Bard"
-  ],
-  "The protective presence of a guardian spirit surrounds you.": [
-    "Shaman"
-  ],
-  "The shadows fade.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "The spirit of the bear blesses you.": [
-    "Shaman"
-  ],
-  "The spirit of the deep fills your eyes.": [
-    "Enchanter"
-  ],
-  "The spirit of the great bear blesses you.": [
-    "Shaman"
-  ],
-  "The spirit of the predator strengthens your attacks.": [
-    "Ranger"
-  ],
-  "The symbol of Ryltan flashes before your eyes.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "Thistles spring from your skin.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Thorns spring from your skin.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Tiny bubbles of music surround your head.": [
-    "Bard"
-  ],
-  "Translucent armor gathers around you.": [
-    "Cleric",
-    "Necromancer",
-    "Paladin"
-  ],
-  "Twisted logic warps your mind.": [
-    "Enchanter"
-  ],
-  "Venomous notes seep through your body.": [
-    "Bard"
-  ],
-  "Vexing Mordinia begins to drain your life away.": [
-    "Necromancer"
-  ],
-  "You .": [
-    "Shaman"
-  ],
-  "You are adorned by an aura of radiant grace.": [
-    "Enchanter"
-  ],
-  "You are adorned in an aura of radiant grace.": [
-    "Enchanter"
-  ],
-  "You are bathed in a divine light.": [
-    "Cleric"
-  ],
-  "You are blasted by blazing winds.": [
-    "Wizard"
-  ],
-  "You are blasted by energy laden winds.": [
-    "Wizard"
-  ],
-  "You are blasted by freezing winds.": [
-    "Wizard"
-  ],
-  "You are blasted by static winds.": [
-    "Wizard"
-  ],
-  "You are blasted by the vengeance of Al'Kabor.": [
-    "Wizard"
-  ],
-  "You are blasted with chlorophyll.": [
-    "Druid",
-    "Shaman"
-  ],
-  "You are blinded by a flash of light.": [
-    "Beastlord",
-    "Cleric",
-    "Paladin",
-    "Shaman"
-  ],
-  "You are blinded by a sunbeam.": [
-    "Druid"
-  ],
-  "You are captivated by the bewitching tune.": [
-    "Bard"
-  ],
-  "You are captivated by the haunting tune.": [
-    "Bard"
-  ],
-  "You are caught in a raging blizzard.": [
-    "Druid"
-  ],
-  "You are caught in a torrent of fire.": [
-    "Wizard"
-  ],
-  "You are caught in a torrent of jagged ice.": [
-    "Wizard"
-  ],
-  "You are caught in a torrent of lightning.": [
-    "Wizard"
-  ],
-  "You are caught in a torrent of reckless magic.": [
-    "Wizard"
-  ],
-  "You are chilled by a bolt of frost.": [
-    "Wizard"
-  ],
-  "You are cloaked in the blessing of a divine touch.": [
-    "Cleric"
-  ],
-  "You are completely healed.": [
-    "Cleric"
-  ],
-  "You are consumed by the flames of the wild.": [
-    "Druid"
-  ],
-  "You are covered in illusionary armor.": [
-    "Magician"
-  ],
-  "You are covered in illusionary chainmail armor.": [
-    "Magician"
-  ],
-  "You are covered in illusionary leather armor.": [
-    "Magician"
-  ],
-  "You are covered in illusionary platemail armor.": [
-    "Magician"
-  ],
-  "You are embraced by a spirit of healing.": [
-    "Cleric"
-  ],
-  "You are encased in frost.": [
-    "Druid",
-    "Wizard"
-  ],
-  "You are encased within a pillar of frost.": [
-    "Wizard"
-  ],
-  "You are engulfed by darkness.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You are engulfed by devouring darkness.": [
-    "Necromancer"
-  ],
-  "You are engulfed by lightning.": [
-    "Wizard"
-  ],
-  "You are engulfed in darkness.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You are ensnared.": [
-    "Druid",
-    "Ranger"
-  ],
-  "You are entombed in elemental ice.": [
-    "Wizard"
-  ],
-  "You are entombed in ice.": [
-    "Druid"
-  ],
-  "You are enveloped by flame.": [
-    "Magician"
-  ],
-  "You are enveloped by the Aegis of Ro.": [
-    "Magician"
-  ],
-  "You are enveloped in a cadeau of flame.": [
-    "Magician"
-  ],
-  "You are enveloped in blazing energy.": [
-    "Enchanter"
-  ],
-  "You are enveloped in flame.": [
-    "Magician"
-  ],
-  "You are enveloped in lava.": [
-    "Magician"
-  ],
-  "You are exhausted.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You are fascinated by the pretty colors.": [
-    "Enchanter"
-  ],
-  "You are filled with maniacal strength.": [
-    "Shaman"
-  ],
-  "You are filled with the power of Aegolism.": [
-    "Cleric"
-  ],
-  "You are frozen by the retribution of Al'Kabor.": [
-    "Wizard"
-  ],
-  "You are gripped by nature's wrath.": [
-    "Druid"
-  ],
-  "You are immolated by a pillar of flame.": [
-    "Wizard"
-  ],
-  "You are immolated by a pillar of raging lightning.": [
-    "Wizard"
-  ],
-  "You are immolated by blazing flames.": [
-    "Druid"
-  ],
-  "You are immolated by flame.": [
-    "Druid",
-    "Magician",
-    "Wizard"
-  ],
-  "You are immolated by raging energy.": [
-    "Wizard"
-  ],
-  "You are immolated in blazing flames.": [
-    "Druid"
-  ],
-  "You are in the grip of darkness.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You are infused with power.": [
-    "Shaman"
-  ],
-  "You are lost in a fit of despair.": [
-    "Shadow Knight"
-  ],
-  "You are mesmerized by the Glamour of Kintaz.": [
-    "Enchanter"
-  ],
-  "You are mesmerized.": [
-    "Enchanter"
-  ],
-  "You are more alert.": [
-    "Bard"
-  ],
-  "You are now a scaled wolf.": [
-    "Enchanter"
-  ],
-  "You are now a wolf.": [
-    "Druid",
-    "Ranger"
-  ],
-  "You are overcome by sadness.": [
-    "Enchanter"
-  ],
-  "You are pelted by hailstones.": [
-    "Druid"
-  ],
-  "You are pelted by sleet.": [
-    "Wizard"
-  ],
-  "You are promised a divine renewal.": [
-    "Cleric"
-  ],
-  "You are seared by the Seeking Flame of Seukor.": [
-    "Magician"
-  ],
-  "You are sheathed in ice crystals.": [
-    "Druid"
-  ],
-  "You are shrouded by anti-life magic.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You are slammed by an intense gust of wind.": [
-    "Druid"
-  ],
-  "You are struck by a sudden burst of force.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You are struck by a sudden force.": [
-    "Cleric",
-    "Paladin",
-    "Wizard"
-  ],
-  "You are stunned into reverent awe.": [
-    "Cleric"
-  ],
-  "You are stunned.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You are surrounded by a divine barrier.": [
-    "Cleric"
-  ],
-  "You are surrounded by a foreboding aura.": [
-    "Cleric"
-  ],
-  "You are surrounded by a shield of song.": [
-    "Bard"
-  ],
-  "You are surrounded by a summer haze.": [
-    "Druid"
-  ],
-  "You are surrounded by a swirling maelstrom of magical force.": [
-    "Wizard"
-  ],
-  "You are surrounded by a thorny barrier of blades.": [
-    "Druid"
-  ],
-  "You are surrounded by a thorny barrier.": [
-    "Druid",
-    "Ranger"
-  ],
-  "You are surrounded by a winter haze.": [
-    "Druid"
-  ],
-  "You are surrounded by an aura of Divine Favor.": [
-    "Paladin"
-  ],
-  "You are surrounded by an outline of cold flame.": [
-    "Druid"
-  ],
-  "You are surrounded by blazing flames.": [
-    "Druid",
-    "Ranger"
-  ],
-  "You are surrounded by flickering flames.": [
-    "Druid",
-    "Ranger"
-  ],
-  "You are surrounded by the Quivering Veil of Xarn.": [
-    "Necromancer"
-  ],
-  "You are sustained.": [
-    "Bard"
-  ],
-  "You are wracked by chilling poison.": [
-    "Necromancer"
-  ],
-  "You are wracked by pain.": [
-    "Cleric"
-  ],
-  "You are wracked with pain.": [
-    "Cleric",
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You become a force of nature.": [
-    "Ranger"
-  ],
-  "You become like the dead.": [
-    "Necromancer"
-  ],
-  "You become one with your weapons.": [
-    "Ranger"
-  ],
-  "You begin to chant.": [
-    "Bard"
-  ],
-  "You begin to move with wonderous rapidity.": [
-    "Enchanter"
-  ],
-  "You begin to radiate with divine favor.": [
-    "Paladin"
-  ],
-  "You begin to radiate with divine glory.": [
-    "Paladin"
-  ],
-  "You begin to radiate with divine strength.": [
-    "Paladin"
-  ],
-  "You begin to radiate.": [
-    "Wizard"
-  ],
-  "You begin to regenerate.": [
-    "Druid",
-    "Shaman"
-  ],
-  "You begin to run.": [
-    "Enchanter"
-  ],
-  "You begin to scream.": [
-    "Necromancer"
-  ],
-  "You begin to snarl as your features become feline.": [
-    "Shaman"
-  ],
-  "You begin to spin.": [
-    "Enchanter"
-  ],
-  "You being to feel healed by the tortoise.": [
-    "Shaman"
-  ],
-  "You burn within the inferno of Al'Kabor.": [
-    "Wizard"
-  ],
-  "You call out to Karana.": [
-    "Druid"
-  ],
-  "You cast your sight.": [
-    "Enchanter"
-  ],
-  "You coat your blades in a binding poison.": [
-    "Rogue"
-  ],
-  "You coat your blades in a fettering poison.": [
-    "Rogue"
-  ],
-  "You coat your blades in a neurotoxic poison.": [
-    "Rogue"
-  ],
-  "You coat your blades in a numbing poison.": [
-    "Rogue"
-  ],
-  "You coat your blades in a paralytic poison.": [
-    "Rogue"
-  ],
-  "You coat your blades in a thought draining poison.": [
-    "Rogue"
-  ],
-  "You coat your blades in antimagic poison.": [
-    "Rogue"
-  ],
-  "You coat your blades in mage bane poison.": [
-    "Rogue"
-  ],
-  "You coat your blades with a potent venom.": [
-    "Rogue"
-  ],
-  "You convulse as the lightning arcs through you.": [
-    "Wizard"
-  ],
-  "You cough and choke.": [
-    "Beastlord"
-  ],
-  "You experience a quickening.": [
-    "Enchanter"
-  ],
-  "You experience chaotic weightlessness.": [
-    "Enchanter",
-    "Wizard"
-  ],
-  "You experience visions of grandeur.": [
-    "Enchanter"
-  ],
-  "You fade out.": [
-    "Wizard"
-  ],
-  "You fall into a state of impassivity.": [
-    "Shaman"
-  ],
-  "You fall into a state of nonchalance.": [
-    "Shaman"
-  ],
-  "You fall into a state of stoicism.": [
-    "Shaman"
-  ],
-  "You fall into a state of torpor.": [
-    "Shaman"
-  ],
-  "You feel a bit dispelled.": [
-    "Beastlord",
-    "Cleric",
-    "Druid",
-    "Enchanter",
-    "Magician",
-    "Necromancer",
-    "Paladin",
-    "Ranger",
-    "Shadow Knight",
-    "Shaman",
-    "Wizard"
-  ],
-  "You feel a budding within you.": [
-    "Druid"
-  ],
-  "You feel a fever settle upon you.": [
-    "Shaman"
-  ],
-  "You feel a gut-wrenching hatred.": [
-    "Shadow Knight"
-  ],
-  "You feel a heal blooming within you.": [
-    "Druid"
-  ],
-  "You feel a heal blossoming within you.": [
-    "Druid"
-  ],
-  "You feel a heal efflorescing within you.": [
-    "Druid"
-  ],
-  "You feel a heal flowering within you.": [
-    "Druid"
-  ],
-  "You feel a heal sprouting within you.": [
-    "Druid"
-  ],
-  "You feel a little better.": [
-    "Beastlord",
-    "Cleric",
-    "Druid",
-    "Paladin",
-    "Ranger",
-    "Shaman"
-  ],
-  "You feel a pulse of static energy wash over you.": [
-    "Bard"
-  ],
-  "You feel a rush of courage.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You feel a shadow pass over you.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You feel a shortness of breath.": [
-    "Enchanter"
-  ],
-  "You feel a static pulse engulf you.": [
-    "Bard"
-  ],
-  "You feel a strong sense of loss.": [
-    "Bard"
-  ],
-  "You feel a surge of strength as you let forth a mighty yaulp.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You feel a warm aura surround you.": [
-    "Enchanter"
-  ],
-  "You feel agile.": [
-    "Shaman"
-  ],
-  "You feel alluring.": [
-    "Shaman"
-  ],
-  "You feel an aura of elemental protection surrounding you.": [
-    "Bard"
-  ],
-  "You feel an aura of protection engulf you.": [
-    "Bard"
-  ],
-  "You feel an aura of vigorous protection surround you.": [
-    "Bard"
-  ],
-  "You feel annulled.": [
-    "Cleric",
-    "Druid",
-    "Magician",
-    "Necromancer",
-    "Shaman",
-    "Wizard"
-  ],
-  "You feel armored.": [
-    "Enchanter",
-    "Magician",
-    "Necromancer",
-    "Wizard"
-  ],
-  "You feel as cold as stone.": [
-    "Wizard"
-  ],
-  "You feel asinine.": [
-    "Bard"
-  ],
-  "You feel better.": [
-    "Beastlord",
-    "Cleric",
-    "Druid",
-    "Paladin",
-    "Ranger",
-    "Shaman"
-  ],
-  "You feel bigger.": [
-    "Shaman"
-  ],
-  "You feel charismatic.": [
-    "Bard",
-    "Shaman"
-  ],
-  "You feel confused.": [
-    "Enchanter"
-  ],
-  "You feel daring.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You feel deliriously nimble.": [
-    "Shaman"
-  ],
-  "You feel dexterous.": [
-    "Shaman"
-  ],
-  "You feel different.": [
-    "Enchanter",
-    "Necromancer"
-  ],
-  "You feel dispelled.": [
-    "Cleric",
-    "Druid",
-    "Enchanter",
-    "Magician",
-    "Necromancer",
-    "Shaman",
-    "Wizard"
-  ],
-  "You feel divine energy cleansing your soul.": [
-    "Cleric",
-    "Druid",
-    "Paladin",
-    "Shaman"
-  ],
-  "You feel drowsy.": [
-    "Beastlord",
-    "Shaman"
-  ],
-  "You feel enfeebled.": [
-    "Enchanter"
-  ],
-  "You feel feverish.": [
-    "Beastlord",
-    "Necromancer",
-    "Shaman"
-  ],
-  "You feel focused.": [
-    "Shaman"
-  ],
-  "You feel forgiveness in your mind.": [
-    "Cleric"
-  ],
-  "You feel frail.": [
-    "Beastlord",
-    "Enchanter",
-    "Shaman"
-  ],
-  "You feel gravity reverse.": [
-    "Wizard"
-  ],
-  "You feel healthy.": [
-    "Shaman"
-  ],
-  "You feel heroic.": [
-    "Cleric"
-  ],
-  "You feel imbued with spiritual brawn.": [
-    "Beastlord"
-  ],
-  "You feel inspired.": [
-    "Bard"
-  ],
-  "You feel less aggressive.": [
-    "Cleric",
-    "Enchanter",
-    "Paladin"
-  ],
-  "You feel lethargic.": [
-    "Beastlord"
-  ],
-  "You feel magnanimous of spirit.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You feel more agile.": [
-    "Ranger",
-    "Shaman"
-  ],
-  "You feel much better.": [
-    "Beastlord",
-    "Cleric",
-    "Druid",
-    "Paladin",
-    "Ranger",
-    "Shaman"
-  ],
-  "You feel much faster.": [
-    "Enchanter",
-    "Shaman"
-  ],
-  "You feel nimble.": [
-    "Shaman"
-  ],
-  "You feel no need to breathe.": [
-    "Beastlord",
-    "Druid",
-    "Enchanter",
-    "Ranger",
-    "Shaman"
-  ],
-  "You feel part of your mind melt away.": [
-    "Enchanter"
-  ],
-  "You feel protected from cold.": [
-    "Bard",
-    "Beastlord",
-    "Cleric",
-    "Druid",
-    "Necromancer",
-    "Ranger",
-    "Shadow Knight",
-    "Shaman"
-  ],
-  "You feel protected from disease.": [
-    "Bard",
-    "Beastlord",
-    "Cleric",
-    "Druid",
-    "Necromancer",
-    "Paladin",
-    "Shadow Knight",
-    "Shaman"
-  ],
-  "You feel protected from fire and ice.": [
-    "Magician",
-    "Wizard"
-  ],
-  "You feel protected from fire.": [
-    "Bard",
-    "Beastlord",
-    "Cleric",
-    "Druid",
-    "Ranger",
-    "Shaman"
-  ],
-  "You feel protected from magic.": [
-    "Bard",
-    "Beastlord",
-    "Cleric",
-    "Druid",
-    "Enchanter",
-    "Paladin",
-    "Shaman"
-  ],
-  "You feel protected from poison.": [
-    "Bard",
-    "Beastlord",
-    "Cleric",
-    "Druid",
-    "Paladin",
-    "Shaman"
-  ],
-  "You feel protected.": [
-    "Bard",
-    "Cleric"
-  ],
-  "You feel provoked.": [
-    "Bard"
-  ],
-  "You feel quite amicable.": [
-    "Enchanter"
-  ],
-  "You feel quite drowsy.": [
-    "Bard"
-  ],
-  "You feel radiant.": [
-    "Enchanter"
-  ],
-  "You feel replenished.": [
-    "Bard"
-  ],
-  "You feel resistant from cold.": [
-    "Cleric",
-    "Druid",
-    "Necromancer",
-    "Ranger",
-    "Shadow Knight",
-    "Shaman"
-  ],
-  "You feel resistant from disease.": [
-    "Beastlord",
-    "Cleric",
-    "Druid",
-    "Necromancer",
-    "Paladin",
-    "Shaman"
-  ],
-  "You feel resistant from fire.": [
-    "Cleric",
-    "Druid",
-    "Ranger",
-    "Shaman"
-  ],
-  "You feel resistant from magic.": [
-    "Cleric",
-    "Druid",
-    "Enchanter",
-    "Paladin",
-    "Shaman"
-  ],
-  "You feel resistant from poison.": [
-    "Cleric",
-    "Druid",
-    "Shaman"
-  ],
-  "You feel resolute.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You feel restored.": [
-    "Cleric"
-  ],
-  "You feel robust.": [
-    "Shaman"
-  ],
-  "You feel small.": [
-    "Bard"
-  ],
-  "You feel smaller.": [
-    "Beastlord",
-    "Druid",
-    "Enchanter",
-    "Magician",
-    "Necromancer",
-    "Shadow Knight",
-    "Shaman"
-  ],
-  "You feel somewhat vulnerable.": [
-    "Magician",
-    "Shaman"
-  ],
-  "You feel strong.": [
-    "Shaman"
-  ],
-  "You feel stronger.": [
-    "Beastlord",
-    "Druid",
-    "Enchanter",
-    "Necromancer",
-    "Ranger",
-    "Shaman"
-  ],
-  "You feel stupid.": [
-    "Enchanter"
-  ],
-  "You feel the blessing of Mithaniel Marr.": [
-    "Paladin"
-  ],
-  "You feel the favor of the gods upon you.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You feel the glare of the heavens.": [
-    "Druid"
-  ],
-  "You feel the ground scream and heave.": [
-    "Cleric",
-    "Druid"
-  ],
-  "You feel the ground shake.": [
-    "Cleric",
-    "Druid"
-  ],
-  "You feel the pain of a million stings.": [
-    "Druid"
-  ],
-  "You feel the pain of a thousand stings.": [
-    "Druid",
-    "Ranger"
-  ],
-  "You feel the skin peel from your bones.": [
-    "Necromancer"
-  ],
-  "You feel the spirit of Bih`Li enter you.": [
-    "Shaman"
-  ],
-  "You feel the spirit of bear enter you.": [
-    "Beastlord",
-    "Shaman"
-  ],
-  "You feel the spirit of cat enter you.": [
-    "Shaman"
-  ],
-  "You feel the spirit of cheetah enter you.": [
-    "Druid",
-    "Shaman"
-  ],
-  "You feel the spirit of monkey enter you.": [
-    "Beastlord",
-    "Shaman"
-  ],
-  "You feel the spirit of ox enter you.": [
-    "Beastlord",
-    "Shaman"
-  ],
-  "You feel the spirit of shrew enter you.": [
-    "Beastlord",
-    "Druid",
-    "Ranger",
-    "Shaman"
-  ],
-  "You feel the spirit of snake enter you.": [
-    "Shaman"
-  ],
-  "You feel the spirit of the brute channel through you.": [
-    "Shaman"
-  ],
-  "You feel the spirit of the cat channel through you.": [
-    "Shaman"
-  ],
-  "You feel the spirit of the raptor channel through you.": [
-    "Shaman"
-  ],
-  "You feel the spirit of the rhino channel through you.": [
-    "Shaman"
-  ],
-  "You feel the spirit of the scaled wolf enter you.": [
-    "Druid",
-    "Shaman"
-  ],
-  "You feel the spirit of the serpent channel through you.": [
-    "Shaman"
-  ],
-  "You feel the spirit of wolf enter you.": [
-    "Beastlord",
-    "Druid",
-    "Ranger",
-    "Shaman"
-  ],
-  "You feel the spirit-scale of wolf enter you.": [
-    "Druid",
-    "Shaman"
-  ],
-  "You feel the strength of Karana infuse you.": [
-    "Druid"
-  ],
-  "You feel the touch of Redemption.": [
-    "Cleric"
-  ],
-  "You feel the urge to rampage.": [
-    "Enchanter"
-  ],
-  "You feel the watchful eyes of the gods upon you.": [
-    "Cleric"
-  ],
-  "You feel tough.": [
-    "Shaman"
-  ],
-  "You feel valorous.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You feel very brave.": [
-    "Cleric"
-  ],
-  "You feel very dispelled.": [
-    "Enchanter"
-  ],
-  "You feel very vulnerable.": [
-    "Magician",
-    "Shaman"
-  ],
-  "You feel vigorous.": [
-    "Cleric"
-  ],
-  "You feel vulnerable.": [
-    "Magician",
-    "Shaman"
-  ],
-  "You feel weak.": [
-    "Enchanter"
-  ],
-  "You feel weaker.": [
-    "Enchanter"
-  ],
-  "You feel your aggression subside.": [
-    "Cleric",
-    "Druid",
-    "Enchanter",
-    "Paladin",
-    "Ranger"
-  ],
-  "You feel your blood begin to leech away.": [
-    "Necromancer"
-  ],
-  "You feel your blood being drained away.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You feel your body pulse with energy.": [
-    "Beastlord",
-    "Enchanter",
-    "Shaman"
-  ],
-  "You feel your bones harden and crack from the frost.": [
-    "Necromancer"
-  ],
-  "You feel your enchantments being stripped away.": [
-    "Enchanter"
-  ],
-  "You feel your health begin to drain away.": [
-    "Necromancer"
-  ],
-  "You feel your health begin to drain.": [
-    "Necromancer"
-  ],
-  "You feel your heart stop beating.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You feel your life force drain away.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You feel your lifeforce drain away.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You feel your mental energies drain away.": [
-    "Enchanter"
-  ],
-  "You feel your mental energies slip away.": [
-    "Enchanter"
-  ],
-  "You feel your mind fog.": [
-    "Enchanter"
-  ],
-  "You feel your pulse quicken.": [
-    "Bard"
-  ],
-  "You feel your skin blister and burn.": [
-    "Magician"
-  ],
-  "You feel your skin burn as poison seeps through your skin.": [
-    "Necromancer"
-  ],
-  "You feel your skin burn from your body.": [
-    "Necromancer"
-  ],
-  "You feel your skin combust.": [
-    "Druid",
-    "Wizard"
-  ],
-  "You feel your skin freeze over.": [
-    "Wizard"
-  ],
-  "You feel your skin freeze.": [
-    "Wizard"
-  ],
-  "You feel your skin harden and crack from the frost.": [
-    "Necromancer"
-  ],
-  "You feel your skin ignite and char.": [
-    "Magician"
-  ],
-  "You feel your skin ignite.": [
-    "Druid",
-    "Magician",
-    "Ranger",
-    "Wizard"
-  ],
-  "You feel your skin numb as the frost rift strikes you.": [
-    "Shaman"
-  ],
-  "You feel your skin singe as the Burst of Fire hits you.": [
-    "Druid",
-    "Ranger"
-  ],
-  "You feel your skin singe as the Burst of Flame hits you.": [
-    "Druid",
-    "Magician",
-    "Shaman"
-  ],
-  "You feel your skin tingle.": [
-    "Cleric",
-    "Enchanter",
-    "Necromancer",
-    "Paladin",
-    "Shadow Knight",
-    "Wizard"
-  ],
-  "You feel your strength dwindle.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You feel your strength grow.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You feel yourself bind to the area.": [
-    "Cleric",
-    "Druid",
-    "Enchanter",
-    "Magician",
-    "Necromancer",
-    "Shaman",
-    "Wizard"
-  ],
-  "You feel... strange.": [
-    "Enchanter"
-  ],
-  "You forget what you were supposed to be.": [
-    "Enchanter"
-  ],
-  "You gasp for breath.": [
-    "Enchanter"
-  ],
-  "You gather mana from your surroundings.": [
-    "Wizard"
-  ],
-  "You gather shadows about you.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You go berserk.": [
-    "Bard",
-    "Beastlord",
-    "Shaman"
-  ],
-  "You grow scales.": [
-    "Beastlord",
-    "Shaman"
-  ],
-  "You have been charmed.": [
-    "Enchanter"
-  ],
-  "You have been crippled.": [
-    "Enchanter",
-    "Shaman"
-  ],
-  "You have been cursed.": [
-    "Shaman"
-  ],
-  "You have been deafened.": [
-    "Bard"
-  ],
-  "You have been enlightened.": [
-    "Enchanter"
-  ],
-  "You have been enthralled.": [
-    "Enchanter"
-  ],
-  "You have been entranced.": [
-    "Enchanter"
-  ],
-  "You have been force struck.": [
-    "Wizard"
-  ],
-  "You have been lacerated by deadly steel.": [
-    "Magician"
-  ],
-  "You have been lacerated.": [
-    "Magician"
-  ],
-  "You have been poisoned.": [
-    "Beastlord",
-    "Necromancer",
-    "Shaman"
-  ],
-  "You have been protected by the Talisman of Jasinth.": [
-    "Shaman"
-  ],
-  "You have been protected by the Talisman of Shadoo.": [
-    "Shaman"
-  ],
-  "You have been smitten.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You have been struck by the shocking Fist of Karana.": [
-    "Druid"
-  ],
-  "You have been struck by the wrath of the gods.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You have been struck down by the judgement of the gods.": [
-    "Cleric"
-  ],
-  "You have been struck down by wrath.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You have been struck.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "You have been stunned by thunder.": [
-    "Wizard"
-  ],
-  "You have been thunderstruck.": [
-    "Wizard"
-  ],
-  "You have been warded from harm.": [
-    "Beastlord",
-    "Magician",
-    "Necromancer"
-  ],
-  "You have taken root.": [
-    "Druid"
-  ],
-  "You have triggered your sentinel.": [
-    "Cleric"
-  ],
-  "You hear the barking of Tashan.": [
-    "Enchanter"
-  ],
-  "You hear the barking of Tashania.": [
-    "Enchanter"
-  ],
-  "You hear the barking of the Tashani.": [
-    "Enchanter"
-  ],
-  "You hear the ground rumble.": [
-    "Cleric",
-    "Druid"
-  ],
-  "You hear the music of twilight.": [
-    "Bard"
-  ],
-  "You lose yourself in your rage and go berserk.": [
-    "Shaman"
-  ],
-  "You no longer feel pain.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "You reel in pain as every bone in your body vibrates.": [
-    "Bard"
-  ],
-  "You rise on a gust of hot air.": [
-    "Wizard"
-  ],
-  "You scream as a magic force rends the skin from your body.": [
-    "Wizard"
-  ],
-  "You send forth music.": [
-    "Bard"
-  ],
-  "You sense that you are being watched.": [
-    "Enchanter"
-  ],
-  "You shift your sight.": [
-    "Enchanter",
-    "Wizard"
-  ],
-  "You shriek as your bones are ablaze.": [
-    "Necromancer"
-  ],
-  "You simmer with fury.": [
-    "Beastlord",
-    "Shaman"
-  ],
-  "You slow down as your feet are covered in tangling weeds.": [
-    "Druid",
-    "Ranger"
-  ],
-  "You slow down.": [
-    "Beastlord",
-    "Enchanter"
-  ],
-  "You smell the faint scent of Terris.": [
-    "Necromancer"
-  ],
-  "You smell the faint scent of darkness.": [
-    "Necromancer"
-  ],
-  "You smell the faint scent of dusk.": [
-    "Necromancer"
-  ],
-  "You smell the faint scent of shadow.": [
-    "Necromancer"
-  ],
-  "You spin to face north.": [
-    "Cleric",
-    "Enchanter",
-    "Magician",
-    "Necromancer",
-    "Paladin",
-    "Shaman",
-    "Wizard"
-  ],
-  "You stagger as spirits of frost slam against you.": [
-    "Beastlord",
-    "Shaman"
-  ],
-  "You stagger as spirits of ice slam against you.": [
-    "Shaman"
-  ],
-  "You stagger as the light of divine words enter your mind.": [
-    "Cleric"
-  ],
-  "You stagger from a blow to the head.": [
-    "Wizard"
-  ],
-  "You stagger in pain as every bone in your body pulses.": [
-    "Bard"
-  ],
-  "You stagger under a dark curse.": [
-    "Shaman"
-  ],
-  "You succumb to the enticement of flame.": [
-    "Wizard"
-  ],
-  "You succumb to the lure of flame.": [
-    "Wizard"
-  ],
-  "You succumb to the lure of frost.": [
-    "Wizard"
-  ],
-  "You succumb to the lure of ice.": [
-    "Wizard"
-  ],
-  "You succumb to the lure of lightning.": [
-    "Wizard"
-  ],
-  "You suddenly feel very friendly.": [
-    "Bard"
-  ],
-  "You summon a companion spirit.": [
-    "Shaman"
-  ],
-  "You summon a frenzied spirit.": [
-    "Shaman"
-  ],
-  "You summon a guardian spirit.": [
-    "Shaman"
-  ],
-  "You summon a howling spirit.": [
-    "Shaman"
-  ],
-  "You summon a spirit of nature.": [
-    "Druid"
-  ],
-  "You summon a suit of phantom chain armor.": [
-    "Magician"
-  ],
-  "You summon a suit of phantom leather armor.": [
-    "Magician"
-  ],
-  "You summon a suit of phantom plate armor.": [
-    "Magician"
-  ],
-  "You summon a vigilant spirit.": [
-    "Shaman"
-  ],
-  "You summon a warder to your aid.": [
-    "Beastlord"
-  ],
-  "You summon forth a lesser familiar.": [
-    "Wizard"
-  ],
-  "You summon forth a minor familiar.": [
-    "Wizard"
-  ],
-  "You summon your companion to your side.": [
-    "Beastlord",
-    "Druid",
-    "Enchanter",
-    "Magician",
-    "Necromancer",
-    "Shaman"
-  ],
-  "You swoon, overcome by rapture.": [
-    "Enchanter"
-  ],
-  "You take on a non-threatening visage.": [
-    "Enchanter"
-  ],
-  "You take on a threatening visage.": [
-    "Enchanter"
-  ],
-  "You vanish.": [
-    "Beastlord",
-    "Druid",
-    "Enchanter",
-    "Magician",
-    "Ranger",
-    "Shaman",
-    "Wizard"
-  ],
-  "You voice is filled with the sound of shadows.": [
-    "Shadow Knight"
-  ],
-  "You whistle an ancient warsong.": [
-    "Bard"
-  ],
-  "Your blood boils.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "Your blood freezes as you are iced by an intense cone of frost.": [
-    "Druid"
-  ],
-  "Your blood ignites.": [
-    "Necromancer"
-  ],
-  "Your blood simmers.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "Your body aches as your mind clears.": [
-    "Shaman"
-  ],
-  "Your body begins to splurt.": [
-    "Necromancer"
-  ],
-  "Your body fades away.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Your body is consumed by the flames of the sun.": [
-    "Wizard"
-  ],
-  "Your body is consumed by the wrath of the elements.": [
-    "Magician"
-  ],
-  "Your body is pelted by spores.": [
-    "Necromancer"
-  ],
-  "Your body is wracked by shocks of poison.": [
-    "Shaman"
-  ],
-  "Your body is wracked by shocks of venom.": [
-    "Shaman"
-  ],
-  "Your body screams with the power of an Avatar.": [
-    "Shaman"
-  ],
-  "Your body shines with riotous health.": [
-    "Shaman"
-  ],
-  "Your body spasms as the lightning bolt arcs through you.": [
-    "Wizard"
-  ],
-  "Your body zings with energy.": [
-    "Cleric",
-    "Druid",
-    "Enchanter",
-    "Paladin",
-    "Ranger",
-    "Shaman"
-  ],
-  "Your bones tingle.": [
-    "Cleric",
-    "Necromancer",
-    "Paladin",
-    "Shadow Knight"
-  ],
-  "Your brain begins to smolder.": [
-    "Enchanter"
-  ],
-  "Your ears filled with the deafening roar of Karana's Thunder.": [
-    "Paladin"
-  ],
-  "Your essence drains away.": [
-    "Necromancer"
-  ],
-  "Your eyes begin to focus.": [
-    "Shaman"
-  ],
-  "Your eyes feel stronger.": [
-    "Ranger",
-    "Wizard"
-  ],
-  "Your eyes gleam with bedlam.": [
-    "Enchanter"
-  ],
-  "Your eyes sharpen, with an aura of avian presence.": [
-    "Ranger"
-  ],
-  "Your eyes tingle.": [
-    "Beastlord",
-    "Druid",
-    "Enchanter",
-    "Magician",
-    "Ranger",
-    "Shaman",
-    "Wizard"
-  ],
-  "Your features sharpen.": [
-    "Druid"
-  ],
-  "Your feel your skin freeze.": [
-    "Wizard"
-  ],
-  "Your feet adhere to the ground.": [
-    "Cleric",
-    "Enchanter",
-    "Necromancer",
-    "Paladin",
-    "Shaman",
-    "Wizard"
-  ],
-  "Your feet become entangled.": [
-    "Druid"
-  ],
-  "Your feet become entwined.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Your feet blur as they leave the ground.": [
-    "Bard"
-  ],
-  "Your feet leave the ground.": [
-    "Beastlord",
-    "Druid",
-    "Enchanter",
-    "Ranger",
-    "Shaman",
-    "Wizard"
-  ],
-  "Your feet move faster.": [
-    "Bard"
-  ],
-  "Your fist bursts into flame.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Your hand begins to glow with divine might.": [
-    "Paladin"
-  ],
-  "Your hand begins to glow.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "Your hands glow a dull gold.": [
-    "Cleric"
-  ],
-  "Your hands glow a pale gold.": [
-    "Cleric"
-  ],
-  "Your hands glow a subdued gold.": [
-    "Cleric"
-  ],
-  "Your hands glow golden.": [
-    "Cleric"
-  ],
-  "Your head snaps back.": [
-    "Ranger"
-  ],
-  "Your heart stops.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "Your heartbeat becomes irregular.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "Your image blurs.": [
-    "Enchanter"
-  ],
-  "Your image clouds.": [
-    "Enchanter"
-  ],
-  "Your image fades into shadow.": [
-    "Enchanter"
-  ],
-  "Your image fades into the umbra.": [
-    "Enchanter"
-  ],
-  "Your image fades.": [
-    "Enchanter"
-  ],
-  "Your image has been obscured.": [
-    "Enchanter"
-  ],
-  "Your life force drains away at the Gangrenous Touch of Zum`uul.": [
-    "Necromancer"
-  ],
-  "Your life force drains away at the Touch of Night.": [
-    "Necromancer"
-  ],
-  "Your mind begins to clear.": [
-    "Bard"
-  ],
-  "Your mind bleeds with wonder.": [
-    "Cleric"
-  ],
-  "Your mind clears as a rush of essence fills you.": [
-    "Necromancer"
-  ],
-  "Your mind clears.": [
-    "Bard",
-    "Enchanter"
-  ],
-  "Your mind fills with fear.": [
-    "Cleric",
-    "Enchanter",
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "Your mind fills with trepidation.": [
-    "Cleric",
-    "Enchanter",
-    "Necromancer"
-  ],
-  "Your mind fills with wisdom.": [
-    "Enchanter"
-  ],
-  "Your mind sharpens.": [
-    "Bard",
-    "Enchanter"
-  ],
-  "Your mind snaps in terror.": [
-    "Bard"
-  ],
-  "Your muscles bulge with berserker strength.": [
-    "Enchanter"
-  ],
-  "Your muscles erupt with frenzied strength.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "Your muscles erupt with reckless strength.": [
-    "Cleric",
-    "Paladin"
-  ],
-  "Your muscles move with mortal deftness.": [
-    "Shaman"
-  ],
-  "Your muscles scream with strength.": [
-    "Shaman"
-  ],
-  "Your sight is bound.": [
-    "Enchanter",
-    "Ranger",
-    "Wizard"
-  ],
-  "Your skin becomes like diamond.": [
-    "Necromancer",
-    "Shadow Knight",
-    "Wizard"
-  ],
-  "Your skin becomes like leather.": [
-    "Necromancer",
-    "Wizard"
-  ],
-  "Your skin becomes like steel.": [
-    "Necromancer",
-    "Shadow Knight",
-    "Wizard"
-  ],
-  "Your skin becomes shadow.": [
-    "Necromancer"
-  ],
-  "Your skin blisters as energy rains down from above.": [
-    "Wizard"
-  ],
-  "Your skin blisters as fire rains down from above.": [
-    "Magician",
-    "Wizard"
-  ],
-  "Your skin blisters as it is consumed by pure mana.": [
-    "Wizard"
-  ],
-  "Your skin blisters as lava rains down from above.": [
-    "Magician"
-  ],
-  "Your skin blisters as lightning rains down from above.": [
-    "Wizard"
-  ],
-  "Your skin blisters as poison rains down on you.": [
-    "Shaman"
-  ],
-  "Your skin blisters as the tears of Druzzil rain down on you.": [
-    "Wizard"
-  ],
-  "Your skin blisters as the tears of Solusek rain down on you.": [
-    "Wizard"
-  ],
-  "Your skin erupts in purulent pustules.": [
-    "Shaman"
-  ],
-  "Your skin freezes as frost rains down from above.": [
-    "Wizard"
-  ],
-  "Your skin freezes as the tears of Prexus rain down on you.": [
-    "Wizard"
-  ],
-  "Your skin freezes over.": [
-    "Wizard"
-  ],
-  "Your skin gleams with a pure aura.": [
-    "Cleric"
-  ],
-  "Your skin gleams with an incandescent glow.": [
-    "Necromancer",
-    "Wizard"
-  ],
-  "Your skin glows with a pale greenish tint.": [
-    "Ranger"
-  ],
-  "Your skin goes numb.": [
-    "Wizard"
-  ],
-  "Your skin ignites as wildfire courses over your body.": [
-    "Druid"
-  ],
-  "Your skin melts.": [
-    "Druid"
-  ],
-  "Your skin numbs as deadly mana rains down from above.": [
-    "Magician"
-  ],
-  "Your skin shimmers with divine power.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Your skin shimmers.": [
-    "Druid"
-  ],
-  "Your skin shines.": [
-    "Wizard"
-  ],
-  "Your skin shreds as blades rain down from above.": [
-    "Magician"
-  ],
-  "Your skin shreds as spikes rain down from above.": [
-    "Magician"
-  ],
-  "Your skin shreds as swords rain down from above.": [
-    "Magician"
-  ],
-  "Your skin shrivels.": [
-    "Shadow Knight"
-  ],
-  "Your skin steams and melts as poison rains down on you.": [
-    "Shaman"
-  ],
-  "Your skin tears as bolts of elemental power strike you.": [
-    "Magician"
-  ],
-  "Your skin turns hard as diamond.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Your skin turns hard as steel.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Your skin turns hard as stone.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Your skin turns hard as turtle shell.": [
-    "Beastlord",
-    "Shaman"
-  ],
-  "Your skin turns hard as wood.": [
-    "Druid",
-    "Ranger"
-  ],
-  "Your soul is assaulted by the ages.": [
-    "Wizard"
-  ],
-  "Your spirit drifts from your body.": [
-    "Shaman"
-  ],
-  "Your spirit screams with berserker strength.": [
-    "Enchanter"
-  ],
-  "Your stomach begins to cramp.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "Your thoughts begin to race and flow faster.": [
-    "Enchanter"
-  ],
-  "Your thoughts muddle from the Torment of Argli.": [
-    "Enchanter"
-  ],
-  "Your thoughts quicken as faith fills your mind.": [
-    "Cleric"
-  ],
-  "Your thoughts quicken as reverence fills your mind.": [
-    "Cleric"
-  ],
-  "Your veins fill with deadly poison.": [
-    "Shaman"
-  ],
-  "Your vision shifts to perceive the ethereal.": [
-    "Wizard"
-  ],
-  "Your vision shifts.": [
-    "Necromancer",
-    "Ranger",
-    "Shadow Knight"
-  ],
-  "Your voice binds chords into chains.": [
-    "Bard"
-  ],
-  "Your voice booms.": [
-    "Bard"
-  ],
-  "Your voice is filled with sounds of darkness.": [
-    "Shadow Knight"
-  ],
-  "Your weapons glow.": [
-    "Bard"
-  ],
-  "Your weapons whir with a magical rhythm.": [
-    "Bard"
-  ],
-  "Your world dissolves into anarchy.": [
-    "Enchanter"
-  ],
-  "Your world goes mad as chaos flows through you.": [
-    "Enchanter"
-  ],
-  "Your wounds begin to heal.": [
-    "Bard",
-    "Necromancer"
-  ],
-  "Your wounds disappear.": [
-    "Necromancer",
-    "Shadow Knight"
-  ],
-  "Your wounds fade.": [
-    "Cleric"
-  ],
-  "Your wounds fester.": [
-    "Shadow Knight"
-  ],
-  "Your wounds heal.": [
-    "Beastlord",
-    "Cleric",
-    "Druid",
-    "Shaman"
-  ],
-  "You feel an aura of mystic protection surrounding you.": [
-    "Bard"
-  ]
+ "A Halo of Light solidifies in your hand.": [
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Wizard"
+ ],
+ "A blast of acid eats at your skin.": [
+  "Necromancer"
+ ],
+ "A blast of poison eats at your skin.": [
+  "Necromancer"
+ ],
+ "A blistering wind envelops your body.": [
+  "Magician"
+ ],
+ "A brilliant blue aura surrounds your weapon.": [
+  "Paladin"
+ ],
+ "A bulwark of faith protects you.": [
+  "Cleric"
+ ],
+ "A burst of speed surges through your body.": [
+  "Bard"
+ ],
+ "A burst of strength surges through your body.": [
+  "Bard"
+ ],
+ "A coat of shimmering runes surround you.": [
+  "Enchanter"
+ ],
+ "A concussion of air knocks you backwards.": [
+  "Ranger"
+ ],
+ "A cool breeze slips through your mind.": [
+  "Enchanter"
+ ],
+ "A dark shimmer of runes surround you.": [
+  "Enchanter"
+ ],
+ "A dark voice beckons to you.": [
+  "Shadow Knight"
+ ],
+ "A darkness falls over your soul.": [
+  "Necromancer"
+ ],
+ "A dull aura covers your hand.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "A dull blue aura surrounds you.": [
+  "Wizard"
+ ],
+ "A dull white aura surrounds you.": [
+  "Cleric"
+ ],
+ "A faint blue aura surrounds you.": [
+  "Enchanter"
+ ],
+ "A faint white aura surrounds you.": [
+  "Cleric"
+ ],
+ "A feeling of temperance washes over you.": [
+  "Cleric"
+ ],
+ "A flame of divine light erupts around you.": [
+  "Paladin"
+ ],
+ "A flame of divine purpose compels you.": [
+  "Paladin"
+ ],
+ "A foreign surge of mana refreshes your mind.": [
+  "Necromancer"
+ ],
+ "A globe of cold light forms in your hand.": [
+  "Necromancer"
+ ],
+ "A globe of stars forms within your hands.": [
+  "Druid"
+ ],
+ "A light breeze slips through your mind.": [
+  "Enchanter"
+ ],
+ "A light shimmer of runes surround you.": [
+  "Enchanter"
+ ],
+ "A magical hammer appears in your hand.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "A mellifluous melody sweeps you away.": [
+  "Bard"
+ ],
+ "A mystic force shields your skin.": [
+  "Necromancer",
+  "Shadow Knight",
+  "Wizard"
+ ],
+ "A mystic symbol flashes before your eyes.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "A nimbus of deathly darkness covers your body.": [
+  "Shadow Knight"
+ ],
+ "A nimbus of deathly darkness covers your hands.": [
+  "Shadow Knight"
+ ],
+ "A protective aura settles over you.": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "A protective spirit shroud cloaks you.": [
+  "Shaman"
+ ],
+ "A pulse of static energy slams through you.": [
+  "Wizard"
+ ],
+ "A reflective aura surrounds you.": [
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Wizard"
+ ],
+ "A scythe of darkness tears through you.": [
+  "Shadow Knight"
+ ],
+ "A seething mass of darkness engulfs you.": [
+  "Shadow Knight"
+ ],
+ "A shifting spirit shield surrounds you.": [
+  "Shaman"
+ ],
+ "A shimmer of runes surround you.": [
+  "Enchanter"
+ ],
+ "A shrieking aura surrounds you.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "A silvery force slicks your skin.": [
+  "Wizard"
+ ],
+ "A soft breeze slips through your mind.": [
+  "Enchanter"
+ ],
+ "A soft mist surrounds you.": [
+  "Bard"
+ ],
+ "A song of inspiration fills your weapon arm with strength.": [
+  "Bard"
+ ],
+ "A spear of disease sears your flesh.": [
+  "Shadow Knight"
+ ],
+ "A spear of pain sears your flesh.": [
+  "Shadow Knight"
+ ],
+ "A stream of fire washes over you.": [
+  "Magician",
+  "Wizard"
+ ],
+ "A sudden flare of cosmic energy pierces your defenses.": [
+  "Wizard"
+ ],
+ "A sudden flare of extraplanar energy pierces your defenses.": [
+  "Wizard"
+ ],
+ "A swarm of fireflies shimmers around your hand.": [
+  "Druid",
+  "Ranger"
+ ],
+ "A swarm of nifiliks crawl through your armor.": [
+  "Ranger"
+ ],
+ "A swirling orb of elements forms in your hand.": [
+  "Magician"
+ ],
+ "A tune pervades your mind and beckons you.": [
+  "Bard"
+ ],
+ "A wave of flame washes over you.": [
+  "Ranger"
+ ],
+ "A wave of healing washes over you.": [
+  "Paladin"
+ ],
+ "A wave of heat screams through you.": [
+  "Wizard"
+ ],
+ "A wisp settles into your hand.": [
+  "Magician"
+ ],
+ "A zephyr of ice tears through you.": [
+  "Wizard"
+ ],
+ "An aegis of faith engulfs you.": [
+  "Cleric"
+ ],
+ "An aura of fortitude fills you.": [
+  "Cleric"
+ ],
+ "An aura of spiritual light envelops you.": [
+  "Beastlord"
+ ],
+ "Barbs spring from your skin.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Blades spring from your skin.": [
+  "Druid"
+ ],
+ "Bonds of force bind your feet to the ground.": [
+  "Wizard"
+ ],
+ "Brambles spring from your skin.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Celestial Elixir pumps through your body.": [
+  "Cleric"
+ ],
+ "Celestial light pumps through your body.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Chords of music bind your hands.": [
+  "Bard"
+ ],
+ "Dancing lights flicker in and out of your vision.": [
+  "Enchanter"
+ ],
+ "Dark albatross circle overhead.": [
+  "Necromancer"
+ ],
+ "Dark terror fills your mind.": [
+  "Shadow Knight"
+ ],
+ "Dark vines drag your feet into the ground.": [
+  "Druid"
+ ],
+ "Debris smashes against your body.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Energy races across your body.": [
+  "Wizard"
+ ],
+ "Ethereal light pumps through your body.": [
+  "Paladin"
+ ],
+ "Flames dance across your body.": [
+  "Wizard"
+ ],
+ "Flames race across your body.": [
+  "Magician"
+ ],
+ "Freezing winds rend your body.": [
+  "Wizard"
+ ],
+ "Hatred fuels your arms.": [
+  "Shadow Knight"
+ ],
+ "Healing water flows over you.": [
+  "Druid"
+ ],
+ "Insidious imagery clouds your mind.": [
+  "Enchanter"
+ ],
+ "Jagged notes tear through your body.": [
+  "Bard"
+ ],
+ "Jagged notes tear through your mind.": [
+  "Bard"
+ ],
+ "Lightning flashes through your body.": [
+  "Wizard"
+ ],
+ "Lightning surges through your body.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Long forgotten knowledge sifts through your mind.": [
+  "Bard"
+ ],
+ "Music floods your mind and sharpens your sight.": [
+  "Bard"
+ ],
+ "Nature's strength flows through your muscles.": [
+  "Ranger"
+ ],
+ "Notes of purity cleanse your body.": [
+  "Bard"
+ ],
+ "Part of your image fades away.": [
+  "Druid",
+  "Shaman"
+ ],
+ "People look at you with unfailing reverence.": [
+  "Shaman"
+ ],
+ "Reality runs amok.": [
+  "Enchanter"
+ ],
+ "Rizlona's embers pulse through your body.": [
+  "Bard"
+ ],
+ "Scintillating colors dazzle your brain.": [
+  "Enchanter"
+ ],
+ "Scintillating colors pound through your brain.": [
+  "Enchanter"
+ ],
+ "Scintillating flames race across your body.": [
+  "Magician"
+ ],
+ "Shadowed terror fills your mind.": [
+  "Shadow Knight"
+ ],
+ "Silver strands of music bind you.": [
+  "Bard"
+ ],
+ "Sionachie's dreams invade your mind.": [
+  "Bard"
+ ],
+ "Solist's spear of ice strikes you down.": [
+  "Wizard"
+ ],
+ "Spectral shackles bind your feet to the ground.": [
+  "Wizard"
+ ],
+ "Spikes spring from your skin.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Strands of music cover your eyes.": [
+  "Bard"
+ ],
+ "Strands of solid music bind your body.": [
+  "Bard"
+ ],
+ "The Call of Earth surrounds your body protectively.": [
+  "Ranger"
+ ],
+ "The Call of Fire fills your weapons with power.": [
+  "Ranger"
+ ],
+ "The Call of Sky fills your weapons with power..": [
+  "Ranger"
+ ],
+ "The Scars of Sigil burn you.": [
+  "Magician"
+ ],
+ "The air crackles around you.": [
+  "Enchanter"
+ ],
+ "The aria lifts you into the air..": [
+  "Bard"
+ ],
+ "The beat of your heart increases to match the music.": [
+  "Bard"
+ ],
+ "The bile wells up in your throat.": [
+  "Necromancer",
+  "Shaman"
+ ],
+ "The blood of pain burns in your veins.": [
+  "Shadow Knight"
+ ],
+ "The blood stops flowing in your veins.": [
+  "Necromancer"
+ ],
+ "The gods have rendered you invulnerable.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "The harmony surrounds you.": [
+  "Bard"
+ ],
+ "The jig sends energy zinging through your body.": [
+  "Bard"
+ ],
+ "The protective presence of a guardian spirit surrounds you.": [
+  "Shaman"
+ ],
+ "The shadows fade.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "The spirit of the bear blesses you.": [
+  "Shaman"
+ ],
+ "The spirit of the deep fills your eyes.": [
+  "Enchanter"
+ ],
+ "The spirit of the great bear blesses you.": [
+  "Shaman"
+ ],
+ "The spirit of the predator strengthens your attacks.": [
+  "Ranger"
+ ],
+ "The symbol of Ryltan flashes before your eyes.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Thistles spring from your skin.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Thorns spring from your skin.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Tiny bubbles of music surround your head.": [
+  "Bard"
+ ],
+ "Translucent armor gathers around you.": [
+  "Cleric",
+  "Necromancer",
+  "Paladin"
+ ],
+ "Twisted logic warps your mind.": [
+  "Enchanter"
+ ],
+ "Venomous notes seep through your body.": [
+  "Bard"
+ ],
+ "Vexing Mordinia begins to drain your life away.": [
+  "Necromancer"
+ ],
+ "You .": [
+  "Shaman"
+ ],
+ "You are adorned by an aura of radiant grace.": [
+  "Enchanter"
+ ],
+ "You are adorned in an aura of radiant grace.": [
+  "Enchanter"
+ ],
+ "You are bathed in a divine light.": [
+  "Cleric"
+ ],
+ "You are blasted by blazing winds.": [
+  "Wizard"
+ ],
+ "You are blasted by energy laden winds.": [
+  "Wizard"
+ ],
+ "You are blasted by freezing winds.": [
+  "Wizard"
+ ],
+ "You are blasted by static winds.": [
+  "Wizard"
+ ],
+ "You are blasted by the vengeance of Al'Kabor.": [
+  "Wizard"
+ ],
+ "You are blasted with chlorophyll.": [
+  "Druid",
+  "Shaman"
+ ],
+ "You are blinded by a flash of light.": [
+  "Beastlord",
+  "Cleric",
+  "Paladin",
+  "Shaman"
+ ],
+ "You are blinded by a sunbeam.": [
+  "Druid"
+ ],
+ "You are captivated by the bewitching tune.": [
+  "Bard"
+ ],
+ "You are captivated by the haunting tune.": [
+  "Bard"
+ ],
+ "You are caught in a raging blizzard.": [
+  "Druid"
+ ],
+ "You are caught in a torrent of fire.": [
+  "Wizard"
+ ],
+ "You are caught in a torrent of jagged ice.": [
+  "Wizard"
+ ],
+ "You are caught in a torrent of lightning.": [
+  "Wizard"
+ ],
+ "You are caught in a torrent of reckless magic.": [
+  "Wizard"
+ ],
+ "You are chilled by a bolt of frost.": [
+  "Wizard"
+ ],
+ "You are cloaked in the blessing of a divine touch.": [
+  "Cleric"
+ ],
+ "You are completely healed.": [
+  "Cleric"
+ ],
+ "You are consumed by the flames of the wild.": [
+  "Druid"
+ ],
+ "You are covered in illusionary armor.": [
+  "Magician"
+ ],
+ "You are covered in illusionary chainmail armor.": [
+  "Magician"
+ ],
+ "You are covered in illusionary leather armor.": [
+  "Magician"
+ ],
+ "You are covered in illusionary platemail armor.": [
+  "Magician"
+ ],
+ "You are embraced by a spirit of healing.": [
+  "Cleric"
+ ],
+ "You are encased in frost.": [
+  "Druid",
+  "Wizard"
+ ],
+ "You are encased within a pillar of frost.": [
+  "Wizard"
+ ],
+ "You are engulfed by darkness.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You are engulfed by devouring darkness.": [
+  "Necromancer"
+ ],
+ "You are engulfed by lightning.": [
+  "Wizard"
+ ],
+ "You are engulfed in darkness.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You are ensnared.": [
+  "Druid",
+  "Ranger"
+ ],
+ "You are entombed in elemental ice.": [
+  "Wizard"
+ ],
+ "You are entombed in ice.": [
+  "Druid"
+ ],
+ "You are enveloped by flame.": [
+  "Magician"
+ ],
+ "You are enveloped by the Aegis of Ro.": [
+  "Magician"
+ ],
+ "You are enveloped in a cadeau of flame.": [
+  "Magician"
+ ],
+ "You are enveloped in blazing energy.": [
+  "Enchanter"
+ ],
+ "You are enveloped in flame.": [
+  "Magician"
+ ],
+ "You are enveloped in lava.": [
+  "Magician"
+ ],
+ "You are exhausted.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You are fascinated by the pretty colors.": [
+  "Enchanter"
+ ],
+ "You are filled with maniacal strength.": [
+  "Shaman"
+ ],
+ "You are filled with the power of Aegolism.": [
+  "Cleric"
+ ],
+ "You are frozen by the retribution of Al'Kabor.": [
+  "Wizard"
+ ],
+ "You are gripped by nature's wrath.": [
+  "Druid"
+ ],
+ "You are immolated by a pillar of flame.": [
+  "Wizard"
+ ],
+ "You are immolated by a pillar of raging lightning.": [
+  "Wizard"
+ ],
+ "You are immolated by blazing flames.": [
+  "Druid"
+ ],
+ "You are immolated by flame.": [
+  "Druid",
+  "Magician",
+  "Wizard"
+ ],
+ "You are immolated by raging energy.": [
+  "Wizard"
+ ],
+ "You are immolated in blazing flames.": [
+  "Druid"
+ ],
+ "You are in the grip of darkness.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You are infused with power.": [
+  "Shaman"
+ ],
+ "You are lost in a fit of despair.": [
+  "Shadow Knight"
+ ],
+ "You are mesmerized by the Glamour of Kintaz.": [
+  "Enchanter"
+ ],
+ "You are mesmerized.": [
+  "Enchanter"
+ ],
+ "You are more alert.": [
+  "Bard"
+ ],
+ "You are now a scaled wolf.": [
+  "Enchanter"
+ ],
+ "You are now a wolf.": [
+  "Druid",
+  "Ranger"
+ ],
+ "You are overcome by sadness.": [
+  "Enchanter"
+ ],
+ "You are pelted by hailstones.": [
+  "Druid"
+ ],
+ "You are pelted by sleet.": [
+  "Wizard"
+ ],
+ "You are promised a divine renewal.": [
+  "Cleric"
+ ],
+ "You are seared by the Seeking Flame of Seukor.": [
+  "Magician"
+ ],
+ "You are sheathed in ice crystals.": [
+  "Druid"
+ ],
+ "You are shrouded by anti-life magic.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You are slammed by an intense gust of wind.": [
+  "Druid"
+ ],
+ "You are struck by a sudden burst of force.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You are struck by a sudden force.": [
+  "Cleric",
+  "Paladin",
+  "Wizard"
+ ],
+ "You are stunned into reverent awe.": [
+  "Cleric"
+ ],
+ "You are stunned.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You are surrounded by a divine barrier.": [
+  "Cleric"
+ ],
+ "You are surrounded by a foreboding aura.": [
+  "Cleric"
+ ],
+ "You are surrounded by a shield of song.": [
+  "Bard"
+ ],
+ "You are surrounded by a summer haze.": [
+  "Druid"
+ ],
+ "You are surrounded by a swirling maelstrom of magical force.": [
+  "Wizard"
+ ],
+ "You are surrounded by a thorny barrier of blades.": [
+  "Druid"
+ ],
+ "You are surrounded by a thorny barrier.": [
+  "Druid",
+  "Ranger"
+ ],
+ "You are surrounded by a winter haze.": [
+  "Druid"
+ ],
+ "You are surrounded by an aura of Divine Favor.": [
+  "Paladin"
+ ],
+ "You are surrounded by an outline of cold flame.": [
+  "Druid"
+ ],
+ "You are surrounded by blazing flames.": [
+  "Druid",
+  "Ranger"
+ ],
+ "You are surrounded by flickering flames.": [
+  "Druid",
+  "Ranger"
+ ],
+ "You are surrounded by the Quivering Veil of Xarn.": [
+  "Necromancer"
+ ],
+ "You are sustained.": [
+  "Bard"
+ ],
+ "You are wracked by chilling poison.": [
+  "Necromancer"
+ ],
+ "You are wracked by pain.": [
+  "Cleric"
+ ],
+ "You are wracked with pain.": [
+  "Cleric",
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You become a force of nature.": [
+  "Ranger"
+ ],
+ "You become like the dead.": [
+  "Necromancer"
+ ],
+ "You become one with your weapons.": [
+  "Ranger"
+ ],
+ "You begin to chant.": [
+  "Bard"
+ ],
+ "You begin to move with wonderous rapidity.": [
+  "Enchanter"
+ ],
+ "You begin to radiate with divine favor.": [
+  "Paladin"
+ ],
+ "You begin to radiate with divine glory.": [
+  "Paladin"
+ ],
+ "You begin to radiate with divine strength.": [
+  "Paladin"
+ ],
+ "You begin to radiate.": [
+  "Wizard"
+ ],
+ "You begin to regenerate.": [
+  "Druid",
+  "Shaman"
+ ],
+ "You begin to run.": [
+  "Enchanter"
+ ],
+ "You begin to scream.": [
+  "Necromancer"
+ ],
+ "You begin to snarl as your features become feline.": [
+  "Shaman"
+ ],
+ "You begin to spin.": [
+  "Enchanter"
+ ],
+ "You being to feel healed by the tortoise.": [
+  "Shaman"
+ ],
+ "You burn within the inferno of Al'Kabor.": [
+  "Wizard"
+ ],
+ "You call out to Karana.": [
+  "Druid"
+ ],
+ "You cast your sight.": [
+  "Enchanter"
+ ],
+ "You coat your blades in a binding poison.": [
+  "Rogue"
+ ],
+ "You coat your blades in a fettering poison.": [
+  "Rogue"
+ ],
+ "You coat your blades in a neurotoxic poison.": [
+  "Rogue"
+ ],
+ "You coat your blades in a numbing poison.": [
+  "Rogue"
+ ],
+ "You coat your blades in a paralytic poison.": [
+  "Rogue"
+ ],
+ "You coat your blades in a thought draining poison.": [
+  "Rogue"
+ ],
+ "You coat your blades in antimagic poison.": [
+  "Rogue"
+ ],
+ "You coat your blades in mage bane poison.": [
+  "Rogue"
+ ],
+ "You coat your blades with a potent venom.": [
+  "Rogue"
+ ],
+ "You convulse as the lightning arcs through you.": [
+  "Wizard"
+ ],
+ "You cough and choke.": [
+  "Beastlord"
+ ],
+ "You experience a quickening.": [
+  "Enchanter"
+ ],
+ "You experience chaotic weightlessness.": [
+  "Enchanter",
+  "Wizard"
+ ],
+ "You experience visions of grandeur.": [
+  "Enchanter"
+ ],
+ "You fade out.": [
+  "Wizard"
+ ],
+ "You fall into a state of impassivity.": [
+  "Shaman"
+ ],
+ "You fall into a state of nonchalance.": [
+  "Shaman"
+ ],
+ "You fall into a state of stoicism.": [
+  "Shaman"
+ ],
+ "You fall into a state of torpor.": [
+  "Shaman"
+ ],
+ "You feel a bit dispelled.": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Paladin",
+  "Ranger",
+  "Shadow Knight",
+  "Shaman",
+  "Wizard"
+ ],
+ "You feel a budding within you.": [
+  "Druid"
+ ],
+ "You feel a fever settle upon you.": [
+  "Shaman"
+ ],
+ "You feel a gut-wrenching hatred.": [
+  "Shadow Knight"
+ ],
+ "You feel a heal blooming within you.": [
+  "Druid"
+ ],
+ "You feel a heal blossoming within you.": [
+  "Druid"
+ ],
+ "You feel a heal efflorescing within you.": [
+  "Druid"
+ ],
+ "You feel a heal flowering within you.": [
+  "Druid"
+ ],
+ "You feel a heal sprouting within you.": [
+  "Druid"
+ ],
+ "You feel a little better.": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Ranger",
+  "Shaman"
+ ],
+ "You feel a pulse of static energy wash over you.": [
+  "Bard"
+ ],
+ "You feel a rush of courage.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You feel a shadow pass over you.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You feel a shortness of breath.": [
+  "Enchanter"
+ ],
+ "You feel a static pulse engulf you.": [
+  "Bard"
+ ],
+ "You feel a strong sense of loss.": [
+  "Bard"
+ ],
+ "You feel a surge of strength as you let forth a mighty yaulp.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You feel a warm aura surround you.": [
+  "Enchanter"
+ ],
+ "You feel agile.": [
+  "Shaman"
+ ],
+ "You feel alluring.": [
+  "Shaman"
+ ],
+ "You feel an aura of elemental protection surrounding you.": [
+  "Bard"
+ ],
+ "You feel an aura of mystic protection surrounding you.": [
+  "Bard"
+ ],
+ "You feel an aura of protection engulf you.": [
+  "Bard"
+ ],
+ "You feel an aura of vigorous protection surround you.": [
+  "Bard"
+ ],
+ "You feel annulled.": [
+  "Cleric",
+  "Druid",
+  "Magician",
+  "Necromancer",
+  "Shaman",
+  "Wizard"
+ ],
+ "You feel armored.": [
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Wizard"
+ ],
+ "You feel as cold as stone.": [
+  "Wizard"
+ ],
+ "You feel asinine.": [
+  "Bard"
+ ],
+ "You feel better.": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Ranger",
+  "Shaman"
+ ],
+ "You feel bigger.": [
+  "Shaman"
+ ],
+ "You feel charismatic.": [
+  "Bard",
+  "Shaman"
+ ],
+ "You feel confused.": [
+  "Enchanter"
+ ],
+ "You feel daring.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You feel deliriously nimble.": [
+  "Shaman"
+ ],
+ "You feel dexterous.": [
+  "Shaman"
+ ],
+ "You feel different.": [
+  "Enchanter",
+  "Necromancer"
+ ],
+ "You feel dispelled.": [
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Shaman",
+  "Wizard"
+ ],
+ "You feel divine energy cleansing your soul.": [
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Shaman"
+ ],
+ "You feel drowsy.": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "You feel enfeebled.": [
+  "Enchanter"
+ ],
+ "You feel feverish.": [
+  "Beastlord",
+  "Necromancer",
+  "Shaman"
+ ],
+ "You feel focused.": [
+  "Shaman"
+ ],
+ "You feel forgiveness in your mind.": [
+  "Cleric"
+ ],
+ "You feel frail.": [
+  "Beastlord",
+  "Enchanter",
+  "Shaman"
+ ],
+ "You feel gravity reverse.": [
+  "Wizard"
+ ],
+ "You feel healthy.": [
+  "Shaman"
+ ],
+ "You feel heroic.": [
+  "Cleric"
+ ],
+ "You feel imbued with spiritual brawn.": [
+  "Beastlord"
+ ],
+ "You feel inspired.": [
+  "Bard"
+ ],
+ "You feel less aggressive.": [
+  "Cleric",
+  "Enchanter",
+  "Paladin"
+ ],
+ "You feel lethargic.": [
+  "Beastlord"
+ ],
+ "You feel magnanimous of spirit.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You feel more agile.": [
+  "Ranger",
+  "Shaman"
+ ],
+ "You feel much better.": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Ranger",
+  "Shaman"
+ ],
+ "You feel much faster.": [
+  "Enchanter",
+  "Shaman"
+ ],
+ "You feel nimble.": [
+  "Shaman"
+ ],
+ "You feel no need to breathe.": [
+  "Beastlord",
+  "Druid",
+  "Enchanter",
+  "Ranger",
+  "Shaman"
+ ],
+ "You feel part of your mind melt away.": [
+  "Enchanter"
+ ],
+ "You feel protected from cold.": [
+  "Bard",
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Necromancer",
+  "Ranger",
+  "Shadow Knight",
+  "Shaman"
+ ],
+ "You feel protected from disease.": [
+  "Bard",
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight",
+  "Shaman"
+ ],
+ "You feel protected from fire and ice.": [
+  "Magician",
+  "Wizard"
+ ],
+ "You feel protected from fire.": [
+  "Bard",
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Ranger",
+  "Shaman"
+ ],
+ "You feel protected from magic.": [
+  "Bard",
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Paladin",
+  "Shaman"
+ ],
+ "You feel protected from poison.": [
+  "Bard",
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Paladin",
+  "Shaman"
+ ],
+ "You feel protected.": [
+  "Bard",
+  "Cleric"
+ ],
+ "You feel provoked.": [
+  "Bard"
+ ],
+ "You feel quite amicable.": [
+  "Enchanter"
+ ],
+ "You feel quite drowsy.": [
+  "Bard"
+ ],
+ "You feel radiant.": [
+  "Enchanter"
+ ],
+ "You feel replenished.": [
+  "Bard"
+ ],
+ "You feel resistant from cold.": [
+  "Cleric",
+  "Druid",
+  "Necromancer",
+  "Ranger",
+  "Shadow Knight",
+  "Shaman"
+ ],
+ "You feel resistant from disease.": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Necromancer",
+  "Paladin",
+  "Shaman"
+ ],
+ "You feel resistant from fire.": [
+  "Cleric",
+  "Druid",
+  "Ranger",
+  "Shaman"
+ ],
+ "You feel resistant from magic.": [
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Paladin",
+  "Shaman"
+ ],
+ "You feel resistant from poison.": [
+  "Cleric",
+  "Druid",
+  "Shaman"
+ ],
+ "You feel resolute.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You feel restored.": [
+  "Cleric"
+ ],
+ "You feel robust.": [
+  "Shaman"
+ ],
+ "You feel small.": [
+  "Bard"
+ ],
+ "You feel smaller.": [
+  "Beastlord",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Shadow Knight",
+  "Shaman"
+ ],
+ "You feel somewhat vulnerable.": [
+  "Magician",
+  "Shaman"
+ ],
+ "You feel strong.": [
+  "Shaman"
+ ],
+ "You feel stronger.": [
+  "Beastlord",
+  "Druid",
+  "Enchanter",
+  "Necromancer",
+  "Ranger",
+  "Shaman"
+ ],
+ "You feel stupid.": [
+  "Enchanter"
+ ],
+ "You feel the blessing of Mithaniel Marr.": [
+  "Paladin"
+ ],
+ "You feel the favor of the gods upon you.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You feel the glare of the heavens.": [
+  "Druid"
+ ],
+ "You feel the ground scream and heave.": [
+  "Cleric",
+  "Druid"
+ ],
+ "You feel the ground shake.": [
+  "Cleric",
+  "Druid"
+ ],
+ "You feel the pain of a million stings.": [
+  "Druid"
+ ],
+ "You feel the pain of a thousand stings.": [
+  "Druid",
+  "Ranger"
+ ],
+ "You feel the skin peel from your bones.": [
+  "Necromancer"
+ ],
+ "You feel the spirit of Bih`Li enter you.": [
+  "Shaman"
+ ],
+ "You feel the spirit of bear enter you.": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "You feel the spirit of cat enter you.": [
+  "Shaman"
+ ],
+ "You feel the spirit of cheetah enter you.": [
+  "Druid",
+  "Shaman"
+ ],
+ "You feel the spirit of monkey enter you.": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "You feel the spirit of ox enter you.": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "You feel the spirit of shrew enter you.": [
+  "Beastlord",
+  "Druid",
+  "Ranger",
+  "Shaman"
+ ],
+ "You feel the spirit of snake enter you.": [
+  "Shaman"
+ ],
+ "You feel the spirit of the brute channel through you.": [
+  "Shaman"
+ ],
+ "You feel the spirit of the cat channel through you.": [
+  "Shaman"
+ ],
+ "You feel the spirit of the raptor channel through you.": [
+  "Shaman"
+ ],
+ "You feel the spirit of the rhino channel through you.": [
+  "Shaman"
+ ],
+ "You feel the spirit of the scaled wolf enter you.": [
+  "Druid",
+  "Shaman"
+ ],
+ "You feel the spirit of the serpent channel through you.": [
+  "Shaman"
+ ],
+ "You feel the spirit of wolf enter you.": [
+  "Beastlord",
+  "Druid",
+  "Ranger",
+  "Shaman"
+ ],
+ "You feel the spirit-scale of wolf enter you.": [
+  "Druid",
+  "Shaman"
+ ],
+ "You feel the strength of Karana infuse you.": [
+  "Druid"
+ ],
+ "You feel the touch of Redemption.": [
+  "Cleric"
+ ],
+ "You feel the urge to rampage.": [
+  "Enchanter"
+ ],
+ "You feel the watchful eyes of the gods upon you.": [
+  "Cleric"
+ ],
+ "You feel tough.": [
+  "Shaman"
+ ],
+ "You feel valorous.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You feel very brave.": [
+  "Cleric"
+ ],
+ "You feel very dispelled.": [
+  "Enchanter"
+ ],
+ "You feel very vulnerable.": [
+  "Magician",
+  "Shaman"
+ ],
+ "You feel vigorous.": [
+  "Cleric"
+ ],
+ "You feel vulnerable.": [
+  "Magician",
+  "Shaman"
+ ],
+ "You feel weak.": [
+  "Enchanter"
+ ],
+ "You feel weaker.": [
+  "Enchanter"
+ ],
+ "You feel your aggression subside.": [
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Paladin",
+  "Ranger"
+ ],
+ "You feel your blood begin to leech away.": [
+  "Necromancer"
+ ],
+ "You feel your blood being drained away.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You feel your body pulse with energy.": [
+  "Beastlord",
+  "Enchanter",
+  "Shaman"
+ ],
+ "You feel your bones harden and crack from the frost.": [
+  "Necromancer"
+ ],
+ "You feel your enchantments being stripped away.": [
+  "Enchanter"
+ ],
+ "You feel your health begin to drain away.": [
+  "Necromancer"
+ ],
+ "You feel your health begin to drain.": [
+  "Necromancer"
+ ],
+ "You feel your heart stop beating.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You feel your life force drain away.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You feel your lifeforce drain away.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You feel your mental energies drain away.": [
+  "Enchanter"
+ ],
+ "You feel your mental energies slip away.": [
+  "Enchanter"
+ ],
+ "You feel your mind fog.": [
+  "Enchanter"
+ ],
+ "You feel your pulse quicken.": [
+  "Bard"
+ ],
+ "You feel your skin blister and burn.": [
+  "Magician"
+ ],
+ "You feel your skin burn as poison seeps through your skin.": [
+  "Necromancer"
+ ],
+ "You feel your skin burn from your body.": [
+  "Necromancer"
+ ],
+ "You feel your skin combust.": [
+  "Druid",
+  "Wizard"
+ ],
+ "You feel your skin freeze over.": [
+  "Wizard"
+ ],
+ "You feel your skin freeze.": [
+  "Wizard"
+ ],
+ "You feel your skin harden and crack from the frost.": [
+  "Necromancer"
+ ],
+ "You feel your skin ignite and char.": [
+  "Magician"
+ ],
+ "You feel your skin ignite.": [
+  "Druid",
+  "Magician",
+  "Ranger",
+  "Wizard"
+ ],
+ "You feel your skin numb as the frost rift strikes you.": [
+  "Shaman"
+ ],
+ "You feel your skin singe as the Burst of Fire hits you.": [
+  "Druid",
+  "Ranger"
+ ],
+ "You feel your skin singe as the Burst of Flame hits you.": [
+  "Druid",
+  "Magician",
+  "Shaman"
+ ],
+ "You feel your skin tingle.": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight",
+  "Wizard"
+ ],
+ "You feel your strength dwindle.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You feel your strength grow.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You feel yourself bind to the area.": [
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Shaman",
+  "Wizard"
+ ],
+ "You feel... strange.": [
+  "Enchanter"
+ ],
+ "You forget what you were supposed to be.": [
+  "Enchanter"
+ ],
+ "You gasp for breath.": [
+  "Enchanter"
+ ],
+ "You gather mana from your surroundings.": [
+  "Wizard"
+ ],
+ "You gather shadows about you.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You go berserk.": [
+  "Bard",
+  "Beastlord",
+  "Shaman"
+ ],
+ "You grow scales.": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "You have been charmed.": [
+  "Enchanter"
+ ],
+ "You have been crippled.": [
+  "Enchanter",
+  "Shaman"
+ ],
+ "You have been cursed.": [
+  "Shaman"
+ ],
+ "You have been deafened.": [
+  "Bard"
+ ],
+ "You have been enlightened.": [
+  "Enchanter"
+ ],
+ "You have been enthralled.": [
+  "Enchanter"
+ ],
+ "You have been entranced.": [
+  "Enchanter"
+ ],
+ "You have been force struck.": [
+  "Wizard"
+ ],
+ "You have been lacerated by deadly steel.": [
+  "Magician"
+ ],
+ "You have been lacerated.": [
+  "Magician"
+ ],
+ "You have been poisoned.": [
+  "Beastlord",
+  "Necromancer",
+  "Shaman"
+ ],
+ "You have been protected by the Talisman of Jasinth.": [
+  "Shaman"
+ ],
+ "You have been protected by the Talisman of Shadoo.": [
+  "Shaman"
+ ],
+ "You have been smitten.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You have been struck by the shocking Fist of Karana.": [
+  "Druid"
+ ],
+ "You have been struck by the wrath of the gods.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You have been struck down by the judgement of the gods.": [
+  "Cleric"
+ ],
+ "You have been struck down by wrath.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You have been struck.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "You have been stunned by thunder.": [
+  "Wizard"
+ ],
+ "You have been thunderstruck.": [
+  "Wizard"
+ ],
+ "You have been warded from harm.": [
+  "Beastlord",
+  "Magician",
+  "Necromancer"
+ ],
+ "You have taken root.": [
+  "Druid"
+ ],
+ "You have triggered your sentinel.": [
+  "Cleric"
+ ],
+ "You hear the barking of Tashan.": [
+  "Enchanter"
+ ],
+ "You hear the barking of Tashania.": [
+  "Enchanter"
+ ],
+ "You hear the barking of the Tashani.": [
+  "Enchanter"
+ ],
+ "You hear the ground rumble.": [
+  "Cleric",
+  "Druid"
+ ],
+ "You hear the music of twilight.": [
+  "Bard"
+ ],
+ "You lose yourself in your rage and go berserk.": [
+  "Shaman"
+ ],
+ "You no longer feel pain.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "You reel in pain as every bone in your body vibrates.": [
+  "Bard"
+ ],
+ "You rise on a gust of hot air.": [
+  "Wizard"
+ ],
+ "You scream as a magic force rends the skin from your body.": [
+  "Wizard"
+ ],
+ "You send forth music.": [
+  "Bard"
+ ],
+ "You sense that you are being watched.": [
+  "Enchanter"
+ ],
+ "You shift your sight.": [
+  "Enchanter",
+  "Wizard"
+ ],
+ "You shriek as your bones are ablaze.": [
+  "Necromancer"
+ ],
+ "You simmer with fury.": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "You slow down as your feet are covered in tangling weeds.": [
+  "Druid",
+  "Ranger"
+ ],
+ "You slow down.": [
+  "Beastlord",
+  "Enchanter"
+ ],
+ "You smell the faint scent of Terris.": [
+  "Necromancer"
+ ],
+ "You smell the faint scent of darkness.": [
+  "Necromancer"
+ ],
+ "You smell the faint scent of dusk.": [
+  "Necromancer"
+ ],
+ "You smell the faint scent of shadow.": [
+  "Necromancer"
+ ],
+ "You spin to face north.": [
+  "Cleric",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Paladin",
+  "Shaman",
+  "Wizard"
+ ],
+ "You stagger as spirits of frost slam against you.": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "You stagger as spirits of ice slam against you.": [
+  "Shaman"
+ ],
+ "You stagger as the light of divine words enter your mind.": [
+  "Cleric"
+ ],
+ "You stagger from a blow to the head.": [
+  "Wizard"
+ ],
+ "You stagger in pain as every bone in your body pulses.": [
+  "Bard"
+ ],
+ "You stagger under a dark curse.": [
+  "Shaman"
+ ],
+ "You succumb to the enticement of flame.": [
+  "Wizard"
+ ],
+ "You succumb to the lure of flame.": [
+  "Wizard"
+ ],
+ "You succumb to the lure of frost.": [
+  "Wizard"
+ ],
+ "You succumb to the lure of ice.": [
+  "Wizard"
+ ],
+ "You succumb to the lure of lightning.": [
+  "Wizard"
+ ],
+ "You suddenly feel very friendly.": [
+  "Bard"
+ ],
+ "You summon a companion spirit.": [
+  "Shaman"
+ ],
+ "You summon a frenzied spirit.": [
+  "Shaman"
+ ],
+ "You summon a guardian spirit.": [
+  "Shaman"
+ ],
+ "You summon a howling spirit.": [
+  "Shaman"
+ ],
+ "You summon a spirit of nature.": [
+  "Druid"
+ ],
+ "You summon a suit of phantom chain armor.": [
+  "Magician"
+ ],
+ "You summon a suit of phantom leather armor.": [
+  "Magician"
+ ],
+ "You summon a suit of phantom plate armor.": [
+  "Magician"
+ ],
+ "You summon a vigilant spirit.": [
+  "Shaman"
+ ],
+ "You summon a warder to your aid.": [
+  "Beastlord"
+ ],
+ "You summon forth a lesser familiar.": [
+  "Wizard"
+ ],
+ "You summon forth a minor familiar.": [
+  "Wizard"
+ ],
+ "You summon your companion to your side.": [
+  "Beastlord",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Necromancer",
+  "Shaman"
+ ],
+ "You swoon, overcome by rapture.": [
+  "Enchanter"
+ ],
+ "You take on a non-threatening visage.": [
+  "Enchanter"
+ ],
+ "You take on a threatening visage.": [
+  "Enchanter"
+ ],
+ "You vanish.": [
+  "Beastlord",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Ranger",
+  "Shaman",
+  "Wizard"
+ ],
+ "You voice is filled with the sound of shadows.": [
+  "Shadow Knight"
+ ],
+ "You whistle an ancient warsong.": [
+  "Bard"
+ ],
+ "Your blood boils.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Your blood freezes as you are iced by an intense cone of frost.": [
+  "Druid"
+ ],
+ "Your blood ignites.": [
+  "Necromancer"
+ ],
+ "Your blood simmers.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Your body aches as your mind clears.": [
+  "Shaman"
+ ],
+ "Your body begins to splurt.": [
+  "Necromancer"
+ ],
+ "Your body fades away.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Your body is consumed by the flames of the sun.": [
+  "Wizard"
+ ],
+ "Your body is consumed by the wrath of the elements.": [
+  "Magician"
+ ],
+ "Your body is pelted by spores.": [
+  "Necromancer"
+ ],
+ "Your body is wracked by shocks of poison.": [
+  "Shaman"
+ ],
+ "Your body is wracked by shocks of venom.": [
+  "Shaman"
+ ],
+ "Your body screams with the power of an Avatar.": [
+  "Shaman"
+ ],
+ "Your body shines with riotous health.": [
+  "Shaman"
+ ],
+ "Your body spasms as the lightning bolt arcs through you.": [
+  "Wizard"
+ ],
+ "Your body zings with energy.": [
+  "Cleric",
+  "Druid",
+  "Enchanter",
+  "Paladin",
+  "Ranger",
+  "Shaman"
+ ],
+ "Your bones tingle.": [
+  "Cleric",
+  "Necromancer",
+  "Paladin",
+  "Shadow Knight"
+ ],
+ "Your brain begins to smolder.": [
+  "Enchanter"
+ ],
+ "Your ears filled with the deafening roar of Karana's Thunder.": [
+  "Paladin"
+ ],
+ "Your essence drains away.": [
+  "Necromancer"
+ ],
+ "Your eyes begin to focus.": [
+  "Shaman"
+ ],
+ "Your eyes feel stronger.": [
+  "Ranger",
+  "Wizard"
+ ],
+ "Your eyes gleam with bedlam.": [
+  "Enchanter"
+ ],
+ "Your eyes sharpen, with an aura of avian presence.": [
+  "Ranger"
+ ],
+ "Your eyes tingle.": [
+  "Beastlord",
+  "Druid",
+  "Enchanter",
+  "Magician",
+  "Ranger",
+  "Shaman",
+  "Wizard"
+ ],
+ "Your features sharpen.": [
+  "Druid"
+ ],
+ "Your feel your skin freeze.": [
+  "Wizard"
+ ],
+ "Your feet adhere to the ground.": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer",
+  "Paladin",
+  "Shaman",
+  "Wizard"
+ ],
+ "Your feet become entangled.": [
+  "Druid"
+ ],
+ "Your feet become entwined.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Your feet blur as they leave the ground.": [
+  "Bard"
+ ],
+ "Your feet leave the ground.": [
+  "Beastlord",
+  "Druid",
+  "Enchanter",
+  "Ranger",
+  "Shaman",
+  "Wizard"
+ ],
+ "Your feet move faster.": [
+  "Bard"
+ ],
+ "Your fist bursts into flame.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Your hand begins to glow with divine might.": [
+  "Paladin"
+ ],
+ "Your hand begins to glow.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Your hands glow a dull gold.": [
+  "Cleric"
+ ],
+ "Your hands glow a pale gold.": [
+  "Cleric"
+ ],
+ "Your hands glow a subdued gold.": [
+  "Cleric"
+ ],
+ "Your hands glow golden.": [
+  "Cleric"
+ ],
+ "Your head snaps back.": [
+  "Ranger"
+ ],
+ "Your heart stops.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Your heartbeat becomes irregular.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Your image blurs.": [
+  "Enchanter"
+ ],
+ "Your image clouds.": [
+  "Enchanter"
+ ],
+ "Your image fades into shadow.": [
+  "Enchanter"
+ ],
+ "Your image fades into the umbra.": [
+  "Enchanter"
+ ],
+ "Your image fades.": [
+  "Enchanter"
+ ],
+ "Your image has been obscured.": [
+  "Enchanter"
+ ],
+ "Your life force drains away at the Gangrenous Touch of Zum`uul.": [
+  "Necromancer"
+ ],
+ "Your life force drains away at the Touch of Night.": [
+  "Necromancer"
+ ],
+ "Your mind begins to clear.": [
+  "Bard"
+ ],
+ "Your mind bleeds with wonder.": [
+  "Cleric"
+ ],
+ "Your mind clears as a rush of essence fills you.": [
+  "Necromancer"
+ ],
+ "Your mind clears.": [
+  "Bard",
+  "Enchanter"
+ ],
+ "Your mind fills with fear.": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Your mind fills with trepidation.": [
+  "Cleric",
+  "Enchanter",
+  "Necromancer"
+ ],
+ "Your mind fills with wisdom.": [
+  "Enchanter"
+ ],
+ "Your mind sharpens.": [
+  "Bard",
+  "Enchanter"
+ ],
+ "Your mind snaps in terror.": [
+  "Bard"
+ ],
+ "Your muscles bulge with berserker strength.": [
+  "Enchanter"
+ ],
+ "Your muscles erupt with frenzied strength.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Your muscles erupt with reckless strength.": [
+  "Cleric",
+  "Paladin"
+ ],
+ "Your muscles move with mortal deftness.": [
+  "Shaman"
+ ],
+ "Your muscles scream with strength.": [
+  "Shaman"
+ ],
+ "Your sight is bound.": [
+  "Enchanter",
+  "Ranger",
+  "Wizard"
+ ],
+ "Your skin becomes like diamond.": [
+  "Necromancer",
+  "Shadow Knight",
+  "Wizard"
+ ],
+ "Your skin becomes like leather.": [
+  "Necromancer",
+  "Wizard"
+ ],
+ "Your skin becomes like steel.": [
+  "Necromancer",
+  "Shadow Knight",
+  "Wizard"
+ ],
+ "Your skin becomes shadow.": [
+  "Necromancer"
+ ],
+ "Your skin blisters as energy rains down from above.": [
+  "Wizard"
+ ],
+ "Your skin blisters as fire rains down from above.": [
+  "Magician",
+  "Wizard"
+ ],
+ "Your skin blisters as it is consumed by pure mana.": [
+  "Wizard"
+ ],
+ "Your skin blisters as lava rains down from above.": [
+  "Magician"
+ ],
+ "Your skin blisters as lightning rains down from above.": [
+  "Wizard"
+ ],
+ "Your skin blisters as poison rains down on you.": [
+  "Shaman"
+ ],
+ "Your skin blisters as the tears of Druzzil rain down on you.": [
+  "Wizard"
+ ],
+ "Your skin blisters as the tears of Solusek rain down on you.": [
+  "Wizard"
+ ],
+ "Your skin erupts in purulent pustules.": [
+  "Shaman"
+ ],
+ "Your skin freezes as frost rains down from above.": [
+  "Wizard"
+ ],
+ "Your skin freezes as the tears of Prexus rain down on you.": [
+  "Wizard"
+ ],
+ "Your skin freezes over.": [
+  "Wizard"
+ ],
+ "Your skin gleams with a pure aura.": [
+  "Cleric"
+ ],
+ "Your skin gleams with an incandescent glow.": [
+  "Necromancer",
+  "Wizard"
+ ],
+ "Your skin glows with a pale greenish tint.": [
+  "Ranger"
+ ],
+ "Your skin goes numb.": [
+  "Wizard"
+ ],
+ "Your skin ignites as wildfire courses over your body.": [
+  "Druid"
+ ],
+ "Your skin melts.": [
+  "Druid"
+ ],
+ "Your skin numbs as deadly mana rains down from above.": [
+  "Magician"
+ ],
+ "Your skin shimmers with divine power.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Your skin shimmers.": [
+  "Druid"
+ ],
+ "Your skin shines.": [
+  "Wizard"
+ ],
+ "Your skin shreds as blades rain down from above.": [
+  "Magician"
+ ],
+ "Your skin shreds as spikes rain down from above.": [
+  "Magician"
+ ],
+ "Your skin shreds as swords rain down from above.": [
+  "Magician"
+ ],
+ "Your skin shrivels.": [
+  "Shadow Knight"
+ ],
+ "Your skin steams and melts as poison rains down on you.": [
+  "Shaman"
+ ],
+ "Your skin tears as bolts of elemental power strike you.": [
+  "Magician"
+ ],
+ "Your skin turns hard as diamond.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Your skin turns hard as steel.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Your skin turns hard as stone.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Your skin turns hard as turtle shell.": [
+  "Beastlord",
+  "Shaman"
+ ],
+ "Your skin turns hard as wood.": [
+  "Druid",
+  "Ranger"
+ ],
+ "Your soul is assaulted by the ages.": [
+  "Wizard"
+ ],
+ "Your spirit drifts from your body.": [
+  "Shaman"
+ ],
+ "Your spirit screams with berserker strength.": [
+  "Enchanter"
+ ],
+ "Your stomach begins to cramp.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Your thoughts begin to race and flow faster.": [
+  "Enchanter"
+ ],
+ "Your thoughts muddle from the Torment of Argli.": [
+  "Enchanter"
+ ],
+ "Your thoughts quicken as faith fills your mind.": [
+  "Cleric"
+ ],
+ "Your thoughts quicken as reverence fills your mind.": [
+  "Cleric"
+ ],
+ "Your veins fill with deadly poison.": [
+  "Shaman"
+ ],
+ "Your vision shifts to perceive the ethereal.": [
+  "Wizard"
+ ],
+ "Your vision shifts.": [
+  "Necromancer",
+  "Ranger",
+  "Shadow Knight"
+ ],
+ "Your voice binds chords into chains.": [
+  "Bard"
+ ],
+ "Your voice booms.": [
+  "Bard"
+ ],
+ "Your voice is filled with sounds of darkness.": [
+  "Shadow Knight"
+ ],
+ "Your weapons glow.": [
+  "Bard"
+ ],
+ "Your weapons whir with a magical rhythm.": [
+  "Bard"
+ ],
+ "Your world dissolves into anarchy.": [
+  "Enchanter"
+ ],
+ "Your world goes mad as chaos flows through you.": [
+  "Enchanter"
+ ],
+ "Your wounds begin to heal.": [
+  "Bard",
+  "Necromancer"
+ ],
+ "Your wounds disappear.": [
+  "Necromancer",
+  "Shadow Knight"
+ ],
+ "Your wounds fade.": [
+  "Cleric"
+ ],
+ "Your wounds fester.": [
+  "Shadow Knight"
+ ],
+ "Your wounds heal.": [
+  "Beastlord",
+  "Cleric",
+  "Druid",
+  "Shaman"
+ ]
 }

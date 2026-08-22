@@ -1,8 +1,8 @@
 {
   "source": "https://eqlwiki.com",
-  "built": "2026-08-14 21:47 UTC",
+  "built": "2026-08-21 22:41 UTC",
   "from": "items.json",
-  "count": 2948,
+  "count": 2972,
   "mobs": {
     "a Alchemist`s Acolyte": [
       "Di`zok Escape Staff",
@@ -13,6 +13,7 @@
     "a Champion of Innoruuk": [
       "Cloak of the Assassin",
       "Hate Crystal",
+      "Indicolite Greaves",
       "Mantle of Study",
       "Songshawl",
       "Teir`Dal Sai"
@@ -393,6 +394,7 @@
     "a Disciple of Innoruuk": [
       "Cloak of the Assassin",
       "Crown of Harmony",
+      "Cryosilk Sash",
       "Darkmetal Falchion",
       "Ethereal Mist Boots",
       "Gloves of Harmony",
@@ -401,11 +403,13 @@
       "Hate's Edge",
       "Hauberk of Harmony",
       "Neriak Ceremonial Robe",
+      "Rune Etched Greaves",
       "Sandals of Harmony",
       "Silverleaf Belt",
       "Silverleaf Girdle",
       "Songshawl",
       "Teir`Dal Sai",
+      "Valorium Greaves",
       "Vambraces of Harmony",
       "Wristguard of Harmony"
     ],
@@ -602,6 +606,7 @@
       "Breastplate of the Righteous",
       "Cloak of the Assassin",
       "Ethereal Mist Boots",
+      "Ethereal Mist Greaves",
       "Gauntlets of the Righteous",
       "Greaves of the Righteous",
       "Hate Crystal",
@@ -669,6 +674,7 @@
       "Split Paw Tooth Necklace"
     ],
     "a Lteth Val Deviant": [
+      "Dagger of Dropping",
       "Splitpaw Keepsake Ring"
     ],
     "a Lteth Val Gnoll": [
@@ -874,6 +880,8 @@
     ],
     "a Ratman Warrior": [
       "Imbued Granite Spaulders",
+      "Paineel Plate Gauntlets",
+      "Paineel Platemail Helm",
       "Paineel Splinted Cloak",
       "Paineel Steel Bracers",
       "Paineel Steel Breastplate",
@@ -1020,7 +1028,8 @@
       "Hate Crystal",
       "Neriak Ceremonial Robe",
       "Raiment of the Chosen",
-      "Silverleaf Belt"
+      "Silverleaf Belt",
+      "Umbral Platemail Greaves"
     ],
     "a Sarnak Assassin": [
       "Windruned Dagger"
@@ -1248,11 +1257,7 @@
       "Fine Steel Warhammer"
     ],
     "a Teir'Dal ranger": [
-      "Iron Visor",
       "Ringmail Sleeves"
-    ],
-    "a Teir'Dal rogue": [
-      "Ringmail Neckguard"
     ],
     "a Teir`Dal priest": [
       "Fine Steel Rapier"
@@ -1261,13 +1266,25 @@
       "Fine Steel Rapier"
     ],
     "a Teir`Dal ranger": [
-      "Fine Steel Rapier"
+      "Fine Steel Long Sword",
+      "Fine Steel Rapier",
+      "Fine Steel Spear",
+      "Iron Visor",
+      "Ringmail Coat",
+      "Ringmail Coif",
+      "Ringmail Gloves",
+      "Ringmail Mantle"
     ],
     "a Teir`Dal rogue": [
-      "Fine Steel Rapier"
+      "Fine Steel Rapier",
+      "Ringmail Boots",
+      "Ringmail Neckguard"
     ],
     "a Teir`Dal shadowknight": [
-      "Fine Steel Rapier"
+      "Fine Steel Rapier",
+      "Iron Visor",
+      "Ringmail Coat",
+      "Ringmail Coif"
     ],
     "a Tesch Mal Gnoll": [
       "Preserved Split Paw Eye",
@@ -1333,7 +1350,12 @@
     ],
     "a Visiting Priestess": [
       "Emissary Mask",
-      "Traveling Greaves"
+      "Traveling Sollerets"
+    ],
+    "a Vitrified Skeleton": [
+      "Glassy Gauntlets",
+      "Rusty Sheer Blade",
+      "Vitrified Skull Fetish"
     ],
     "a Wizened Herb Collector": [
       "Dark Scale Sleeves",
@@ -1418,7 +1440,9 @@
       "Velium Short Sword"
     ],
     "a blade storm": [
-      "Blade of Abrogation"
+      "Belt of Iniquity",
+      "Blade of Abrogation",
+      "Symbol of Marr"
     ],
     "a blizzard dervish": [
       "Chill Dagger",
@@ -1464,6 +1488,7 @@
       "Twisted Bone Earring"
     ],
     "a boogeyman": [
+      "Anthemion Boots",
       "Blighted Armband",
       "Blighted Boots",
       "Blighted Gloves",
@@ -1477,6 +1502,7 @@
       "Mithril Amulet",
       "Opal Bracelet",
       "Pearl Necklace",
+      "Rune Etched Boots",
       "Sapphire Necklace",
       "Star Ruby Earring"
     ],
@@ -1652,6 +1678,7 @@
       "Starmetal Ore"
     ],
     "a cloaked dhampyre": [
+      "Fleeting Memory",
       "Hooded Black Cloak"
     ],
     "a cobalt drake": [
@@ -1866,6 +1893,10 @@
       "Jade Earring",
       "Mithril Earring",
       "Silver Amulet"
+    ],
+    "a dark librarian": [
+      "Rod of Understanding",
+      "Veil of Silence"
     ],
     "a dark offerer": [
       "Fine Steel Rapier",
@@ -2371,6 +2402,7 @@
       "Fine Steel Morning Star",
       "Fine Steel Warhammer",
       "Iron Visor",
+      "Mistmoore Heirloom Ring",
       "Noble's Robes",
       "Ringmail Boots",
       "Ringmail Bracelet",
@@ -2390,6 +2422,7 @@
       "Large Patchwork Tunic"
     ],
     "a fatestealer drake": [
+      "Crown Of Elemental Mastery",
       "Crown of Elemental Mastery",
       "Sphinx Crown"
     ],
@@ -2426,11 +2459,16 @@
       "Gossamer Wristbands"
     ],
     "a fetid fiend": [
+      "Apothic Warband",
+      "Carmine Trinket",
       "Girdle of the Diligent",
+      "Imbrued Platemail Bracer",
+      "Insidious Manacle",
+      "Midnight Clad Wristbands",
       "Mithril Amulet",
+      "Umbral Platemail Bracer",
       "Valorium Boots",
       "Valorium Bracers",
-      "Valorium Chestplate",
       "Valorium Gauntlets",
       "Valorium Greaves",
       "Valorium Vambraces"
@@ -2590,6 +2628,7 @@
       "Apothic Robe",
       "Apothic Sleeves",
       "Apothic Warband",
+      "Carmine Sleeves",
       "Imbrued Platemail Vambraces",
       "Insidious Gloves",
       "Insidious Halo",
@@ -2598,10 +2637,14 @@
       "Insidious Robe",
       "Insidious Sleeves",
       "Insidious Slippers",
+      "Shadow Rage Sleeves",
       "Staff of Elemental Mastery: Fire",
+      "Thorny Vine Vambraces",
       "Umbral Platemail Vambraces",
+      "Valorium Vambraces",
       "Wand of Swiftness",
-      "Wand of Swords"
+      "Wand of Swords",
+      "Woven Shadow Vambraces"
     ],
     "a forsaken revenant pet": [
       "Animated Shield",
@@ -3411,6 +3454,7 @@
       "Warped Great Staff"
     ],
     "a ghoul assassin": [
+      "Guise of the Deceiver",
       "Mask of Deception",
       "Serrated Bone Dirk",
       "Silver Amulet"
@@ -3492,12 +3536,15 @@
       "Spirit Weaver's Gauntlets"
     ],
     "a glare lord": [
+      "Anthemion Jerkin",
       "Fire Emerald Ring",
+      "Lustrous Russet Breastplate",
       "Mithril Amulet",
       "Opal Bracelet",
       "Pearl Necklace",
       "Sapphire Necklace",
       "Star Ruby Earring",
+      "Valorium Chestplate",
       "Wand of Lava"
     ],
     "a gloomstalker mermaid": [
@@ -3598,6 +3645,7 @@
       "Fine Steel Rapier",
       "Fine Steel Scimitar",
       "Fine Steel Short Sword",
+      "Gilded Mistmoore Visor",
       "Iron Visor",
       "Ringmail Boots",
       "Ringmail Bracelet",
@@ -3678,6 +3726,7 @@
       "Ruined Gnoll Chain Coat",
       "Ruined Gnoll Chain Sleeves",
       "Rusty Scythe",
+      "Studded Leather Collar",
       "Worn Great Staff"
     ],
     "a gnoll avenger": [
@@ -4246,6 +4295,7 @@
     ],
     "a greater sphinx": [
       "Copper Air Band",
+      "Crown Of Elemental Mastery",
       "Crown of Elemental Mastery"
     ],
     "a greedy beggar": [
@@ -4346,6 +4396,7 @@
       "Ethereal Mist Vambraces",
       "Lustrous Russet Boots",
       "Lustrous Russet Breastplate",
+      "Lustrous Russet Helm",
       "Rune Etched Bracer",
       "Shiverback-hide Boots",
       "Thorny Vine Boots",
@@ -4388,7 +4439,8 @@
       "Fine Steel Short Sword",
       "Fine Steel Two Handed Sword",
       "Fine Steel Warhammer",
-      "Small Splinted Bronze Cloak"
+      "Small Splinted Bronze Cloak",
+      "Wine Thief"
     ],
     "a heretic invader": [
       "Dirt Soiled Robe*",
@@ -4528,7 +4580,8 @@
       "Legionnaire Scale Vambraces",
       "Sapphire Necklace",
       "Shuriken of the Tranquil",
-      "Star Ruby Earring"
+      "Star Ruby Earring",
+      "Umbral Platemail Bracer"
     ],
     "a klaknak warrior": [
       "Fire Beetle Eye"
@@ -4784,6 +4837,7 @@
       "Rusty Ulak"
     ],
     "a loathing lich": [
+      "Imbrued Platemail Bracer",
       "Midnight Clad Armbands",
       "Midnight Clad Fistwraps",
       "Midnight Clad Footwraps",
@@ -5354,6 +5408,8 @@
     "a revenant": [
       "Cracked Paineel Shield",
       "Imbued Granite Spaulders",
+      "Paineel Plate Gauntlets",
+      "Paineel Platemail Helm",
       "Paineel Splinted Cloak",
       "Paineel Steel Bracers",
       "Paineel Steel Breastplate",
@@ -5369,8 +5425,12 @@
     ],
     "a revultant rat": [
       "Apothic Warband",
+      "Carmine Trinket",
       "Darkwar Mask",
-      "Revultant Whip"
+      "Insidious Manacle",
+      "Midnight Clad Wristbands",
+      "Revultant Whip",
+      "Woven Shadow Bracer"
     ],
     "a rock dervish": [
       "Bloodstone Ring",
@@ -5447,11 +5507,14 @@
       "Worn Great Staff"
     ],
     "a samhain": [
+      "Ethereal Mist Bracers",
       "Fire Emerald Ring",
       "Fluxbladed Axe",
+      "Lustrous Russet Bracer",
       "Mithril Amulet",
       "Opal Bracelet",
       "Pearl Necklace",
+      "Rune Etched Bracer",
       "Sapphire Necklace",
       "Star Ruby Earring"
     ],
@@ -5584,8 +5647,15 @@
       "Scaled Curskin"
     ],
     "a scareling": [
+      "Anthemion Gloves",
+      "Ethereal Mist Gauntlets",
       "Eyerazzia",
-      "Mithril Amulet"
+      "Lustrous Russet Gauntlets",
+      "Mithril Amulet",
+      "Rune Etched Gauntlets",
+      "Shadow Rage Gloves",
+      "Shiverback-hide Gloves",
+      "Valorium Gauntlets"
     ],
     "a scoriae hornet": [
       "Mithril Amulet",
@@ -5603,7 +5673,8 @@
       "Imbrued Platemail Vambraces",
       "Lustrous Russet Bracer",
       "Martune Rapier",
-      "Shadow Rage Wristguard"
+      "Shadow Rage Wristguard",
+      "Shiverback-hide Wristbands"
     ],
     "a scorpion": [
       "Scorpion Pincer"
@@ -5889,7 +5960,8 @@
       "Shiverback-hide Gloves",
       "Shiverback-hide Jerkin",
       "Shiverback-hide Leggings",
-      "Shiverback-hide Wristbands"
+      "Shiverback-hide Wristbands",
+      "Valorium Gauntlets"
     ],
     "a shoal serpent": [
       "Giant Snake Fang"
@@ -6123,7 +6195,8 @@
       "Silver Amulet"
     ],
     "a soul tamer": [
-      "Blade of Abrogation"
+      "Blade of Abrogation",
+      "Weight of the Gods"
     ],
     "a soul temptress": [
       "Fine Steel Rapier",
@@ -6152,6 +6225,7 @@
       "Scythe"
     ],
     "a spinechiller spider": [
+      "Blighted Armband",
       "Cryosilk Amice",
       "Cryosilk Bracelet",
       "Cryosilk Cap",
@@ -6164,7 +6238,9 @@
       "Cryosilk Sash",
       "Cryosilk Sleeves",
       "Cryosilk Veil",
-      "Cryosilk Webshield"
+      "Cryosilk Webshield",
+      "Imbrued Platemail Bracer",
+      "Woven Shadow Bracer"
     ],
     "a spirit flux wolf": [
       "Assassin's Boots",
@@ -6204,7 +6280,8 @@
       "Scaled Hierophant Greaves",
       "Scaled Hierophant Helm",
       "Scaled Hierophant Vambraces",
-      "Spitestone Shield"
+      "Spitestone Shield",
+      "Umbral Platemail Helm"
     ],
     "a sprited harpie": [
       "Bracelet of Cessation",
@@ -6325,12 +6402,14 @@
     ],
     "a tentacle tormentor": [
       "Dweamorvine Garland",
+      "Lustrous Russet Breastplate",
       "Thorny Vine Boots",
       "Thorny Vine Bracer",
       "Thorny Vine Chestplate",
       "Thorny Vine Gauntlets",
       "Thorny Vine Greaves",
-      "Thorny Vine Vambraces"
+      "Thorny Vine Vambraces",
+      "Valorium Chestplate"
     ],
     "a terror carver": [
       "Crystal Covered Shroud",
@@ -6481,6 +6560,7 @@
     ],
     "a turmoil toad": [
       "Flayed Turmoilskin Belt",
+      "Insidious Gloves",
       "Turmoil Warts"
     ],
     "a ulthork man o war": [
@@ -6585,6 +6665,8 @@
     "a wanderer": [
       "Cracked Paineel Shield",
       "Imbued Granite Spaulders",
+      "Paineel Plate Gauntlets",
+      "Paineel Platemail Helm",
       "Paineel Splinted Cloak",
       "Paineel Steel Bracers",
       "Paineel Steel Breastplate",
@@ -6631,9 +6713,11 @@
     ],
     "a werewolf": [
       "Lupine Runed Armband",
-      "Lute of the Gypsy Princess",
-      "Mistmoore Battle Drums",
       "Serpent Insignia Collar"
+    ],
+    "a werewolf gypsy": [
+      "Lute of the Gypsy Princess",
+      "Mistmoore Battle Drums"
     ],
     "a wightish ancille": [
       "Fine Steel Rapier",
@@ -6715,8 +6799,12 @@
       "Lightstone"
     ],
     "a windrider drake": [
+      "Belt of Contention",
+      "Belt of Iniquity",
+      "Crown Of Elemental Mastery",
       "Crown of Elemental Mastery",
-      "Sphinx Crown"
+      "Sphinx Crown",
+      "Weight of the Gods"
     ],
     "a wooly mammoth": [
       "Ring of Frost"
@@ -6725,6 +6813,8 @@
       "Ring of Frost"
     ],
     "a worry wraith": [
+      "Imbrued Platemail Gauntlets",
+      "Umbral Platemail Gauntlets",
       "Wand of Allure",
       "Wraithstone"
     ],
@@ -6825,6 +6915,10 @@
       "Reaper's Ring",
       "Rocksmasher",
       "Whitestone Shield"
+    ],
+    "abomination of Ro": [
+      "Control Circlet",
+      "Singed Armature Rod"
     ],
     "aderius Rhenar": [
       "Cold Iron Shackle"
@@ -7443,6 +7537,9 @@
       "Fire Emerald Ring",
       "Sapphire Necklace"
     ],
+    "alrik Pasdar": [
+      "Kerran Headband"
+    ],
     "ambassador DVinn": [
       "Dragoon Dirk",
       "Wood Elf Scout Shoes"
@@ -7484,9 +7581,17 @@
     ],
     "amygdalan warrior": [
       "Amygdalan Tendril",
+      "Blighted Armband",
+      "Blighted Robe",
+      "Imbrued Platemail Breastplate",
       "Nautilus Shield",
       "Opal Bracelet",
-      "Pearl Necklace"
+      "Pearl Necklace",
+      "Rune Etched Gauntlets",
+      "Shiverback-hide Gloves"
+    ],
+    "amygldalan knight": [
+      "Midnight Clad Straps"
     ],
     "an Aged Golem Sentinel": [
       "Sentry Robe"
@@ -7506,7 +7611,12 @@
       "Silverleaf Belt",
       "Silverleaf Girdle",
       "Teir`Dal Sai",
-      "Vambraces of the Untamed"
+      "Vambraces of the Untamed",
+      "Woven Shadow Greaves"
+    ],
+    "an Amygdalan warrior": [
+      "Apothic Robe",
+      "Carmine Robe"
     ],
     "an Ancient Guardian": [
       "Golem Tear Ring"
@@ -7664,10 +7774,14 @@
       "Walrus Tooth"
     ],
     "an abhorrent": [
+      "Anthemion Wristguard",
+      "Ethereal Mist Bracers",
       "Fire Emerald Ring",
+      "Rune Etched Bracer",
       "Sapphire Necklace",
       "Shrieking Ahlspiess",
       "Star Ruby Earring",
+      "Valorium Bracers",
       "Woven Shadow Boots",
       "Woven Shadow Bracer",
       "Woven Shadow Chestplate",
@@ -7918,7 +8032,8 @@
       "Ashenbone Abbasi",
       "Ashenbone Axe",
       "Ashenbone Shield",
-      "Insidious Sleeves"
+      "Insidious Sleeves",
+      "Umbral Platemail Vambraces"
     ],
     "an asp": [
       "Giant Snake Fang"
@@ -7953,6 +8068,9 @@
       "Holgresh Mojo Stick (Earth)",
       "Holgresh Mojo Stick (Fire)",
       "Holgresh Mojo Stick (Water)"
+    ],
+    "an elder panda": [
+      "Panda Claws"
     ],
     "an elder shard wyvern": [
       "Unadorned Breastplate",
@@ -8011,6 +8129,7 @@
       "Earthen Blade",
       "Elemental Binder",
       "Loam Encrusted Amice",
+      "Loam Encrusted Gloves",
       "Loam Encrusted Lined Shoes",
       "Smoldering Brand"
     ],
@@ -8072,7 +8191,12 @@
       "Rusty Short Sword"
     ],
     "an elite dragoon": [
-      "Ethereal Mist Boots"
+      "Ethereal Mist Boots",
+      "Ethereal Mist Greaves",
+      "Lustrous Russet Greaves",
+      "Midnight Clad Leggings",
+      "Shadow Rage Leggings",
+      "Shiverback-hide Leggings"
     ],
     "an elite gnoll guard": [
       "Bronze Long Sword",
@@ -8388,7 +8512,8 @@
       "Rusty Short Sword"
     ],
     "an injured halfling": [
-      "A Broom"
+      "A Broom",
+      "Leatherfoot Raider Skullcap (drop)"
     ],
     "an injured polar bear": [
       "Barbarian Hunting Spear"
@@ -8401,10 +8526,13 @@
     ],
     "an ire ghast": [
       "Darkmetal Holy Water Sprinkler",
+      "Ethereal Mist Vambraces",
+      "Rune Etched Vambraces",
       "Shadow Rage Sleeves",
       "Theologian Claymore",
       "Thorny Vine Vambraces",
-      "Trueheart Shield"
+      "Trueheart Shield",
+      "Valorium Vambraces"
     ],
     "an isle goblin shaman": [
       "Worn Great Staff"
@@ -8828,6 +8956,9 @@
       "Bronze Katana",
       "Bronze Wakizashi"
     ],
+    "apprentice Ishva Mas": [
+      "Apprentice Heretic's Ring"
+    ],
     "aqua goblin marauder": [
       "Arrow"
     ],
@@ -9021,22 +9152,31 @@
     ],
     "bazzt Zzzt": [
       "Adamantium Earring",
+      "Belt of Contention",
+      "Belt of Iniquity",
       "Bixie Stinger (Bixie God's Stinger)",
       "Bixie Sword Blade",
+      "Blade of Abrogation",
       "Bracelet of Exertion",
+      "Fine Wool Cloak",
       "Rusted Pauldrons",
       "Silvered Spiroc Necklace",
+      "Symbol of Marr",
+      "Treant Tear",
+      "Weight of the Gods",
       "White Gold Earring",
       "Whitened Treant Fists"
     ],
     "bazzzazzt": [
       "Adamantium Bands",
       "Belt of Concordance",
+      "Belt of Contention",
       "Belt of Iniquity",
       "Belt of Transience",
       "Bracelet of Quiescence",
       "Symbol of Marr",
-      "Treant Tear"
+      "Treant Tear",
+      "Weight of the Gods"
     ],
     "bejeweled Elemental": [
       "Loam Encrusted Sleeves",
@@ -9313,6 +9453,9 @@
     "bunk Odon": [
       "A Noble's Crest"
     ],
+    "burnt scalebone": [
+      "A Cracked Femur"
+    ],
     "burynai Excavator": [
       "Bronze Main Gauche",
       "Solist's Icy Wand"
@@ -9357,7 +9500,11 @@
     "bzzzt": [
       "Adamantium Bands",
       "Belt of Transience",
-      "Stein of Flowing Ichor"
+      "Belt of the Pine",
+      "Blade of Abrogation",
+      "Stein of Flowing Ichor",
+      "Symbol of Marr",
+      "Treant Tear"
     ],
     "cWG Model EXG": [
       "Charred Guardian Breastplate",
@@ -9573,6 +9720,9 @@
     "cian McMarrin": [
       "Fine Steel Two Handed Sword"
     ],
+    "classic Raid Tier Treasures": [
+      "Emerald Ring"
+    ],
     "clazxiss": [
       "Windetched Staff"
     ],
@@ -9628,6 +9778,10 @@
     "coercer Q`ioul Pet": [
       "Animated Shield",
       "Animated Sword4"
+    ],
+    "coercer T`vala": [
+      "Insidious Halo",
+      "Insidious Slippers"
     ],
     "cognoggin": [
       "Rusty Short Sword"
@@ -10021,6 +10175,12 @@
       "Fine Steel Scimitar",
       "Fine Steel Short Sword",
       "Fine Steel Warhammer"
+    ],
+    "decaying skeleton": [
+      "Rusty Fer'Esh"
+    ],
+    "decaying skeletong": [
+      "Rusty Sheer Blade"
     ],
     "deep Lava Basilisk": [
       "Basilisk Bracer"
@@ -10657,8 +10817,10 @@
       "Fine Steel Scimitar",
       "Fine Steel Short Sword",
       "Fine Steel Two Handed Sword",
+      "Gargoyle Grips",
       "Ringmail Cape",
-      "Small Ringmail Bracelet"
+      "Small Ringmail Bracelet",
+      "Visage of the Gargoyle"
     ],
     "eonis Mournunder": [
       "Dark Gold Sr Apprentice Robe*"
@@ -10709,6 +10871,7 @@
       "Axe"
     ],
     "eye of Veeshan": [
+      "Belt of the Pine",
       "Blade of Abrogation",
       "Efreeti Great Staff",
       "Fae Pauldrons"
@@ -10832,6 +10995,10 @@
     "flame goblin foreman": [
       "Foreman's Tunic",
       "Obsidian Scimitar"
+    ],
+    "flaming Wraith": [
+      "Burnt Sheer Blade",
+      "Smoldering Robe"
     ],
     "flint Velweaver": [
       "Silver Amulet"
@@ -11490,6 +11657,7 @@
     ],
     "gorgalosk": [
       "Azure Ring",
+      "Belt of Iniquity",
       "Belt of Transience",
       "Belt of the Pine",
       "Blade of Abrogation",
@@ -11500,6 +11668,9 @@
       "Grey Damask Cloak",
       "Inlaid Choker",
       "Symbol of Marr",
+      "Treant Tear",
+      "Weight of the Gods",
+      "White Satin Gloves",
       "Whitened Treant Fists",
       "Worn Leather Mask"
     ],
@@ -11613,6 +11784,9 @@
     ],
     "great Divide": [
       "Velium Spear"
+    ],
+    "greater Faydark": [
+      "Faydark Champions Long Sword"
     ],
     "greater Scalebone": [
       "Burynai Hide Boots"
@@ -11732,6 +11906,9 @@
     ],
     "grenix Mucktail": [
       "Polished Granite Tomahawk"
+    ],
+    "gribnor the Small": [
+      "Zraxthril Forged Flamberge"
     ],
     "grigga Shralok": [
       "Raw-hide Tunic"
@@ -12293,6 +12470,9 @@
       "Belt of Iniquity",
       "Blade of Abrogation"
     ],
+    "heartsbane drake": [
+      "Crown Of Elemental Mastery"
+    ],
     "hechaeva": [
       "Heavy Dragonspine Vambraces",
       "Hechaeva's Talisman",
@@ -12543,13 +12723,11 @@
     "innoruuk (God)": [
       "Ashenbone Warhammer",
       "Beckon",
-      "Bloodmoon",
       "Briarzephyr",
       "Dawnchaser",
       "Diamond Rod",
       "Gardash",
       "Rod of Unbound Thought",
-      "Shield of the Immaculate",
       "Sode of Empowerment",
       "Truesight Hammer",
       "Vexthorne"
@@ -12559,6 +12737,8 @@
       "Darkmetal Falchion",
       "Hate Crystal",
       "Hate's Edge",
+      "Indicolite Bracer",
+      "Indicolite Breastplate",
       "Indicolite Greaves",
       "Nightgrowth Blade",
       "Silverleaf Belt"
@@ -12868,14 +13048,18 @@
     "keeper of Souls": [
       "Belt of Concordance",
       "Belt of Contention",
+      "Belt of Iniquity",
       "Belt of Virtue",
+      "Belt of the Pine",
       "Black Silk Cape",
+      "Blade of Abrogation",
       "Bracelet of Exertion",
       "Ceramic Mask",
       "Cracked Leather Eyepatch",
       "Fine Velvet Cloak",
       "Jester's Mask",
       "Light Cloth Mantle",
+      "Light Woolen Mantle",
       "Mantle of Woven Grass",
       "Silvery Ring",
       "Small Shield",
@@ -12883,7 +13067,8 @@
       "Stone Amulet",
       "Symbol of Marr",
       "Treant Tear",
-      "Weight of the Gods"
+      "Weight of the Gods",
+      "Woven Skull Cap"
     ],
     "keeper of the Tombs": [
       "Tainted Darksteel Sword"
@@ -14224,6 +14409,7 @@
       "Bloodmoon",
       "Eye of Innoruuk",
       "Shield of the Immaculate",
+      "Shield of the Stalwart Seas",
       "Theologian Claymore"
     ],
     "lord of Loathing": [
@@ -14257,6 +14443,9 @@
     ],
     "lurian": [
       "Shadow Fang Necklace"
+    ],
+    "lynada the Exiled": [
+      "Soft Leather Shoes"
     ],
     "lynada the exiled": [
       "Damask Amice"
@@ -14296,6 +14485,7 @@
       "Rokyls Channelling Crystal"
     ],
     "maid Issis": [
+      "Maid's Stockings",
       "Nightshade Wreath"
     ],
     "makala": [
@@ -14347,7 +14537,9 @@
       "Spider Fur Collar"
     ],
     "marrowbane": [
+      "Bronze Two Handed Sword",
       "Grimy Black Silk Robe",
+      "Raw-hide Skullcap",
       "Wood Elf Scout Bauble"
     ],
     "martar IceBear": [
@@ -14375,6 +14567,17 @@
       "Earthshaker",
       "Imbued Granite Spaulders",
       "Loam Encrusted Robe",
+      "Paineel Plate Gauntlets",
+      "Paineel Platemail Helm",
+      "Paineel Splinted Cloak",
+      "Paineel Steel Bracers",
+      "Paineel Steel Breastplate",
+      "Paineel Steel Collar",
+      "Paineel Steel Greaves",
+      "Paineel Steel Mask",
+      "Paineel Steel Pauldron",
+      "Paineel Steel Plate Boots",
+      "Paineel Steel Vambraces",
       "Serpent's Tooth"
     ],
     "master of Spite": [
@@ -14606,7 +14809,6 @@
       "Syythrak Hide Vest"
     ],
     "mortuary fungus": [
-      "A fungus eye",
       "Bloodstone Ring",
       "Fine Steel Long Sword",
       "Fine Steel Morning Star",
@@ -14615,6 +14817,7 @@
       "Fine Steel Short Sword",
       "Fine Steel Two Handed Sword",
       "Fine Steel Warhammer",
+      "Fungus Eye",
       "Golden Pendant",
       "Jade Ring",
       "Pearl Earring",
@@ -14833,6 +15036,7 @@
     ],
     "noble Dojorn": [
       "Belt of Concordance",
+      "Belt of Contention",
       "Bracelet of Exertion",
       "Bracelet of Quiescence",
       "Brass Knuckles",
@@ -14862,6 +15066,7 @@
       "Golden Efreeti Turban",
       "Golden Efreeti Vambraces",
       "Stein of Flowing Ichor",
+      "Treant Tear",
       "Weight of the Gods",
       "Whitened Treant Fists",
       "Wind Etched Boots of Ro",
@@ -15072,6 +15277,9 @@
       "Ry`Gorr Iron Armguards",
       "Ry`Gorr Oracle Shield"
     ],
+    "orc Centurion (Crushbone)": [
+      "Crushbone Belt"
+    ],
     "orc Pawn (Crushbone)": [
       "Orc Hatchet"
     ],
@@ -15079,8 +15287,8 @@
       "Orc Pawn Pick",
       "Weighted Gloves"
     ],
-    "orc Warlord": [
-      "Deteriorated Ancient Faydark Longbow"
+    "orc Warden": [
+      "Bracers of Battle"
     ],
     "orc apprentice": [
       "Cracked Staff",
@@ -15222,6 +15430,7 @@
       "Bronze Mace",
       "Bronze Two Handed Sword",
       "Crushbone Shoulderpads",
+      "Deteriorated Ancient Faydark Longbow",
       "Rusty Short Sword"
     ],
     "orc weaponsmith": [
@@ -15229,6 +15438,10 @@
       "Rusty Scythe",
       "Rusty Short Sword",
       "Splintering Club"
+    ],
+    "orc_scoutsman_(Crushbone)": [
+      "Bracers of Battle",
+      "Deteriorated Ancient Faydark Longbow"
     ],
     "ordro": [
       "Stonewood Mail"
@@ -15283,6 +15496,7 @@
       "Efreeti Scimitar",
       "Efreeti War Axe",
       "Efreeti War Bow",
+      "Efreeti War Club",
       "Efreeti War Horn",
       "Efreeti War Maul",
       "Efreeti War Shield",
@@ -15487,15 +15701,9 @@
     "pond sturgeon": [
       "Pondfish Spine"
     ],
-    "post-Revamp (Current)": [
-      "Barbarian Spiritist`s Hammer"
-    ],
     "poxbreath Yellowfang": [
       "Orc Fang Earring",
       "Ry`Gorr Iron Armguards"
-    ],
-    "pre-Revamp": [
-      "Barbarian Spiritist`s Hammer"
     ],
     "priest Amiaz": [
       "Blackened Wand",
@@ -15547,11 +15755,13 @@
       "Woven Vine Wristband"
     ],
     "princess Cherista": [
+      "Cherista's Fangs",
       "Fine Steel Rapier",
       "Gem-Encrusted Scepter",
       "Gold Ring",
       "Jade Earring",
-      "Silver Amulet"
+      "Silver Amulet",
+      "Tarnished Ancient Tiara"
     ],
     "princess Joleena": [
       "Fine Steel Short Sword",
@@ -15573,6 +15783,8 @@
       "Bracelet of Cessation",
       "Finely Woven Gold Mesh",
       "Stein of Flowing Ichor",
+      "Symbol of Marr",
+      "Weight of the Gods",
       "White Satin Gloves",
       "Whitened Treant Fists"
     ],
@@ -16150,6 +16362,9 @@
     "saliz Fe`Dhar": [
       "Saldaren Spear",
       "Winters Fury"
+    ],
+    "samhain": [
+      "Valorium Bracers"
     ],
     "sandgiant Husam": [
       "Fine Steel Long Sword",
@@ -17170,6 +17385,7 @@
       "Belt of Tranquility",
       "Belt of Transience",
       "Belt of Virtue",
+      "Belt of the Pine",
       "Blade of Abrogation",
       "Bracelet of Cessation",
       "Bracelet of Distortion",
@@ -17280,7 +17496,7 @@
     "skeleton": [
       "Tarnished Sheer Blade"
     ],
-    "skeleton Lrodd": [
+    "skeleton L`rodd": [
       "Pristine Studded Leather Boots",
       "Skeletal Rod"
     ],
@@ -17484,6 +17700,10 @@
     "sorcerer of Di`zok": [
       "Stave of Shielding"
     ],
+    "soul harvester": [
+      "Symbol of Marr",
+      "White Satin Gloves"
+    ],
     "spectral Commander": [
       "Blood Ember Bracer",
       "Granite Face Grinder"
@@ -17565,6 +17785,10 @@
       "Whirling Onyx",
       "Whirling Quartz",
       "Whirling Turquoise"
+    ],
+    "spirit of Dessication": [
+      "Frayed Silk Slippers",
+      "Withered Root Staff"
     ],
     "splintered Claw": [
       "Gold Ring"
@@ -18077,13 +18301,21 @@
       "Turtleshell Helm"
     ],
     "the Hand of Veeshan": [
+      "Belt of Iniquity",
       "Belt of Transience",
+      "Belt of the Pine",
+      "Blade of Abrogation",
       "Brass Knuckles",
       "Efreeti Belt",
       "Efreeti War Bow",
+      "Efreeti War Club",
       "Efreeti War Horn",
       "Efreeti War Staff",
       "Efreeti Wind Staff",
+      "Efreeti Zweihander",
+      "Golden Efreeti Vambraces",
+      "Symbol of Marr",
+      "Treant Tear",
       "White Satin Gloves"
     ],
     "the Head Usher": [
@@ -18166,6 +18398,7 @@
       "Finely Woven Cloth Belt",
       "High Quality Raiment",
       "Light Damask Mantle",
+      "Shiny Pauldrons",
       "Silken Mask",
       "Spiroc Battle Staff",
       "Spiroc Wingblade",
@@ -18213,7 +18446,6 @@
     ],
     "the froglok warden": [
       "Elf-Hide Gloves",
-      "Elf-hide Gloves",
       "Mesh Gorget",
       "Mesh Helm",
       "Mesh Leggings",
@@ -18435,6 +18667,10 @@
       "Ton Po's Bo Stick of Understanding",
       "Trakanon's Tooth",
       "Undead Dragon Sinew"
+    ],
+    "tranixx Darkpaw": [
+      "Onyx Earring",
+      "Rusty Spiked Shoulderpads"
     ],
     "trazdon": [
       "Binding Bracelets",
@@ -19632,6 +19868,9 @@
       "Blazing Wand",
       "Squallsurge Shawl"
     ],
+    "undine spirit": [
+      "Crown Of Elemental Mastery"
+    ],
     "undogo Digolo": [
       "Melodic Greaves",
       "Spirit Weaver's Greaves"
@@ -19660,6 +19899,7 @@
       "Goblin Forged Chainmail Neckguard",
       "Goblin Forged Iron Boots",
       "Spiked Goblin Ring",
+      "Split Paw Hide Belt",
       "Split Paw Hide Mask",
       "Split Paw Tooth Necklace"
     ],
@@ -20097,7 +20337,6 @@
       "Poison Etched Wristband"
     ],
     "vilnius the Small": [
-      "Bronze Tanto",
       "Ceramic Dirk"
     ],
     "vitaela": [
@@ -20442,6 +20681,9 @@
     ],
     "winex Kloktik": [
       "Winex's Staff"
+    ],
+    "withering skeleton": [
+      "Tarnished Sheer Blade"
     ],
     "wraith of Jaxion": [
       "Green Jade Broadsword"

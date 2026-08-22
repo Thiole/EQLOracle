@@ -13,6 +13,11 @@ export const volume = writable(100);
 export const era = writable<string | null>(null);
 export const eraOptions = writable<string[]>([]);
 export const currentEra = writable('Sky Era');
+/** why: false (default) = infer everything fresh every launch, same as
+ * always. true = also keep a saved per-character class profile across
+ * restarts as a fallback for zone routing -- see `PreferencesDto.
+ * save_profile`'s own doc. */
+export const saveProfile = writable(false);
 export const settingsLoaded = writable(false);
 
 /** why: what every era-aware API call should actually send -- resolves
@@ -30,13 +35,14 @@ export function loadPreferences(): Promise<void> {
     currentEra.set(opts.current);
     volume.set(prefs.volume);
     era.set(prefs.era);
+    saveProfile.set(prefs.save_profile);
     settingsLoaded.set(true);
   })();
   return loading;
 }
 
 function currentPrefs(): PreferencesDto {
-  return { volume: get(volume), era: get(era) };
+  return { volume: get(volume), era: get(era), save_profile: get(saveProfile) };
 }
 
 export async function setVolume(v: number) {
@@ -47,6 +53,11 @@ export async function setVolume(v: number) {
 export async function setEra(e: string) {
   era.set(e);
   await api.setPreferences({ ...currentPrefs(), era: e }).catch(() => {});
+}
+
+export async function setSaveProfile(on: boolean) {
+  saveProfile.set(on);
+  await api.setPreferences({ ...currentPrefs(), save_profile: on }).catch(() => {});
 }
 
 /** why: shared by every era-tagged Game Data category that carries a

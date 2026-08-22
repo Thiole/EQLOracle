@@ -4,734 +4,823 @@
   "x": 253,
   "y": -466,
   "z": 23,
-  "zone": "cazicthule"
+  "zone": "cazicthule",
+  "level": 34
  },
  "Cazic Temple Gate": {
   "class": "wizard",
   "x": 253,
   "y": -466,
   "z": 23,
-  "zone": "Cazic Thule"
+  "zone": "Cazic Thule",
+  "level": 23
  },
  "Cazic Temple Portal": {
   "class": "wizard",
   "x": 253,
   "y": -466,
   "z": 23,
-  "zone": "Cazic Thule"
+  "zone": "Cazic Thule",
+  "level": 33
  },
  "Circle of Butcher": {
   "class": "druid",
   "x": -2135,
   "y": 1984,
   "z": 3,
-  "zone": "butcher"
+  "zone": "butcher",
+  "level": 29
  },
  "Circle of Cobalt Scar": {
   "class": "druid",
   "x": -1065,
   "y": -1634,
   "z": 299,
-  "zone": "cobaltscar"
+  "zone": "cobaltscar",
+  "level": 44
  },
  "Circle of Commons": {
   "class": "druid",
   "x": 478,
   "y": 1427,
   "z": -48,
-  "zone": "commons"
+  "zone": "commons",
+  "level": 29
  },
  "Circle of Feerrott": {
   "class": "druid",
   "x": 367,
   "y": -1885,
   "z": 16,
-  "zone": "Feerrott"
+  "zone": "Feerrott",
+  "level": 32
  },
  "Circle of Great Divide": {
   "class": "druid",
   "x": -3766,
   "y": 3651,
   "z": -237,
-  "zone": "greatdivide"
+  "zone": "greatdivide",
+  "level": 39
  },
  "Circle of Iceclad": {
   "class": "druid",
   "x": -630,
   "y": 4925,
   "z": 113,
-  "zone": "iceclad"
+  "zone": "iceclad",
+  "level": 34
  },
  "Circle of Karana": {
   "class": "druid",
   "x": -2706,
   "y": -1494,
   "z": -4,
-  "zone": "North Karana"
+  "zone": "North Karana",
+  "level": 25
  },
  "Circle of Lavastorm": {
   "class": "druid",
   "x": 1014,
   "y": 1389,
   "z": 131,
-  "zone": "Lavastorm Mountains"
+  "zone": "Lavastorm Mountains",
+  "level": 30
  },
  "Circle of Misty": {
   "class": "druid",
   "x": -490,
   "y": -1896,
   "z": 120,
-  "zone": "misty"
+  "zone": "misty",
+  "level": 39
  },
  "Circle of Misty Thicket": {
   "class": "druid",
   "x": -490,
   "y": -1896,
   "z": 120,
-  "zone": "Misty Thicket"
+  "zone": "Misty Thicket",
+  "level": 36
  },
  "Circle of Ro": {
   "class": "druid",
   "x": -2034,
   "y": 317,
   "z": -19,
-  "zone": "sro"
+  "zone": "sro",
+  "level": 34
  },
  "Circle of South Ro": {
   "class": "druid",
   "x": -2034,
   "y": 317,
   "z": -19,
-  "zone": "South Ro"
+  "zone": "South Ro",
+  "level": 32
  },
  "Circle of Steamfont": {
   "class": "druid",
   "x": -1779,
   "y": 1668,
   "z": -104,
-  "zone": "Steamfont Mountains"
+  "zone": "Steamfont Mountains",
+  "level": 31
  },
  "Circle of Stonebrunt": {
   "class": "druid",
   "x": -4531,
   "y": 673,
   "z": 0,
-  "zone": "Stonebrunt Mountains"
+  "zone": "Stonebrunt Mountains",
+  "level": 28
  },
  "Circle of Surefall Glade": {
   "class": "druid",
   "x": -209,
   "y": -391,
   "z": 9,
-  "zone": "qrg"
+  "zone": "qrg",
+  "level": 26
  },
  "Circle of Toxxulia": {
   "class": "druid",
   "x": 1099,
   "y": -357,
   "z": -53,
-  "zone": "Toxxulia Forest"
+  "zone": "Toxxulia Forest",
+  "level": 25
  },
  "Circle of Wakening Lands": {
   "class": "druid",
   "x": -3040,
   "y": -3032,
   "z": 28,
-  "zone": "wakening"
+  "zone": "wakening",
+  "level": 44
  },
  "Circle of West Commons": {
   "class": "druid",
   "x": 478,
   "y": 1427,
   "z": -48,
-  "zone": "West Commonlands"
+  "zone": "West Commonlands",
+  "level": 27
  },
  "Circle of the Combines": {
   "class": "druid",
   "x": 2484,
   "y": 7717,
   "z": 1051,
-  "zone": "dreadlands"
+  "zone": "dreadlands",
+  "level": 34
  },
  "Cobalt Scar Gate": {
   "class": "wizard",
   "x": -1065,
   "y": -1634,
   "z": 299,
-  "zone": "cobaltscar"
+  "zone": "cobaltscar",
+  "level": 39
  },
  "Cobalt Scar Portal": {
   "class": "wizard",
   "x": -1065,
   "y": -1634,
   "z": 299,
-  "zone": "cobaltscar"
+  "zone": "cobaltscar",
+  "level": 44
  },
  "Combine Gate": {
   "class": "wizard",
   "x": 3047,
   "y": 9658,
   "z": 1052,
-  "zone": "Dreadlands"
+  "zone": "Dreadlands",
+  "level": 24
  },
  "Combine Portal": {
   "class": "wizard",
   "x": 3047,
   "y": 9658,
   "z": 1052,
-  "zone": "dreadlands"
+  "zone": "dreadlands",
+  "level": 34
  },
  "Common Gate": {
   "class": "wizard",
   "x": 1,
   "y": 1841,
   "z": -13,
-  "zone": "commons"
+  "zone": "commons",
+  "level": 24
  },
  "Common Portal": {
   "class": "wizard",
   "x": 1,
   "y": 1841,
   "z": -13,
-  "zone": "commons"
+  "zone": "commons",
+  "level": 39
  },
  "Fay Gate": {
   "class": "wizard",
   "x": -2023,
   "y": -441,
   "z": 4,
-  "zone": "gfaydark"
+  "zone": "gfaydark",
+  "level": 20
  },
  "Fay Portal": {
   "class": "wizard",
   "x": -2023,
   "y": -441,
   "z": 4,
-  "zone": "gfaydark"
+  "zone": "gfaydark",
+  "level": 29
  },
  "Great Divide Gate": {
   "class": "wizard",
   "x": -3766,
   "y": 3651,
   "z": -237,
-  "zone": "greatdivide"
+  "zone": "greatdivide",
+  "level": 34
  },
  "Great Divide Portal": {
   "class": "wizard",
   "x": -3766,
   "y": 3651,
   "z": -237,
-  "zone": "greatdivide"
+  "zone": "greatdivide",
+  "level": 39
  },
  "Greater Faydark Gate": {
   "class": "wizard",
   "x": -2023,
   "y": -441,
   "z": 4,
-  "zone": "Greater Faydark"
+  "zone": "Greater Faydark",
+  "level": 20
  },
  "Greater Faydark Portal": {
   "class": "wizard",
   "x": -2023,
   "y": -441,
   "z": 4,
-  "zone": "Greater Faydark"
+  "zone": "Greater Faydark",
+  "level": 27
  },
  "Grimling Gate": {
   "class": "wizard",
   "x": -690,
   "y": -1170,
   "z": 13,
-  "zone": "Grimling Forest"
+  "zone": "Grimling Forest",
+  "level": 20
  },
  "Iceclad Gate": {
   "class": "wizard",
   "x": -630,
   "y": 4925,
   "z": 113,
-  "zone": "iceclad"
+  "zone": "iceclad",
+  "level": 34
  },
  "Nek Gate": {
   "class": "wizard",
   "x": 432,
   "y": -772,
   "z": 35,
-  "zone": "nektulos"
+  "zone": "nektulos",
+  "level": 24
  },
  "Nek Portal": {
   "class": "wizard",
   "x": 432,
   "y": -772,
   "z": 35,
-  "zone": "nektulos"
+  "zone": "nektulos",
+  "level": 34
  },
  "Nektulos Gate": {
   "class": "wizard",
   "x": 432,
   "y": -772,
   "z": 35,
-  "zone": "Nektulos Forest"
+  "zone": "Nektulos Forest",
+  "level": 22
  },
  "Nektulos Portal": {
   "class": "wizard",
   "x": 432,
   "y": -772,
   "z": 35,
-  "zone": "Nektulos Forest"
+  "zone": "Nektulos Forest",
+  "level": 32
  },
  "North Gate": {
   "class": "wizard",
   "x": -3685,
   "y": 1209,
   "z": -5,
-  "zone": "northkarana"
+  "zone": "northkarana",
+  "level": 20
  },
  "North Karana Gate": {
   "class": "wizard",
   "x": -3685,
   "y": 1209,
   "z": -5,
-  "zone": "North Karana"
+  "zone": "North Karana",
+  "level": 18
  },
  "North Karana Portal": {
   "class": "wizard",
   "x": -3685,
   "y": 1209,
   "z": -5,
-  "zone": "North Karana"
+  "zone": "North Karana",
+  "level": 25
  },
  "North Portal": {
   "class": "wizard",
   "x": -3685,
   "y": 1209,
   "z": -5,
-  "zone": "northkarana"
+  "zone": "northkarana",
+  "level": 29
  },
  "North Ro Gate": {
   "class": "wizard",
   "x": 1377,
   "y": 823,
   "z": 14,
-  "zone": "North Ro"
+  "zone": "North Ro",
+  "level": 22
  },
  "North Ro Portal": {
   "class": "wizard",
   "x": 1377,
   "y": 823,
   "z": 14,
-  "zone": "North Ro"
+  "zone": "North Ro",
+  "level": 36
  },
  "Ring of Butcher": {
   "class": "druid",
   "x": -2135,
   "y": 1984,
   "z": 3,
-  "zone": "Butcherblock Mountains"
+  "zone": "Butcherblock Mountains",
+  "level": 16
  },
  "Ring of Cobalt Scar": {
   "class": "druid",
   "x": -1065,
   "y": -1634,
   "z": 299,
-  "zone": "cobaltscar"
+  "zone": "cobaltscar",
+  "level": 39
  },
  "Ring of Commons": {
   "class": "druid",
   "x": 478,
   "y": 1427,
   "z": -48,
-  "zone": "commons"
- },
- "Ring of Faydark": {
-  "class": "druid",
-  "x": 1880,
-  "y": -1060,
-  "z": 2,
-  "zone": "lfaydark"
+  "zone": "commons",
+  "level": 19
  },
  "Ring of Feerrott": {
   "class": "druid",
   "x": 367,
   "y": -1885,
   "z": 16,
-  "zone": "Feerrott"
+  "zone": "Feerrott",
+  "level": 22
  },
  "Ring of Great Divide": {
   "class": "druid",
   "x": -3766,
   "y": 3651,
   "z": -237,
-  "zone": "greatdivide"
+  "zone": "greatdivide",
+  "level": 34
  },
  "Ring of Iceclad": {
   "class": "druid",
   "x": -630,
   "y": 4925,
   "z": 113,
-  "zone": "iceclad"
+  "zone": "iceclad",
+  "level": 34
  },
  "Ring of Karana": {
   "class": "druid",
   "x": -2706,
   "y": -1494,
   "z": -4,
-  "zone": "North Karana"
+  "zone": "North Karana",
+  "level": 15
  },
  "Ring of Lavastorm": {
   "class": "druid",
   "x": 1014,
   "y": 1389,
   "z": 131,
-  "zone": "Lavastorm Mountains"
+  "zone": "Lavastorm Mountains",
+  "level": 22
  },
  "Ring of Misty": {
   "class": "druid",
   "x": -490,
   "y": -1896,
   "z": 120,
-  "zone": "misty"
+  "zone": "misty",
+  "level": 29
  },
  "Ring of Misty Thicket": {
   "class": "druid",
   "x": -490,
   "y": -1896,
   "z": 120,
-  "zone": "Misty Thicket"
+  "zone": "Misty Thicket",
+  "level": 25
  },
  "Ring of Ro": {
   "class": "druid",
   "x": -2034,
   "y": 317,
   "z": -19,
-  "zone": "sro"
+  "zone": "sro",
+  "level": 24
  },
  "Ring of South Ro": {
   "class": "druid",
   "x": -2034,
   "y": 317,
   "z": -19,
-  "zone": "South Ro"
+  "zone": "South Ro",
+  "level": 20
  },
  "Ring of Steamfont": {
   "class": "druid",
   "x": -1779,
   "y": 1668,
   "z": -104,
-  "zone": "Steamfont Mountains"
+  "zone": "Steamfont Mountains",
+  "level": 21
  },
  "Ring of Stonebrunt": {
   "class": "druid",
   "x": -4531,
   "y": 673,
   "z": 0,
-  "zone": "Stonebrunt Mountains"
+  "zone": "Stonebrunt Mountains",
+  "level": 20
  },
  "Ring of Surefall Glade": {
   "class": "druid",
   "x": -209,
   "y": -391,
   "z": 9,
-  "zone": "qrg"
+  "zone": "qrg",
+  "level": 15
  },
  "Ring of Toxxulia": {
   "class": "druid",
   "x": 1099,
   "y": -357,
   "z": -53,
-  "zone": "Toxxulia Forest"
+  "zone": "Toxxulia Forest",
+  "level": 17
  },
  "Ring of Wakening Lands": {
   "class": "druid",
   "x": -3040,
   "y": -3032,
   "z": 28,
-  "zone": "wakening"
+  "zone": "wakening",
+  "level": 39
  },
  "Ring of West Commons": {
   "class": "druid",
   "x": 478,
   "y": 1427,
   "z": -48,
-  "zone": "West Commonlands"
+  "zone": "West Commonlands",
+  "level": 17
  },
  "Ring of the Combines": {
   "class": "druid",
   "x": 2484,
   "y": 7717,
   "z": 1051,
-  "zone": "dreadlands"
+  "zone": "dreadlands",
+  "level": 24
  },
  "Ro Gate": {
   "class": "wizard",
   "x": 1377,
   "y": 823,
   "z": 14,
-  "zone": "nro"
+  "zone": "nro",
+  "level": 24
  },
  "Ro Portal": {
   "class": "wizard",
   "x": 1377,
   "y": 823,
   "z": 14,
-  "zone": "nro"
+  "zone": "nro",
+  "level": 39
  },
  "Stonebrunt Gate": {
   "class": "wizard",
   "x": -4531,
   "y": 673,
   "z": 0,
-  "zone": "Stonebrunt Mountains"
+  "zone": "Stonebrunt Mountains",
+  "level": 21
  },
  "Stonebrunt Portal": {
   "class": "wizard",
   "x": -4531,
   "y": 673,
   "z": 0,
-  "zone": "Stonebrunt Mountains"
- },
- "Thurgadin Gate": {
-  "class": "wizard",
-  "x": -865,
-  "y": 4,
-  "z": 14,
-  "zone": "thurgadina"
+  "zone": "Stonebrunt Mountains",
+  "level": 27
  },
  "Tox Gate": {
   "class": "wizard",
   "x": -1510,
   "y": -916,
   "z": -33,
-  "zone": "tox"
+  "zone": "tox",
+  "level": 20
  },
  "Tox Portal": {
   "class": "wizard",
   "x": -1510,
   "y": -916,
   "z": -33,
-  "zone": "tox"
+  "zone": "tox",
+  "level": 29
  },
  "Toxxulia Gate": {
   "class": "wizard",
   "x": -1510,
   "y": -916,
   "z": -33,
-  "zone": "Toxxulia Forest"
+  "zone": "Toxxulia Forest",
+  "level": 19
  },
  "Toxxulia Portal": {
   "class": "wizard",
   "x": -1510,
   "y": -916,
   "z": -33,
-  "zone": "Toxxulia Forest"
+  "zone": "Toxxulia Forest",
+  "level": 28
  },
  "Translocate: Cazic": {
   "class": "wizard",
   "x": 253,
   "y": -466,
   "z": 23,
-  "zone": "cazicthule"
+  "zone": "cazicthule",
+  "level": 44
  },
  "Translocate: Cazic Temple": {
   "class": "wizard",
   "x": 253,
   "y": -466,
   "z": 23,
-  "zone": "Cazic Thule"
+  "zone": "Cazic Thule",
+  "level": 44
  },
  "Translocate: Cobalt Scar": {
   "class": "wizard",
   "x": -1065,
   "y": -1634,
   "z": 299,
-  "zone": "cobaltscar"
+  "zone": "cobaltscar",
+  "level": 49
  },
  "Translocate: Combine": {
   "class": "wizard",
   "x": 3047,
   "y": 9658,
   "z": 1052,
-  "zone": "dreadlands"
+  "zone": "dreadlands",
+  "level": 39
  },
  "Translocate: Common": {
   "class": "wizard",
   "x": 1,
   "y": 1841,
   "z": -13,
-  "zone": "commons"
+  "zone": "commons",
+  "level": 44
  },
  "Translocate: Fay": {
   "class": "wizard",
   "x": -2023,
   "y": -441,
   "z": 4,
-  "zone": "gfaydark"
+  "zone": "gfaydark",
+  "level": 39
  },
  "Translocate: Great Divide": {
   "class": "wizard",
   "x": -3766,
   "y": 3651,
   "z": -237,
-  "zone": "greatdivide"
+  "zone": "greatdivide",
+  "level": 49
  },
  "Translocate: Greater Faydark": {
   "class": "wizard",
   "x": -2023,
   "y": -441,
   "z": 4,
-  "zone": "Greater Faydark"
+  "zone": "Greater Faydark",
+  "level": 36
  },
  "Translocate: Iceclad": {
   "class": "wizard",
   "x": -630,
   "y": 4925,
   "z": 113,
-  "zone": "iceclad"
+  "zone": "iceclad",
+  "level": 49
  },
  "Translocate: Nek": {
   "class": "wizard",
   "x": 432,
   "y": -772,
   "z": 35,
-  "zone": "nektulos"
+  "zone": "nektulos",
+  "level": 44
  },
  "Translocate: Nektulos": {
   "class": "wizard",
   "x": 432,
   "y": -772,
   "z": 35,
-  "zone": "Nektulos Forest"
+  "zone": "Nektulos Forest",
+  "level": 41
  },
  "Translocate: North": {
   "class": "wizard",
   "x": -3685,
   "y": 1209,
   "z": -5,
-  "zone": "northkarana"
+  "zone": "northkarana",
+  "level": 39
  },
  "Translocate: North Karana": {
   "class": "wizard",
   "x": -3685,
   "y": 1209,
   "z": -5,
-  "zone": "North Karana"
+  "zone": "North Karana",
+  "level": 35
  },
  "Translocate: North Ro": {
   "class": "wizard",
   "x": 1377,
   "y": 823,
   "z": 14,
-  "zone": "North Ro"
+  "zone": "North Ro",
+  "level": 43
  },
  "Translocate: Ro": {
   "class": "wizard",
   "x": 1377,
   "y": 823,
   "z": 14,
-  "zone": "nro"
+  "zone": "nro",
+  "level": 44
  },
  "Translocate: Stonebrunt": {
   "class": "wizard",
   "x": -4531,
   "y": 673,
   "z": 0,
-  "zone": "Stonebrunt Mountains"
+  "zone": "Stonebrunt Mountains",
+  "level": 35
  },
  "Translocate: Tox": {
   "class": "wizard",
   "x": -1510,
   "y": -916,
   "z": -33,
-  "zone": "tox"
+  "zone": "tox",
+  "level": 39
  },
  "Translocate: Toxxulia": {
   "class": "wizard",
   "x": -1510,
   "y": -916,
   "z": -33,
-  "zone": "Toxxulia Forest"
+  "zone": "Toxxulia Forest",
+  "level": 37
  },
  "Translocate: Wakening Lands": {
   "class": "wizard",
   "x": -3040,
   "y": -3032,
   "z": 28,
-  "zone": "wakening"
+  "zone": "wakening",
+  "level": 49
  },
  "Translocate: West": {
   "class": "wizard",
   "x": -3569,
   "y": -14815,
   "z": 36,
-  "zone": "qey2hh1"
+  "zone": "qey2hh1",
+  "level": 44
  },
  "Translocate: West Commons": {
   "class": "wizard",
   "x": 1,
   "y": 1841,
   "z": -14,
-  "zone": "West Commonlands"
+  "zone": "West Commonlands",
+  "level": 40
  },
  "Translocate: West Karana": {
   "class": "wizard",
   "x": -3569,
   "y": -14815,
   "z": 36,
-  "zone": "West Karana"
+  "zone": "West Karana",
+  "level": 42
  },
  "Wakening Lands Gate": {
   "class": "wizard",
   "x": -3040,
   "y": -3032,
   "z": 28,
-  "zone": "wakening"
+  "zone": "wakening",
+  "level": 39
  },
  "Wakening Lands Portal": {
   "class": "wizard",
   "x": -3040,
   "y": -3032,
   "z": 28,
-  "zone": "wakening"
+  "zone": "wakening",
+  "level": 44
  },
  "West Commons Gate": {
   "class": "wizard",
   "x": 1,
   "y": 1841,
   "z": -14,
-  "zone": "West Commonlands"
+  "zone": "West Commonlands",
+  "level": 21
  },
  "West Commons Portal": {
   "class": "wizard",
   "x": 1,
   "y": 1841,
   "z": -14,
-  "zone": "West Commonlands"
+  "zone": "West Commonlands",
+  "level": 35
  },
  "West Gate": {
   "class": "wizard",
   "x": -3569,
   "y": -14815,
   "z": 36,
-  "zone": "qey2hh1"
+  "zone": "qey2hh1",
+  "level": 24
  },
  "West Karana Gate": {
   "class": "wizard",
   "x": -3569,
   "y": -14815,
   "z": 36,
-  "zone": "West Karana"
+  "zone": "West Karana",
+  "level": 23
  },
  "West Karana Portal": {
   "class": "wizard",
   "x": -3569,
   "y": -14815,
   "z": 36,
-  "zone": "West Karana"
+  "zone": "West Karana",
+  "level": 37
  },
  "West Portal": {
   "class": "wizard",
   "x": -3569,
   "y": -14815,
   "z": 36,
-  "zone": "qey2hh1"
+  "zone": "qey2hh1",
+  "level": 39
  }
 }

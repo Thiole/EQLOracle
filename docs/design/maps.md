@@ -219,20 +219,171 @@ and controls left alone. Guarded by `ui/tests/interaction/
 maps-camera-stability.spec.ts` (pixel-diff screenshots against a real
 Three.js scene via an isolated harness, not the whole app).
 
+## Pathfinding — in-zone walking and zone-to-zone routing
+
+`crates/app/src/pathfind.rs` (in-zone) and `crates/app/src/routing.rs`
+(zone-to-zone) are new infrastructure, built from scratch — there is no
+existing graph/pathfinding code anywhere in this workspace to build on
+(`eqlp_session::graph` is a union-find encounter builder, not a reusable
+weighted graph; no crate here pulls in a graph library).
+
+**In-zone: grid A\*, not a visibility graph.** `mapsdata::ParsedZoneMap` is
+only line segments and labeled points — no floor polygons, no nav-mesh. A
+classic visibility graph (wall endpoints as nodes) is untenable at real
+scale (up to 26,383 wall segments in one zone, `everfrost.txt`, confirmed
+on disk — 52k+ endpoints, O(n^2) edge candidates). `pathfind::find_path`
+instead grids the zone's own bounding box adaptively (~250 cells per axis,
+clamped 8–200 units) and runs binary-heap A* with real segment-segment
+intersection tests deciding which adjacent-cell edges are blocked — never
+a "is this cell inside a wall" test, since these are open line obstacles,
+not filled polygons.
+
+Two real, checked-not-assumed findings shaped the design:
+
+1. **Z-banded, not true 3D.** A multi-level dungeon's walls occupy very
+   different Z ranges per floor (confirmed: Befallen spans Z −90.6 to
+   +26.1). Every query filters wall segments to a Z window (`Z_BAND`, ±40
+   units) around the *starting* point before building the grid — auto-
+   discovering stairs/ramps from line-art alone is a research-grade
+   problem this format was never built for; a route needing a floor change
+   returns `None` rather than a fabricated path through the wrong level.
+2. **Not every `L` line is a wall.** Confirmed directly against the real
+   `northkarana.txt`: treating every line as a hard obstacle left 2 of 3
+   real zone-line exit markers in a disconnected 19% pocket of an
+   otherwise-one-piece 2D flood-fill. Sampling every real color used in
+   that file found five, not the two ("black or gray") this codebase had
+   previously established as wall colors: brown/dirt tones (terrain
+   contour art, not obstacles), a blue (water — swimmable in this game,
+   not a hard wall), and a magenta appearing exactly once per real zone
+   exit (the zone-boundary marker line itself, which must never block the
+   route leading to it). `is_wall_color` now only treats grayscale lines
+   (`r == g == b`) as real obstacles — fixed one of the two disconnected
+   markers outright; the third sits inside a real, narrow, purpose-built
+   gate structure a coarse grid can still miss, a separate, already-
+   documented resolution tradeoff. `nearest_open_cell` (spiral outward
+   from a query point) separately fixes the common case of a query point
+   landing exactly on/against wall geometry — confirmed real: a route
+   queried to a zone-line marker's own exact coordinate failed outright
+   even though every point a few percent short of it succeeded, since
+   real exit markers are typically placed right against their own
+   boundary geometry.
+
+**Zone-to-zone: cheap candidates, then real-distance scoring.**
+`routing::find_zone_route` is two-stage and deliberately lazy: (1) a bounded
+DFS over a cheap graph (`zonedata::Zone::adjacent_zones`, populated for
+115/117 real zones, plus one teleport edge *from every zone* per
+`teleport_landings.json` entry — teleport spells aren't zone-gated in this
+game, so a Wizard/Druid shortcut is available from anywhere, not a normal
+A↔B edge) generates up to 5 candidate hop sequences within 2 hops of the
+shortest; (2) only those candidates get scored with real distance —
+`pathfind::find_path` between each hop's own zone-line exit marker(s),
+falling back to straight-line distance when a hop's map/marker/path can't
+be resolved (a real, confirmed possibility — never a silent zero or a
+dropped candidate). Never precomputes a distance matrix across all 117
+zones; cost stays proportional to what's actually queried.
+
+`TeleportLanding::zone` (added to `teleportdata.rs` for this — previously
+unused) isn't one clean format: confirmed against the real pack, sometimes
+a proper `Zone::name`, sometimes a bare map-shortname string the wiki left
+unlinked, and for 5 real entries a shorter name than the wiki's own
+zone-guide title for the same zone (`"North Karana"` vs the guide's
+`"Northern Plains of Karana"` — `routing::TELEPORT_ZONE_ALIASES`, hand-
+verified one at a time, same "small stated exceptions" shape `zone.rs`'s
+own `ZONE_ALIASES` already uses for the analogous log-label problem). One
+real entry (`"Grimling Forest"`) genuinely isn't in the 117-zone scrape at
+all — a stated gap, not guessed around.
+
+**Teleport shortcuts are gated by the player's own assumed class/level, not
+unconditionally available.** `TeleportLanding` also carries `level` (added
+alongside `zone`, straight from `spells.json`'s own per-class `classes:
+[{class, level}]` field — 2 more real entries lost when their own
+`classes` came back empty in the raw scrape, packs down to 103).
+`routing::zone_graph_for(player_classes, player_level)` only adds a
+teleport edge when both match: the log owner's *dominant* confirmed class
+configuration (`combat::class_configurations`'s first, most-zone-visits
+entry) and that configuration's own `level_range` upper bound as the
+assumed level — "assumed" deliberately, since `Ingest::levels` only ever
+tracks one *effective* level across a whole 3-class loadout, never one
+level per class (see that struct's own doc); a per-spell-exact level isn't
+derivable from anything this app parses. No confirmed configuration at all
+(a fresh session) means walk-only, not a guessed default. Every
+`RouteHopDto` still names its own spell (`via_spell`) rather than folding
+into a generic "shortcut" even though it's now gated — the frontend
+surfaces it plainly so the *player* can judge viability for a case this
+app's own class detection got wrong or hasn't caught up to yet, not just
+so the backend can skip a check it now actually makes.
+
+**Succor/evacuate points are a real intra-zone shortcut, not just a better
+`zone_centroid` guess.** Per the user's own confirmation of the mechanic:
+Lesser Evacuate (or simply changing the zone's difficulty tier) relocates
+you to a zone's own succor point from *anywhere* in that zone, no class
+restriction. `zonedata::succor_points` parses `Zone::succor_evacuate`'s
+real, messy wiki text (114/117 zones carry it; multi-part zones like
+Cabilis list several, `<br>`-separated; at least one real entry is missing
+its own closing `)` where the `<br>` cut it off — all handled, not
+guessed past) into structured points. `routing::hop_distance` tries both
+"walk directly from wherever you arrived" and "warp to the succor point,
+then walk from there" for every walked hop and takes whichever is
+genuinely shorter (`SUCCOR_WARP_COST`, a flat cost, since it's not
+class-gated) — the user's own words, "I'd rather cross 2 short stones...
+than 1 really long one." `best_start_position` (renamed from
+`zone_centroid`) prefers a zone's own first succor point over the wall-line
+average for a route's unknown-position first hop, a measured, large real
+improvement: `Ak'Anon -> Steamfont Mountains` dropped from a 3-teleport,
+2400-unit detour to the honest 1-hop, 60-unit walk it actually is, once
+the start position stopped being an arbitrary mathematical average.
+
+**Real, measured performance gap, not fixed**: a walk-only route (no
+teleport access at all) across many real zones is slow — `Ak'Anon ->
+Northern Plains of Karana` with no classes took **12.7s** against the
+actual configured install (13 real hops, each running real A* against
+zones up to tens of thousands of wall segments). `cached_map` (a
+process-lifetime cache of parsed map files, keyed by shortname) cut a
+Wizard-gated version of the same query from 195ms to 128ms, but didn't
+meaningfully help the walk-only case — most of its 13 zones are visited
+only once across the whole candidate search, so there's little real
+file-load reuse to cache away; the actual cost is dominated by running
+many distinct real `pathfind::find_path` searches, not repeated I/O.
+Acceptable for the realistic case this feature exists for (a player with
+real Wizard/Druid access, which resolves in well under a second); a
+genuinely walk-only long-distance query is a real, un-optimized slow path,
+stated here rather than silently shipped without a number attached.
+
 ## Known gaps for future work
 
-- `teleport_landings.json` covers 105 of 111 name-shape-matched spells — six
-  real gaps, three false positives correctly excluded (see `teleportdata.rs`
-  doc), three genuine upstream wiki data gaps (`Cazic Gate`, `Iceclad
-  Portal`, `Ring of North Karana` never surfaced in the scrape at all
-  despite a real page existing). A cast of one of the three real gaps has
-  no entrance guess at all — no marker-matching fallback was kept once the
-  exact-coordinate path replaced it.
+- `teleport_landings.json` covers 103 of 111 name-shape-matched spells —
+  eight real gaps, three false positives correctly excluded (see
+  `teleportdata.rs` doc), three genuine upstream wiki data gaps (`Cazic
+  Gate`, `Iceclad Portal`, `Ring of North Karana` never surfaced in the
+  scrape at all despite a real page existing), two more (`Ring of
+  Faydark`, `Thurgadin Gate`) lost when the `level` field needed a real
+  per-class level the scrape's own `classes` came back empty for. A cast
+  of one of these eight is invisible to the Maps module's entrance guess
+  entirely — no marker-matching fallback was kept once the exact-coordinate
+  path replaced it — and never offered as a routing shortcut either.
+- Succor-point parsing has 5 real zones producing zero points out of the
+  114 that carry the field (`zonedata::succor_points`'s own doc) — 4 are
+  genuinely non-coordinate text (`"?"`, `"N/A"`, a bare landmark
+  description), 1 (`Nektulos Forest`) is a real upstream wiki typo
+  (`"--259"`, a double negative) deliberately not silently "corrected",
+  even though the intended value is fairly obvious — consistent with this
+  module's stance elsewhere of stating a gap rather than guessing past it.
 - The fizzle-without-retry false-positive path above is real but
   unobserved in the reference log — not fixed, since fixing it needs the
   entered zone checked against the spell's own claimed destination zone,
-  which `teleport_landings.json` already carries (`zone` field, currently
-  unused by the Rust side) but nothing consumes yet.
+  which `teleport_landings.json`/`TeleportLanding` now carries (`zone`
+  field) but `Ingest::entered_via_teleport` still doesn't consume.
+- In-zone pathfinding's Z-banding, grid resolution, and wall-color
+  heuristic are all real, stated approximations, not exact geometry — see
+  this doc's own "Pathfinding" section above for the concrete cases that
+  motivated each one.
+- `find_walk_path`'s "from" position for a live "walk here" query has no
+  access to `MapViewer.svelte`'s own resolved here-marker position (that
+  resolution stays internal to the component) — `Maps.svelte` currently
+  approximates it from a real `/loc` reading when one matches the loaded
+  zone, else the zone's own first marker, the same kind of "somewhere in
+  this zone" stand-in `routing.rs::zone_centroid` uses server-side for a
+  route's own first hop.
 - `base_dir` (the game's install root, where `maps/` and inventory dumps
   live) is a separate configured setting from `log_dir` (the `Logs`
   subfolder) — see `BACKLOG.md`/`config.rs` if a future session needs to

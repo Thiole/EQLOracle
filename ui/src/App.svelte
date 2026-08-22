@@ -5,7 +5,9 @@
   import Sidebar from '$lib/shell/Sidebar.svelte';
   import Combat from '$lib/combat/Combat.svelte';
   import Character from '$lib/character/Character.svelte';
+  import Endgame from '$lib/endgame/Endgame.svelte';
   import Debug from '$lib/debug/Debug.svelte';
+  import Info from '$lib/shell/Info.svelte';
   import GameData from '$lib/gamedata/GameData.svelte';
   import Maps from '$lib/maps/Maps.svelte';
   import Settings from '$lib/settings/Settings.svelte';
@@ -46,8 +48,12 @@
             <Combat />
           {:else if $activeModule === 'character'}
             <Character />
+          {:else if $activeModule === 'endgame'}
+            <Endgame />
           {:else if $activeModule === 'debug'}
             <Debug />
+          {:else if $activeModule === 'info'}
+            <Info />
           {:else if $activeModule === 'gamedata'}
             <GameData />
           {:else if $activeModule === 'maps'}

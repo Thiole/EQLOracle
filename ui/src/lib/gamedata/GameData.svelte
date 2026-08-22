@@ -5,6 +5,7 @@
   // a different category's page without a callback threaded through
   // every layer in between).
   import * as Tabs from '$lib/components/ui/tabs';
+  import { TAB_LIST_CLASS, TAB_TRIGGER_CLASS } from '$lib/navTabs';
   import { Input } from '$lib/components/ui/input';
   import { Card, CardContent } from '$lib/components/ui/card';
   import {
@@ -22,6 +23,7 @@
     type GdKind,
   } from '$lib/stores/gamedata';
   import { effectiveEra, eraOptions, passesEra } from '$lib/stores/settings';
+  import { displayZoneName } from '$lib/utils';
   import type { ZoneDto, ItemDto, NpcDto, AaDto, SpellDto } from '$lib/tauri/api';
   import ZonePage from './ZonePage.svelte';
   import ItemPage from './ItemPage.svelte';
@@ -103,12 +105,12 @@
     <p class="text-[12px] text-muted-foreground">Loading game data…</p>
   {:else}
     <Tabs.Root value={$gdOpen?.kind ?? activeTab} onValueChange={onTabChange}>
-      <Tabs.List>
-        <Tabs.Trigger value="zone">Zones</Tabs.Trigger>
-        <Tabs.Trigger value="item">Items</Tabs.Trigger>
-        <Tabs.Trigger value="npc">NPCs</Tabs.Trigger>
-        <Tabs.Trigger value="aa">AAs</Tabs.Trigger>
-        <Tabs.Trigger value="spell">Spells</Tabs.Trigger>
+      <Tabs.List class={TAB_LIST_CLASS}>
+        <Tabs.Trigger value="zone" class={TAB_TRIGGER_CLASS}>Zones</Tabs.Trigger>
+        <Tabs.Trigger value="item" class={TAB_TRIGGER_CLASS}>Items</Tabs.Trigger>
+        <Tabs.Trigger value="npc" class={TAB_TRIGGER_CLASS}>NPCs</Tabs.Trigger>
+        <Tabs.Trigger value="aa" class={TAB_TRIGGER_CLASS}>AAs</Tabs.Trigger>
+        <Tabs.Trigger value="spell" class={TAB_TRIGGER_CLASS}>Spells</Tabs.Trigger>
       </Tabs.List>
     </Tabs.Root>
 
@@ -164,7 +166,7 @@
               <tbody>
                 {#each filteredZones.slice(0, ROW_CAP) as z (z.id)}
                   <tr class="cursor-pointer hover:bg-muted/40" onclick={() => gdOpen.set({ kind: 'zone', key: z.name })}>
-                    <td class="py-0.5">{z.name}</td>
+                    <td class="py-0.5">{displayZoneName(z.name)}</td>
                     <td class="py-0.5 text-muted-foreground">{z.era ?? '—'}</td>
                     <td class="py-0.5 text-muted-foreground">{z.level_range ?? '—'}</td>
                   </tr>

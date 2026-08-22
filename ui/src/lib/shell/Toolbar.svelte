@@ -15,7 +15,7 @@
      "vertical space is expensive" and neither needs its own row. -->
 <header class="flex h-9 shrink-0 items-center justify-between border-b border-border bg-card px-3 text-[12px]">
   <div class="flex items-center gap-3">
-    <span class="font-medium text-foreground">EQLP Companion</span>
+    <span class="font-medium text-foreground">EQL Oracle</span>
     {#if $status}
       <span class="text-muted-foreground">watching</span>
       <span class="font-mono text-foreground">{$status.status.file ?? '—'}</span>

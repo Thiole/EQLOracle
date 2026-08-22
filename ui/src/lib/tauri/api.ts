@@ -157,6 +157,153 @@ export interface ClassConfigurationsDto {
   unresolved_visits: number;
 }
 
+// ---------------------------------------------------------------- endgame
+
+export interface RaidDropDto {
+  item: string;
+  looted: boolean;
+  /** why: total quantity looted so far, 0 for a wiki-known drop never gotten */
+  count: number;
+}
+
+/** why: one boss or miniboss -- a raid's own `boss` and each of its `minibosses` share this shape */
+export interface RaidTargetDto {
+  name: string;
+  /** why: the wiki's own raw level text ("66", "55-56", "?") -- never parsed to a number */
+  level: string | null;
+  kills: number;
+  /** why: index 0 = base/untiered, 1-4 = Awakened/Adaptive/Fused/Refined, confirmed while the
+   * zone was in its Solo form -- see zone::zone_tier and raiding.rs's own doc on Solo vs Group */
+  solo_tiers_cleared: [boolean, boolean, boolean, boolean, boolean];
+  /** why: same 5-tier scale, confirmed while the zone was in its "- Group" form -- a genuinely
+   * different real instance, not a duplicate of solo_tiers_cleared */
+  group_tiers_cleared: [boolean, boolean, boolean, boolean, boolean];
+  drops: RaidDropDto[];
+}
+
+/** why: one confirmed best time -- duration plus when that run happened, so the UI
+ * can show "achieved <date>" as real evidence, not a bare number */
+export interface BestTimeDto {
+  duration_ms: number;
+  achieved_ms: number;
+}
+
+/** why: a real speedrun timer, not a completion metric, split the same way
+ * RaidTargetDto's own difficulty grid is (index = tier 0-4, solo/group) -- see the
+ * Rust RaidTimesDto's own doc for why "full clear" isn't computed yet at all. */
+export interface RaidTimesDto {
+  solo: [BestTimeDto | null, BestTimeDto | null, BestTimeDto | null, BestTimeDto | null, BestTimeDto | null];
+  group: [BestTimeDto | null, BestTimeDto | null, BestTimeDto | null, BestTimeDto | null, BestTimeDto | null];
+}
+
+export interface RaidDto {
+  zone: string;
+  boss: RaidTargetDto;
+  /** why: empty for a raid with no separate named minibosses (e.g. Lady Vox) */
+  minibosses: RaidTargetDto[];
+  times: RaidTimesDto;
+}
+
+export interface RaidRowDto {
+  row: string;
+  raids: RaidDto[];
+}
+
+// -------------------------------------------------------- sky class unlocks
+
+export interface TurnInItemDto {
+  item: string;
+  /** why: which island/boss the wiki names as this item's own source, e.g. "3-Gorga" */
+  source: string | null;
+  ever_looted: boolean;
+  looted_count: number;
+  /** why: null if no /outputfile inventory dump exists yet -- unknown, not zero */
+  currently_owned: number | null;
+  /** why: looted at some point, but auto-sold rather than kept -- not sitting in storage */
+  sold_without_keeping: boolean;
+}
+
+export interface TurnInDto {
+  quest: string;
+  trigger: string;
+  rune: TurnInItemDto | null;
+  items: TurnInItemDto[];
+  reward: string | null;
+  /** why: real achievement-confirmed completion (Achievements.txt), null if no dump found yet */
+  completed: boolean | null;
+}
+
+/** why: the Sky Quests tab -- every individual material turn-in (rune + drop items -> one gear
+ * reward), full detail. The *final* reward items themselves are a separate DTO
+ * (SkyClassUnlockDto) -- see the Rust skyquests.rs module doc for why the two are split. */
+export interface SkyClassDto {
+  class: string;
+  quest_giver: string | null;
+  quests: TurnInDto[];
+  /** why: real achievement-confirmed, null if no Achievements dump found yet */
+  unlocked: boolean | null;
+}
+
+/** why: one final reward item -- what "Primary Class Unlocks" tracks, never the raw
+ * materials a quest is built from */
+/** why: name plus where the wiki says it comes from -- no loot/ownership tracking of its
+ * own, that's the Sky Quests tab's own job */
+export interface QuestMaterialDto {
+  item: string;
+  source: string | null;
+}
+
+export interface SkyRewardDto {
+  name: string;
+  /** why: which quest earns this reward -- context only */
+  quest: string;
+  ever_looted: boolean;
+  looted_count: number;
+  currently_owned: number | null;
+  sold_without_keeping: boolean;
+  completed: boolean | null;
+  /** why: rune first, then drop items, in quest order -- where a not-yet-secured reward
+   * actually comes from */
+  materials: QuestMaterialDto[];
+}
+
+export interface SkyClassUnlockDto {
+  class: string;
+  quest_giver: string | null;
+  unlocked: boolean | null;
+  /** why: the final reward items only (e.g. Bard: Mask of Song, Mantle of the Songweaver,
+   * Ervaj's Flute of Flight, Amulet of the Fae, Denon's Horn of Disaster, Spear of Harmony) --
+   * never the Wind Runes/drop items each is built from */
+  rewards: SkyRewardDto[];
+}
+
+// ------------------------------------------------------------------ ui files
+
+/** why: EQ's own per-character UI config files sitting in the game's base install folder --
+ * see the Rust uifiles.rs module doc for what each real kind (hotbuttons vs layout) holds */
+export interface UiFileInfoDto {
+  file: string;
+  character: string;
+  zone: string;
+  /** why: "hotbuttons" (<Character>_<Zone>_LO1.ini, real button contents) or "layout"
+   * (UI_<Character>_<Zone>_LO1.ini, window position/size only, never contents) */
+  kind: 'hotbuttons' | 'layout';
+  is_backup: boolean;
+}
+
+export interface UiSectionDto {
+  name: string;
+  /** why: [key, value] pairs, in file order */
+  entries: [string, string][];
+}
+
+export interface ParsedUiFileDto {
+  sections: UiSectionDto[];
+  /** why: nonzero flags a real corrupted file (unrelated pasted text before the first
+   * real [Section] header) -- 0 for an ordinary clean file */
+  skipped_garbage_lines: number;
+}
+
 export interface CostModifier {
   kind: string;
   scope: string;
@@ -194,6 +341,27 @@ export interface AaDto {
 export interface SpellClassDto {
   class: string;
   level: number | null;
+}
+
+/** A catalog spell with a parseable damage effect, rank-adjusted -- see `dpscalc`'s own module doc (Rust) for the model. */
+export interface DamageSpellDto {
+  name: string;
+  icon: string | null;
+  classes: SpellClassDto[];
+  is_dot: boolean;
+  /** This session's own observed live rank, 0 if never cast this session. */
+  rank: number;
+  /** DoTs only -- rank-adjusted duration in seconds. */
+  duration_secs: number | null;
+  mana: number;
+  casting_time: number;
+  recast_time: number;
+  /** Full damage from one application, rank-adjusted. */
+  total_damage: number;
+  dpm: number;
+  dps_with_reuse: number;
+  /** No reuse wait -- damage per second of casting time invested; for a DoT, its upkeep efficiency. */
+  dps_ignoring_reuse: number;
 }
 
 export interface SpellbookEntryDto {
@@ -383,7 +551,12 @@ export interface LastLocationDto {
  * matches `LastLocationDto`'s -- apply the same `(-y, -x, z)` transform
  * before plotting, see MapViewer.svelte. */
 export interface TeleportLandingDto {
-  class: 'wizard' | 'druid';
+  /** why: `'any'` is not from the wiki-scraped pack -- it's Origin's own
+   * *learned* landing (see `Ingest::learned_origin`'s own doc), built at
+   * query time once a real cast has confirmed which zone it actually
+   * sends this character to. No fixed class the way Wizard's Translocate/
+   * Gate/Portal or Druid's Circle/Ring are. */
+  class: 'wizard' | 'druid' | 'any';
   x: number;
   y: number;
   z: number;
@@ -401,6 +574,13 @@ export interface ZoneContextDto {
    * teleport spell with a known wiki-confirmed landing shortly before
    * this visit began -- see `Ingest::entered_via_teleport`'s own doc. */
   teleport_landing: TeleportLandingDto | null;
+  /** why: the confirming timestamp behind `teleport_landing` (whichever of
+   * the wiki-landing or Origin-derived candidate is newer -- see
+   * `commands::get_zone_context`'s own doc) so callers can compare it
+   * against a real `/loc` reading's own `ts_ms` and use whichever is
+   * genuinely more recent, instead of one source always winning outright.
+   * `null` iff `teleport_landing` is `null`. */
+  teleport_landing_ts: number | null;
   /** why: real map-file shortname(s) for `current`, from the wiki's own
    * scraped who_name field -- what "is the map I have open actually my
    * current zone" checks membership in now, replacing a substring guess
@@ -408,6 +588,38 @@ export interface ZoneContextDto {
    * shortname bears no resemblance to the display name at all -- e.g.
    * "gukbottom" for "The Ruins of Old Guk"). Empty when unresolvable. */
   current_map_zones: string[];
+}
+
+/** why: a real walking route within one zone's map, waypoint by waypoint
+ * -- see `crates/app/src/pathfind.rs`'s own doc for what "real" means
+ * here (grid A* over the zone's own wall geometry, Z-banded to the
+ * *starting* point's own floor) and its stated limits (a route needing a
+ * floor change within the zone isn't found, and a narrow enough real
+ * structure can still be missed by the grid's own resolution). */
+export interface PathDto {
+  waypoints: [number, number, number][];
+}
+
+/** why: one leg of a ZoneRouteDto -- a teleport hop always names its own
+ * spell (`via_spell`) rather than folding into a generic "shortcut", so
+ * the UI can show plainly that it requires a specific class/spell the
+ * player might not have -- see `routing::TELEPORT_HOP_COST`'s own doc for
+ * why the backend doesn't (and can't) know whether the player actually
+ * has access to it. A `'succor'` hop arrives in the *same* zone the walk
+ * hop after it starts from (see `routing::HopKind::Succor`'s own doc) --
+ * a real, separate, required action (Lesser Evacuate, or a
+ * difficulty-tier change), not folded into that walk hop's own distance
+ * the way it used to be. */
+export interface RouteHopDto {
+  zone: string;
+  kind: 'walk' | 'teleport' | 'succor';
+  via_spell: string | null;
+  distance: number;
+}
+
+export interface ZoneRouteDto {
+  hops: RouteHopDto[];
+  total_distance: number;
 }
 
 /** why: a real wiki NPC spawn point -- z is null for most real entries
@@ -605,6 +817,13 @@ export interface PreferencesDto {
   volume: number;
   /** why: an eras[] name, "All", or null -- null means "follow current era" */
   era: string | null;
+  /** why: false (default) = every launch replays the log and lets class
+   * detection reconfirm everything fresh, same as always. true = also
+   * keeps a saved per-character class profile across restarts, used only
+   * as a fallback for zone routing when this session's own live replay
+   * hasn't confirmed a configuration for "You" yet -- see the Rust
+   * `Preferences::save_profile` field's own doc for the full policy. */
+  save_profile: boolean;
 }
 
 // ---------------------------------------------------------------- history
@@ -709,6 +928,11 @@ export const api = {
 
   getSpellbook: () => invoke<SpellbookEntryDto[]>('get_spellbook'),
 
+  /** Highest live in-game rank observed cast this session, by catalog base spell name -- e.g. `{ "Ice Comet": 10 }`. */
+  getSpellRanks: () => invoke<Record<string, number>>('get_spell_ranks'),
+
+  getDamageSpells: () => invoke<DamageSpellDto[]>('get_damage_spells'),
+
   getCharacterEstimate: (race: string, classes: string[], classLevels: number[], gear: Record<string, number>) =>
     invoke<CharacterEstimateDto | null>('get_character_estimate', { race, classes, classLevels, gear }),
 
@@ -765,6 +989,11 @@ export const api = {
   /** why: which source(s) cover `zone` -- null = base game, else a pack name -- drives the "available versions" picker */
   listZoneVersions: (zone: string) => invoke<(string | null)[]>('list_zone_versions', { zone }),
   getMapFile: (pack: string | null, zone: string) => invoke<MapFileDto>('get_map_file', { pack, zone }),
+  /** why: a real walking route within one zone's map -- rejects (not just empty-array) when no route exists, see PathDto's own doc */
+  findWalkPath: (pack: string | null, zone: string, from: [number, number, number], to: [number, number, number]) =>
+    invoke<PathDto>('find_walk_path', { pack, zone, from, to }),
+  /** why: a real cross-zone route, weighted by real in-zone walking distance -- see ZoneRouteDto's own doc */
+  findZoneRoute: (fromZone: string, toZone: string) => invoke<ZoneRouteDto>('find_zone_route', { fromZone, toZone }),
   /** why: the most recent "/loc" reading this session, if any -- a snapshot, not live tracking */
   getLastLocation: () => invoke<LastLocationDto | null>('get_last_location'),
   /** why: current + previous zone labels, for the entrance guess when no real /loc exists yet */
@@ -806,6 +1035,24 @@ export const api = {
   /** why: one encounter's damage totals + drops, fetched only once a row expands */
   getEncounterDetail: (encounterId: number) =>
     invoke<EncounterDetailDto | null>('get_encounter_detail', { encounterId }),
+
+  // ----------------------------------------------------------------- endgame
+
+  /** why: the Raiding tab's whole data source -- curated rows of raids, each with a boss + minibosses */
+  getRaids: () => invoke<RaidRowDto[]>('get_raids'),
+
+  /** why: the "Sky - Primary Class Unlocks" tab's whole data source */
+  getSkyClassUnlocks: () => invoke<SkyClassUnlockDto[]>('get_sky_class_unlocks'),
+
+  /** why: the "Sky - Quests" tab's whole data source */
+  getSkyQuests: () => invoke<SkyClassDto[]>('get_sky_quests'),
+
+  // ------------------------------------------------------------------ ui files
+
+  /** why: the Spellbook builder's own file picker */
+  listUiFiles: () => invoke<UiFileInfoDto[]>('list_ui_files'),
+  /** why: one UI file's real content, read-only */
+  getUiFile: (file: string) => invoke<ParsedUiFileDto>('get_ui_file', { file }),
 
   // -------------------------------------------------------------- preferences
 

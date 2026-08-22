@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "EQLP Companion",
+  "productName": "EQL Oracle",
   "version": "0.1.0",
-  "identifier": "com.eqlp.companion",
+  "identifier": "com.eqlp.oracle",
   "build": {
     "frontendDist": "../../ui/dist",
     "devUrl": "http://localhost:5173",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "EQLP Companion",
+        "title": "EQL Oracle",
         "width": 1040,
         "height": 720,
         "minWidth": 760,

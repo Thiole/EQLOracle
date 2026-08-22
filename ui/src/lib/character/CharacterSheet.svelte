@@ -75,9 +75,9 @@
         What's confirmed from your own parsed log, plus race — the log never states that directly, so it's set here by hand.
       </p>
       <label class="flex max-w-xs items-center gap-2 text-[12px]">
-        <span class="shrink-0 text-muted-foreground">race</span>
+        <span class="shrink-0 {$race ? 'text-muted-foreground' : 'font-medium text-primary'}">race</span>
         <Select.Root type="single" value={$race} onValueChange={(v) => setRace(v ?? '')}>
-          <Select.Trigger class="h-7 flex-1 text-[12px]">{$race || '— not set —'}</Select.Trigger>
+          <Select.Trigger class="h-7 flex-1 text-[12px] {$race ? '' : 'border-primary ring-1 ring-primary/40'}">{$race || '— not set —'}</Select.Trigger>
           <Select.Content>
             {#each sortedRaces as r (r)}
               <Select.Item value={r}>{r}</Select.Item>

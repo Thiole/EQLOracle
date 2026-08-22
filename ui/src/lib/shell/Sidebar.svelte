@@ -1,6 +1,7 @@
 <script lang="ts">
   import { cn } from '$lib/utils';
   import BugIcon from '@lucide/svelte/icons/bug';
+  import InfoIcon from '@lucide/svelte/icons/info';
   import SettingsIcon from '@lucide/svelte/icons/settings';
 
   interface NavItem {
@@ -15,6 +16,7 @@
     { id: 'combat', label: 'Combat', enabled: true },
     { id: 'monsters', label: 'Loot History', enabled: false },
     { id: 'character', label: 'Character', enabled: true },
+    { id: 'endgame', label: 'Endgame', enabled: true },
     { id: 'gamedata', label: 'Game Data', enabled: true },
     { id: 'maps', label: 'Maps', enabled: true },
   ];
@@ -40,10 +42,29 @@
     </button>
   {/each}
 
-  <!-- why: debug/settings aren't day-to-day modules -- pinned as small
-       icon buttons at the bottom rather than taking a full-width row
-       among the modules actually used while playing. -->
-  <div class="mt-auto flex flex-col items-center gap-1 border-t border-border pt-2">
+  <!-- why: debug/settings aren't day-to-day modules -- pinned as a small
+       3x2 icon grid at the bottom rather than taking a full-width row
+       among the modules actually used while playing. Fixed layout, not
+       just append-in-order: info top-middle, debug top-right, settings
+       bottom-right, the other 3 cells deliberately blank placeholders
+       reserving room for whatever lands here next (row-major grid order
+       is what makes blank cells 1/4/5 -- top-left, bottom-left,
+       bottom-middle -- land where they do). -->
+  <div class="mt-auto grid grid-cols-3 grid-rows-2 gap-1 border-t border-border pt-2">
+    <div class="size-8" aria-hidden="true"></div>
+    <button
+      type="button"
+      data-module="info"
+      class={cn(
+        'flex size-8 items-center justify-center rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
+        active === 'info' && 'bg-primary/15 text-primary',
+      )}
+      onclick={() => (active = 'info')}
+      title="Info"
+      aria-label="Info"
+    >
+      <InfoIcon class="size-4" />
+    </button>
     <button
       type="button"
       data-module="debug"
@@ -57,6 +78,8 @@
     >
       <BugIcon class="size-4" />
     </button>
+    <div class="size-8" aria-hidden="true"></div>
+    <div class="size-8" aria-hidden="true"></div>
     <button
       type="button"
       data-module="settings"

@@ -15,6 +15,7 @@
 use crate::ingest::Ingest;
 use eqlp_source::Millis;
 use serde::Serialize;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AaGrantDto {
@@ -166,4 +167,16 @@ pub fn spellbook(ing: &Ingest) -> Vec<SpellbookEntryDto> {
 
     known.extend(possible);
     known
+}
+
+/// Highest live rank observed cast this session for "You", by catalog
+/// base spell name (`Ice Comet` -> `10` for a confirmed "Ice Comet X"
+/// cast) -- see `ingest::SpellRanks`' own doc. A spell never cast this
+/// session simply has no entry, not a `0` -- there's no such thing as a
+/// confirmed rank 0.
+pub fn spell_ranks(ing: &Ingest) -> HashMap<String, u8> {
+    ing.spell_ranks
+        .all()
+        .map(|(name, rank)| (name.to_string(), rank))
+        .collect()
 }

@@ -11,7 +11,7 @@ import {
   type ScoredItemDto,
   type InventoryDumpDto,
 } from '../tauri/api';
-import { ALL_CLASSES, MAX_ACTIVE_CLASSES } from '../character/constants';
+import { ALL_CLASSES, MAX_ACTIVE_CLASSES, MAX_CHARACTER_LEVEL } from '../character/constants';
 import { effectiveEra } from './settings';
 
 export const race = writable<string>('');
@@ -28,6 +28,8 @@ export const estimate = writable<CharacterEstimateDto | null>(null);
 export const aaLog = writable<AaLogDto | null>(null);
 export const aaCatalog = writable<AaDto[]>([]);
 export const spellbook = writable<SpellbookEntryDto[]>([]);
+/** Highest live rank observed cast this session, by catalog base spell name -- e.g. `{ "Ice Comet": 10 }`. No entry = never cast this session, not rank 0. */
+export const spellRanks = writable<Record<string, number>>({});
 
 export const gearRecommendations = writable<SlotRecommendationDto[] | null>(null);
 export const gearWeights = writable<Record<string, number>>({});
@@ -136,13 +138,14 @@ async function checkForExistingInventoryDump() {
 
 /** why: loaded once on entering Character; input: none; output: void */
 export async function loadCharacterModule() {
-  const [cfgs, defaults, lvl, aa, catalog, book] = await Promise.all([
+  const [cfgs, defaults, lvl, aa, catalog, book, ranks] = await Promise.all([
     api.getClassConfigurations(),
     api.getDefaultGearClasses(),
     api.getCurrentLevel(),
     api.getAaLog(),
     api.listAa(),
     api.getSpellbook(),
+    api.getSpellRanks(),
   ]);
   classConfigurations.set(cfgs);
   defaultClasses.set(defaults);
@@ -150,6 +153,7 @@ export async function loadCharacterModule() {
   aaLog.set(aa);
   aaCatalog.set(catalog);
   spellbook.set(book);
+  spellRanks.set(ranks);
 
   let dirty = false;
   // why: gear shouldn't sit blank waiting for a manual class pick every time
@@ -190,7 +194,7 @@ export function toggleActiveClass(className: string) {
 }
 
 export function setLevel(className: string, level: number) {
-  const clamped = Math.min(50, Math.max(1, Math.round(level) || 1));
+  const clamped = Math.min(MAX_CHARACTER_LEVEL, Math.max(1, Math.round(level) || 1));
   levels.update((l) => ({ ...l, [className]: clamped }));
   if (get(activeClasses).includes(className)) {
     void refreshEstimate();

@@ -1147,6 +1147,26 @@ pub struct InventoryDumpDto {
 /// equipped (`scale_stat`) rather than left at wiki-scraped base -- an
 /// inventory dump means real gear at a real tier, not a browsing/what-if
 /// view.
+/// `parsed.exalted[slot]` (socket key -> source item *name*, straight off
+/// the dump -- see `inventory::ParsedInventory::exalted`'s own doc) into
+/// what `exalt_slots_with_assignments` actually needs (socket key ->
+/// source item *id*) -- same by-name catalog match this function's own
+/// caller already uses for the equipped item itself, just applied to
+/// each socketed source too. A name the catalog doesn't resolve is
+/// dropped from the map rather than kept as a dangling id nothing can
+/// look up -- that socket falls back to reporting the equipped item's
+/// own native effect (`exalt_slots_with_assignments`' default when a key
+/// is simply absent), not a wrong one.
+fn resolve_exalt_assignments(exalted_for_slot: &HashMap<String, String>) -> HashMap<String, String> {
+    exalted_for_slot
+        .iter()
+        .filter_map(|(socket_key, source_name)| {
+            let src = itemdata::items().iter().find(|it| it.name.eq_ignore_ascii_case(source_name))?;
+            Some((socket_key.clone(), src.id.clone()))
+        })
+        .collect()
+}
+
 /// `proc_evidence` is `Ingest::exaltation_procs` -- `None` for any caller
 /// with no live session to check against (there currently isn't one;
 /// every real call site has an `Ingest`, this stays optional so a test
@@ -1169,6 +1189,19 @@ pub fn resolve_inventory(
             Some(it) => {
                 let owned = parsed.owned.get(&it.name).copied().unwrap_or(0);
                 let mut item_dto = to_dto(it, inv_item.tier, owned);
+                // why: the dump's own real socketed exaltations (see
+                // `inventory::ParsedInventory::exalted`'s own doc) beat
+                // `to_dto`'s default native-effect-only sockets -- real
+                // ground truth for "what's actually socketed here", not
+                // a guess. A slot with nothing in `parsed.exalted` (or
+                // an empty map after name resolution) falls straight
+                // back to the native-effect display, unaffected.
+                if let Some(exalted) = parsed.exalted.get(slot) {
+                    let assignments = resolve_exalt_assignments(exalted);
+                    if !assignments.is_empty() {
+                        item_dto.exalts = exalt_slots_with_assignments(it, inv_item.tier, &assignments);
+                    }
+                }
                 if let Some(procs) = proc_evidence {
                     let fires = procs.count(&it.name);
                     if fires > 0 {
@@ -1489,6 +1522,7 @@ mod scale_stat_tests {
             equipped,
             owned: HashMap::new(),
             owned_tier: HashMap::new(),
+            exalted: HashMap::new(),
         };
         let dto = resolve_inventory(&parsed, None);
         let item = dto
@@ -1497,6 +1531,38 @@ mod scale_stat_tests {
             .expect("A Bone Necklace is a real catalog item");
         assert_eq!(item.tier, 5);
         assert_eq!(item.stats.get("AC"), Some(&7.0));
+    }
+
+    /// Real dump lines/items -- `Shield of the Immaculate` carries no
+    /// *native* focus effect of its own (only a native `click`, "Cure
+    /// Disease"), so its own `focus` socket reporting `White Dragonscale
+    /// Cloak`'s real "Improved Damage III" only happens if the dump's
+    /// own real exalt-socket data is actually being read, not the
+    /// item's native effects alone.
+    #[test]
+    fn resolve_inventory_shows_the_dumps_own_real_socketed_exaltation() {
+        let mut equipped = HashMap::new();
+        equipped.insert(
+            "BACK".to_string(),
+            crate::inventory::InventoryItem {
+                name: "Shield of the Immaculate".to_string(),
+                tier: 3,
+            },
+        );
+        let mut back_sockets = HashMap::new();
+        back_sockets.insert("focus".to_string(), "White Dragonscale Cloak".to_string());
+        let mut exalted = HashMap::new();
+        exalted.insert("BACK".to_string(), back_sockets);
+        let parsed = crate::inventory::ParsedInventory {
+            equipped,
+            owned: HashMap::new(),
+            owned_tier: HashMap::new(),
+            exalted,
+        };
+        let dto = resolve_inventory(&parsed, None);
+        let item = dto.resolved.get("BACK").expect("Shield of the Immaculate is a real catalog item");
+        let focus = item.exalts.iter().find(|e| e.key == "focus").expect("focus socket");
+        assert_eq!(focus.effect.as_ref().map(|e| e.name.as_str()), Some("Improved Damage III"), "the socketed source's own effect, not Shield of the Immaculate's own (it has no native focus effect at all)");
     }
 }
 
@@ -1994,6 +2060,7 @@ mod proc_evidence_tests {
             equipped,
             owned: HashMap::new(),
             owned_tier: HashMap::new(),
+            exalted: HashMap::new(),
         }
     }
 

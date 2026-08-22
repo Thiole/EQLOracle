@@ -1,7 +1,7 @@
 {
  "source": "https://eqlwiki.com",
- "scraped": "2026-08-16 07:26",
- "count": 117,
+ "scraped": "2026-08-21 17:59",
+ "count": 116,
  "skipped_no_table": 0,
  "zones": [
   {
@@ -142,7 +142,12 @@
    "city_races": [],
    "guilds": [],
    "tradeskill_facilities": [],
-   "related_quests": [],
+   "related_quests": [
+    "Monk Headband Quests",
+    "Rogue Redemption",
+    "Gnoll Bounty",
+    "Moonstones Quest"
+   ],
    "unique_items": [
     "Studded Leather Collar",
     "Spiked Collar",
@@ -154,10 +159,13 @@
     "Runed Totem Staff",
     "Ill-Fitting Robes"
    ],
-   "adjacent_zones": [],
+   "adjacent_zones": [
+    "Qeynos Hills",
+    "Everfrost Peaks"
+   ],
    "spawn_timer": null,
-   "who_name": null,
-   "succor_evacuate": null,
+   "who_name": "blackburrow",
+   "succor_evacuate": "-159, 39 (Zone line to Qeynos Hills)",
    "image": "Qeynos_Hills_Blackburrow_Entrance.png",
    "era": "Classic Era",
    "categories": [
@@ -551,7 +559,7 @@
    ],
    "spawn_timer": "20:00** Room towards Queen is closer to 12:00 min.",
    "who_name": "chardok",
-   "succor_evacuate": null,
+   "succor_evacuate": "At exit to Burning Wood (119, 859)",
    "image": "map_chardok.jpg",
    "era": "Kunark Era",
    "categories": [
@@ -3498,26 +3506,38 @@
     "Bloodstone Eyepatch",
     "Butler Syncalls Fang",
     "Cape of Midnight Mist",
+    "Cherista's Fangs",
     "Chestplate of the Dark Flame",
     "Crested Helm",
     "Crested Mistmoore Shield",
     "Crested Spaulders",
     "Diamondine Earring",
-    "Gypsy Lute",
+    "Fleeting Memory",
+    "Gargoyle Grips",
     "Gem-Encrusted Scepter",
+    "Gilded Mistmoore Visor",
     "Glowing Iron Pike",
     "Glowing Sword Hilt",
+    "Gypsy Lute",
     "Hooded Black Cloak",
     "Lute of the Gypsy Princess",
     "Maid Issis Fang",
+    "Maid's Stockings",
     "Mistmoore Battle Drums",
     "Mistmoore Granite",
+    "Mistmoore Heirloom Ring",
     "Nightshade Wreath",
+    "Noble's Robes",
     "Platinum Skull Ring",
     "Robe of the Keeper",
+    "Rod of Understanding",
     "Rune of Fortune",
     "Sacrificial Dagger",
-    "Vial of Vampire Blood"
+    "Tarnished Ancient Tiara",
+    "Veil of Silence",
+    "Vial of Vampire Blood",
+    "Visage of the Gargoyle",
+    "Wine Thief"
    ],
    "adjacent_zones": [
     "Lesser Faydark"
@@ -4341,7 +4361,7 @@
    "name": "Plane of Fear",
    "url": "https://eqlwiki.com/Plane_of_Fear",
    "level_range": "48+",
-   "monster_types": null,
+   "monster_types": "[[a Frightfinger]], [[a glare lord]], [[a gorgon]], [[a phantasm]], [[a shiverback]], [[a spinechiller spider]], [[a turmoil toad]], [[a worry wraith]], [[Amygdalan warrior]]",
    "notable_npcs": [],
    "city_races": [],
    "guilds": [],
@@ -4421,7 +4441,7 @@
    "name": "Plane of Hate",
    "url": "https://eqlwiki.com/Plane_of_Hate",
    "level_range": "48+",
-   "monster_types": null,
+   "monster_types": "[[a haunted chest]], , [[a Knight of Innoruuk]], [[a loathing lich]], [[a scorn banshee]], [[a spite golem]], [[Cleric of Innoruuk]], [[An Evangelist of Hate]], [[a forsaken revenant]], [[Innoruuk's Chosen]]",
    "notable_npcs": [],
    "city_races": [],
    "guilds": [],
@@ -4435,37 +4455,11 @@
    "spawn_timer": null,
    "who_name": "hateplane/hateplaneb",
    "succor_evacuate": "-375, -354 (Zone-in)",
-   "image": "plane_of_hate_kronas.jpg",
+   "image": "Plane_of_Hate_First_Floor.png",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
     "Loc Mapped",
-    "Plane of Hate",
-    "Zones"
-   ]
-  },
-  {
-   "id": "Plane_of_Hate_cleanupproject",
-   "name": "Plane of Hate cleanupproject",
-   "url": "https://eqlwiki.com/Plane_of_Hate_cleanupproject",
-   "level_range": "48+",
-   "monster_types": null,
-   "notable_npcs": [],
-   "city_races": [],
-   "guilds": [],
-   "tradeskill_facilities": [],
-   "related_quests": [],
-   "unique_items": [],
-   "adjacent_zones": [
-    "Wizard"
-   ],
-   "spawn_timer": null,
-   "who_name": "hateplane/hateplaneb",
-   "succor_evacuate": null,
-   "image": "plane_of_hate_kronas.jpg",
-   "era": null,
-   "categories": [
-    "Pages with broken file links",
     "Plane of Hate",
     "Zones"
    ]
@@ -5417,7 +5411,7 @@
    "adjacent_zones": [
     "Southern Plains of Karana"
    ],
-   "spawn_timer": "22:00",
+   "spawn_timer": "6:30",
    "who_name": "paw",
    "succor_evacuate": "-122, 63 (Zone line to South Karana)",
    "image": null,

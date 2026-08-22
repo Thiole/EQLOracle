@@ -19,7 +19,7 @@
   import { get } from 'svelte/store';
   import * as THREE from 'three';
   import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-  import type { MapFileDto, MapMarkerDto, NpcMarkerDto, ZoneContextDto } from '$lib/tauri/api';
+  import type { MapFileDto, MapMarkerDto, NpcMarkerDto, PathDto, ZoneContextDto } from '$lib/tauri/api';
   import { lastLocation } from '$lib/stores/maps';
   import { zoneMatches, looksLikeEntranceFor } from './zoneMatch';
 
@@ -28,7 +28,25 @@
     zone,
     npcMarkers = [],
     zoneContext = null,
-  }: { map: MapFileDto; zone: string; npcMarkers?: NpcMarkerDto[]; zoneContext?: ZoneContextDto | null } = $props();
+    path = null,
+    onMarkerClick = null,
+  }: {
+    map: MapFileDto;
+    zone: string;
+    npcMarkers?: NpcMarkerDto[];
+    zoneContext?: ZoneContextDto | null;
+    /** why: a computed walking route to draw, from `Maps.svelte`'s own
+     * `findWalkPath` query -- `null` when no route is currently shown.
+     * Waypoints are already in the map file's own coordinate order (same
+     * as `MapMarkerDto.pos`), not `/loc`-space -- no transform needed
+     * here, unlike the here-marker/teleport-landing paths. */
+    path?: PathDto | null;
+    /** why: opt-in -- `null` (the default) means clicking a marker does
+     * nothing but hover-highlight it, same as before this existed. Set by
+     * `Maps.svelte` only while its own "walk here" mode is active, so
+     * ordinary browsing never triggers a pathfinding query by accident. */
+    onMarkerClick?: ((marker: MapMarkerDto) => void) | null;
+  } = $props();
 
   let canvas: HTMLCanvasElement;
   let container: HTMLDivElement;
@@ -71,6 +89,10 @@
   // still a plain sphere `Mesh`; both need to fit here.
   let hereMesh: THREE.Object3D | null = null;
   let npcPointsMesh: THREE.Points | null = null;
+  /** why: the drawn route line -- its own mesh, own small effect below,
+   * same "don't touch the expensive scene-build effect" reasoning the
+   * NPC overlay already follows. `null` whenever no route is shown. */
+  let pathLineMesh: THREE.Line | null = null;
   /** why: `onPointerMove`'s hover raycast needs the *current* NPC marker
    * list to label a hit -- kept fresh by the NPC effect below rather than
    * closed over at scene-build time, since scene build no longer reruns
@@ -188,15 +210,22 @@
     return new THREE.Mesh(new THREE.SphereGeometry(10, 16, 16), new THREE.MeshBasicMaterial({ color: 0xffe600 }));
   }
 
-  /** why: real `/loc` always wins, then a teleport landing, then the
-   * weakest signal -- a guess that fires only when the loaded zone has no
-   * real reading yet *and* exactly one marker plausibly matches the zone
-   * the player just walked in from. `/loc` and a teleport landing are
-   * both rendered `confirmed` (the red cross): a teleport landing isn't
-   * *literally* a live reading, but it's been independently checked
-   * against real map-pack marker data and lands within the same margin
-   * the `/loc` calibration itself has, so treating it as strictly weaker
-   * would be its own kind of dishonesty -- see `placeHereMesh`'s
+  /** why: real `/loc` and a teleport landing are both `confirmed`-tier
+   * evidence (the red cross) -- neither one categorically outranks the
+   * other any more. Whichever is genuinely *more recent* wins: a stale
+   * `/loc` reading from before a teleport must not keep overriding the
+   * teleport's own landing, but a `/loc` reading taken *after* walking
+   * away from a landing point is real too and must win right back. This
+   * used to check `/loc` first unconditionally and only fall to a
+   * teleport landing when no `/loc` existed for the zone at all -- which
+   * silently kept showing an old pre-teleport `/loc` as "here" even after
+   * a fresher teleport landing was known (reported directly: "you are
+   * using the prev location as a you are here"). Landing evidence now
+   * *fills in* location rather than being an alternate display of it.
+   * A teleport landing isn't *literally* a live reading, but it's been
+   * independently checked against real map-pack marker data and lands
+   * within the same margin the `/loc` calibration itself has, so treating
+   * it as strictly weaker would be its own kind of dishonesty -- see the
    * teleport-landing branch below for the actual cross-check numbers.
    * Reads `lastLocation` via `get()` and `zoneContext` via `untrack()` on
    * purpose: this function is also called from the scene-build effect,
@@ -210,7 +239,15 @@
     hereStatus = null;
 
     const loc = get(lastLocation);
-    if (loc && zoneMatches(loc.map_zones, loc.zone, zone)) {
+    const locMatches = loc && zoneMatches(loc.map_zones, loc.zone, zone);
+    const ctx = untrack(() => zoneContext);
+    const landingMatches = ctx?.current && zoneMatches(ctx.current_map_zones, ctx.current, zone) && ctx.teleport_landing;
+
+    // Both sources present for this zone: freshest timestamp wins outright
+    // (equal/unknown timestamps keep the historical `/loc`-first lean).
+    const preferLoc = !landingMatches || (locMatches && (ctx!.teleport_landing_ts == null || loc!.ts_ms >= ctx!.teleport_landing_ts));
+
+    if (locMatches && preferLoc) {
       // `/loc`'s (x, y) map to this format's own (-y, -x) -- both swapped
       // *and* negated, elevation (z) untouched. Found by brute-forcing
       // every sign/order combination of x/y against 9 real `/loc`
@@ -237,30 +274,29 @@
       return;
     }
 
-    // No real /loc for this zone yet -- try an entrance guess: is the
-    // player actually here right now (not just browsing an old map)?
-    const ctx = untrack(() => zoneContext);
+    // No real /loc for this zone yet, or a teleport landing is genuinely
+    // the fresher evidence -- is the player actually here right now (not
+    // just browsing an old map)?
     if (!ctx?.current || !zoneMatches(ctx.current_map_zones, ctx.current, zone)) return;
 
     // Landed via a recognized teleport cast (Wizard Translocate/Gate/
-    // Portal, or Druid Circle/Ring) from "You" or a proven ally --
-    // `teleport_landing` carries the spell's exact, wiki-confirmed
-    // destination coordinate directly (see `crates/app/src/
-    // teleportdata.rs`'s own doc). Treated as `confirmed`, the same tier
-    // as a real `/loc` reading, not `guess` -- independently verified
-    // against the Brewall map pack's own hand-plotted markers (a
-    // completely separate data source from the wiki): North Karana's own
-    // `Wizard_port`/`Druid_Ring` markers land within 15-45 units of this
-    // same transform applied to the wiki-quoted coordinates, on a zone
-    // spanning thousands of units -- see docs/design/maps.md's
-    // "Coordinate systems" section for the full check. No marker-matching
-    // involved -- this used to guess via a map marker labeled
-    // "Wizard_Spire"/"Druid_Circle" existing exactly once on the map,
-    // which was never confirmed for Druid against a real map pack; the
-    // exact coordinate makes that guess unnecessary.
+    // Portal, Druid Circle/Ring, or a learned Origin) from "You" or a
+    // proven ally -- `teleport_landing` carries the spell's exact,
+    // wiki-confirmed (or, for Origin, empirically-learned) destination
+    // coordinate directly (see `crates/app/src/teleportdata.rs`'s own
+    // doc). Treated as `confirmed`, the same tier as a real `/loc`
+    // reading, not `guess` -- independently verified against the Brewall
+    // map pack's own hand-plotted markers (a completely separate data
+    // source from the wiki): North Karana's own `Wizard_port`/`Druid_Ring`
+    // markers land within 15-45 units of this same transform applied to
+    // the wiki-quoted coordinates, on a zone spanning thousands of units
+    // -- see docs/design/maps.md's "Coordinate systems" section for the
+    // full check. No marker-matching involved -- this used to guess via a
+    // map marker labeled "Wizard_Spire"/"Druid_Circle" existing exactly
+    // once on the map, which was never confirmed for Druid against a real
+    // map pack; the exact coordinate makes that guess unnecessary.
     if (ctx.teleport_landing) {
       const { class: cls, x, y, z } = ctx.teleport_landing;
-      const isWizard = cls === 'wizard';
       // Same /loc -> map-file transform as the confirmed-/loc path above
       // -- see LastLocationDto's own doc for the mapping itself, and
       // TeleportLandingDto's own doc for why this coordinate is assumed
@@ -269,10 +305,12 @@
       hereMesh = makeHereCross();
       hereMesh.position.copy(pos);
       scene.add(hereMesh);
-      hereStatus = {
-        kind: 'confirmed',
-        note: `landed at the ${isWizard ? 'wizard spire' : 'druid circle'}`,
-      };
+      // `'any'` is Origin's own learned landing (see TeleportLandingDto's
+      // own doc) -- no fixed spire/circle landmark the way a real
+      // Wizard/Druid teleport has, so this note says what it actually is
+      // instead of guessing one of those two.
+      const note = cls === 'wizard' ? 'landed at the wizard spire' : cls === 'druid' ? 'landed at the druid circle' : "landed at your Origin's starting city";
+      hereStatus = { kind: 'confirmed', note };
       panToGuessIfNew(`teleport:${cls}:${x},${y},${z}`, pos);
       return;
     }
@@ -462,6 +500,23 @@
     }
     canvas.addEventListener('pointermove', onPointerMove);
 
+    // why: same raycast setup as the hover handler above, but only ever
+    // against the map's own markers (not the NPC overlay -- clicking a
+    // wiki NPC spawn to route to it would need a stated confidence caveat
+    // this doesn't have time to carry yet) and only wired up at all when
+    // a caller opted in via `onMarkerClick`.
+    function onClick(e: MouseEvent) {
+      if (!onMarkerClick) return;
+      const rect = canvas.getBoundingClientRect();
+      pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObject(markerPoints)[0];
+      const m = hit ? map.markers[hit.index ?? -1] : undefined;
+      if (m) onMarkerClick(m);
+    }
+    canvas.addEventListener('click', onClick);
+
     let raf = 0;
     function tick() {
       controls.update();
@@ -483,6 +538,7 @@
       cancelAnimationFrame(panRaf);
       ro.disconnect();
       canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('click', onClick);
       controls.dispose();
       wallGeo.dispose();
       markerGeo.dispose();
@@ -493,10 +549,13 @@
           (obj.material as THREE.Material).dispose();
         }
       });
+      pathLineMesh?.geometry.dispose();
+      (pathLineMesh?.material as THREE.Material | undefined)?.dispose();
       renderer.dispose();
       scene = null;
       hereMesh = null;
       npcPointsMesh = null;
+      pathLineMesh = null;
       liveCamera = null;
       liveControls = null;
       sceneFramed = false;
@@ -529,6 +588,46 @@
     geo.setAttribute('position', new THREE.BufferAttribute(npcPositionsOf(markers), 3));
     npcPointsMesh.geometry = geo;
     oldGeo.dispose();
+  });
+
+  // ---- effect 2.5: draws/clears the computed route line -- its own
+  // small effect, own mesh, camera/controls/walls/here-marker untouched.
+  // Rebuilt whenever `path` changes (a new route computed, or cleared) or
+  // the zone/map itself changes (a stale route from a different zone must
+  // never linger on screen -- `Maps.svelte` is expected to clear its own
+  // `path` state on a zone switch too, this is defense in depth).
+  $effect(() => {
+    const p = path;
+    void zone;
+    void map;
+    if (pathLineMesh) {
+      scene?.remove(pathLineMesh);
+      pathLineMesh.geometry.dispose();
+      (pathLineMesh.material as THREE.Material).dispose();
+      pathLineMesh = null;
+    }
+    if (!scene || !p || p.waypoints.length < 2) return;
+    // Same mapfile -> three.js axis remap the walls/markers already use
+    // (mapfile X -> three X, mapfile Z/elevation -> three Y, mapfile Y ->
+    // three Z) -- these waypoints are already in the map file's own
+    // coordinate order (see this file's own `path` prop doc), not
+    // `/loc`-space, so no additional transform is needed here.
+    const positions = new Float32Array(p.waypoints.length * 3);
+    p.waypoints.forEach(([x, y, z], i) => {
+      positions[i * 3] = x;
+      positions[i * 3 + 1] = z;
+      positions[i * 3 + 2] = y;
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    // why: bright green, distinct from every existing marker color (red
+    // confirmed, bright yellow guess, cyan NPC) -- `linewidth` is a real
+    // WebGL limitation, not a mistake here: most GPU/driver combinations
+    // render `LineBasicMaterial` at a flat 1px regardless of this value,
+    // so the route reads as a thin line, not a thick highlighted one.
+    const mesh = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x22c55e, linewidth: 2 }));
+    scene.add(mesh);
+    pathLineMesh = mesh;
   });
 
   // ---- effect 3: keeps the "you are here" marker current as real `/loc`

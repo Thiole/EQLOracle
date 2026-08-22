@@ -6,9 +6,13 @@
   import { Input } from '$lib/components/ui/input';
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Checkbox } from '$lib/components/ui/checkbox';
+  import SearchIcon from '@lucide/svelte/icons/search';
+  import NavigationIcon from '@lucide/svelte/icons/navigation';
+  import XIcon from '@lucide/svelte/icons/x';
   import MapViewer from './MapViewer.svelte';
   import { zoneMatches, looksLikeEntranceFor } from './zoneMatch';
-  import type { MapLineDto } from '$lib/tauri/api';
+  import { api, type MapLineDto, type MapMarkerDto, type PathDto, type ZoneDto } from '$lib/tauri/api';
+  import { displayZoneName } from '$lib/utils';
   import {
     mapZones,
     selectedZone,
@@ -28,6 +32,9 @@
     toggleNpcZone,
     liveFollow,
     setLiveFollow,
+    navigationTarget,
+    activeRoute,
+    setNavigationTarget,
   } from '$lib/stores/maps';
 
   $effect(() => {
@@ -103,13 +110,155 @@
     const markers = $currentMap?.markers ?? [];
     if (ctx.teleport_landing) {
       const { class: cls, x, y, z } = ctx.teleport_landing;
-      return `${cls} teleport landing -- confirmed spell destination (${x}, ${y}, ${z})`;
+      const label = cls === 'any' ? 'Origin' : `${cls} teleport`;
+      return `${label} landing -- confirmed destination (${x}, ${y}, ${z})`;
     }
     if (!ctx.previous) return 'no previous zone known yet (first zone this session?)';
     const candidates = markers.filter((m) => looksLikeEntranceFor(m.label, ctx.previous!));
     if (candidates.length === 1) return `entered from "${ctx.previous}" -- using "${candidates[0].label}"`;
     if (candidates.length === 0) return `entered from "${ctx.previous}" -- no matching "to_" marker found on this map`;
     return `entered from "${ctx.previous}" -- ambiguous, ${candidates.length} candidates: ${candidates.map((m) => m.label).join(', ')}`;
+  });
+
+  // ---------------------------------------------------------- pathfinding
+
+  /** why: `find_zone_route` takes real `ZoneDto.name` strings ("Northern
+   * Plains of Karana"), but this module's own zone list is keyed by real
+   * map-file shortname ("northkarana") -- fetched once, not re-derived
+   * per query. `null` while loading; the route UI below degrades to
+   * "unavailable" rather than erroring if this never resolves (a real,
+   * possible outcome -- not every install has the wiki zone-guide pack
+   * lined up with every map shortname, see `zonedata.rs`'s own doc on the
+   * 2 known real gaps). */
+  let allZones = $state<ZoneDto[] | null>(null);
+  $effect(() => {
+    api.listZones().then((z) => (allZones = z));
+  });
+
+  /** why: is the loaded map actually the zone the player is standing in
+   * right now -- the same "is the map I have open my real current zone"
+   * check `entranceGuess` above already uses, reused here since GPS
+   * next-step guidance is meaningless on a map the player is just
+   * browsing, not physically in. */
+  const viewingLiveZone = $derived(
+    !!$zoneContext?.current && !!$selectedZone && zoneMatches($zoneContext.current_map_zones, $zoneContext.current, $selectedZone),
+  );
+
+  let destinationSearch = $state('');
+  const destinationCandidates = $derived.by((): ZoneDto[] => {
+    const q = destinationSearch.trim().toLowerCase();
+    if (!q || !allZones) return [];
+    return allZones.filter((z) => z.name.toLowerCase().includes(q)).slice(0, 8);
+  });
+
+  function pickDestination(toZone: string) {
+    destinationSearch = '';
+    void setNavigationTarget(toZone);
+  }
+
+  function hopLabel(kind: 'walk' | 'teleport' | 'succor', spell: string | null): string {
+    if (kind === 'walk') return 'walk';
+    if (kind === 'succor') return 'Succor/Difficulty Change';
+    return `cast "${spell}"`;
+  }
+
+  /** why: the same "confirmed" tier the "you are here" marker and
+   * `entranceGuess` above already use (see docs/design/maps.md's "You are
+   * here" — the location-estimation ladder"), and the same freshest-wins
+   * comparison `MapViewer.svelte`'s `placeHereMesh` applies -- this used
+   * to check `/loc` first unconditionally and only fall to a teleport
+   * landing when no `/loc` existed for the zone at all, which kept a walk
+   * path starting from a stale pre-teleport `/loc` even after a fresher,
+   * exact teleport landing was known (reported directly: "you are using
+   * the prev location as a you are here"). Landing evidence fills in the
+   * start position rather than being an alternate display of it. Falls to
+   * `$currentMap.markers[0]` only when neither source matches the loaded
+   * zone at all. */
+  function walkStartPosition(): [number, number, number] | null {
+    const loc = $lastLocation;
+    const locMatches = loc && $selectedZone && zoneMatches(loc.map_zones, loc.zone, $selectedZone);
+    const ctx = $zoneContext;
+    const landingMatches = ctx?.teleport_landing && $selectedZone && zoneMatches(ctx.current_map_zones, ctx.current, $selectedZone);
+
+    const preferLoc = !landingMatches || (locMatches && (ctx!.teleport_landing_ts == null || loc!.ts_ms >= ctx!.teleport_landing_ts));
+
+    if (locMatches && preferLoc) {
+      // `/loc`-space -> map-file space, same transform MapViewer.svelte
+      // applies to a real /loc reading before plotting it.
+      return [-loc.y, -loc.x, loc.z];
+    }
+    if (landingMatches) {
+      // Same `/loc`-space -> map-file transform as above -- teleport_landing
+      // is confirmed to live in the same coordinate space (see
+      // MapViewer.svelte's own doc on the independent cross-check against
+      // the Brewall map pack).
+      const { x, y, z } = ctx!.teleport_landing!;
+      return [-y, -x, z];
+    }
+    const first = $currentMap?.markers[0];
+    return first ? [first.pos[0], first.pos[1], first.pos[2]] : null;
+  }
+
+  // ---- manual walk path: click a marker on the loaded map to draw a
+  // real walking route to it -- always available, independent of GPS
+  // navigation (a quick "how far is that thing" query doesn't need a
+  // destination zone set at all).
+  let walkMode = $state(false);
+  let manualWalkPath = $state<PathDto | null>(null);
+  let manualWalkError = $state<string | null>(null);
+
+  async function onMarkerClicked(marker: MapMarkerDto) {
+    if (!walkMode || !$selectedZone) return;
+    const from = walkStartPosition();
+    if (!from) {
+      manualWalkError = 'no known starting position in this zone yet';
+      return;
+    }
+    manualWalkPath = null;
+    manualWalkError = null;
+    try {
+      manualWalkPath = await api.findWalkPath($selectedVersion, $selectedZone, from, marker.pos);
+    } catch (e) {
+      manualWalkError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  // ---- GPS next-step path: when navigation is active, the loaded map is
+  // the zone the player is actually standing in, and `$activeRoute`'s own
+  // first hop is a walk, auto-draw the route to that hop's exit marker --
+  // "when the zone is up it'll show the path to next step", the user's
+  // own ask. `$activeRoute` is always freshly recomputed from the
+  // player's *current* zone (see stores/maps.ts's `recomputeActiveRoute`),
+  // so `hops[0]` is always the honest next step, never a stale leg.
+  let gpsWalkPath = $state<PathDto | null>(null);
+  let gpsError = $state<string | null>(null);
+  $effect(() => {
+    const route = $activeRoute;
+    const map = $currentMap;
+    gpsWalkPath = null;
+    gpsError = null;
+    if (!viewingLiveZone || !map || !route || route === 'loading' || route === 'error' || route.hops.length === 0) return;
+    const next = route.hops[0];
+    if (next.kind !== 'walk') return; // a teleport/succor step has no in-zone path to draw -- the hop list itself says what to do
+    const candidates = map.markers.filter((m) => looksLikeEntranceFor(m.label, next.zone));
+    if (candidates.length !== 1) return;
+    const from = walkStartPosition();
+    if (!from || !$selectedZone) return;
+    api
+      .findWalkPath($selectedVersion, $selectedZone, from, candidates[0].pos)
+      .then((p) => (gpsWalkPath = p))
+      .catch((e) => (gpsError = e instanceof Error ? e.message : String(e)));
+  });
+
+  const displayedPath = $derived(gpsWalkPath ?? manualWalkPath);
+
+  // A walk-path drawn on one zone's map is meaningless on another -- clear
+  // the moment the loaded zone changes, rather than leaving a stale line
+  // lingering from whatever was open before.
+  $effect(() => {
+    void $selectedZone;
+    manualWalkPath = null;
+    manualWalkError = null;
   });
 </script>
 
@@ -190,6 +339,108 @@
           {/if}
         </div>
       {/if}
+      {#if $selectedZone}
+        <!-- why: two pathfinding entry points, kept visually and
+             functionally separate (never blended into one "route" concept)
+             -- in-zone walking (click a marker on the loaded map) and GPS
+             navigation (a persistent destination, recomputed every real
+             zone change) answer genuinely different questions, and a
+             route can legitimately mix walk and teleport hops that a
+             single control couldn't represent honestly. See
+             docs/design/maps.md's "Pathfinding" section. -->
+        <div class="flex flex-wrap items-center gap-3 border-b border-border px-2 py-1.5">
+          <label class="flex items-center gap-1.5 text-[11px] text-muted-foreground" title="Click a marker on the map to draw a real walking route to it, starting from your last known position in this zone.">
+            <Checkbox checked={walkMode} onCheckedChange={(v: boolean) => { walkMode = v; manualWalkPath = null; manualWalkError = null; }} />
+            walk mode: click a marker
+          </label>
+          {#if manualWalkError}<span class="text-[11px] text-bad">{manualWalkError}</span>{/if}
+          {#if manualWalkPath}<span class="text-[11px] text-muted-foreground">route drawn -- {manualWalkPath.waypoints.length} waypoints</span>{/if}
+        </div>
+
+        <!-- why: GPS destination gets its own visually distinct block --
+             a tinted, bordered section rather than one more item crammed
+             into the thin toolbar strip above, since it's the primary way
+             a player actually drives this module (walk mode is a
+             secondary, click-to-probe tool). Search input and its results
+             are stacked, not wrapped inline together, so picking a result
+             doesn't mean hunting for it next to whatever else happened to
+             wrap onto that line. -->
+        <div class="border-b border-border bg-muted/30 px-3 py-2.5">
+          <div class="flex items-center gap-2">
+            <NavigationIcon class="size-3.5 shrink-0 text-muted-foreground" />
+            <span class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">destination</span>
+            {#if $navigationTarget}
+              <span class="flex items-center gap-1.5 rounded-full border border-primary bg-primary/15 py-1 pl-2.5 pr-1.5 text-[12px] font-medium text-primary">
+                {displayZoneName($navigationTarget)}
+                <button
+                  type="button"
+                  class="cursor-pointer rounded-full p-0.5 text-primary/70 hover:bg-primary/20 hover:text-primary"
+                  onclick={() => setNavigationTarget(null)}
+                  aria-label="clear destination"
+                >
+                  <XIcon class="size-3" />
+                </button>
+              </span>
+            {:else}
+              <div class="relative max-w-xs flex-1">
+                <SearchIcon class="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input bind:value={destinationSearch} placeholder="where do you want to go?" class="h-8 pl-7 text-[12px]" />
+              </div>
+            {/if}
+          </div>
+          {#if destinationSearch && destinationCandidates.length > 0}
+            <div class="mt-2 flex max-w-xs flex-col gap-0.5 rounded-md border border-border bg-background p-1 shadow-sm">
+              {#each destinationCandidates as z (z.id)}
+                <button
+                  type="button"
+                  class="cursor-pointer rounded px-2 py-1 text-left text-[12px] text-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                  onclick={() => pickDestination(z.name)}
+                >
+                  {displayZoneName(z.name)}
+                </button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+        {#if $navigationTarget}
+          {#if $activeRoute === 'loading'}
+            <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">finding a route…</p>
+          {:else if $activeRoute === 'error'}
+            <p class="border-b border-border px-2 py-1.5 text-[11px] text-bad">couldn't find a route to {displayZoneName($navigationTarget)}.</p>
+          {:else if $activeRoute && $activeRoute.hops.length === 0}
+            <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">you're already here.</p>
+          {:else if $activeRoute}
+            <!-- why: each hop's kind is shown plainly, never blended into a
+                 generic "shortcut" -- a teleport hop names its own spell so
+                 the reader can judge whether they actually have access to
+                 it, the same reasoning RouteHopDto's own doc gives for why
+                 the backend doesn't (and can't) know that. The first hop
+                 is bolded -- it's the *next step*, recomputed fresh from
+                 wherever the player currently is (see stores/maps.ts's
+                 `recomputeActiveRoute`), not just the first leg of
+                 whatever route was originally requested. -->
+            <ol class="flex flex-wrap items-center gap-1 border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">
+              {#each $activeRoute.hops as hop, i (i)}
+                <li>
+                  <span class="{hop.kind === 'teleport' ? 'text-primary' : hop.kind === 'succor' ? 'text-brand-soft' : ''} {i === 0 ? 'font-medium text-foreground' : ''}">{hopLabel(hop.kind, hop.via_spell)}</span>
+                  ({hop.distance.toFixed(0)})
+                </li>
+                <li>&rarr;</li>
+                <li class={i === $activeRoute.hops.length - 1 ? 'font-medium text-foreground' : ''}>{displayZoneName(hop.zone)}</li>
+                {#if i < $activeRoute.hops.length - 1}<li>&rarr;</li>{/if}
+              {/each}
+              <li class="ml-2">total: {$activeRoute.total_distance.toFixed(0)}</li>
+            </ol>
+          {/if}
+          {#if gpsError}
+            <p class="border-b border-border px-2 py-1.5 text-[11px] text-bad">couldn't draw the next step: {gpsError}</p>
+          {:else if gpsWalkPath}
+            <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">next-step path drawn on the map (green).</p>
+          {:else if $activeRoute && $activeRoute !== 'loading' && $activeRoute !== 'error' && $activeRoute.hops.length > 0 && !viewingLiveZone}
+            <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">open your current zone's map to see the next-step path drawn.</p>
+          {/if}
+        {/if}
+      {/if}
       <CardContent class="flex flex-1 items-center justify-center p-0">
         {#if !$selectedZone}
           <p class="text-[12px] text-muted-foreground">
@@ -204,7 +455,14 @@
         {:else if $mapError}
           <p class="text-[12px] text-bad">{$mapError}</p>
         {:else if $currentMap}
-          <MapViewer map={$currentMap} zone={$selectedZone} npcMarkers={$npcMarkers} zoneContext={$zoneContext} />
+          <MapViewer
+            map={$currentMap}
+            zone={$selectedZone}
+            npcMarkers={$npcMarkers}
+            zoneContext={$zoneContext}
+            path={displayedPath}
+            onMarkerClick={walkMode ? onMarkerClicked : null}
+          />
         {/if}
       </CardContent>
     </Card>

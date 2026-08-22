@@ -11,7 +11,8 @@
 // Befallen: base game + Brewall) surfaces an "available versions" toggle
 // instead.
 import { writable, get } from 'svelte/store';
-import { api, type MapFileDto, type LastLocationDto, type NpcMarkerDto, type ZoneContextDto } from '../tauri/api';
+import { api, type MapFileDto, type LastLocationDto, type NpcMarkerDto, type ZoneContextDto, type ZoneDto, type ZoneRouteDto } from '../tauri/api';
+import { mapShortnames } from '../maps/zoneMatch';
 
 /** why: Settings' "N packs known" display only -- the zone picker itself
  * no longer asks the user to choose a pack up front, see `mapZones`. */
@@ -74,6 +75,91 @@ export function setLiveFollow(on: boolean) {
   if (!on) return;
   const stem = resolveMapZone(get(zoneContext));
   if (stem && stem !== get(selectedZone)) void selectZone(stem);
+}
+
+// ------------------------------------------------------------- navigation
+
+/** why: the GPS-style destination -- a real `ZoneDto.name`, not a map
+ * shortname. Persists across zone switches (unlike a one-off route query
+ * would) so the route recomputes automatically as the player actually
+ * progresses, rather than going stale the moment they take the first
+ * step. `null` means no active navigation. */
+export const navigationTarget = writable<string | null>(null);
+/** why: the route as of the player's *current* zone -- recomputed fresh
+ * every real zone change (see `recomputeActiveRoute`), so `hops[0]` is
+ * always "the next step from here," not a stale leg from wherever the
+ * route was first requested. `'loading'`/`'error'` are real, distinct
+ * states shown to the user, not folded into `null`. */
+export const activeRoute = writable<ZoneRouteDto | 'loading' | 'error' | null>(null);
+
+/** why: `find_zone_route` needs real `ZoneDto.name` strings, but this
+ * module's own zone list (`mapZones`/`selectedZone`) is keyed by map-file
+ * shortname -- fetched once and cached at module scope (not a store: no
+ * view needs to react to it changing, it doesn't change after first
+ * load). */
+let zoneCatalog: ZoneDto[] | null = null;
+async function ensureZoneCatalog(): Promise<ZoneDto[]> {
+  if (!zoneCatalog) zoneCatalog = (await api.listZones()) ?? [];
+  return zoneCatalog;
+}
+
+/** why: resolves a map-file shortname to the real `ZoneDto.name`
+ * `find_zone_route` needs, by matching against each zone's own
+ * `mapShortnames(who_name)` -- shared by the auto-recompute below and
+ * Maps.svelte's own "current zone" display, so they can never disagree. */
+export async function zoneNameForShortname(shortname: string): Promise<string | null> {
+  const zones = await ensureZoneCatalog();
+  const z = zones.find((z) => z.who_name && mapShortnames(z.who_name).some((s) => s.toLowerCase() === shortname.toLowerCase()));
+  return z?.name ?? null;
+}
+
+/** why: guards `recomputeActiveRoute` against re-querying on every
+ * `parse-tick` when nothing about the route actually changed -- only a
+ * real "current zone" change (or a fresh `setNavigationTarget` call)
+ * should trigger a new `find_zone_route` call. */
+let lastRoutedFrom: string | null = null;
+
+/** why: called by `Maps.svelte`'s destination field -- sets (or clears,
+ * passing `null`) the persistent target and immediately computes the
+ * first route from wherever the player currently is. */
+export async function setNavigationTarget(zoneName: string | null) {
+  navigationTarget.set(zoneName);
+  activeRoute.set(null);
+  lastRoutedFrom = null;
+  await recomputeActiveRoute();
+}
+
+/** why: the actual GPS behavior -- called here on every real zone change
+ * (see `refreshZoneContext`) and once from `setNavigationTarget`. Always
+ * routes from the player's *current* resolved zone, so the returned
+ * `hops[0]` is always the honest next step, not a leg from the original
+ * query point that's now behind them. */
+export async function recomputeActiveRoute() {
+  const target = get(navigationTarget);
+  if (!target) {
+    activeRoute.set(null);
+    lastRoutedFrom = null;
+    return;
+  }
+  const shortname = resolveMapZone(get(zoneContext));
+  if (!shortname) return; // no known current zone yet -- leave whatever's showing
+  const fromName = await zoneNameForShortname(shortname);
+  if (!fromName) {
+    activeRoute.set('error');
+    return;
+  }
+  if (fromName === lastRoutedFrom) return; // already routed from here, real change needed to re-query
+  lastRoutedFrom = fromName;
+  if (fromName === target) {
+    activeRoute.set({ hops: [], total_distance: 0 });
+    return;
+  }
+  activeRoute.set('loading');
+  try {
+    activeRoute.set(await api.findZoneRoute(fromName, target));
+  } catch {
+    activeRoute.set('error');
+  }
 }
 
 /** why: fuzzy candidates for the *currently selected* map zone -- see
@@ -223,6 +309,11 @@ export async function refreshZoneContext() {
   const prevRaw = get(zoneContext)?.current ?? null;
   const ctx = await api.getZoneContext();
   zoneContext.set(ctx);
+  // why: GPS-style navigation recomputes on every real zone change,
+  // independent of "live: follow me" (that toggle only controls whether
+  // the *viewed map* auto-switches, not whether an active route stays
+  // current) -- see `recomputeActiveRoute`'s own doc.
+  if (get(navigationTarget) && ctx?.current !== prevRaw) void recomputeActiveRoute();
   // why: only act on a genuine zone *change* -- not every tick's re-fetch
   // of the same current zone.
   if (!get(liveFollow) || !ctx?.current || ctx.current === prevRaw) return;

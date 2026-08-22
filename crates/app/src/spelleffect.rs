@@ -814,37 +814,38 @@ mod tests {
         assert!(effects.tags.contains(&"Damage over Time".to_string()));
     }
 
-    /// Coverage check against the *entire* real catalog: every spell
-    /// whose `spell_type` is Detrimental or Beneficial and has no usable
-    /// `slots` data should still get a damage/heal component from
-    /// `description` a meaningful fraction of the time -- confirms this
-    /// module's real coverage, not just its handling of a few hand-picked
-    /// examples.
+    /// Coverage check against the *entire* real catalog -- this one's own
+    /// history, not just a hypothetical: it used to assert a >50-spell
+    /// population and a >15% description-fallback match rate, both real
+    /// against the catalog *as scraped at the time*. A fresh re-scrape
+    /// (re-run deliberately, per the user's own direct ask) found the
+    /// wiki's own `slots` data had gotten dramatically more complete
+    /// since then -- confirmed directly, not assumed: the *entire*
+    /// catalog now has exactly 2 slotless spells total (both
+    /// Detrimental), down from 50+. That's a real improvement in the
+    /// underlying data (`slots`-based parsing, not this module's weaker
+    /// description-text fallback, now covers nearly everything), not a
+    /// regression in this module -- `description_damage` itself is
+    /// unchanged and still covered directly by the hand-picked tests
+    /// above (`fire_bolt_gets_its_damage_number_from_description_not_
+    /// slots`, `suffocate_gets_an_instant_hit_and_a_dot_tick_and_two_
+    /// debuffs`). This asserts today's real, much smaller population by
+    /// name (so a *future* re-scrape that meaningfully changes it again
+    /// gets noticed here, the same way this one did) rather than
+    /// asserting a coverage percentage that a 2-spell sample can't say
+    /// anything statistically meaningful about.
     #[test]
-    fn description_fallback_covers_a_real_share_of_slotless_detrimental_spells() {
-        let slotless_detrimental: Vec<&Spell> = crate::spelldata::spells()
-            .iter()
-            .filter(|s| s.slots.is_empty() && s.spell_type.as_deref() == Some("Detrimental"))
-            .collect();
-        assert!(
-            slotless_detrimental.len() > 50,
-            "sanity: the real catalog should have plenty of these"
-        );
-        let matched = slotless_detrimental
-            .iter()
-            .filter(|s| description_damage(s.description.as_deref().unwrap_or("")).is_some())
-            .count();
-        let rate = matched as f64 / slotless_detrimental.len() as f64;
-        println!(
-            "slotless Detrimental spells: {}, description-matched: {matched} ({:.0}%)",
-            slotless_detrimental.len(),
-            rate * 100.0
-        );
-        assert!(
-            rate > 0.15,
-            "expected a real, meaningful fraction to match known damage phrasings, got {:.1}%",
-            rate * 100.0
-        );
+    fn only_two_real_spells_are_still_slotless_and_neither_is_damage_shaped() {
+        let slotless: Vec<&Spell> = crate::spelldata::spells().iter().filter(|s| s.slots.is_empty()).collect();
+        let names: Vec<&str> = slotless.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["Instill", "Resurrection Effects"], "the real slotless-spell population changed -- see this test's own doc");
+        for s in &slotless {
+            assert!(
+                description_damage(s.description.as_deref().unwrap_or("")).is_none(),
+                "{} isn't damage-shaped (a root/snare and a rez-debuff meta-description) -- description_damage matching it would be a false positive",
+                s.name
+            );
+        }
     }
 
     /// Same coverage-check discipline, for `parse_duration` against every

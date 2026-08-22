@@ -209,6 +209,49 @@ impl AaLog {
     }
 }
 
+/// Highest live in-game rank observed cast this session, for "You"
+/// specifically, keyed by catalog base spell name -- e.g. "You begin
+/// casting Ice Comet X." confirms rank 10 of `Ice Comet`. Real, and
+/// common: 2,131 "You begin casting Ice Comet X." lines alone in the
+/// reference log, rank visibly climbing over real time (IV early, X
+/// later) -- confirmed directly, not assumed. This is a *third* thing,
+/// distinct from `packs/spells.json`'s own name (which never carries
+/// this -- see `split_cast_rank`'s own doc) and distinct from
+/// `base_spell_name`'s cast-line rank-stripping (which discards the
+/// number entirely, only caring whether two cast/damage lines name the
+/// same spell). Session-only like every other `Ingest`-owned log here --
+/// there's no server-side or log-side record of "current rank" to
+/// recover on restart beyond replaying casts.
+#[derive(Debug, Clone, Default)]
+pub struct SpellRanks {
+    best: HashMap<String, (u8, Millis)>,
+}
+
+impl SpellRanks {
+    /// Only keeps a rank if it's the highest seen so far for that spell --
+    /// a real rank is never supposed to regress, but treating a same-or-
+    /// lower re-observation as a no-op is simpler than asserting that and
+    /// just as correct in practice.
+    pub fn observe(&mut self, ts: Millis, base: &str, rank: u8) {
+        match self.best.get_mut(base) {
+            Some(e) if rank >= e.0 => *e = (rank, ts),
+            Some(_) => {}
+            None => {
+                self.best.insert(base.to_string(), (rank, ts));
+            }
+        }
+    }
+
+    pub fn rank_of(&self, base: &str) -> Option<u8> {
+        self.best.get(base).map(|(r, _)| *r)
+    }
+
+    /// Every spell with an observed rank this session, unordered.
+    pub fn all(&self) -> impl Iterator<Item = (&str, u8)> {
+        self.best.iter().map(|(k, (r, _))| (k.as_str(), *r))
+    }
+}
+
 /// Every "Your <item> (Exaltation) <flavor text>." line seen this session
 /// (`proc.item`'s rule in `packs/eql.toml`, filtered to the `Exaltation`
 /// effect label -- see `extract_action`'s own `"proc.item"` arm), keyed
@@ -854,12 +897,54 @@ pub struct Ingest {
     /// coordinate directly (see `teleportdata`'s own doc for the
     /// coordinate-space caveat) instead of the weaker previous-zone-
     /// entrance guess. See `get_zone_context`.
-    pub entered_via_teleport: Option<teleportdata::TeleportLanding>,
+    ///
+    /// Timestamped (the confirming `zone.enter`'s own `ts`) -- a real,
+    /// reported bug this fixes: `commands::live_start_position` used to
+    /// pick a real `/loc` reading over this unconditionally, whenever its
+    /// own zone matched, even when that `/loc` was typed *before* this
+    /// teleport and is now stale -- a fresher, more certain landing
+    /// losing to an older one just because `/loc` outranked it by kind,
+    /// not by recency. Every consumer now compares this timestamp against
+    /// `last_loc`'s own and takes whichever is actually newer.
+    pub entered_via_teleport: Option<(Millis, teleportdata::TeleportLanding)>,
+    /// Timestamp of "You" most recently beginning an `Origin` cast --
+    /// personal only, unlike `last_teleport_cast`: the AA's own real
+    /// description ("transports *you* back to your starting city",
+    /// confirmed against `~/eql/aa.json`) is singular, not group-shaped
+    /// like Translocate/Circle, so an ally's cast never counts here. See
+    /// `learned_origin`'s own doc for why this exists as a second,
+    /// parallel mechanism rather than folding into `last_teleport_cast`.
+    last_origin_cast: Option<Millis>,
+    /// Timestamp and raw zone label of the most recent real-world
+    /// confirmation of where `Origin` actually sends this character.
+    /// Origin, per the user's own direct point, is a genuinely *dynamic*
+    /// teleport: unlike every spell `teleportdata::landing_for` covers,
+    /// it has no single wiki-quotable destination at all (confirmed
+    /// directly against the real reference log: this character's own
+    /// Origin casts landed in four different real zones over three
+    /// weeks -- Oggok, Neriak - Commons, New Sebilis Expedition, and The
+    /// Feerrott -- settling into New Sebilis Expedition as the
+    /// overwhelmingly dominant, current answer). So instead of a static
+    /// lookup, this is *learned* empirically, the same "last one wins"
+    /// shape `last_teleport_cast`/`entered_via_teleport` already use for
+    /// a fizzle-then-retry: set on `Action::Zone` whenever it lands
+    /// within `TELEPORT_WINDOW_MS` of `last_origin_cast`, overwritten by
+    /// every later confirmation, self-correcting if the player ever
+    /// changes their actual starting city again. Not itself a coordinate
+    /// -- once a zone is known, "where in that zone" is exactly
+    /// `routing::best_start_position`'s own question (the real,
+    /// game-accurate succor point), computed lazily by whichever command
+    /// needs it (`base_dir` isn't available at ingest time) rather than
+    /// stored here.
+    pub learned_origin: Option<(Millis, String)>,
     /// Every AA rank purchase seen this session -- `aa.gained`/`aa.
     /// improved` lines only. See `AaLog`'s own doc.
     pub aa: AaLog,
     /// Every spell confirmed known this session. See `SpellLog`'s own doc.
     pub spellbook: SpellLog,
+    /// Highest live rank observed cast this session, "You" only. See
+    /// `SpellRanks`' own doc.
+    pub spell_ranks: SpellRanks,
     /// Every "Your <item> (Exaltation) ..." combat-proc line seen this
     /// session. See `ExaltationProcs`' own doc.
     pub exaltation_procs: ExaltationProcs,
@@ -986,8 +1071,11 @@ impl Default for Ingest {
             last_loc: None,
             last_teleport_cast: None,
             entered_via_teleport: None,
+            last_origin_cast: None,
+            learned_origin: None,
             aa: AaLog::default(),
             spellbook: SpellLog::default(),
+            spell_ranks: SpellRanks::default(),
             exaltation_procs: ExaltationProcs::default(),
             enc_map: HashMap::new(),
             entities_by_enc: HashMap::new(),
@@ -1347,8 +1435,17 @@ impl Ingest {
                 self.encounters.close_all(ts);
                 self.entered_via_teleport = self
                     .last_teleport_cast
+                    .clone()
                     .filter(|(cast_ts, _)| ts - cast_ts <= TELEPORT_WINDOW_MS)
-                    .map(|(_, landing)| landing);
+                    .map(|(_, landing)| (ts, landing));
+                // Origin's own real confirmation -- see `learned_origin`'s
+                // own doc. Same window, same "last one wins" shape as the
+                // wiki-fixed teleports above, just recording *which zone*
+                // instead of looking one up, since there's nothing to look
+                // up.
+                if self.last_origin_cast.is_some_and(|cast_ts| ts - cast_ts <= TELEPORT_WINDOW_MS) {
+                    self.learned_origin = Some((ts, zone.clone()));
+                }
                 self.zone.enter(ts, zone);
             }
             Action::LevelUp { level } => {
@@ -1395,6 +1492,20 @@ impl Ingest {
                 if who == "You" || self.is_ally(&who, ts) {
                     if let Some(landing) = teleportdata::landing_for(&spell) {
                         self.last_teleport_cast = Some((ts, landing));
+                    }
+                }
+                // Origin: personal only (see `last_origin_cast`'s own doc
+                // for why this doesn't join the ally-aware check above).
+                if who == "You" && spell == "Origin" {
+                    self.last_origin_cast = Some(ts);
+                }
+                // Live spell rank: personal only, same reasoning as
+                // Origin above -- this is for the player's own spellbook
+                // display, not a general per-entity fact worth tracking
+                // for every ally/mob that happens to cast something.
+                if who == "You" {
+                    if let (base, Some(rank)) = split_cast_rank(&spell) {
+                        self.spell_ranks.observe(ts, base, rank);
                     }
                 }
                 // A cast line proves the ability isn't a weapon proc; no
@@ -1509,7 +1620,7 @@ impl Ingest {
                 qty,
                 sold_for,
             } => {
-                self.record_loot(ts, &item, &corpse, qty);
+                self.record_loot(ts, &item, &corpse, qty, sold_for.is_some());
                 if let Some(text) = sold_for {
                     self.record_currency(ts, "autosell", &text);
                 }
@@ -1854,7 +1965,7 @@ impl Ingest {
     /// own `target`, set from the corpse text a few lines down,
     /// independent of `enc`) -- this is for call sites that want "what
     /// did *this* pull drop", like `combat::encounter_detail`.
-    fn record_loot(&mut self, ts: Millis, item: &str, corpse: &str, qty: u64) {
+    fn record_loot(&mut self, ts: Millis, item: &str, corpse: &str, qty: u64, sold: bool) {
         let mob = strip_corpse_suffix(corpse);
         let looter = self.sym("You");
         let target = self.sym(mob);
@@ -1864,8 +1975,15 @@ impl Ingest {
             .recent_encounter_for(mob, ts)
             .map(|id| id.0)
             .unwrap_or(NO_ENCOUNTER);
+        // why: `sold` (the same "and sold it for..." clause `Action::
+        // Loot::sold_for`'s presence already signals) means this exact
+        // item never actually stuck around to turn in anywhere -- flagged
+        // on the row itself rather than left to a separate same-timestamp
+        // Currency-row correlation, which a busy multi-item corpse could
+        // make ambiguous. See `flag::LOOT_AUTO_SOLD`'s own doc.
+        let flags = if sold { flag::LOOT_AUTO_SOLD } else { 0 };
         self.store
-            .push(ts, EventKind::Loot, looter, target, ab, qty, 0, enc, tier);
+            .push(ts, EventKind::Loot, looter, target, ab, qty, flags, enc, tier);
     }
 
     /// How long a gap between two loot lines against the same mob name
@@ -3274,6 +3392,128 @@ fn is_roman_numeral(s: &str) -> bool {
     !s.is_empty()
         && s.bytes()
             .all(|b| matches!(b, b'I' | b'V' | b'X' | b'L' | b'C' | b'D' | b'M'))
+}
+
+/// Splits a live cast-line spell name into its catalog base name and an
+/// observed live rank, if any -- e.g. "Ice Comet X" -> ("Ice Comet",
+/// Some(10)). This game has two unrelated roman-numeral phenomena on
+/// spell names, confirmed against real data, not assumed: (1) a spell
+/// *line* where the numeral is baked into the wiki's own canonical name
+/// and names a wholly separate spell, not a rank of anything --
+/// `packs/spells.json` has no bare "Monster Summoning" at all, only
+/// "Monster Summoning II"/"III" as their own real entries, same as
+/// "Yaulp"/"Yaulp II"/"Yaulp III" (`PROTECTED_SPELL_NAMES` above guards
+/// `base_spell_name` against exactly this, but only for the handful of
+/// names that specific function's own reference-log cross-check happened
+/// to need -- not exhaustive, and not this function's job to reuse,
+/// since a stale/incomplete guard list is exactly how a display bug
+/// slipped through once already); (2) a live, per-character rank the
+/// game appends only in combat-log text, never in the wiki's page title
+/// at all (confirmed: "Ice Comet" is the sole `packs/spells.json` entry,
+/// "Ice Comet X" never appears there, yet is real and common in the
+/// reference log -- see `SpellRanks`' own doc). Disambiguated here by
+/// checking the catalog directly rather than any hand-curated list: try
+/// the *full* name first -- if it's already real, the numeral is
+/// identity, no rank. Only if the full name isn't real *and* stripping
+/// the trailing numeral yields a name that *is* real does that numeral
+/// count as an observed rank.
+fn split_cast_rank(name: &str) -> (&str, Option<u8>) {
+    if crate::spelldata::spell_by_name(name).is_some() {
+        return (name, None);
+    }
+    match name.rsplit_once(' ') {
+        Some((base, tail)) if is_roman_numeral(tail) && crate::spelldata::spell_by_name(base).is_some() => {
+            (base, roman_to_u8(tail))
+        }
+        _ => (name, None),
+    }
+}
+
+/// Standard subtractive-notation roman numeral -> integer, clamped to
+/// `u8` (real observed ranks are nowhere near 255). `is_roman_numeral`
+/// already guarantees the character set; this additionally requires a
+/// well-formed value, returning `None` for a charset-valid but
+/// nonsensical ordering rather than a wrong number.
+fn roman_to_u8(s: &str) -> Option<u8> {
+    fn value(b: u8) -> u32 {
+        match b {
+            b'I' => 1,
+            b'V' => 5,
+            b'X' => 10,
+            b'L' => 50,
+            b'C' => 100,
+            b'D' => 500,
+            b'M' => 1000,
+            _ => 0,
+        }
+    }
+    let bytes = s.as_bytes();
+    let mut total: u32 = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        let cur = value(bytes[i]);
+        let next = if i + 1 < bytes.len() { value(bytes[i + 1]) } else { 0 };
+        if cur < next {
+            total += next - cur;
+            i += 2;
+        } else {
+            total += cur;
+            i += 1;
+        }
+    }
+    u8::try_from(total).ok()
+}
+
+#[cfg(test)]
+mod spell_rank_tests {
+    use super::*;
+
+    #[test]
+    fn a_live_cast_rank_is_split_off_a_real_base_spell() {
+        assert_eq!(split_cast_rank("Ice Comet X"), ("Ice Comet", Some(10)));
+        assert_eq!(split_cast_rank("Garrison's Mighty Mana Shock IX"), ("Garrison's Mighty Mana Shock", Some(9)));
+    }
+
+    #[test]
+    fn a_spell_line_variant_is_never_treated_as_a_rank() {
+        // why: the exact bug reported -- "Monster Summoning" alone isn't
+        // a real spell, only "Monster Summoning II"/"III" are, each its
+        // own catalog entry; same for the Yaulp line.
+        assert_eq!(split_cast_rank("Monster Summoning II"), ("Monster Summoning II", None));
+        assert_eq!(split_cast_rank("Monster Summoning III"), ("Monster Summoning III", None));
+        assert_eq!(split_cast_rank("Yaulp II"), ("Yaulp II", None));
+        assert_eq!(split_cast_rank("Yaulp III"), ("Yaulp III", None));
+    }
+
+    #[test]
+    fn an_unranked_cast_of_a_plain_spell_has_no_rank() {
+        assert_eq!(split_cast_rank("Ice Comet"), ("Ice Comet", None));
+    }
+
+    #[test]
+    fn an_unrecognized_name_never_fabricates_a_rank() {
+        // why: charset-valid roman numeral, but the stripped base isn't a
+        // real catalog spell either -- must not guess.
+        assert_eq!(split_cast_rank("Some Made Up Ability X"), ("Some Made Up Ability X", None));
+    }
+
+    #[test]
+    fn roman_numerals_convert_correctly() {
+        assert_eq!(roman_to_u8("I"), Some(1));
+        assert_eq!(roman_to_u8("IV"), Some(4));
+        assert_eq!(roman_to_u8("IX"), Some(9));
+        assert_eq!(roman_to_u8("X"), Some(10));
+    }
+
+    #[test]
+    fn spell_ranks_only_ever_keeps_the_highest_observed() {
+        let mut r = SpellRanks::default();
+        r.observe(0, "Ice Comet", 4);
+        r.observe(1000, "Ice Comet", 9);
+        r.observe(2000, "Ice Comet", 6); // a lower re-observation must not regress it
+        assert_eq!(r.rank_of("Ice Comet"), Some(9));
+        assert_eq!(r.rank_of("Never Cast"), None);
+    }
 }
 
 /// Splits a `ds.damage` `source` capture ("Tranixx Darkpaw's flames",
@@ -5356,7 +5596,7 @@ mod effect_ping_tests {
             b"[Sat Aug 01 13:20:01 2026] You have entered The Northern Plains of Karana.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
-        let landing = ing.entered_via_teleport.expect("should be marked teleported");
+        let (_, landing) = ing.entered_via_teleport.expect("should be marked teleported");
         assert_eq!(landing.class, teleportdata::TeleportClass::Wizard);
         assert_eq!((landing.x, landing.y, landing.z), (-3685.0, 1209.0, -5.0));
     }
@@ -5373,7 +5613,7 @@ mod effect_ping_tests {
             b"[Sat Aug 01 13:20:01 2026] You have entered The Northern Plains of Karana.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
-        let landing = ing.entered_via_teleport.expect("should be marked teleported");
+        let (_, landing) = ing.entered_via_teleport.expect("should be marked teleported");
         assert_eq!(landing.class, teleportdata::TeleportClass::Druid);
         assert_eq!((landing.x, landing.y, landing.z), (-2706.0, -1494.0, -4.0));
     }
@@ -5392,7 +5632,7 @@ mod effect_ping_tests {
             b"[Sat Aug 01 13:20:01 2026] You have entered The Northern Plains of Karana.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
-        let landing = ing.entered_via_teleport.expect("should be marked teleported");
+        let (_, landing) = ing.entered_via_teleport.expect("should be marked teleported");
         assert_eq!(landing.class, teleportdata::TeleportClass::Wizard);
     }
 
@@ -5451,7 +5691,7 @@ mod effect_ping_tests {
             b"[Thu Jul 30 17:28:05 2026] You have entered Cazic Thule.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
-        let landing = ing.entered_via_teleport.expect("should be marked teleported");
+        let (_, landing) = ing.entered_via_teleport.expect("should be marked teleported");
         assert_eq!(landing.class, teleportdata::TeleportClass::Wizard);
     }
 
@@ -5484,6 +5724,98 @@ mod effect_ping_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
         assert!(ing.entered_via_teleport.is_none());
+    }
+
+    /// Real, reported gap: `Origin` (a class-agnostic AA -- "transports
+    /// you back to your starting city", confirmed against `~/eql/aa.json`)
+    /// has no fixed, wiki-quotable destination the way every other
+    /// teleport here does, so it never went through `last_teleport_cast`/
+    /// `entered_via_teleport` at all. Confirmed directly against the real
+    /// reference log that a successful "You begin casting Origin." really
+    /// is followed by a real `zone.enter` on the same real cast-time +
+    /// loading-screen cadence the other teleports already use this same
+    /// window for. `learned_origin` is the parallel, *learned* mechanism
+    /// this needs instead of a table lookup.
+    #[test]
+    fn an_origin_cast_followed_by_zoning_learns_the_landing_zone() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:51:23 2026] You begin casting Origin.",
+            b"[Tue Jul 28 15:51:46 2026] You have entered Oggok.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let (_, zone) = ing.learned_origin.expect("should have learned an origin zone");
+        assert_eq!(zone, "Oggok");
+        // Origin has no fixed coordinate -- unlike Gate/Translocate, this
+        // must stay `None` (the confirmed zone is enough on its own;
+        // `commands::live_start_position`/`get_zone_context` compute a
+        // real position from it lazily, once `base_dir` is available).
+        assert!(ing.entered_via_teleport.is_none());
+    }
+
+    /// Real, confirmed pattern from the actual reference log: this
+    /// character's own Origin landing genuinely changed over time (Oggok,
+    /// then Neriak - Commons, then New Sebilis Expedition) -- `learned_origin`
+    /// must track the *most recent* real confirmation, the same "last one
+    /// wins" shape `last_teleport_cast`/`entered_via_teleport` already use,
+    /// not the first one ever seen.
+    #[test]
+    fn a_later_origin_confirmation_overwrites_an_earlier_one() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:51:23 2026] You begin casting Origin.",
+            b"[Tue Jul 28 15:51:46 2026] You have entered Oggok.",
+            b"[Wed Jul 29 17:00:03 2026] You begin casting Origin.",
+            b"[Wed Jul 29 17:00:18 2026] You have entered Neriak - Commons.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let (_, zone) = ing.learned_origin.expect("should have learned an origin zone");
+        assert_eq!(zone, "Neriak - Commons");
+    }
+
+    /// An interrupted cast with no retry and no subsequent zone change at
+    /// all must not fabricate a learned landing -- there's genuinely
+    /// nothing to learn from here (no `zone.enter` line exists in this
+    /// log at all, so there's nothing *to* wrongly attribute). Real,
+    /// stated limitation carried over unchanged from `last_teleport_cast`/
+    /// `entered_via_teleport`, not solved here either: an interrupted cast
+    /// followed by an *unrelated* zone-line walk within `TELEPORT_WINDOW_MS`
+    /// (with no retry) would still be wrongly learned, since nothing
+    /// cross-checks "interrupted" against the window -- no real case of
+    /// that shape was found in the reference log for the Wizard-teleport
+    /// side either, so this stays a known, honest gap, not a new promise.
+    #[test]
+    fn an_interrupted_cast_alone_learns_nothing() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 16:23:38 2026] You begin casting Origin.",
+            b"[Tue Jul 28 16:23:53 2026] Your Origin spell is interrupted.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert!(ing.learned_origin.is_none());
+    }
+
+    /// The real, documented "last one wins" self-heal: an interrupted cast
+    /// immediately retried, where the retry actually lands, must learn the
+    /// retry's own real zone -- confirmed real shape in the reference log
+    /// (line 8841-9003, a fizzle then a successful retry a few minutes
+    /// later).
+    #[test]
+    fn a_fizzled_cast_immediately_retried_learns_the_retrys_own_zone() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 16:23:38 2026] You begin casting Origin.",
+            b"[Tue Jul 28 16:23:53 2026] Your Origin spell is interrupted.",
+            b"[Tue Jul 28 16:28:05 2026] You begin casting Origin.",
+            b"[Tue Jul 28 16:28:20 2026] You have entered Oggok.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let (_, zone) = ing.learned_origin.expect("the retry should have learned a zone");
+        assert_eq!(zone, "Oggok");
     }
 
     /// The real bug report this exists to fix: "The Ruins of Old Guk"

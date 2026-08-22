@@ -15,6 +15,12 @@ export const ALL_RACES = [
 // why: every class plays exactly 3 at once above level 10
 export const MAX_ACTIVE_CLASSES = 3;
 
+// why: this game's real character level cap -- shared so anything that
+// judges a spell/AA/etc. as "actually learnable right now" uses the same
+// number `stores/character.ts`'s own level clamp already enforces,
+// instead of a second, driftable magic number.
+export const MAX_CHARACTER_LEVEL = 50;
+
 // why: mirrors gearplanner.rs's SLOTS const
 export const SLOT_LABELS: Record<string, string> = {
   EAR1: 'Ear', HEAD: 'Head', FACE: 'Face', EAR2: 'Ear', NECK: 'Neck',
