@@ -189,3 +189,4 @@ Also outstanding:
   to the webview at ~10 Hz through a bounded ring buffer rather than emitting
   per event. At 0.77 M lines/s the parser is nowhere near the bottleneck; the
   IPC chatter is.
+# EQLOracle
