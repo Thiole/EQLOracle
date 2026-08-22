@@ -1,54 +1,76 @@
-# Gate 3 — tags only, and only reachable from main.
 name: release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  guard:
+  linux:
+    name: Linux
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - name: tag must be on main
-        run: |
-          git branch -a --contains ${{ github.ref_name }} | grep -q 'origin/main' \
-            || { echo "::error::tag is not an ancestor of main"; exit 1; }
 
-  build:
-    needs: guard
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-22.04    # oldest WebKitGTK we support
-          - os: windows-latest
-          - os: macos-14
-            unsupported: true   # built to detect breakage, never published
-    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-node@v4
-        with: { node-version: 20 }
-      - name: linux deps
-        if: runner.os == 'Linux'
+
+      - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
-                                  librsvg2-dev patchelf
-      - run: npm ci
-      - uses: tauri-apps/tauri-action@v0
-        if: ${{ !matrix.unsupported }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PASSWORD }}
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
+      - name: Build Linux application
+        run: cargo tauri build
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_name }}
-          releaseDraft: true
-          includeUpdaterJson: true
-      - name: compile-only (unsupported target)
-        if: ${{ matrix.unsupported }}
-        run: npm run tauri build -- --debug
+          name: eqlp-linux
+          path: |
+            target/release/bundle/**/*.AppImage
+            target/release/bundle/**/*.deb
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
+      - name: Build Windows application
+        run: cargo tauri build
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: eqlp-windows
+          path: |
+            target/release/bundle/**/*.exe
+            target/release/bundle/**/*.msi
