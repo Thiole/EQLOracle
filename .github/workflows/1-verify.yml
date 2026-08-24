@@ -5,7 +5,9 @@ name: verify
 on:
   push:
     branches: [main, beta, "feature/**"]
+    paths-ignore: ["**.md"]
   pull_request:
+    paths-ignore: ["**.md"]
 
 env:
   CARGO_TERM_COLOR: always
