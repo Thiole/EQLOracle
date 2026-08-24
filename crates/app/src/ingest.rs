@@ -2663,72 +2663,37 @@ fn parse_currency_copper(text: &str) -> u64 {
 
 // ---------------------------------------------------------------- parallel backfill
 
-/// What one classified line resolves to, ahead of the sequential merge.
-/// `Action` is the ordinary case. The other two mirror
-/// `Ingest::flavor_evidence_for`'s own two checks, looked up here on the
-/// classify thread since both are stateless (`classes_for_flavor`,
-/// `third_person_flavor`) with no `Ingest` access needed -- same reasoning
-/// `extract_action` already gets to run in parallel. Without this,
-/// backfill would silently never see either: the parallel path used to
-/// drop unmatched lines' text entirely, so only newly-arriving live lines
-/// (`Ingest::route`'s own inline path) could ever feed the dictionary.
+/// why: one classified line ahead of the sequential merge; the two flavor
+/// variants mirror flavor_evidence_for's checks, run here since both are stateless
 enum Classified {
     Action(Action),
-    /// `text` is a known first-person landing message verbatim -- about
-    /// "You". `classes` feeds the still-sequential, order-dependent Quick
-    /// Buff attribution (`Ingest::attribute_flavor_hit`); `text` (owned,
-    /// since it has to survive the thread boundary) feeds the
-    /// unconditional state ping (`Ingest::record_effect_ping`).
+    /// why: known first-person "You" landing message; classes feed Quick
+    /// Buff attribution, text feeds the unconditional state ping
     SelfFlavorHit {
         classes: &'static [String],
         text: String,
     },
-    /// `text`'s first-person reconstruction is a known landing message --
-    /// about `who`, not "You". Never class evidence -- see
-    /// `third_person_flavor`'s own doc.
+    /// why: known landing message about `who`, not "You"; never class evidence
     ThirdPersonFlavorHit {
         who: String,
         text: String,
     },
 }
 
-/// One chunk's worth of classification, ready to be replayed sequentially.
-/// `matched` keeps every matched line's timestamp even when it produced no
-/// `Classified` (a "noise" rule, or unmatched text with no flavor hit),
-/// because the log clock still needs to advance past it in order.
+/// why: one chunk's classification, replayed sequentially; keeps every
+/// matched timestamp even with no Classified so the log clock still advances in order
 struct ChunkResult {
     counts: LineCounts,
     matched: Vec<(Millis, Option<Classified>)>,
-    /// This chunk's own local shape accumulation -- one `Shaper` per
-    /// thread (it holds mutable scratch state, so it can't be shared),
-    /// folded into `Ingest::unmatched_shapes` by `merge_unmatched_shape`
-    /// once every chunk is back on the sequential merge thread.
-    ///
-    /// Deliberately *uncapped* here, unlike the final accumulator --
-    /// `UNMATCHED_SHAPE_CAP` exists to bound a long-lived session's
-    /// memory, but one chunk is transient (built, merged, and dropped
-    /// within a single `backfill_lines` call) and already bounded by its
-    /// own line count, so there's nothing to cap. An earlier version
-    /// capped this locally too, reasoning a single thread's own slice
-    /// would never realistically hit 4096 distinct shapes on its own --
-    /// wrong against the real reference log (mostly buff-landing flavor
-    /// text, which combines spell x target x wording into a genuinely
-    /// huge distinct-shape space): at 8 threads, individual chunks did
-    /// hit their own local cap, and since each chunk dropped its overflow
-    /// independently with no way to know whether the *global* map still
-    /// had room for that exact shape, the merged total came out wrong
-    /// both ways in turn (undercounted when drops were silent, then
-    /// overcounted when they were credited to overflow unconditionally).
-    /// Caught by cross-checking against the real `eqlp coverage` output,
-    /// not by inspection -- fixed by removing the local cap entirely
-    /// rather than layering more accounting on top of it.
+    /// why: this chunk's local shape accumulation, folded into Ingest's
+    /// map after merge; deliberately uncapped here (transient + already
+    /// bounded by chunk size) -- a local cap under-/over-counted vs
+    /// `eqlp coverage` when parallel chunks each dropped overflow blind to the global map
     unmatched_shapes: HashMap<Vec<u8>, ShapeStat>,
 }
 
-/// Classification only -- the expensive, embarrassingly-parallel part. No
-/// access to `Ingest`; a chunk is classified against nothing but the
-/// (immutable, `Send + Sync`) `Engine` and its own lines, which is what
-/// makes it safe to run on someone else's thread.
+/// why: the expensive, embarrassingly-parallel classification step; no
+/// Ingest access, safe to run on another thread
 fn classify_chunk(engine: &Engine, lines: &[&[u8]]) -> ChunkResult {
     let mut matcher = engine.matcher();
     let mut counts = LineCounts::default();
@@ -2785,11 +2750,8 @@ fn classify_chunk(engine: &Engine, lines: &[&[u8]]) -> ChunkResult {
                 } else {
                     false
                 };
-                // A recognized line is understood, just not by a rule
-                // pattern -- it has no business in the Debug module's
-                // "Unparsed" shape list. Only a real miss on both checks
-                // still gets shape-clustered -- see `Ingest::route`'s
-                // matching comment.
+                // why: a recognized-but-unruled line isn't "Unparsed";
+                // only a real miss on both checks gets shape-clustered
                 if !recognized {
                     shaper.shape_into(text_bytes, ShapeMode::Aggressive, &mut shape_scratch);
                     if let Some(s) = unmatched_shapes.get_mut(&shape_scratch) {
@@ -2816,23 +2778,14 @@ fn classify_chunk(engine: &Engine, lines: &[&[u8]]) -> ChunkResult {
     }
 }
 
-/// Splits `raw` into complete lines, CRLF-tolerant, holding back a trailing
-/// line with no terminating `\n` -- the game may still be mid-write of it.
-/// Same contract as `eqlp_core::frame::Framer` for a single buffer, just
-/// without needing a streaming callback (see `backfill_lines`). `tail_worker.rs`
-/// frames a backfill's raw bytes once up front and hands `backfill_lines`
-/// smaller pieces of the result -- see that function's doc for why. Fully
-/// `pub`, not `pub(crate)`, so `examples/dump_fixtures.rs` (compiled as its
-/// own crate against this one's lib target) can frame `fixtures/reference-
-/// slice.log` the identical way a real backfill would.
+/// why: splits into complete lines, CRLF-tolerant, holding back a
+/// trailing partial line; pub so examples/dump_fixtures.rs can frame the same way
 pub fn framed_lines(raw: &[u8]) -> Vec<&[u8]> {
     if raw.is_empty() {
         return Vec::new();
     }
     let mut parts: Vec<&[u8]> = raw.split(|&b| b == b'\n').collect();
-    // `[T]::split` emits a trailing empty slice after a separator at the
-    // very end; without one, the trailing slice is the partial line. Either
-    // way it is not a complete line, so it is dropped here, not emitted.
+    // why: last element is trailing empty (after \n) or a partial line -- either way drop it
     parts.pop();
     parts.into_iter().map(strip_cr).collect()
 }
@@ -2844,34 +2797,13 @@ fn strip_cr(line: &[u8]) -> &[u8] {
     }
 }
 
-/// Parses `lines` (a file's history, or a bounded piece of one) across
-/// several threads instead of one line at a time on the tail thread.
-///
-/// `Engine::matcher` is documented as "one matcher per thread" precisely
-/// for this: the engine itself is immutable and `Send + Sync`, so
-/// classification -- the expensive, regex-bound part -- parallelises
-/// cleanly. What can't parallelise is applying the results: the encounter
-/// graph and zone spans are order-dependent state machines, not a
-/// reduction, so that stays a single sequential pass over the classified
-/// output, in original line order. On an N-core machine this trades an
-/// O(lines) sequential regex pass for an O(lines) sequential hashmap pass
-/// plus an O(lines / N) parallel regex pass -- a real win when
-/// classification (measured in `docs/design/parsing.md` at ~900ns/line
-/// with captures) dominates the per-line cost, which it does here.
-///
-/// Takes already-framed `lines` rather than a raw buffer -- framing
-/// (`framed_lines`) is a cheap single-threaded linear scan, not the
-/// bottleneck, so it isn't repeated here; the point of taking a slice
-/// rather than owning the framing is so `tail_worker.rs`'s backfill loop
-/// can frame a whole file once and then hand this function one bounded
-/// chunk at a time. That split exists because `Ingest`'s lock would
-/// otherwise be held for a multi-million-line file's *entire* replay, with
-/// the UI thread's very first `get_status` blocked on it and no progress
-/// tick emitted until it was already done -- the app would sit on a blank
-/// window, then jump straight to "fully caught up" with no number ever
-/// counting up in between. Called once per chunk instead, each call is a
-/// self-contained unit of work: the caller re-acquires the lock and emits
-/// a tick between calls.
+/// why: parses `lines` across several threads instead of one at a time.
+/// Classification (regex-bound, ~900ns/line) parallelizes across an
+/// immutable Send+Sync Engine; applying results can't (encounter graph
+/// and zone spans are order-dependent), so that stays one sequential
+/// pass. Takes pre-framed lines so tail_worker.rs can hand this one
+/// bounded chunk at a time -- keeps Ingest's lock from being held for a
+/// multi-million-line file's entire replay with no progress tick in between.
 pub fn backfill_lines(ing: &mut Ingest, engine: &Engine, lines: &[&[u8]], threads: usize) {
     if lines.is_empty() {
         return;
@@ -2890,10 +2822,7 @@ pub fn backfill_lines(ing: &mut Ingest, engine: &Engine, lines: &[&[u8]], thread
             .collect()
     });
 
-    // Sequential merge, in file order (chunks were split contiguously, so
-    // iterating results in order is iterating the file in order): this is
-    // the part that can't parallelise, but it's hashmap/vec work with no
-    // regex left in it.
+    // why: sequential merge in file order -- hashmap/vec work, no regex left
     for r in results {
         ing.counts.add(&r.counts);
         for (shape, stat) in r.unmatched_shapes {
@@ -2921,10 +2850,7 @@ mod xp_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// Real lines from `eqlog_Manipulator_rivervale.txt` (2026-07-28,
-    /// 15:02:08-15:02:57), unedited -- a solo pet kill with a
-    /// "You gain experience! (11.000%)" line sitting between the kill's
-    /// last two damage lines and its own "You have slain a fragile pet!".
+    /// why: real solo-pet-kill lines; xp line sits between the kill's last two damage lines and its death line
     const KILL_XP: &str = "\
 [Tue Jul 28 15:02:08 2026] You are not currently assigned to an adventure.
 [Tue Jul 28 15:02:46 2026] Auto attack is on.
@@ -2942,9 +2868,7 @@ mod xp_tests {
 [Tue Jul 28 15:02:57 2026] You cannot see your target.
 ";
 
-    /// Real lines from the same log (15:03:55-15:03:58): a quest turn-in
-    /// firing the identical "You gain experience!" line, with no kill
-    /// anywhere nearby -- see `Ingest::record_xp`'s doc.
+    /// why: real quest-turnin lines; same xp line as a kill but no kill nearby
     const QUEST_XP: &str = "\
 [Tue Jul 28 15:03:55 2026] You offered 1 Rambunctious Pet's Skull to Dead Doug.
 [Tue Jul 28 15:03:57 2026] You offered 1 Fragile Pet's Skull to Dead Doug.
@@ -2984,14 +2908,8 @@ mod xp_tests {
             .store
             .encounter(EncounterId(enc))
             .expect("linked encounter exists");
-        // Not asserting `e.slain` here -- that flag only flips once
-        // `drain_closed` processes the encounter off `self.encounters.
-        // closed`, which needs more trailing quiet time than this short
-        // snippet gives it. `enc` resolving to the *right* encounter
-        // (matched by name, found via `encounter_id_for_victim` right as
-        // the death itself is recorded) is what this test is actually
-        // checking -- the fact of attribution, not this encounter
-        // tracker's own separate close-out timing.
+        // why: not asserting e.slain -- needs more trailing quiet time
+        // than this snippet gives; checking attribution to the right encounter, not close-out timing
         assert!(ing
             .store
             .name(e.target)
@@ -3097,10 +3015,7 @@ mod afk_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// Real lines, eqlog_Manipulator_rivervale.txt (Aug 16 -- the same
-    /// file's later "no AFK anywhere near the file's own start" span,
-    /// confirming `session_start` prefers the AFK-off timestamp over
-    /// `first_ts` once one exists).
+    /// why: real lines confirming session_start prefers AFK-off over first_ts once one exists
     const AFK_ROUND_TRIP: &str = "\
 [Tue Jul 28 15:02:08 2026] You are not currently assigned to an adventure.
 [Sun Aug 16 19:43:02 2026] You are now A.F.K. (Away From Keyboard).
@@ -3114,9 +3029,7 @@ mod afk_tests {
         let lines: Vec<&[u8]> = AFK_ROUND_TRIP.lines().map(str::as_bytes).collect();
         backfill_lines(&mut ing, &engine, &lines, 1);
         assert!(!ing.currently_afk(), "the round trip ends AFK-off");
-        // 2026-08-16 19:43:03 UTC, well after the file's own 2026-07-28
-        // start -- proves session_start picked the AFK-off line, not
-        // first_ts.
+        // why: well after file start -- proves session_start picked the AFK-off line, not first_ts
         let start = ing.session_start().expect("an afk.off line was seen");
         let first = ing.first_ts.expect("at least one line was processed");
         assert!(start > first, "session_start should have moved to the afk-off timestamp, not stayed at the file's own start");
@@ -3133,8 +3046,7 @@ mod afk_tests {
                 .collect();
         backfill_lines(&mut ing, &engine, &lines, 1);
         assert!(ing.currently_afk());
-        // No afk.off seen yet -- session_start falls back to first_ts,
-        // not left `None` or advanced to the afk.on line itself.
+        // why: no afk.off seen -- falls back to first_ts, not None or the afk.on line
         assert_eq!(ing.session_start(), ing.first_ts);
     }
 }
@@ -3144,14 +3056,9 @@ mod aa_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// Real lines, eqlog_Manipulator_rivervale.txt -- a first-ever
-    /// purchase (rank 1, "gained the ability"), a later rank-up ("improved
-    /// ... N"), a free (0-cost) first rank, and a singular-"point" rank-up
-    /// (cost exactly 1) -- the one grammar wrinkle that distinguishes
-    /// aa.gained (always plural "points", even at cost 0 or 1) from
-    /// aa.improved (singular "point" at exactly cost 1). Also includes an
-    /// innate-skill-grant line ("gained the ability to use ..."), which
-    /// must NOT be picked up as an AA.
+    /// why: real lines covering first purchase, rank-up, free rank, and
+    /// the plural/singular "point(s)" grammar wrinkle distinguishing
+    /// aa.gained from aa.improved; innate-skill-grant line must not be picked up as AA
     const AA_LINES: &str = "\
 [Fri Jul 31 16:55:33 2026] You have gained the ability \"Spell Casting Deftness\" at a cost of 2 ability points.
 [Fri Aug 07 00:25:51 2026] You have gained the ability \"Unbound Drain\" at a cost of 0 ability points.
@@ -3168,26 +3075,26 @@ mod aa_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let grants: Vec<&AaGrant> = ing.aa.all().map(|(_, g)| g).collect();
-        // 4 real AA lines went in; "gained the ability to use Double
-        // Attack." (no quotes, no cost clause) must not have added a 5th.
+        // why: 4 real lines went in -- innate-skill-grant line must not add a 5th
         assert_eq!(grants.len(), 4);
 
         assert_eq!(grants[0].name, "Spell Casting Deftness");
-        assert_eq!(grants[0].rank, 1); // aa.gained always synthesizes rank 1
+        assert_eq!(grants[0].rank, 1); // why: aa.gained always synthesizes rank 1
         assert_eq!(grants[0].cost, 2);
 
         assert_eq!(grants[1].name, "Unbound Drain");
-        assert_eq!(grants[1].cost, 0); // a free first rank is still a real grant
+        assert_eq!(grants[1].cost, 0); // why: a free first rank is still a real grant
 
         assert_eq!(grants[2].name, "Spell Casting Deftness");
-        assert_eq!(grants[2].rank, 2); // aa.improved's own rank digit, not synthesized
+        assert_eq!(grants[2].rank, 2); // why: aa.improved's own rank digit, not synthesized
         assert_eq!(grants[2].cost, 4);
 
         assert_eq!(grants[3].name, "Innate Regeneration");
         assert_eq!(grants[3].rank, 2);
-        assert_eq!(grants[3].cost, 1); // singular "1 ability point." still parses
+        assert_eq!(grants[3].cost, 1); // why: singular "1 ability point." still parses
 
-        #[allow(clippy::identity_op)] // +0 kept -- lines up 1:1 with grants[0..3]'s own costs above
+        #[allow(clippy::identity_op)]
+        // why: +0 kept -- lines up 1:1 with grants[0..3]'s costs above
         {
             assert_eq!(ing.aa.total_spent(), 2 + 0 + 4 + 1);
         }
@@ -3199,11 +3106,8 @@ mod exaltation_proc_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// Real lines, eqlog_Manipulator_rivervale.txt -- two items each
-    /// firing more than once, in the order they actually appear. A
-    /// non-Exaltation-labeled "Your X (Y) Z." line has no real example in
-    /// the reference log (see ExaltationProcs' own doc), so this only
-    /// pins the Exaltation case, which is what actually matters.
+    /// why: real lines, two items each firing more than once; only pins
+    /// the Exaltation case since no non-Exaltation example exists in the real log
     const PROC_LINES: &str = "\
 [Thu Jul 30 05:51:35 2026] Your Flowing Black Robe (Exaltation) flickers with a pale light.
 [Thu Jul 30 06:04:36 2026] Your Flowing Black Robe (Exaltation) flickers with a pale light.
@@ -3226,9 +3130,8 @@ mod exaltation_proc_tests {
         assert_eq!(ing.exaltation_procs.count("Something Never Seen"), 0);
     }
 
-    /// Unit-level, not through the parser -- `observe`'s own contract:
-    /// the *first* call's timestamp sticks, a later repeat only bumps the
-    /// count, never overwrites when the socket was first confirmed live.
+    /// why: observe's contract -- first call's timestamp sticks, a later
+    /// repeat only bumps the count, never overwrites
     #[test]
     fn first_seen_sticks_to_the_first_observation_not_a_later_one() {
         let mut procs = ExaltationProcs::default();
@@ -3253,11 +3156,8 @@ mod spell_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// Real lines, eqlog_Manipulator_rivervale.txt -- "Color Flux"
-    /// memorized twice (gem-swap re-memorize, common during real play),
-    /// "Suffocating Sphere" memorized once, and a "Beginning to
-    /// memorize"/"You forget" pair that must NOT register as known --
-    /// only a *completed* memorize is proof.
+    /// why: real lines -- one spell memorized twice (gem-swap
+    /// re-memorize), one once, and a begin/forget pair that must not register as known
     const SPELL_LINES: &str = "\
 [Tue Jul 28 17:10:37 2026] Beginning to memorize Color Flux...
 [Tue Jul 28 17:10:46 2026] You have finished memorizing Color Flux.
@@ -3277,23 +3177,17 @@ mod spell_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let known: std::collections::HashMap<&str, Millis> = ing.spellbook.known().collect();
-        // Color Flux + Suffocating Sphere -- Ice Spear only ever began
-        // memorizing, never finished, so it must not appear as Known.
+        // why: Ice Spear only ever began memorizing, never finished -- must not appear as Known
         assert_eq!(known.len(), 2);
         assert!(known.contains_key("Suffocating Sphere"));
 
-        // Ice Spear is the Possible tier's whole reason to exist: a real
-        // "Beginning to memorize" with no matching finish anywhere in the
-        // log. Must not also show up in known().
+        // why: Ice Spear is the Possible tier's whole reason to exist -- begin with no finish
         let possible: std::collections::HashMap<&str, Millis> = ing.spellbook.possible().collect();
         assert_eq!(possible.len(), 1);
         assert!(possible.contains_key("Ice Spear"));
         assert!(!known.contains_key("Ice Spear"));
 
-        // Color Flux completed twice (17:10:46, then again at 18:00:12
-        // after being forgotten and re-memorized) -- first_seen must stay
-        // pinned to the *first* completion, confirmed here against a
-        // second Ingest that only ever sees that first line.
+        // why: completed twice -- first_seen must stay pinned to the first completion
         let mut first_only = Ingest::default();
         let first_line: Vec<&[u8]> =
             vec![b"[Tue Jul 28 17:10:46 2026] You have finished memorizing Color Flux."];
@@ -3307,13 +3201,8 @@ mod spell_tests {
         assert_eq!(known["Color Flux"], expected_first_ts);
     }
 
-    /// Real lines, eqlog_Manipulator_rivervale.txt -- scribing a brand
-    /// new scroll is now the primary "added to spellbook" signal (596/593
-    /// real begin/finish occurrences), not just a fallback via memorize.
-    /// "Levitate" scribes clean; "Pillar of Fire" only ever begins here
-    /// (its own real finish line lands after, but this excerpt cuts it
-    /// off on purpose) to prove scribe has its own Possible tier too, not
-    /// just memorize.
+    /// why: scribing is now the primary "added to spellbook" signal
+    /// (596/593 real occurrences), not just a memorize fallback; proves scribe has its own Possible tier too
     #[test]
     fn scribing_a_new_scroll_reaches_known_the_same_way_memorizing_does() {
         let engine = build_engine().expect("pack builds");
@@ -3339,11 +3228,8 @@ mod spell_tests {
         );
     }
 
-    /// A spell that began via one channel (memorize) and finished via the
-    /// *other* (scribe) -- both prove the same fact (spellbook
-    /// membership), so this must still reach Known, and `first_began`
-    /// must stay pinned to the memorize attempt, not slide to the later
-    /// scribe.
+    /// why: began via memorize, finished via scribe -- both prove
+    /// spellbook membership, still reaches Known, first_began stays pinned to the memorize attempt
     #[test]
     fn began_memorizing_then_finished_scribing_still_reaches_known() {
         let engine = build_engine().expect("pack builds");
@@ -3360,12 +3246,8 @@ mod spell_tests {
         assert_eq!(ing.spellbook.possible().count(), 0);
     }
 
-    /// Throwaway: sanity-checks Known/Possible counts against the full
-    /// 2.27M-line reference log. Not a permanent test (depends on a file
-    /// path that only exists on this machine) -- just confirms the real
-    /// numbers are sane (mostly Known, a small Possible tail) before
-    /// shipping, the same discipline `unmatched_shape_tests`' own
-    /// throwaway cross-check used.
+    /// why: throwaway sanity-check of Known/Possible counts against the
+    /// full reference log; machine-local path, not a permanent test
     #[test]
     #[ignore]
     fn cross_check_against_the_real_reference_log() {
@@ -3394,19 +3276,10 @@ mod unmatched_shape_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// Real lines, eqlog_Manipulator_rivervale.txt: "<Name>'s hand is
-    /// covered with a dull aura." appears under two different real
-    /// casters (genuinely unrecognized -- not a `spell_flavor.json` key
-    /// under either its own text or `third_person_flavor`'s
-    /// reconstruction, confirmed against the real log), which must
-    /// collapse to one shared shape; "The jig sends..." and "<Name>'s
-    /// voice booms." are both real *flavor-recognized* lines (self and
-    /// third-person respectively -- see `effect_ping_tests`), which must
-    /// never show up here at all now, alongside one real rule-*matched*
-    /// line, unaffected either way. `threads: 4` on a 6-line input forces
-    /// multiple single-line chunks, exercising `classify_chunk`'s
-    /// per-thread accumulation and `merge_unmatched_shape`'s merge, not
-    /// just the single-chunk case.
+    /// why: real lines -- a genuinely-unrecognized pair that must
+    /// collapse to one shape, two flavor-recognized lines that must never
+    /// show up here, one matched line unaffected; 4 threads on 6 lines
+    /// forces multiple chunks, exercising the per-thread merge
     const LINES: &str = "\
 [Tue Jul 28 15:02:14 2026] Xscyte's hand is covered with a dull aura.
 [Tue Jul 28 15:02:15 2026] Harli's hand is covered with a dull aura.
@@ -3423,10 +3296,7 @@ mod unmatched_shape_tests {
         let lines: Vec<&[u8]> = LINES.lines().map(str::as_bytes).collect();
         backfill_lines(&mut ing, &engine, &lines, 4);
 
-        // Still counts every rule-engine miss, flavor-recognized or not --
-        // this is "did a *pattern* match", a separate question from "does
-        // the app understand this line at all". See `Ingest::route`'s
-        // matching comment.
+        // why: counts every rule-engine miss regardless of flavor-recognition -- pattern match, not understanding
         assert_eq!(ing.counts.unmatched, 5); // dull-aura x2 + jig + voice-booms x2
         assert_eq!(ing.counts.matched, 1); // death.you_slew
         assert_eq!(
@@ -3460,10 +3330,7 @@ mod unmatched_shape_tests {
         );
     }
 
-    /// Same exclusion, exercised through `Ingest::route`'s own inline
-    /// path (live tail), not `backfill_lines` -- a separate code path
-    /// with its own copy of this logic, so it needs its own real-line
-    /// check rather than trusting the backfill test to cover both.
+    /// why: same exclusion via the live-tail path, a separate code path with its own copy of this logic
     #[test]
     fn a_flavor_recognized_line_is_excluded_from_unparsed_on_the_live_path_too() {
         let engine = build_engine().expect("pack builds");
