@@ -1,16 +1,7 @@
-//! AA (Alternate Advancement) and Spellbook progression: every rank
-//! purchase and every Known/Possible spell seen this session, from
-//! `ingest::AaLog`/`ingest::SpellLog`, enriched (best-effort -- see
-//! `crate::aadata`/`crate::spelldata`'s own docs) with the scraped
-//! catalogs. The data's real: `You have gained the ability "X" at a cost
-//! of N ability points.`/`You have improved X N at a cost of M ability
-//! points.` are exhaustively covered (101/101 real "at a cost of" lines
-//! matched in the reference log, split correctly between the two forms),
-//! and both spellbook signals are covered too -- scribing a new scroll
-//! (596/593 real begin/finish lines) and memorizing a gem (the original
-//! signal this module used before scribing's own begin/finish pair was
-//! found) -- see `ingest::SpellLog`'s own doc for exactly what "Known"
-//! and "Possible" mean.
+//! why: AA and Spellbook progression, from `ingest::AaLog`/`SpellLog`,
+//! enriched (best-effort) with the scraped catalogs. Both "at a cost of"
+//! log forms exhaustively covered (101/101 in the reference log), plus
+//! scribing (596/593) and memorize signals -- see `ingest::SpellLog`.
 
 use crate::ingest::Ingest;
 use eqlp_source::Millis;
@@ -23,42 +14,25 @@ pub struct AaGrantDto {
     pub name: String,
     pub rank: u8,
     pub cost: u32,
-    /// Everything below is catalog enrichment -- all `None` together for
-    /// the handful of real names the catalog doesn't have (see `aadata`'s
-    /// module doc). Never a reason to drop the grant itself, which is
-    /// real regardless of whether the catalog recognizes the name.
+    /// why: catalog enrichment below, all None together if unmatched --
+    /// never a reason to drop the real grant itself
     pub category: Option<String>,
     pub description: Option<String>,
-    /// How many ranks this AA goes to in total, so a future view can show
-    /// "rank 2 of 4" rather than just the bare rank number this grant is.
+    /// why: total ranks, so a view can show "rank 2 of 4"
     pub max_rank: Option<u32>,
-    /// The wiki's own per-rank cost string ("2/4/6/9") -- shown as-is
-    /// rather than re-deriving it from `per_rank`, the same "raw scrape
-    /// string, kept as-is" stance `aadata::Aa::cost_raw` itself takes.
+    /// why: wiki's raw per-rank cost string, shown as-is
     pub cost_progression: Option<String>,
-    /// `aadata::Aa::certain` -- whether the scrape is confident this
-    /// entry's numbers are complete/correct, surfaced so a future UI can
-    /// flag an uncertain one rather than presenting it with the same
-    /// confidence as a verified entry.
+    /// why: whether the scrape is confident this entry's numbers are complete
     pub catalog_certain: Option<bool>,
-    /// `aadata::relevant_stats` -- Character sheet stat rows this AA's own
-    /// description suggests it affects, best-effort (see that function's
-    /// doc). Empty for an AA with no catalog match, or one whose
-    /// description doesn't hit any of the matcher's own phrases.
+    /// why: stat rows this AA's description suggests it affects, best-effort
     pub relevant_stats: Vec<String>,
-    /// `aadata::cost_modifiers` -- mana-cost/cast-time effects this AA's
-    /// own description states, at every rank (not just the rank actually
-    /// owned -- see that function's own doc for why `scope` is left as
-    /// raw text rather than resolved against any specific spell here).
-    /// Empty for the overwhelming majority of AAs, which don't touch
-    /// spell cost at all.
+    /// why: mana/cast-time effects at every rank; empty for most AAs
     pub cost_modifiers: Vec<crate::aadata::CostModifier>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AaLogDto {
-    /// Log-time order, oldest first -- same convention `AaLog::all`
-    /// itself uses.
+    /// why: log-time order, oldest first, same convention `AaLog::all` uses
     pub grants: Vec<AaGrantDto>,
     pub total_spent: u32,
 }
@@ -105,15 +79,11 @@ pub fn aa_log(ing: &Ingest) -> AaLogDto {
 #[derive(Debug, Clone, Serialize)]
 pub struct SpellbookEntryDto {
     pub name: String,
-    /// "known" (a scribe or memorize *finished* at least once -- see
-    /// `ingest::SpellLog`'s own doc) or "possible" (only a "Beginning
-    /// to..." line was ever seen, no confirmed finish).
+    /// why: "known" (finished at least once) or "possible" (unconfirmed attempt)
     pub confidence: String,
-    /// For "known": when it was confirmed. For "possible": when the
-    /// unconfirmed attempt began.
+    /// why: confirmed time for known, attempt-began time for possible
     pub first_seen_ms: Millis,
-    /// Everything below is catalog enrichment from `spelldata::Spell` --
-    /// all blank/empty together for a name the catalog doesn't carry.
+    /// why: catalog enrichment below, all blank together if unmatched
     pub description: Option<String>,
     pub mana: Option<f64>,
     pub casting_time: Option<f64>,
@@ -144,12 +114,8 @@ fn spellbook_entry(name: &str, confidence: &str, ts: Millis) -> SpellbookEntryDt
     }
 }
 
-/// Every spell with at least Possible-tier evidence this session (see
-/// `ingest::SpellLog`'s own doc for the Known/Possible distinction),
-/// Known ones first, newest-confirmed/newest-attempted first within each
-/// tier, each enriched with its own catalog stats -- mana cost, cast/
-/// recast time, resist type, and (via `description`) the damage/heal/
-/// effect text the wiki itself carries.
+/// why: every spell with Possible+ evidence this session, Known first,
+/// newest first within each tier, enriched with catalog stats
 pub fn spellbook(ing: &Ingest) -> Vec<SpellbookEntryDto> {
     let mut known: Vec<SpellbookEntryDto> = ing
         .spellbook
@@ -169,11 +135,7 @@ pub fn spellbook(ing: &Ingest) -> Vec<SpellbookEntryDto> {
     known
 }
 
-/// Highest live rank observed cast this session for "You", by catalog
-/// base spell name (`Ice Comet` -> `10` for a confirmed "Ice Comet X"
-/// cast) -- see `ingest::SpellRanks`' own doc. A spell never cast this
-/// session simply has no entry, not a `0` -- there's no such thing as a
-/// confirmed rank 0.
+/// why: highest observed cast rank by base spell name; no entry if never cast
 pub fn spell_ranks(ing: &Ingest) -> HashMap<String, u8> {
     ing.spell_ranks
         .all()

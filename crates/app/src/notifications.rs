@@ -1,45 +1,25 @@
-//! Sound-notification framework: which real, already-classified log lines
-//! are worth alerting the player to, live, with a sound -- not a new
-//! parsing concern of its own, just a thin second look at a handful of
-//! rule ids `ingest::route` already has a `Match` for. Deliberately
-//! decoupled from `ingest::extract_action`/`Action`: that pipeline decides
-//! what a line *means* for the parsed model (encounters, timeline, XP,
-//! ...), this decides whether it's the kind of thing someone alt-tabbed
-//! away from the game would want a sound for. A rule can matter to both,
-//! neither, or just one -- `state.charm_broken` already feeds `Action::
-//! Recovered` for Timeline purposes *and* produces a notification here;
-//! `melee.hit` feeds combat scoring and produces no notification at all.
+//! why: sound-notification framework, a thin second look at rule ids
+//! `ingest::route` already matched -- decoupled from `ingest::Action`,
+//! which decides what a line means for the parsed model, not whether
+//! it's worth a sound. A rule can feed both, neither, or just one.
 //!
-//! Four kinds to start (`packs/eql.toml`'s own `invis.fading`/`state.
-//! charm_broken`/`level.up`/`aa.gained`/`aa.improved` rules), each
-//! confirmed against the real reference log before being wired up:
-//!   - Invisibility fading: "You feel yourself starting to appear." is a
-//!     real, distinct early-warning line (9 real occurrences) -- invis
-//!     genuinely gives advance notice before it drops.
-//!   - Charm breaking: no equivalent early-warning line exists for charm
-//!     (checked; there's no "about to break free" text anywhere in the
-//!     reference log) -- "dropping" here means the actual break event
-//!     (`Your <spell> spell has worn off of <target>.`), not a heads-up.
-//!   - Level up / AA gained: both already have a real, unambiguous log
-//!     line each with nothing to disambiguate.
+//! Four kinds, each confirmed against the real reference log: invis
+//! fading (real early-warning line, 9 occurrences), charm breaking (no
+//! early warning exists, fires on the actual break line), level up, AA
+//! gained -- all unambiguous single log lines.
 
 use eqlp_core::event::Match;
 use eqlp_core::{field, Engine};
 use eqlp_source::Millis;
 use serde::Serialize;
 
-/// Stable identifiers -- also the notification settings' own keys (see
-/// `crate::settings::NotificationSettings`) and the frontend's lookup key
-/// for which sound to play. Never renamed once shipped: a saved settings
-/// file keys its `enabled`/custom-sound map by these exact strings.
+/// why: stable ids, also settings/frontend lookup keys -- never rename
 pub const INVIS_FADING: &str = "invis_fading";
 pub const CHARM_BROKEN: &str = "charm_broken";
 pub const LEVEL_UP: &str = "level_up";
 pub const AA_GAINED: &str = "aa_gained";
 
-/// Every kind this framework knows about, in the order the Settings
-/// module lists them -- the single place that list is defined, so a
-/// fifth kind is added here once, not once per consumer.
+/// why: single place the full kind list is defined, add a new kind once
 pub const ALL_KINDS: &[&str] = &[INVIS_FADING, CHARM_BROKEN, LEVEL_UP, AA_GAINED];
 
 pub fn kind_label(kind: &str) -> &'static str {
@@ -54,18 +34,14 @@ pub fn kind_label(kind: &str) -> &'static str {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct NotificationEvent {
-    /// One of the `*_KIND` constants above.
+    /// why: one of the `*_KIND` constants above
     pub kind: String,
-    /// Human-readable, ready to show in a toast as-is.
+    /// why: human-readable, ready to show in a toast as-is
     pub message: String,
     pub ts_ms: Millis,
 }
 
-/// `None` for every rule id this framework doesn't care about -- the
-/// overwhelmingly common case (thousands of matched lines a minute during
-/// combat, a handful of notification-worthy ones a session). Only ever
-/// called for a `Match` (a matched line already has `m`/`line` available
-/// for free -- no separate text re-scan).
+/// why: None for the overwhelming majority of rule ids; no separate re-scan
 pub fn notification_for(
     engine: &Engine,
     rule_id: &str,
@@ -113,13 +89,7 @@ mod tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// Every one of the 4 real trigger lines from the actual reference
-    /// log, run end to end through the real parser -- confirms both the
-    /// rule (`packs/eql.toml`) and this mapping agree on what each one
-    /// means. `backfill_lines` doesn't collect notifications on its own
-    /// (that only happens on the live path -- see `ingest::route`'s own
-    /// doc), so this drives `notification_for` directly against real
-    /// `Match`es the same way `route` would.
+    /// why: real trigger lines through the real parser, confirms rule + mapping agree
     #[test]
     fn real_trigger_lines_produce_the_right_notification() {
         let engine = build_engine().expect("pack builds");
@@ -164,8 +134,7 @@ mod tests {
         }
     }
 
-    /// An ordinary combat line -- the overwhelmingly common case -- must
-    /// produce no notification at all.
+    /// why: an ordinary combat line, the common case, must produce nothing
     #[test]
     fn an_unrelated_matched_line_produces_nothing() {
         let engine = build_engine().expect("pack builds");

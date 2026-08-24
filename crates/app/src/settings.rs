@@ -1,17 +1,9 @@
-//! Persisted notification preferences: per-kind enabled/disabled, and an
-//! optional user-uploaded sound overriding the frontend's own synthesized
-//! default. Same persistence shape `config::AppConfig` already uses
-//! (`app_config_dir`, a JSON file, load-on-read/save-on-write) but a
-//! separate file: `AppConfig` is specifically the game install folder,
-//! written once at first-launch setup, and overloading its own doc/flow
-//! with an unrelated concern would blur what's a genuinely different
-//! kind of setting -- this one has no first-launch gate at all, and can
-//! change any number of times per session from the Settings module.
+//! why: persisted notification prefs -- per-kind enabled + custom sound
 //!
-//! Deliberately *not* subject to `history`'s "purges on every app start"
-//! stance -- a notification preference is a standing choice about how the
-//! app should behave, not a fact about a specific play session, so it
-//! persists the same way the install folder does.
+//! Separate file from `config::AppConfig` (that's the install folder,
+//! first-launch-only) since this changes any number of times per session
+//! from Settings. Not subject to `history`'s purge-on-start -- a standing
+//! behavior choice, not a play-session fact.
 
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
@@ -21,25 +13,17 @@ use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NotificationSettings {
-    /// kind -> enabled. A kind with no entry reads as enabled -- see
-    /// `is_enabled`'s doc for why default-on, not default-off.
+    /// why: kind -> enabled; no entry reads as enabled, see `is_enabled`
     #[serde(default)]
     enabled: HashMap<String, bool>,
-    /// kind -> stored sound filename (relative to the sounds directory,
-    /// not a full path -- see `store_custom_sound`). Absent means "use
-    /// the frontend's synthesized default for this kind", not "muted";
-    /// muting is `enabled`'s job, entirely separate from which sound
-    /// plays when it *is* enabled.
+    /// why: kind -> stored filename; absent means use synthesized default,
+    /// not muted -- muting is `enabled`'s job entirely
     #[serde(default)]
     custom_sound: HashMap<String, String>,
 }
 
 impl NotificationSettings {
-    /// Default-on: a brand-new install (or a fifth notification kind
-    /// added later, with no entry yet in an existing settings file on
-    /// disk) should announce itself rather than silently do nothing until
-    /// the user finds the Settings module and opts in -- the whole point
-    /// of shipping a default sound per kind.
+    /// why: default-on -- a new kind should announce itself, not wait for opt-in
     pub fn is_enabled(&self, kind: &str) -> bool {
         self.enabled.get(kind).copied().unwrap_or(true)
     }
@@ -71,10 +55,7 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join(FILE_NAME))
 }
 
-/// Missing or unreadable both read as "no preferences saved yet" -- same
-/// stance `config::load` takes, and the same reason: a fresh/corrupt file
-/// should fall back to defaults quietly, not surface as an error to a
-/// user who never touched this file directly.
+/// why: missing or unreadable both mean "no preferences saved yet", quiet fallback
 pub fn load(app: &AppHandle) -> NotificationSettings {
     settings_path(app)
         .ok()
@@ -102,15 +83,8 @@ fn sounds_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// Copies `source` (a file the user just picked via the OS file dialog)
-/// into the app's own sounds directory, named after `kind` -- copied in,
-/// not referenced by its original path, so later moving, renaming, or
-/// deleting the source file the user picked from can't silently break a
-/// notification that used to work. Overwrites any previous custom sound
-/// for this same `kind` (one file per kind, not a history of past
-/// uploads). Returns the stored filename -- what `NotificationSettings::
-/// set_custom_sound` should be given, and what `custom_sound_data_url`
-/// re-reads later.
+/// why: copies picked file in (not referenced by path) so later moves/
+/// deletes can't break it; overwrites any previous sound for this kind
 pub fn store_custom_sound(app: &AppHandle, kind: &str, source: &Path) -> Result<String, String> {
     let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("mp3");
     let filename = format!("{kind}.{ext}");
@@ -125,13 +99,8 @@ pub fn delete_custom_sound(app: &AppHandle, filename: &str) {
     }
 }
 
-/// The stored custom sound's bytes, base64-encoded as a `data:` URL the
-/// frontend can hand straight to `new Audio(url)` -- an ordinary IPC
-/// command return value, not a served asset, so this doesn't need the
-/// asset-protocol/CSP scope no other command in this app needs either.
-/// `None` for a kind with no custom sound, or one whose stored file has
-/// gone missing on disk -- the frontend's own synthesized default covers
-/// both cases identically, so this doesn't distinguish why.
+/// why: base64 `data:` URL, ordinary IPC return value not a served asset;
+/// None for no-custom-sound or missing file alike -- default covers both
 pub fn custom_sound_data_url(
     app: &AppHandle,
     kind: &str,
