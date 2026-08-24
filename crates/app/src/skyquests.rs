@@ -1,59 +1,21 @@
-//! Read-side queries for the Endgame module's two Sky tabs, both built
-//! from the wiki's own "Plane of Sky Class Quests" table
-//! (`https://eqlwiki.com/Plane_of_Sky#Plane_of_Sky_Class_Quests`),
-//! scraped by `~/eql/scrape_eqlwiki_sky_quests.py` into
-//! `packs/sky_quests.json`, cross-referenced against this character's
-//! own loot history, latest `/outputfile inventory` dump, and
-//! `Achievements.txt`.
+//! why: Endgame's two Sky tabs, from the wiki's "Plane of Sky Class
+//! Quests" table (`packs/sky_quests.json`), cross-referenced against
+//! loot history, inventory dump, and Achievements.txt.
 //!
-//! Confirmed directly from the wiki page's own text, not assumed: 16
-//! classes, one quest-giver NPC each, 4-7 turn-in quests per class
-//! (Paladin genuinely has only 4, checked against the raw wikitext, not
-//! a scrape gap), every quest needing exactly one Wind Rune plus 1-2
-//! other quest items, in exchange for one gear reward. "Completing all
-//! of these quests will unlock the respective class as a Primary Class
-//! option in your loadouts."
+//! 16 classes, 4-7 turn-in quests each (Paladin genuinely has 4, not a
+//! scrape gap), each quest needing a Wind Rune + 1-2 items for one reward.
 //!
-//! **The two tabs split on exactly that reward line, corrected directly
-//! by the player after the first cut lumped everything under "Class
-//! Unlocks"**: a quest's own raw materials (Wind Rune + drop items) are
-//! **Sky Quests** content (`list_quests`) -- real gear-fetch quests in
-//! their own right, useful even to someone who isn't chasing the class
-//! unlock at all. The reward each quest produces (Mask of Song, Mantle
-//! of the Songweaver, ...) is what **Primary Class Unlocks**
-//! (`list_class_unlocks`) tracks -- a class unlocks once every one of
-//! its own reward items shows achievement-confirmed complete, so the
-//! unlock tab's own "required items" are those rewards themselves, not
-//! the materials that built them.
+//! Two tabs split on the reward line, per player correction: **Sky
+//! Quests** (`list_quests`) tracks raw materials (Wind Rune + drop
+//! items); **Primary Class Unlocks** (`list_class_unlocks`) tracks the
+//! final reward items themselves -- a class unlocks once every reward
+//! shows achievement-confirmed complete.
 //!
-//! Three kinds of evidence per tracked item, not one:
-//! - **Ever looted** -- same loot-log matching every other drop tracker
-//!   in this app uses (`raiding::build_loot_index`), tier-stripped via
-//!   `inventory::strip_tier` for the same reason (a quest item/reward is
-//!   always a plain, untiered drop in practice, but nothing stops a
-//!   future wiki drift from adding a "+N" variant, and the stripping is
-//!   free either way).
-//! - **Sold without keeping** -- a real, reported distinction: an item
-//!   auto-sold the instant it dropped ("...and sold it for 2 platinum")
-//!   was technically looted (so `ever_looted` is still true) but isn't
-//!   sitting anywhere to turn in. Read off `Store::flags`'
-//!   `flag::LOOT_AUTO_SOLD` bit, set at ingest time on the loot row
-//!   itself (see `Ingest::record_loot`'s own doc) -- not guessed after
-//!   the fact from a same-timestamp currency row, which a busy multi-
-//!   item corpse could make ambiguous.
-//! - **Currently owned** -- from this character's own latest
-//!   `/outputfile inventory` dump (`inventory::find_existing_dump` +
-//!   `inventory::parse`, the same source `gearplanner`'s owned-tier
-//!   scoring already uses), which already sums bags+bank+shared bank
-//!   together (see `inventory.rs`'s own doc) -- exactly "in inventory/
-//!   storage" as asked for. `None`, not `0`, when no dump exists at all
-//!   yet -- "unknown" and "confirmed zero" are different claims.
-//!
-//! Plus one more, achievement-only, not inferred: **completed** --
-//! `achievements.rs`'s own "Obtain `<name>`." line (a quest's own reward
-//! name, or -- same field, same meaning -- a Primary Class Unlock's own
-//! reward-item name, since they're the same string). Real ground truth,
-//! not a proxy the way the three above still have to be.
+//! Per tracked item: ever looted (tier-stripped), sold-without-keeping
+//! (from `flag::LOOT_AUTO_SOLD`, not guessed from a same-timestamp
+//! currency row), currently owned (from the latest inventory dump, None
+//! not 0 if no dump exists). Plus achievement-only **completed**, real
+//! ground truth via "Obtain `<name>`." lines, not a proxy.
 
 use crate::ingest::Ingest;
 use crate::inventory;
@@ -92,14 +54,9 @@ struct RawDoc {
     classes: Vec<RawClass>,
 }
 
-/// The wiki's own class name doesn't always match the exact text a real
-/// `Achievements.txt` dump uses -- confirmed directly: the wiki page
-/// (and `sky_quests.json`'s own `class` field, scraped from its `===
-/// [[Shadow Knight]] Tests ===` header) says "Shadow Knight", but the
-/// real achievement line reads "Primary Class Unlock - Shadowknight" --
-/// one word, no space. Same class of mismatch `raiding.rs`'s own
-/// `LOG_NAME_ALIASES` exists for (a real combat log calling a wiki-named
-/// entity something slightly different), just against a different file.
+/// why: wiki says "Shadow Knight", real achievement line says
+/// "Shadowknight" one word -- same class of mismatch as `raiding.rs`'s
+/// `LOG_NAME_ALIASES`, against a different file
 const ACHIEVEMENT_CLASS_ALIASES: &[(&str, &str)] = &[("Shadow Knight", "Shadowknight")];
 
 fn achievement_class_name(wiki_class: &str) -> &str {
@@ -110,19 +67,10 @@ fn achievement_class_name(wiki_class: &str) -> &str {
         .unwrap_or(wiki_class)
 }
 
-/// Same class of mismatch as `ACHIEVEMENT_CLASS_ALIASES`, checked
-/// against a real dump for every one of the 95 real quests: 3 reward
-/// names genuinely differ from what the wiki's own `{{:RewardPage}}`
-/// transclusion names, confirmed by grepping the raw Achievements text
-/// directly for each -- "Fae Amulet" (wiki word order) vs "Amulet of the
-/// Fae" (real achievement text); "Griffon Wing Spauldors" (a real wiki
-/// page-name typo -- "Spauldors" isn't a word) vs "Griffon Wing
-/// Spaulders" (real); "Windhowl" (the wiki's own transclusion links only
-/// one of the two items this reward actually is) vs "Windhowl and Spirit
-/// Render" (real, the achievement's own full name for it). One further
-/// reward, Beastlord's own "Griffon-Hide Armguards", has no matching
-/// achievement line under any wording tried -- left unaliased, reads
-/// `None` honestly rather than a guessed mapping.
+/// why: 3 confirmed reward-name drifts between wiki and real Achievements
+/// text (word order, a wiki typo, an incomplete transclusion). Beastlord's
+/// "Griffon-Hide Armguards" has no match under any wording -- left
+/// unaliased, reads None honestly rather than a guessed mapping.
 const ACHIEVEMENT_REWARD_ALIASES: &[(&str, &str)] = &[
     ("Fae Amulet", "Amulet of the Fae"),
     ("Griffon Wing Spauldors", "Griffon Wing Spaulders"),
@@ -152,17 +100,13 @@ fn classes() -> &'static [RawClass] {
 #[derive(Debug, Clone, Serialize)]
 pub struct TurnInItemDto {
     pub item: String,
-    /// Which island/boss the wiki names as this item's own source
-    /// ("3-Gorga") -- free text, never parsed further (see this module's
-    /// own doc on why: not a consistent island+boss shape across every
-    /// entry).
+    /// why: free text island/boss source, never parsed further -- not a consistent shape
     pub source: Option<String>,
     pub ever_looted: bool,
     pub looted_count: u64,
-    /// `None` if no `/outputfile inventory` dump exists yet at all.
+    /// why: None if no inventory dump exists yet
     pub currently_owned: Option<u32>,
-    /// Looted at some point, but at least one copy was auto-sold on the
-    /// spot rather than kept -- see this module's own doc.
+    /// why: looted at some point but at least one copy auto-sold on the spot
     pub sold_without_keeping: bool,
 }
 
@@ -172,17 +116,10 @@ pub struct TurnInDto {
     pub trigger: String,
     pub rune: Option<TurnInItemDto>,
     pub items: Vec<TurnInItemDto>,
-    /// The reward's own wiki page name -- not cross-referenced against
-    /// `itemdata.rs`'s catalog here; the frontend can look it up by name
-    /// the same way Game Data's own item search already does, if it
-    /// wants stats/icon.
+    /// why: wiki page name, not cross-referenced here -- frontend looks it up by name
     pub reward: Option<String>,
-    /// Real, achievement-confirmed completion -- `achievements.rs`'s own
-    /// "Obtain `<reward>`." line for this exact quest, not inferred from
-    /// loot/inventory the way the items above still have to be. `None`
-    /// when no Achievements dump exists yet, or this reward's own line
-    /// isn't in it (a wiki/achievement-file name mismatch) -- distinct
-    /// from `Some(false)`, a real line that's genuinely still open.
+    /// why: real achievement-confirmed "Obtain <reward>." line, not
+    /// inferred; None distinct from Some(false)
     pub completed: Option<bool>,
 }
 
@@ -191,41 +128,28 @@ pub struct SkyClassDto {
     pub class: String,
     pub quest_giver: Option<String>,
     pub quests: Vec<TurnInDto>,
-    /// Real, achievement-confirmed: this class's own "Primary Class
-    /// Unlock - `<class>`" line. Same `None`-vs-`Some(false)` distinction
-    /// as `TurnInDto::completed`.
+    /// why: real "Primary Class Unlock - <class>" line, same None/Some(false) distinction
     pub unlocked: Option<bool>,
 }
 
-/// One final reward item -- see this module's own doc for why this,
-/// not the raw materials, is what "Primary Class Unlocks" tracks.
+/// why: final reward item, what "Primary Class Unlocks" tracks, not raw materials
 #[derive(Debug, Clone, Serialize)]
 pub struct SkyRewardDto {
     pub name: String,
-    /// Which quest earns this reward -- context for the player, this
-    /// DTO's own subject is still the reward item itself.
+    /// why: which quest earns this reward -- context, not the DTO's subject
     pub quest: String,
     pub ever_looted: bool,
     pub looted_count: u64,
     pub currently_owned: Option<u32>,
     pub sold_without_keeping: bool,
-    /// Real, achievement-confirmed: this reward's own "Obtain `<name>`."
-    /// line.
+    /// why: real achievement-confirmed "Obtain <name>." line
     pub completed: Option<bool>,
-    /// The raw materials `quest` itself needs (Wind Rune first, then
-    /// drop items, in the quest's own order) -- asked directly: a reward
-    /// that isn't looted/owned yet needs to say *where it actually comes
-    /// from* (which quest, which item, which mob/island each material
-    /// drops from), not just a bare quest name. No looted/owned tracking
-    /// of its own here -- that's the Sky Quests tab's own job
-    /// (`TurnInDto`/`TurnInItemDto`); this is just enough to point the
-    /// player at what to go do next.
+    /// why: raw materials (rune first, then drops) so a not-yet-owned
+    /// reward says where it actually comes from; no own tracking here
     pub materials: Vec<QuestMaterialDto>,
 }
 
-/// One raw material a quest needs -- name plus where the wiki says it
-/// comes from, nothing else (see `SkyRewardDto::materials`' own doc for
-/// why this doesn't carry loot/ownership tracking).
+/// why: name + wiki source, nothing else -- no loot/ownership tracking here
 #[derive(Debug, Clone, Serialize)]
 pub struct QuestMaterialDto {
     pub item: String,
@@ -237,22 +161,12 @@ pub struct SkyClassUnlockDto {
     pub class: String,
     pub quest_giver: Option<String>,
     pub unlocked: Option<bool>,
-    /// The final reward items themselves (Bard: Mask of Song, Mantle of
-    /// the Songweaver, Ervaj's Flute of Flight, Amulet of the Fae,
-    /// Denon's Horn of Disaster, Spear of Harmony) -- never the Wind
-    /// Runes/drop items each is built from. A class unlocks once every
-    /// one of these shows `completed: Some(true)`.
+    /// why: final reward items only, never raw materials; unlocks once all complete
     pub rewards: Vec<SkyRewardDto>,
 }
 
-/// One pass over the whole store for `EventKind::Loot` rows, keyed by
-/// (lowercase, tier-stripped) item name -> (total quantity looted, was
-/// any copy auto-sold). Not scoped to any one target/corpse -- unlike
-/// Raiding's own per-boss drop tables, a Sky quest item can plausibly
-/// come from more than one source, so this indexes by item identity
-/// alone. Same O(store length) cost class `by_target_and_ability`
-/// already pays elsewhere in this app for the same reason (one pass
-/// beats one query per item).
+/// why: one pass, keyed by item name -> (qty, any auto-sold); not scoped
+/// to a mob, since a quest item can come from more than one source
 fn build_item_loot_index(ing: &Ingest) -> HashMap<String, (u64, bool)> {
     let mut out: HashMap<String, (u64, bool)> = HashMap::new();
     for i in 0..ing.store.len() {
@@ -288,20 +202,14 @@ fn resolve_item(
     }
 }
 
-/// Everything both tabs need built once and shared -- one loot-index
-/// scan, one inventory-dump read, one achievements-dump read, not one of
-/// each per tab.
+/// why: everything both tabs need, built once and shared, not per-tab
 struct Context {
     looted: HashMap<String, (u64, bool)>,
     owned_ci: Option<HashMap<String, u32>>,
     achievements: Option<crate::achievements::Achievements>,
 }
 
-/// `base_dir` is the game's own install folder (same as everywhere else
-/// in this app that reads `/outputfile inventory` -- `AppConfig::
-/// base_dir`); `None` there, or no dump found, both correctly leave
-/// `currently_owned`/`unlocked`/`completed` as `None` (unknown) rather
-/// than a guessed `false`.
+/// why: None base_dir or no dump found both leave fields None (unknown), not guessed false
 fn build_context(ing: &Ingest, base_dir: Option<&Path>) -> Context {
     let looted = build_item_loot_index(ing);
     let owned_ci: Option<HashMap<String, u32>> = base_dir
@@ -334,10 +242,7 @@ fn unlocked_status(ctx: &Context, wiki_class: &str) -> Option<bool> {
     })
 }
 
-/// The "Sky - Quests" tab's whole data source -- every individual
-/// material turn-in (rune + drop items -> one gear reward), full detail.
-/// See this module's own doc for why the *final* reward items live on a
-/// separate DTO (`list_class_unlocks`) instead.
+/// why: "Sky - Quests" tab's source -- every material turn-in, full detail
 pub fn list_quests(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClassDto> {
     let ctx = build_context(ing, base_dir);
     classes()
@@ -380,9 +285,7 @@ pub fn list_quests(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClassDto> {
         .collect()
 }
 
-/// The "Sky - Primary Class Unlocks" tab's whole data source -- see this
-/// module's own doc for why this is *only* the final reward items, not
-/// the raw materials each is built from.
+/// why: "Sky - Primary Class Unlocks" tab's source -- final reward items only
 pub fn list_class_unlocks(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClassUnlockDto> {
     let ctx = build_context(ing, base_dir);
     classes()
@@ -435,13 +338,7 @@ pub fn list_class_unlocks(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClass
 mod tests {
     use super::*;
 
-    /// Regression check for the exact real mismatch found verifying this
-    /// against a real Achievements dump: the wiki calls it "Shadow
-    /// Knight", a real dump's own line reads "...Shadowknight" (one
-    /// word). Confirmed via `sky_check` (`cargo run -p eqlp-app
-    /// --example sky_check -- <base_dir>`) that without this alias the
-    /// whole class silently read as "no achievements dump found" even
-    /// with a real one present.
+    /// why: regression check -- wiki "Shadow Knight" vs real "Shadowknight"
     #[test]
     fn shadow_knight_resolves_against_the_one_word_achievement_spelling() {
         assert_eq!(achievement_class_name("Shadow Knight"), "Shadowknight");
@@ -452,10 +349,7 @@ mod tests {
         );
     }
 
-    /// Same regression, reward side -- the 3 known wiki/achievement
-    /// reward-name drifts (`ACHIEVEMENT_REWARD_ALIASES`'s own doc) all
-    /// resolve, and an ordinary reward with no known drift passes
-    /// through unchanged.
+    /// why: same regression, reward side -- 3 known drifts resolve, ordinary passes through
     #[test]
     fn known_reward_name_drifts_resolve_to_their_real_achievement_text() {
         assert_eq!(achievement_reward_name("Fae Amulet"), "Amulet of the Fae");
@@ -470,10 +364,7 @@ mod tests {
         assert_eq!(achievement_reward_name("Mask of Song"), "Mask of Song");
     }
 
-    /// Every real class this scrape found parses, with the expected
-    /// per-class quest counts confirmed against the raw wikitext
-    /// directly (Paladin genuinely has only 4, not a scrape gap; most
-    /// classes have 6-7).
+    /// why: every real class parses with real per-class quest counts
     #[test]
     fn all_sixteen_real_classes_are_present_with_their_real_quest_counts() {
         let cs = classes();
@@ -484,9 +375,7 @@ mod tests {
         assert_eq!(bard.quests.len(), 6);
     }
 
-    /// Every real quest needs exactly one rune and at least one other
-    /// item -- a parse that silently dropped the rune or came up with
-    /// zero items would mean a turn-in nobody could actually complete.
+    /// why: every quest needs a rune and an item -- a silent drop would break the turn-in
     #[test]
     fn every_quest_has_a_rune_and_at_least_one_item() {
         for c in classes() {
@@ -502,9 +391,7 @@ mod tests {
         }
     }
 
-    /// A fresh session (nothing looted, no inventory dump) reports every
-    /// item honestly unresolved -- `currently_owned: None` (unknown, not
-    /// zero), never looted, never sold.
+    /// why: fresh session reports every item honestly unresolved, not zero
     #[test]
     fn a_fresh_session_with_no_inventory_dump_reports_every_item_honestly_unknown() {
         let ing = Ingest::default();
@@ -522,12 +409,7 @@ mod tests {
         }
     }
 
-    /// The exact case the player named directly: Bard's "Primary Class
-    /// Unlocks" reward list must be exactly the 6 final gear pieces
-    /// (Mask of Song, Mantle of the Songweaver, Ervaj's Flute of Flight,
-    /// Amulet of the Fae, Denon's Horn of Disaster, Spear of Harmony),
-    /// never the Wind Runes or raw drop items those quests are built
-    /// from.
+    /// why: Bard's unlock rewards must be exactly the 6 gear pieces, never raw materials
     #[test]
     fn bard_unlock_rewards_are_exactly_the_six_final_gear_pieces_not_raw_materials() {
         let ing = Ingest::default();
@@ -535,12 +417,8 @@ mod tests {
         let bard = unlocks.iter().find(|c| c.class == "Bard").expect("Bard");
         let names: std::collections::HashSet<&str> =
             bard.rewards.iter().map(|r| r.name.as_str()).collect();
-        // why: "Fae Amulet" (not "Amulet of the Fae") -- the wiki's own
-        // reward-page name, confirmed by the scrape itself; the real
-        // Achievements dump phrases it the other way around, one of the
-        // handful of known wiki/achievement name drifts this module's
-        // own doc already calls out (`completed` legitimately comes back
-        // `None` for this one reward specifically).
+        // why: "Fae Amulet" is the wiki's own name, real Achievements text
+        // phrases it the other way -- one of the known drifts
         let expected: std::collections::HashSet<&str> = [
             "Mask of Song",
             "Mantle of the Songweaver",
@@ -562,10 +440,7 @@ mod tests {
         );
     }
 
-    /// A reward not yet secured has to say where it actually comes from
-    /// -- asked directly: "list where it comes from, x quest, which
-    /// mob". Real values, from Bard's own "Test of Tone" quest: rune
-    /// first, then the drop item with its own real wiki source note.
+    /// why: a not-yet-secured reward must say where it comes from, real values
     #[test]
     fn a_rewards_own_materials_name_the_real_quest_items_and_sources() {
         let ing = Ingest::default();
