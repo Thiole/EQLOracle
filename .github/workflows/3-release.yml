@@ -8,6 +8,13 @@ on:
 permissions:
   contents: read
 
+# why: a rolling "latest" release, not tag-triggered -- this workflow
+# already runs on every main push (see `on:` above), and nothing in the
+# repo does semver tagging yet. Re-publishing the same "latest" tag on
+# every green main build is what actually makes the builds land
+# somewhere a person can download them, without inventing a versioning
+# scheme nobody asked for.
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -58,6 +65,7 @@ jobs:
           path: |
             target/release/bundle/**/*.AppImage
             target/release/bundle/**/*.deb
+            target/release/bundle/**/*.rpm
 
   windows:
     name: Windows
@@ -90,3 +98,31 @@ jobs:
           path: |
             target/release/bundle/**/*.exe
             target/release/bundle/**/*.msi
+
+  publish:
+    name: Publish latest release
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: eqlp-*
+          merge-multiple: true
+
+      - name: Publish/replace the rolling "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build (main)
+          # why: a rolling tag needs its own commit's notes, not
+          # whatever an old release's body said -- overwritten every run
+          body: |
+            Automated build from main @ ${{ github.sha }}.
+            Not a stable/tagged release -- this tag moves to whatever main last built successfully.
+          prerelease: true
+          make_latest: false
+          target_commitish: ${{ github.sha }}
+          files: dist/**
