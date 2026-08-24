@@ -149,6 +149,29 @@ fn log_name(curated_name: &str) -> &str {
         .unwrap_or(curated_name)
 }
 
+/// why: real log names of every curated boss/miniboss, case-insensitive
+/// -- lets `ingest::link` retarget an encounter's anchor onto a raid
+/// boss that joins mid-pull instead of leaving it stuck on whatever
+/// trash mob opened the fight. Confirmed real gap: a live group Lady Vox
+/// kill recorded end-to-end under "An icy terror"'s own encounter
+/// (she engaged an already-open room pull, never becoming its anchor),
+/// invisible to the Raiding tab despite a real, confirmed kill.
+pub fn is_curated_raid_target(name: &str) -> bool {
+    static NAMES: std::sync::OnceLock<HashSet<String>> = std::sync::OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            CURATED_ROWS
+                .iter()
+                .flat_map(|&(_, raids)| raids.iter())
+                .flat_map(|&(_, boss, minibosses)| {
+                    std::iter::once(boss).chain(minibosses.iter().copied())
+                })
+                .map(|n| log_name(n).to_ascii_lowercase())
+                .collect()
+        })
+        .contains(&name.to_ascii_lowercase())
+}
+
 /// why: lowercase-folded kill counts and difficulty grids, one pass over
 /// encounters -- same case-insensitive stance as `monsters::mob_stats`
 #[derive(Default)]
@@ -447,6 +470,37 @@ mod tests {
             hate.times.group[4].as_ref().map(|t| t.duration_ms),
             Some(655_000),
             "the Group/D4 run"
+        );
+    }
+
+    /// why: real bug -- Lady Vox joined an already-open room-wide trash
+    /// pull mid-fight and died to a groupmate's own finishing blow; the
+    /// encounter's anchor never moved off the trash mob that opened it
+    /// (the existing stale-ally retarget only fires for an ally anchor),
+    /// so her kill vanished from the Raiding tab entirely despite a real,
+    /// confirmed group clear.
+    #[test]
+    fn a_boss_that_joins_an_already_open_trash_pull_still_counts_its_own_kill() {
+        let text = "\
+[Tue Aug 11 17:00:00 2026] You have entered Plane of Hate - Group 4 (Refined).
+[Tue Aug 11 17:00:05 2026] You hit A very unpleasant hand for 5 points of damage.
+[Tue Aug 11 17:00:10 2026] You hit Innoruuk, the Prince of Hate for 50 points of damage.
+[Tue Aug 11 17:00:20 2026] Innoruuk, the Prince of Hate has been slain by Groupmate!
+";
+        let ing = run(text);
+        let rows = list_raid_rows(&ing);
+        let hate = rows
+            .iter()
+            .flat_map(|r| &r.raids)
+            .find(|r| r.zone == "Plane of Hate")
+            .expect("Plane of Hate");
+        assert_eq!(
+            hate.boss.kills, 1,
+            "Innoruuk's kill must count even though he joined an open trash encounter and a groupmate landed the final blow"
+        );
+        assert!(
+            hate.boss.group_tiers_cleared[4],
+            "should register as a Group/D4 clear"
         );
     }
 

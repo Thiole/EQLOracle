@@ -1681,14 +1681,25 @@ impl Ingest {
             // why: retargets a stale anchor -- a boss's opening swing can
             // land on an unspoken groupmate first, before "You" hits the
             // real boss moments later (common, a raid tank eating hundreds
-            // of hits). Never retargets away from an already-good anchor.
+            // of hits). Never retargets away from an already-good anchor,
+            // except when a real curated raid boss/miniboss joins an
+            // already-open trash pull -- confirmed real gap: a live group
+            // Lady Vox kill recorded entirely under "An icy terror"'s
+            // encounter (she engaged mid-pull, anchor never moved off the
+            // trash mob that opened it), invisible to the Raiding tab.
             if let Some(mob) = mob_side {
-                let anchor_is_stale = self
+                let current_anchor = self
                     .store
                     .encounter(id)
-                    .map(|e| self.store.name(e.target).to_string())
-                    .is_some_and(|name| self.is_ally(&name, ts));
-                if anchor_is_stale {
+                    .map(|e| self.store.name(e.target).to_string());
+                let anchor_is_stale = current_anchor
+                    .as_deref()
+                    .is_some_and(|name| self.is_ally(name, ts));
+                let boss_just_joined = crate::raiding::is_curated_raid_target(mob)
+                    && !current_anchor
+                        .as_deref()
+                        .is_some_and(crate::raiding::is_curated_raid_target);
+                if anchor_is_stale || boss_just_joined {
                     let sym = self.sym(mob);
                     self.store.retarget_encounter(id, sym);
                 }
