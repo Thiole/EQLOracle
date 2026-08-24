@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "IPC the main window is allowed to use: core invoke/event plumbing, plus the dialog plugin's Rust-side API that pick_log_directory calls on the window's behalf.",
+  "description": "IPC the main window is allowed to use: core invoke/event plumbing, the dialog plugin's Rust-side API that pick_log_directory calls on the window's behalf, and the updater plugin backing the in-app update check/install flow (restart itself is a core AppHandle call, not a separate plugin).",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": ["core:default", "dialog:default", "updater:default"]
 }

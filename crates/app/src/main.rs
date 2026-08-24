@@ -15,6 +15,7 @@ use tauri::Manager;
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::new())
         .setup(|app| {
             let handle = app.handle().clone();
@@ -107,6 +108,8 @@ fn main() {
             commands::get_era_options,
             commands::get_preferences,
             commands::set_preferences,
+            commands::check_for_update,
+            commands::install_pending_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running eqlp-app");

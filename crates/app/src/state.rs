@@ -13,6 +13,11 @@ pub struct AppState {
     pub ingest: Arc<Mutex<Ingest>>,
     /// why: separate from `ingest` so a toolbar repaint never blocks on a query
     pub status: Arc<Mutex<TailStatus>>,
+    /// why: bridges check_for_update -> install_pending_update, two
+    /// separate commands (a confirm prompt sits between them) -- the
+    /// Update itself carries the download URL/signature, no reason to
+    /// re-check just to install what was already found
+    pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
 }
 
 impl AppState {
@@ -22,6 +27,7 @@ impl AppState {
             worker: Mutex::new(None),
             ingest: Arc::new(Mutex::new(Ingest::default())),
             status: Arc::new(Mutex::new(TailStatus::default())),
+            pending_update: Mutex::new(None),
         }
     }
 }

@@ -46,5 +46,6 @@ pub mod state;
 pub mod tail_worker;
 pub mod teleportdata;
 pub mod uifiles;
+pub mod updater;
 pub mod zone;
 pub mod zonedata;

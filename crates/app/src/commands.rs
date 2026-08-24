@@ -35,6 +35,7 @@ use crate::stackingdata;
 use crate::state::AppState;
 use crate::tail_worker::{self, TailStatus};
 use crate::uifiles;
+use crate::updater;
 use crate::zonedata;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -580,6 +581,23 @@ pub fn get_preferences(app: AppHandle) -> Preferences {
 pub fn set_preferences(app: AppHandle, prefs: Preferences) -> Result<Preferences, String> {
     preferences::save(&app, &prefs)?;
     Ok(prefs)
+}
+
+/// why: Settings module's update-channel toggle -- see `updater`'s own doc
+#[tauri::command]
+pub async fn check_for_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<updater::UpdateInfoDto>, String> {
+    updater::check_for_update(app, state).await
+}
+
+#[tauri::command]
+pub async fn install_pending_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    updater::install_pending_update(app, state).await
 }
 
 /// why: feeds the Gear Planner's mana weighting; None mostly means "same

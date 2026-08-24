@@ -12,11 +12,13 @@
   import Maps from '$lib/maps/Maps.svelte';
   import Settings from '$lib/settings/Settings.svelte';
   import InventoryDumpBanner from '$lib/shell/InventoryDumpBanner.svelte';
+  import UpdateBanner from '$lib/shell/UpdateBanner.svelte';
   import { status, refreshStatus } from '$lib/stores/status';
   import { loadPreferences } from '$lib/stores/settings';
   import { loadGameDataModule } from '$lib/stores/gamedata';
   import { activeModule } from '$lib/stores/shell';
   import { initTauriEvents } from '$lib/tauri/events';
+  import { checkForUpdates } from '$lib/stores/updater';
 
   onMount(() => {
     void refreshStatus();
@@ -28,6 +30,9 @@
     // in memory to know whether a name is real, whichever module the
     // user opens first.
     void loadGameDataModule();
+    // why: once per launch, silent on failure (offline is normal) --
+    // UpdateBanner only renders once configured, see below
+    void checkForUpdates();
   });
 </script>
 
@@ -65,5 +70,6 @@
       </div>
     </div>
     <InventoryDumpBanner />
+    <UpdateBanner />
   {/if}
 </div>

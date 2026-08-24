@@ -834,6 +834,13 @@ export interface PreferencesDto {
   update_channel: 'public' | 'beta';
 }
 
+export interface UpdateInfoDto {
+  version: string;
+  current_version: string;
+  /** why: the release's own body text, whatever that channel's notes say -- may be empty */
+  notes: string | null;
+}
+
 // ---------------------------------------------------------------- history
 
 export interface ParseRecordDto {
@@ -1073,6 +1080,17 @@ export const api = {
   getPreferences: () => invoke<PreferencesDto>('get_preferences'),
 
   setPreferences: (prefs: PreferencesDto) => invoke<PreferencesDto>('set_preferences', { prefs }),
+
+  // -------------------------------------------------------------- updater
+
+  /** why: null means no update found -- not an error, the common case.
+   * Checks whichever channel Preferences.update_channel currently says. */
+  checkForUpdate: () => invoke<UpdateInfoDto | null>('check_for_update'),
+
+  /** why: installs whatever the last checkForUpdate call found, then
+   * restarts the app -- this call does not resolve on success (the
+   * process exits first), only on failure. */
+  installPendingUpdate: () => invoke<void>('install_pending_update'),
 
   // -------------------------------------------------------------- history
 

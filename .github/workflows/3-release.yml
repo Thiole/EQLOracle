@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 # why: two rolling channels, not tag-triggered -- routine work pushes to
 # `testing` (auto-published under the "testing" tag, prerelease), a real
@@ -15,14 +15,27 @@ permissions:
 # "latest", the channel GitHub's own "Latest release" badge follows).
 # Neither is semver-tagged -- nothing in the repo does that yet; each
 # channel's tag just moves to whatever that branch last built successfully.
+#
+# Uses tauri-apps/tauri-action, not a hand-rolled build+sign+upload --
+# `cargo tauri build` alone signs each bundle (confirmed real: produces
+# a real .sig next to it) but never assembles the updater's own
+# `latest.json` manifest; that assembly, plus correctly merging it
+# across this workflow's own Linux+Windows matrix onto one shared
+# release, is exactly what this action is for. Needs both signing
+# secrets (TAURI_SIGNING_PRIVATE_KEY/_PASSWORD) already stored on the repo.
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  linux:
-    name: Linux
-    runs-on: ubuntu-latest
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-latest
+          - platform: windows-latest
+    runs-on: ${{ matrix.platform }}
 
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +46,7 @@ jobs:
         with: { node-version: 20, cache: npm, cache-dependency-path: ui/package-lock.json }
 
       - name: Install Linux dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -49,75 +63,16 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --locked
-
       - name: Install frontend dependencies
         working-directory: ui
         run: npm ci
-
-      - name: Build Linux application
-        run: cargo tauri build
-
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: eqlp-linux
-          path: |
-            target/release/bundle/**/*.AppImage
-            target/release/bundle/**/*.deb
-            target/release/bundle/**/*.rpm
-
-  windows:
-    name: Windows
-    runs-on: windows-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm, cache-dependency-path: ui/package-lock.json }
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --locked
-
-      - name: Install frontend dependencies
-        working-directory: ui
-        run: npm ci
-
-      - name: Build Windows application
-        run: cargo tauri build
-
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: eqlp-windows
-          path: |
-            target/release/bundle/**/*.exe
-            target/release/bundle/**/*.msi
-
-  publish:
-    name: Publish release
-    needs: [linux, windows]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          pattern: eqlp-*
-          merge-multiple: true
 
       # why: branch decides the channel -- main is the only deliberate,
       # explicit release trigger (a separate push someone chose to make),
       # everything else lands on testing
       - name: Determine channel
         id: channel
+        shell: bash
         run: |
           if [ "${{ github.ref_name }}" = "main" ]; then
             echo "tag=latest" >> "$GITHUB_OUTPUT"
@@ -129,17 +84,18 @@ jobs:
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Publish/replace the rolling channel release
-        uses: softprops/action-gh-release@v2
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tag_name: ${{ steps.channel.outputs.tag }}
-          name: ${{ steps.channel.outputs.name }}
-          # why: a rolling tag needs its own commit's notes, not
-          # whatever an old release's body said -- overwritten every run
-          body: |
+          projectPath: crates/app
+          tagName: ${{ steps.channel.outputs.tag }}
+          releaseName: ${{ steps.channel.outputs.name }}
+          releaseBody: |
             Automated build from ${{ github.ref_name }} @ ${{ github.sha }}.
             Not a semver release -- this tag moves to whatever ${{ github.ref_name }} last built successfully.
+          releaseDraft: false
           prerelease: ${{ steps.channel.outputs.prerelease == 'true' }}
-          make_latest: ${{ github.ref_name == 'main' }}
-          target_commitish: ${{ github.sha }}
-          files: dist/**
+          includeUpdaterJson: true
