@@ -1,11 +1,6 @@
-//! Read-side queries over `Ingest` for the Combat module: which zone visits
-//! exist, which encounters are in one, and the ability breakdown for a
-//! selection -- one encounter, every encounter in a zone visit, or
-//! everything parsed so far.
-//!
-//! No parsing happens here. Every query runs against `Store`, which already
-//! holds everything `ingest::Ingest::route` has classified -- nothing is
-//! reparsed to answer these.
+//! why: Combat module read-side queries -- zone visits, encounters, and
+//! ability breakdowns for a selection. No parsing here, every query runs
+//! against the already-classified `Store`.
 
 use crate::ingest::Ingest;
 use eqlp_session::{series as bucket_series, Allegiance, Cause, Kind, State};
@@ -19,14 +14,11 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ZoneVisitDto {
-    /// `Spans` index for this visit, or `None` for the "unknown" bucket --
-    /// encounters seen before the first zone line (attaching mid-session).
-    /// See `docs/design/context.md`, "Unknown is a bucket, not an error".
+    /// why: None for the "unknown" bucket -- encounters before the first zone line
     pub index: Option<usize>,
     pub label: String,
     pub fight_count: usize,
-    /// The most recent visit with no successor -- the zone the player is
-    /// presumably still in.
+    /// why: most recent visit with no successor, presumably where the player still is
     pub current: bool,
 }
 
@@ -34,19 +26,15 @@ pub struct ZoneVisitDto {
 pub struct EncounterDto {
     pub id: u32,
     pub target: String,
-    /// Every entity seen in this fight, not just the anchor `target` label
-    /// -- a multi-mob pull holds several. See `Ingest::entities_by_enc`.
+    /// why: every entity in this fight, not just the anchor target -- a multi-mob pull holds several
     pub entities: Vec<String>,
     pub start_ms: Millis,
     pub end_ms: Option<Millis>,
     pub duration_ms: Millis,
-    /// The team's own damage output -- excludes whatever the fight's own
-    /// target dealt back. A number that mixes offense and incoming damage
-    /// together says nothing; see `enemy_damage`/`enemy_dps` for the other
-    /// half.
+    /// why: team's own output, excludes what the target dealt back -- see enemy_damage/dps
     pub total_damage: u64,
     pub dps: f64,
-    /// Damage the target dealt to the team during this fight.
+    /// why: damage the target dealt to the team
     pub enemy_damage: u64,
     pub enemy_dps: f64,
     pub slain: bool,
@@ -63,39 +51,21 @@ pub struct AbilityRowDto {
     pub min: u64,
     pub max: u64,
     pub crits: u64,
-    /// Average of this ability's non-crit hits. A per-ability dps figure
-    /// (total / the whole fight's duration) used to live here instead, but
-    /// it's a rate stat for something that isn't a steady stream --
-    /// "Hit" alone bundles every weapon swing, so its dps says more about
-    /// how long the fight ran than about the ability itself. Avg/avg-crit
-    /// match what a real EQ parser (GamParse, ...) actually reports per
-    /// skill, and stay meaningful for a rarely-used nuke the same way they
-    /// do for constant auto-attack.
+    /// why: avg of non-crit hits, matches real EQ parsers -- a per-ability
+    /// dps figure used to live here but says more about fight length than the ability
     pub avg_hit: f64,
     pub avg_crit: f64,
     pub pct: f64,
-    /// Swings of this same attack type that dealt zero damage because
-    /// they were fully avoided, broken out by how -- see
-    /// `eqlp_store::flag::MITIGATED`'s own doc for why these live on this
-    /// row instead of a separate synthetic ability.
+    /// why: fully-avoided swings of this attack type, broken out by how
     pub missed: u64,
     pub blocked: u64,
     pub dodged: u64,
     pub parried: u64,
 }
 
-/// One spell's cast attempts and how they resolved -- separate from
-/// `AbilityRowDto`, not merged into it. `EventKind::Cast` rows track
-/// *attempts* (one per cast, landed or not, `flag::CAST_*` for the
-/// outcome); `EventKind::Damage` rows track *landed hits*, which for a DoT
-/// or a multi-tick effect can be more than one per cast. Blending the two
-/// into one row's `hits` would conflate "how many times did I try this"
-/// with "how many times did it land damage", two different questions --
-/// and a pure buff or CC spell has cast attempts but never a damage row at
-/// all, so it needs somewhere to show up regardless. Requested so casting
-/// that doesn't deal damage (buffs, CC, a resisted or interrupted attempt)
-/// is visible in the same expanded panel as the damage breakdown, not just
-/// silently absent from it.
+/// why: cast attempts vs landed damage are different questions -- Cast
+/// rows track attempts, Damage rows track landed hits (a DoT can be
+/// several per cast); blending them into one `hits` would conflate the two.
 #[derive(Debug, Clone, Serialize)]
 pub struct CastRowDto {
     pub spell: String,
@@ -104,38 +74,25 @@ pub struct CastRowDto {
     pub resisted: u32,
     pub interrupted: u32,
     pub fizzled: u32,
-    /// Expired with no confirming line at all -- see
-    /// `eqlp_session::cast::Resolver`'s doc for when this happens.
+    /// why: expired with no confirming line at all
     pub unconfirmed: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
 pub struct CombatSummaryDto {
     pub fight_count: usize,
-    /// The team's own damage output -- excludes whatever each fight's own
-    /// target dealt back. See `enemy_damage`/`enemy_dps`.
+    /// why: team's own output, excludes what each target dealt back
     pub total_damage: u64,
     pub duration_ms: Millis,
-    /// The mean of *each fight's own* dps, not `total_damage / duration_ms`
-    /// pooled across every fight in the selection. Pooling weights a
-    /// selection's dps by fight length -- a handful of long grinds would
-    /// dominate the number, drowning out several short, sharp fights that
-    /// are just as real a data point about how the selection actually
-    /// went. Averaging each fight's own rate treats every fight as one
-    /// sample regardless of how long it ran. Equivalent to the pooled
-    /// number for a single-fight selection (nothing to average across);
-    /// only diverges once `fight_count > 1`.
+    /// why: mean of each fight's own dps, not pooled -- pooling would let
+    /// long grinds dominate over several short, sharp fights
     pub dps: f64,
-    /// Damage the enemy (each fight's own target) dealt to the team.
-    /// Grouped, not mixed into `total_damage` -- a number that combines
-    /// offense and incoming damage says nothing about either.
+    /// why: damage the enemy dealt back, grouped not mixed into total_damage
     pub enemy_damage: u64,
-    /// Same averaging-per-fight treatment as `dps`, for the same reason --
-    /// this is the same kind of rate stat, just measuring incoming damage.
+    /// why: same per-fight averaging as dps, for incoming damage
     pub enemy_dps: f64,
     pub abilities: Vec<AbilityRowDto>,
-    /// Every spell cast in this selection and how the attempts resolved --
-    /// see `CastRowDto`'s doc for why this is separate from `abilities`.
+    /// why: separate from abilities -- see CastRowDto
     pub casts: Vec<CastRowDto>,
 }
 
@@ -143,13 +100,8 @@ fn zone_visit_of(ing: &Ingest, start_ms: Millis) -> Option<usize> {
     ing.zone.index_at(start_ms)
 }
 
-/// `zone_visit` as it crosses IPC: `None` means "no filter, everything";
-/// otherwise a visit index, with `-1` standing in for the "Unknown" bucket
-/// (`None` on the `Option<usize>` side). A plain `Option<usize>` can't
-/// distinguish "no filter" from "filter to the one bucket with no zone" --
-/// both would be `None` -- so this is `Option<i64>` instead, and `-1` is the
-/// one value `usize` never produces, making it a safe sentinel rather than
-/// a colliding one.
+/// why: -1 stands in for the "Unknown" bucket -- Option<usize> alone
+/// can't distinguish "no filter" from "filter to the no-zone bucket"
 fn matches_visit(ing: &Ingest, start_ms: Millis, want: Option<i64>) -> bool {
     match want {
         None => true,
@@ -158,10 +110,7 @@ fn matches_visit(ing: &Ingest, start_ms: Millis, want: Option<i64>) -> bool {
     }
 }
 
-/// Every zone visit that exists at all, unfiltered and unsorted -- shared
-/// by `list_zone_visits` and `zone_visits_for_configuration` so both agree
-/// on what a "fight count" means from one single scan of
-/// `ing.store.encounters`, rather than two separate scans that could drift.
+/// why: shared by two callers so both agree on "fight count" from one scan
 fn zone_visit_dtos(ing: &Ingest) -> Vec<ZoneVisitDto> {
     let mut counts: HashMap<Option<usize>, usize> = HashMap::new();
     for e in &ing.store.encounters {
@@ -195,7 +144,7 @@ fn zone_visit_dtos(ing: &Ingest) -> Vec<ZoneVisitDto> {
         .collect()
 }
 
-/// Newest visit first; the pre-first-zone-line "Unknown" bucket sorts last.
+/// why: newest visit first, "Unknown" bucket sorts last
 fn sort_zone_visits(visits: &mut [ZoneVisitDto]) {
     visits.sort_by(|a, b| match (a.index, b.index) {
         (Some(x), Some(y)) => y.cmp(&x),
@@ -211,11 +160,7 @@ pub fn list_zone_visits(ing: &Ingest) -> Vec<ZoneVisitDto> {
     out
 }
 
-/// One fight's `EncounterDto`, computed fresh from `Store`/`Ingest` every
-/// call -- nothing about a fight is cached or duplicated anywhere else in
-/// memory, this just reads the same rows `list_encounters` always has.
-/// Shared by `list_encounters` and `list_zone_encounters` so both build a
-/// fight's numbers identically instead of two copies of this drifting.
+/// why: computed fresh every call, shared by two callers so both build numbers identically
 fn encounter_dto(ing: &Ingest, e: &Encounter, now: Millis) -> EncounterDto {
     let dur = e.duration_ms(now).max(0);
     let dur_secs = (dur as f64 / 1000.0).max(0.001);
@@ -239,17 +184,8 @@ fn encounter_dto(ing: &Ingest, e: &Encounter, now: Millis) -> EncounterDto {
     }
 }
 
-/// Newest-first page of `zone_visit`'s fights, `offset` fights in, at most
-/// `limit` of them. Windowed for real, not just truncated after the fact:
-/// `encounter_dto` runs two `total()` scans per fight (see its own doc),
-/// so building every `EncounterDto` for a long-lived character's full
-/// "All zones" list -- thousands of fights -- before ever slicing it down
-/// to what a dropdown could show at once was the actual cost, not just
-/// how many got sent over IPC. Sorting the cheap `&Encounter` refs first,
-/// *then* slicing, *then* only computing DTOs for the slice, is what
-/// makes a page cost O(limit), not O(total fights this zone/session ever
-/// had) -- what `stores/combat.ts`'s own sliding-window loader needs this
-/// to be, to stay cheap as the window advances deep into a long session.
+/// why: windowed for real -- sort cheap refs first, slice, then only
+/// compute DTOs for the slice; O(limit) not O(total fights ever)
 pub fn list_encounters(
     ing: &Ingest,
     zone_visit: Option<i64>,
@@ -276,23 +212,13 @@ pub fn list_encounters(
 pub struct EncounterDropDto {
     pub item: String,
     pub qty: u64,
-    /// Lower is rarer -- whichever of the matching NPC's own known-loot
-    /// `chance_per_kill`/`chance_per_drop` this item has (see
-    /// `drop_chance`'s doc). `None` when there's nothing to rank by; those
-    /// sort after every ranked drop rather than being guessed at as common
-    /// or rare.
+    /// why: lower is rarer; None sorts after every ranked drop, not guessed
     pub chance: Option<f64>,
 }
 
-/// The cheap half of an encounter's shape -- everything `list_zone_
-/// encounters`' preview line and card actually show without needing a
-/// single `total()` aggregation. Deliberately *not* `EncounterDto`:
-/// that one's `total_damage`/`dps`/`enemy_damage`/`enemy_dps` need two
-/// `total()` scans each, and checked against a real long-lived session,
-/// computing those for every visible row -- data the collapsed preview
-/// never even displays -- was a second real cost stacked on top of the
-/// eager-drops one already fixed. `encounter_detail` (below) is where
-/// those numbers live now, fetched once a card is actually expanded.
+/// why: the cheap half of an encounter, no `total()` aggregation needed --
+/// computing totals for every visible row was a real measured cost;
+/// `encounter_detail` fetches those once a card actually expands
 #[derive(Debug, Clone, Serialize)]
 pub struct EncounterPreviewDto {
     pub id: u32,
@@ -320,38 +246,16 @@ fn encounter_preview_dto(ing: &Ingest, e: &Encounter, now: Millis) -> EncounterP
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ZoneEncounterDto {
-    // Deliberately NOT #[serde(flatten)] -- this nests as a real
-    // `"encounter": {...}` object on the wire (`ze.encounter.id` on the
-    // frontend, not `ze.id`), matching what `ui/app/app.js`'s
-    // gdZoneEncounterRowHtml has always expected. flatten would merge
-    // these fields into ZoneEncounterDto's own top level instead, silently
-    // breaking that access (`ze.encounter` becomes `undefined`) with
-    // nothing but an uncaught exception -- no error surfaced, no crash,
-    // just the "Loading..." placeholder never getting replaced. That's a
-    // real, confirmed instance of this, not a hypothetical: this struct
-    // used flatten from this feature's very first version, and was very
-    // likely the actual root cause of "stuck on loading" the whole time
-    // the last several rounds of *performance* fixes were chasing.
+    // why: deliberately NOT #[serde(flatten)] -- this nests as a real
+    // "encounter": {...} object the frontend expects (ze.encounter.id).
+    // flatten silently broke this once already (a real "stuck on loading"
+    // bug traced back here, no error surfaced, no crash).
     pub encounter: EncounterPreviewDto,
-    /// Difficulty tier (0-4, `zone::zone_tier`'s own scale) the fight
-    /// happened at -- read straight off the encounter's first row
-    /// (`Store::tier`, stamped at ingest time), not recomputed here.
+    /// why: difficulty tier read off the first row, stamped at ingest time not recomputed
     pub tier: u8,
-    /// This fight's own visit index (`None` for the pre-first-zone-line
-    /// "Unknown" bucket) -- what the Combat module's own zone-select
-    /// dropdown is keyed by, so a "view in Combat" link can drop straight
-    /// into the right visit instead of just the right zone *name* (the
-    /// same zone can have several visit indices across a session -- see
-    /// `list_zone_encounters`'s own doc).
+    /// why: this fight's visit index, what the zone-select dropdown is keyed by
     pub zone_visit: Option<i64>,
-    /// Best-effort display zone for this fight: the resolved wiki zone id
-    /// if `Ingest::cached_wiki_zone` has one, else the raw log label, else
-    /// `None` (no `zone.enter` seen yet). Meaningful on an NPC's own "your
-    /// encounters" list (`list_mob_encounters`) -- the same mob can turn
-    /// up in different zones -- redundant on a zone page's own list
-    /// (`list_zone_encounters`, where you're already looking at that
-    /// zone) but populated there too rather than leaving one caller with
-    /// a field the other doesn't have.
+    /// why: best-effort display zone -- resolved wiki id, else raw label, else None
     pub zone: Option<String>,
 }
 
@@ -364,38 +268,16 @@ fn display_zone(ing: &Ingest, e: &Encounter) -> Option<String> {
     )
 }
 
-/// How long after a fight's own end a loot event still counts toward it.
-/// 90 seconds (this constant's original value) assumed looting always
-/// follows death quickly, which turned out to be only half true: an
-/// advanced-loot item with an "Always Loot"/"Always Merge" rule resolves
-/// instantly, same second as the kill, but anything that rule doesn't
-/// cover instead opens an interactive loot window that just sits there
-/// until the player gets back to it -- which, mid-raid, can genuinely be
-/// many minutes later, not seconds. 90s was silently *missing* those --
-/// not misattributing them to the wrong fight, just failing to attribute
-/// them to anything, which is worse: a real drop reading as "no drops
-/// recorded" instead of just being credited to a slightly-off encounter.
-///
-/// 30 minutes trades a real but small false-attribution risk (a very
-/// late manual resolution landing on the wrong same-named kill if
-/// several happened in between) for closing that much larger false-miss
-/// gap -- and the false-attribution risk is already blunted by
-/// `Ingest::recent_encounter_for`'s claim tracking, which always prefers
-/// the oldest *unclaimed* same-named kill rather than picking randomly,
-/// so a longer window mostly buys correctness, not chaos.
-///
-/// `pub(crate)`, not private: `Ingest::record_loot` uses this exact same
-/// window at ingest time now (see its doc) -- one number, not two
-/// independently-tuned copies that could drift apart.
+/// why: 90s (the original value) assumed looting always follows death
+/// quickly -- wrong for interactive loot windows that can sit for
+/// minutes mid-raid, silently missing real drops. 30min trades a small
+/// false-attribution risk (blunted by claim tracking preferring the
+/// oldest unclaimed kill) for closing that larger false-miss gap.
+/// `pub(crate)`: `Ingest::record_loot` uses this exact window too.
 pub(crate) const LOOT_GRACE_MS: Millis = 30 * 60_000;
 
-/// The matching NPC's own known-loot chance for this exact item, if the
-/// bestiary (`npcdata::npcs`) has an entry for both -- prefers
-/// `chance_per_kill` (the more consistently populated of the two in the
-/// scrape) over `chance_per_drop`. `None` covers three different reasons
-/// alike (mob not in the bestiary, item not in that mob's known-loot
-/// table, or listed with no chance figure recorded) rather than treating
-/// any of them as "common" by default.
+/// why: prefers chance_per_kill (more consistently populated) over
+/// chance_per_drop; None covers three distinct real gaps, never "common" by default
 fn drop_chance(mob: &str, item: &str) -> Option<f64> {
     let npc = crate::npcdata::npcs()
         .iter()
@@ -416,39 +298,12 @@ fn sort_drops_rarer_first(drops: &mut [EncounterDropDto]) {
     });
 }
 
-/// The most recent `limit` encounters from any visit to the wiki zone
-/// named by `zone_id` (`zonedata::Zone::id`, not `name` -- see
-/// `Ingest::resolved_wiki_zone`'s doc for why an id, not a name: an exact
-/// `==` here, not a case-insensitive compare, and directly eyeball-
-/// checkable against the same id `debugview::list_debug_encounters` shows
-/// per encounter and a zone page's own `Zone::id` field). There can be
-/// several visits across a session (see `eqlp_session::Spans`' own doc on
-/// why repeat visits to the same zone get distinct spans rather than
-/// merging) -- folded together here by resolved zone, via each
-/// encounter's own already-stamped `zone` field (see `Store::Encounter::
-/// zone`'s doc), not by visit index, since this only ever needs "did this
-/// fight happen somewhere that counts as this zone", not which specific
-/// visit it was.
-///
-/// `ing.store.encounters` is already oldest-first (fights are pushed in
-/// the order they open, never reordered) -- walked in *reverse*, stopping
-/// the instant `limit` matches are found, so a zone you haven't visited
-/// in months costs one exit-early scan back to the last visit, not a scan
-/// of every fight ever recorded. Matching itself is `Ingest::
-/// cached_wiki_zone`, an O(1) lookup into a resolution that already
-/// happened once at ingest time -- not a fresh `zone::zone_matches`
-/// string comparison run again here for every fight, and not a fresh
-/// `Ingest::zone.at(ts)` lookup either -- see `Store::Encounter::zone`'s
-/// and `Ingest::current_zone`'s docs.
-///
-/// Deliberately does *not* also compute damage totals or drops here --
-/// both used to run eagerly for every visible row, and checked against a
-/// real, long-lived session that was the entire difference between this
-/// staying fast and it visibly not: `debugview::list_debug_encounters`
-/// (neither computation at all) was instant on the same data this was
-/// stalling on. `encounter_detail` is that work now, moved to run per
-/// encounter, on demand, once a row's actually expanded -- see its own
-/// doc for how it stays cheap doing that.
+/// why: recent encounters keyed by exact `zone_id`, not a display-name
+/// compare -- folded across visits since this only needs "did this fight
+/// happen in this zone", not which specific visit. Walked in reverse,
+/// stops at `limit` matches, O(1) zone lookup via `cached_wiki_zone`.
+/// Deliberately no damage totals/drops here -- computing those eagerly
+/// for every row was the real measured cost; see `encounter_detail`.
 pub fn list_zone_encounters(ing: &Ingest, zone_id: &str, limit: usize) -> Vec<ZoneEncounterDto> {
     let now = ing.now_ms();
 
@@ -462,8 +317,7 @@ pub fn list_zone_encounters(ing: &Ingest, zone_id: &str, limit: usize) -> Vec<Zo
             }
         }
     }
-    // Already newest-first: reverse iteration over an oldest-first vec,
-    // pushed in the order found -- no separate sort needed.
+    // why: already newest-first from reverse iteration, no separate sort needed
 
     matched
         .into_iter()
@@ -482,15 +336,8 @@ pub fn list_zone_encounters(ing: &Ingest, zone_id: &str, limit: usize) -> Vec<Zo
         .collect()
 }
 
-/// An NPC page's own "Your history with this mob" section --
-/// `list_zone_encounters`' twin, matching by mob name instead of zone.
-/// Simpler than the zone case: a mob's log name and its Game Data name
-/// are the same string (no wiki-vs-client naming-convention gap the way
-/// zones have -- see `zone::zone_matches`' own doc for what that gap
-/// looks like), so this needs no alias table or normalization, just
-/// `eq_ignore_ascii_case`. Same reverse-scan-and-stop-early shape as
-/// `list_zone_encounters`, for the same reason: bounded work regardless
-/// of how many times you've fought this mob across the session.
+/// why: `list_zone_encounters`' twin, matching by mob name; simpler --
+/// log and Game Data names agree, no alias table needed, just eq_ignore_ascii_case
 pub fn list_mob_encounters(ing: &Ingest, mob_name: &str, limit: usize) -> Vec<ZoneEncounterDto> {
     let now = ing.now_ms();
 
@@ -527,42 +374,20 @@ pub struct EncounterDetailDto {
     pub dps: f64,
     pub enemy_damage: u64,
     pub enemy_dps: f64,
-    /// Best-effort, not authoritative: every loot row this exact encounter
-    /// was attributed to at ingest time (`Ingest::recent_encounter_for`,
-    /// see its own doc), timestamped within the fight's own span plus a
-    /// short grace window after it ends (`LOOT_GRACE_MS`). Still a guess,
-    /// not a real link -- resolved once, at ingest time, instead of fresh
-    /// on every query, but the underlying ambiguity (two same-named mobs
-    /// pulled at once) doesn't go away just because *when* it's resolved
-    /// changed. Rarer first.
+    /// why: best-effort, resolved once at ingest time; ambiguity (two
+    /// same-named mobs pulled at once) doesn't go away, just when it's
+    /// resolved. Rarer first.
     pub drops: Vec<EncounterDropDto>,
 }
 
-/// The expensive half of one encounter's data -- damage totals (two
-/// `total()` scans) and drops (a windowed loot join) -- computed for
-/// exactly one fight, on demand, once its card is actually expanded.
-/// Neither of these run as part of `list_zone_encounters` any more; see
-/// that function's and `EncounterPreviewDto`'s docs for why eagerly
-/// computing this for every visible row was the real cost of a zone
-/// page's initial load on a long-lived session.
-///
-/// The drops half's own window-bounding: `Store`'s rows are appended in
-/// strict log-chronological order (never reordered -- see `ingest::
-/// backfill_lines`'s own doc on why application stays sequential even
-/// when classification is parallelised), so `ing.store.ts` is already
-/// sorted -- this binary-searches straight to the fight's own window
-/// (`partition_point`, the same technique `Spans::at` uses) instead of
-/// scanning from the start of the session. Falls back to the encounter's
-/// own last recorded row, not "now", for a fight with no `end_ms` (never
-/// cleanly closed -- a disconnect or a zone change mid-fight, both real
-/// and not rare): "now" is real wall-clock time, later than every row a
-/// backfilled session holds, and would silently widen that one
-/// encounter's window to the entire rest of the store. A fight's own
-/// window this way is typically seconds to a few minutes of log activity,
-/// regardless of how many millions of rows the session holds in total.
-///
-/// `None` for an unknown `encounter_id`, not a zeroed DTO -- "this fight
-/// doesn't exist" and "this fight did zero damage" are different facts.
+/// why: expensive half of one encounter, computed on demand once
+/// expanded -- damage totals + windowed loot join. Rows are appended in
+/// strict chronological order, so `ing.store.ts` is already sorted;
+/// binary-searches to the fight's window instead of scanning from
+/// session start. Falls back to the encounter's own last row, not "now",
+/// for a never-cleanly-closed fight -- "now" would silently widen the
+/// window to the entire rest of the store. None for unknown id, not a
+/// zeroed DTO -- "doesn't exist" and "zero damage" are different facts.
 pub fn encounter_detail(ing: &Ingest, encounter_id: u32) -> Option<EncounterDetailDto> {
     let now = ing.now_ms();
     let e = ing.store.encounter(EncounterId(encounter_id))?;
@@ -573,16 +398,9 @@ pub fn encounter_detail(ing: &Ingest, encounter_id: u32) -> Option<EncounterDeta
     let enemy = total(&ing.store, &Filter::encounter(e.id).damage().by(e.target));
     let dmg = all.saturating_sub(enemy);
 
-    // Loot rows fall outside e.range() (first..last only covers combat
-    // rows -- looting happens after the last swing/cast, sometimes well
-    // after), so this still needs the same time-bounded scan
-    // list_zone_encounters' own doc on encounter_drops used to need,
-    // rather than the plain Filter::encounter(id) range_of already gives
-    // damage/heal above. What's different now: the match itself is
-    // `enc[i] == e.id`, not "same target name within the window" -- an
-    // exact read of what Ingest::record_loot already decided at ingest
-    // time (see its own doc), not a second, possibly-different guess
-    // re-derived here from scratch.
+    // why: loot rows fall outside e.range() -- looting happens after the
+    // last swing/cast, needs its own time-bounded scan. Match is
+    // enc[i] == e.id, an exact read of Ingest::record_loot's decision, not re-derived
     let last_activity = e.end_ms.unwrap_or_else(|| {
         ing.store
             .ts
@@ -617,10 +435,7 @@ pub fn encounter_detail(ing: &Ingest, encounter_id: u32) -> Option<EncounterDeta
     })
 }
 
-/// Every encounter id in a selection: one specific fight if `encounter_id`
-/// is given, otherwise every fight in `zone_visit`, otherwise every fight
-/// parsed so far. Shared by `summarize` and `list_allies` -- both aggregate
-/// over "the current selection", just grouped by a different key.
+/// why: shared by `summarize`/`list_allies`, both aggregate the current selection differently
 fn resolve_ids(
     ing: &Ingest,
     zone_visit: Option<i64>,
@@ -672,15 +487,9 @@ fn merge_ability_rows(dst: &mut HashMap<eqlp_store::AbilityId, AbilityRow>, rows
     }
 }
 
-/// Removes `rows` from an accumulator built by `merge_ability_rows`, then
-/// drops any entry that's been subtracted down to nothing -- an ability
-/// only the enemy used (a mob-only special attack, say) should vanish from
-/// a "team" breakdown entirely, not linger as a zero row. `min`/`max`
-/// aren't meaningfully subtractable and are left as the all-actors
-/// extremes; a minor, known imprecision on abilities the enemy happens to
-/// share with the team (in practice just melee attack-type rows like
-/// "Punch" both sides can throw), not on total/hits/dps/pct, which is what
-/// this exists for.
+/// why: subtracts and drops zeroed entries so an enemy-only ability
+/// vanishes from a team breakdown, not lingers as a zero row. min/max
+/// aren't subtractable, left as all-actors extremes -- a minor known imprecision
 fn subtract_ability_rows(
     dst: &mut HashMap<eqlp_store::AbilityId, AbilityRow>,
     rows: Vec<AbilityRow>,
@@ -701,14 +510,9 @@ fn subtract_ability_rows(
     dst.retain(|_, r| r.total > 0 || r.attempts() > 0);
 }
 
-/// Every spell cast across `ids`, grouped by ability and by outcome.
-/// `actor_sym` narrows to one entity's own casts, same as the damage side;
-/// `None` (team view) excludes each fight's own target -- a mob's casts
-/// aren't "the team's casts" any more than its damage is "the team's
-/// damage". Walks the raw store columns directly rather than going through
-/// `by_ability`: that function only tracks one OR'd `flags` bitmask per
-/// ability, which can't recover "how many landed vs. resisted vs.
-/// interrupted", the whole point of this breakdown.
+/// why: every cast, grouped by ability and outcome. Walks raw store
+/// columns not `by_ability` -- that only tracks one OR'd flags bitmask,
+/// can't recover landed/resisted/interrupted counts.
 fn cast_rows(ing: &Ingest, ids: &[EncounterId], actor_sym: Option<Sym>) -> Vec<CastRowDto> {
     let mut acc: HashMap<AbilityId, CastRowDto> = HashMap::new();
     for &id in ids {
@@ -759,22 +563,11 @@ fn cast_rows(ing: &Ingest, ids: &[EncounterId], actor_sym: Option<Sym>) -> Vec<C
     v
 }
 
-/// Aggregates one encounter, every encounter in a zone visit, or every
-/// encounter parsed so far. `encounter_id` wins if given; otherwise
-/// `zone_visit`; otherwise everything. `actor`, if given, narrows to one
-/// ally's own abilities -- the drill-down from `list_allies`.
-///
-/// `total_damage`/`abilities` are the team's own output: everyone in the
-/// fight *except* its own target (subtracted out below), so this never
-/// mixes offense and incoming damage into one meaningless number. What the
-/// target did back is `enemy_damage`/`enemy_dps`, reported separately
-/// rather than folded in.
-///
-/// One or two `by_ability`/`total` calls per encounter (`docs/design/store.md`
-/// measures a single-encounter `by_ability` at 39µs) rather than teaching
-/// `eqlp-store`'s `Filter` to accept a set of encounter ids: a zone visit is
-/// a handful of fights, so this is cheap, and it leaves the store's query
-/// contract exactly as documented rather than extending it for one caller.
+/// why: aggregates the selection, `encounter_id` wins over `zone_visit`
+/// over everything; `actor` narrows to one ally's abilities. Team totals
+/// exclude the target (subtracted below), reported separately as
+/// enemy_damage/dps. One or two calls per encounter (measured 39µs each)
+/// rather than teaching Filter to accept a set of ids -- cheap enough as is.
 pub fn summarize(
     ing: &Ingest,
     zone_visit: Option<i64>,
@@ -791,10 +584,7 @@ pub fn summarize(
     let mut duration_ms: Millis = 0;
     let mut enemy_damage = 0u64;
     let mut merged: HashMap<eqlp_store::AbilityId, AbilityRow> = HashMap::new();
-    // One dps reading per fight, averaged rather than pooled at the end --
-    // see `CombatSummaryDto::dps`'s doc for why. `enemy_dps` gets the same
-    // treatment for the same reason -- it's the same kind of rate stat,
-    // just measuring the other direction.
+    // why: one dps reading per fight, averaged not pooled -- see CombatSummaryDto::dps
     let mut per_fight_dps: Vec<f64> = Vec::new();
     let mut per_fight_enemy_dps: Vec<f64> = Vec::new();
 
@@ -812,26 +602,20 @@ pub fn summarize(
         per_fight_enemy_dps.push(fight_enemy as f64 / fight_secs);
 
         if let Some(sym) = actor_sym {
-            // Drilling into one specific ally: their own rows only. A real
-            // ally is never a fight's own target, so no exclusion needed.
+            // why: one specific ally, own rows only -- never their own target
             let rows = by_ability(&ing.store, &Filter::encounter(id).damage().by(sym));
             let fight_total: u64 = rows.iter().map(|r| r.total).sum();
             per_fight_dps.push(fight_total as f64 / fight_secs);
             merge_ability_rows(&mut merged, rows);
-            // Separate query, not folded into the `.damage()` one above:
-            // `Filter` narrows to one `kind`, and a fully-avoided swing is
-            // `EventKind::Miss`, not `Damage` -- see `flag::MITIGATED`'s
-            // own doc for why it still lands on the *same* ability row
-            // once merged here (`merge_ability_rows` combines both).
+            // why: separate query -- Filter narrows to one kind, avoided
+            // swings are Miss not Damage; merges onto the same row below
             let avoided = by_ability(
                 &ing.store,
                 &Filter::encounter(id).kind(EventKind::Miss).by(sym),
             );
             merge_ability_rows(&mut merged, avoided);
         } else {
-            // Team aggregate: everyone in the fight, minus whatever the
-            // fight's own target contributed. Reuses `enemy_rows` from
-            // above rather than re-querying the same filter twice.
+            // why: everyone minus the target's own contribution; reuses enemy_rows above
             let all = by_ability(&ing.store, &Filter::encounter(id).damage());
             let all_total: u64 = all.iter().map(|r| r.total).sum();
             per_fight_dps.push(all_total.saturating_sub(fight_enemy) as f64 / fight_secs);
@@ -916,30 +700,12 @@ pub struct AllyDto {
     pub pct: f64,
 }
 
-/// Damage dealers in the current selection, sorted by total descending --
-/// the Combat module's primary view. Click one (`summarize` with `actor`
-/// set) to drill into their own ability breakdown.
-///
-/// Reads straight from `by_actor(Filter::encounter(id).damage())` -- a
-/// `store::Encounter`'s own range plus its `enc` column, not
-/// `Ingest::entities_by_enc` (the encounter graph's entity list). That
-/// matters for merged pets: `Ingest::sym` redirects a matched pet's rows to
-/// its owner's `Sym` at push time, but the owner's *name* was never
-/// necessarily added to the graph's entity list for that fight (a
-/// pet-class player who never personally swings still owns rows tagged
-/// with their Sym). Querying the store directly finds them regardless;
-/// walking `entities_by_enc` would have silently missed them. An earlier
-/// version routed through `entities_by_enc` for an unrelated reason (see
-/// git history) and produced a different total than `summarize` for the
-/// same selection on the real reference log -- both are store-driven now,
-/// so they can't disagree.
-///
-/// Excludes everything `Allegiance::of` calls `Enemy` as of right now --
-/// `Kind` plus current `State`, so a multi-mob pull's other mobs are
-/// excluded same as the fight's own anchor target, and a live-charmed mob
-/// counts as an ally for as long as the charm holds. Was previously "exclude
-/// only the fight's own `target` label", which missed every other mob in a
-/// multi-mob pull; see git history.
+/// why: Combat module's primary view, damage dealers sorted descending.
+/// Reads directly from the store, not `entities_by_enc` -- a pet-owner
+/// who never personally swings could be missing from that list, the
+/// store finds them regardless. Excludes everything currently `Enemy`
+/// per `Allegiance::of` -- a multi-mob pull's other mobs excluded too, a
+/// live-charmed mob counts as ally while the charm holds.
 pub fn list_allies(
     ing: &Ingest,
     zone_visit: Option<i64>,
@@ -1015,24 +781,16 @@ pub fn list_allies(
 
 // ---------------------------------------------------------------- timeline
 
-/// Aim for around this many buckets across a fight regardless of its
-/// length, so a 10-second skirmish and a 10-minute grind both render as a
-/// readable strip of bars rather than one bucket or ten thousand.
+/// why: target bucket count so short skirmishes and long grinds both render readable
 const TARGET_BUCKETS: Millis = 60;
 const MIN_BUCKET_MS: Millis = 1000;
 
-/// A believable "current DPS" window for the click-to-inspect readout --
-/// long enough not to be one lucky hit, short enough to feel like "right
-/// now" rather than the whole fight's average.
+/// why: long enough not to be one lucky hit, short enough to feel like "right now"
 const INSPECT_WINDOW_MS: Millis = 6000;
 
-/// How far back from a scrubbed instant `fight_state_at` still shows a
-/// recognized buff/effect landing as "recent". Wider than
-/// `INSPECT_WINDOW_MS` on purpose -- a burst DPS snapshot goes stale in a
-/// few seconds, but a buff a party member cast on you is still plausibly
-/// relevant a while after it landed. There's no log line for when it wears
-/// off (see `ingest::EffectPing`'s doc), so this can only ever be an
-/// honest "landed recently", never a live "still active" claim.
+/// why: wider than INSPECT_WINDOW_MS -- a buff stays plausibly relevant
+/// longer than a DPS snapshot; no wear-off line, so this is "landed
+/// recently" never "still active"
 const EFFECT_RECENCY_MS: Millis = 60_000;
 
 #[derive(Debug, Clone, Serialize)]
@@ -1040,15 +798,10 @@ pub struct EntitySeriesDto {
     pub name: String,
     pub is_player: bool,
     pub is_pet: bool,
-    /// `Allegiance::of(kind, state)` as of the fight's end (or `now`, if
-    /// still open) -- covers every mob in a multi-mob pull, not just the
-    /// one the fight opened on, and reads a still-charmed mob as an ally.
-    /// See `eqlp_session::allegiance`'s doc comment for the `Unproven`
-    /// default and its known false-positive: an unspoken teammate.
+    /// why: allegiance as of the fight's end, covers multi-mob pulls, charmed mob reads as ally
     pub is_enemy: bool,
     pub total: u64,
-    /// One damage total per bucket in `FightTimelineDto::buckets`, same
-    /// length and same order.
+    /// why: one total per bucket, same length and order
     pub values: Vec<u64>,
 }
 
@@ -1057,13 +810,9 @@ pub struct FightTimelineDto {
     pub start_ms: Millis,
     pub duration_ms: Millis,
     pub bucket_ms: Millis,
-    /// Start time of each bucket, log-time ms -- same basis as every other
-    /// timestamp in this app, so the frontend can line this up against
-    /// `start_ms`/`end_ms` without a conversion.
+    /// why: log-time ms, same basis as every other timestamp, no conversion needed
     pub buckets: Vec<Millis>,
-    /// Damage-dealing entities only, sorted by total descending. Healers
-    /// and pure targets (an entity that only ever received damage) are not
-    /// bars on this chart -- the ask was "dps over time per person".
+    /// why: damage-dealing entities only, sorted descending -- the ask was "dps over time"
     pub series: Vec<EntitySeriesDto>,
 }
 
@@ -1072,29 +821,19 @@ pub struct EntityStateDto {
     pub name: String,
     pub is_player: bool,
     pub is_pet: bool,
-    /// `Allegiance::of(kind, state)` at `ts_ms` -- `state` is the same
-    /// value `state` (below) is derived from, so a charmed mob and its
-    /// flipped allegiance always agree at the instant shown.
+    /// why: allegiance at ts_ms, always agrees with `state` since both derive from it
     pub is_enemy: bool,
     pub state: &'static str,
-    /// Whether `state` came from a log line (mesmerized/charmed/slain) or
-    /// was inferred from silence (`Lost`, or the default `Engaged` before
-    /// any transition at all). See `docs/design/timeline.md`.
+    /// why: whether state came from a log line or was inferred from silence
     pub observed: bool,
-    /// Damage over the `INSPECT_WINDOW_MS` trailing up to the clicked
-    /// instant -- a snapshot reading, not a running total.
+    /// why: snapshot damage over the trailing inspect window, not a running total
     pub dps: f64,
-    /// Recognized buff/effect landing text within `EFFECT_RECENCY_MS`
-    /// trailing up to the clicked instant -- see `ingest::Effects::recent`.
-    /// Only ever non-empty for "You": the dictionary this is matched
-    /// against holds first-person text exclusively, so it can't recognize
-    /// something landing on anyone else. Recency, not a live "still up"
-    /// claim -- there's no log line for when these wear off.
+    /// why: recognized buff text within EFFECT_RECENCY_MS; only non-empty
+    /// for "You" -- the dictionary is first-person text only
     pub recent_effects: Vec<String>,
 }
 
-/// Per-entity damage-over-time for one fight, for the scrub bar. `None` if
-/// the encounter id doesn't exist (evicted, or never was one).
+/// why: per-entity damage-over-time for the scrub bar; None for an unknown encounter id
 pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDto> {
     let id = EncounterId(encounter_id);
     let e = ing.store.encounter(id)?;
@@ -1104,11 +843,8 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
     let duration = (end - start).max(1);
     let bucket_ms = (duration / TARGET_BUCKETS).max(MIN_BUCKET_MS);
 
-    // Raw graph entity names, resolved through inferred pet ownership and
-    // de-duplicated -- the graph doesn't know about pet merging (see
-    // `Ingest::link`'s doc comment), so a merged pet's raw name and its
-    // owner's raw name can both appear here naming the same effective
-    // entity.
+    // why: resolved through inferred pet ownership, de-duplicated --
+    // graph doesn't know about pet merging, could name the same entity twice
     let mut entities: Vec<String> = ing
         .entities_by_enc
         .get(&id)
@@ -1137,15 +873,13 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
             }
         }
         if ts.is_empty() {
-            continue; // healer or pure target -- nothing to plot as a dps bar
+            continue; // why: healer or pure target, nothing to plot
         }
         let buckets = bucket_series(&ts, &amt, start, end, bucket_ms);
         buckets_len = buckets_len.max(buckets.len());
         let total: u64 = amt.iter().sum();
         let kind = ing.encounters.entities.kind(name);
-        // State as of the fight's end (or `now`, for one still open) --
-        // see `Allegiance`'s doc comment for why this is a query, not a
-        // stored flag, and why a still-charmed mob reads as an ally here.
+        // why: as of the fight's end -- a query, not a stored flag; a still-charmed mob reads as ally
         let state = ing
             .timeline
             .state_at(sym.0, end)
@@ -1174,13 +908,10 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
     })
 }
 
-/// Every entity in the fight, their state, and a snapshot DPS reading, all
-/// as of `ts_ms` -- what clicking a point on the timeline shows.
+/// why: what clicking a timeline point shows -- every entity, state, and a snapshot DPS
 pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<EntityStateDto> {
     let id = EncounterId(encounter_id);
-    // See fight_timeline's matching comment: resolved through inferred pet
-    // ownership and de-duplicated, since the graph's raw entity list can
-    // name a merged pet and its owner separately.
+    // why: same as fight_timeline -- resolved through inferred pet ownership, de-duplicated
     let mut entities: Vec<String> = ing
         .entities_by_enc
         .get(&id)
@@ -1244,54 +975,27 @@ pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<Ent
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ClassConfigurationDto {
-    /// Classes confirmed for this configuration, alphabetical, always
-    /// exactly `classdetect::CLASS_COUNT` long -- see
-    /// `eqlp_session::classdetect::Detector::visits_by_resolved_configuration`'s
-    /// doc for why a shorter, partial set never reaches this DTO on its
-    /// own; above level 10 there's no such thing as a smaller real
-    /// configuration.
+    /// why: alphabetical, always exactly CLASS_COUNT long -- no smaller real configuration above level 10
     pub classes: Vec<String>,
-    /// How many distinct zone visits resolved to exactly this
-    /// configuration -- includes visits that only had partial evidence but
-    /// were unambiguously folded into this one. Not a percentage or a
-    /// confidence score -- membership in this model isn't graded, a
-    /// configuration either happened in a given visit or it didn't -- this
-    /// is just a plain count, so a loadout kept for one fight and a
-    /// loadout played all night are both visible, honestly sized.
+    /// why: plain count of visits resolving to this configuration, not a confidence score
     pub zone_visits: usize,
-    /// Effective player level observed across this configuration's own
-    /// zone visits -- `(lowest, highest)`, sampled at both each visit's
-    /// start *and* end (see `level_range_for`'s own doc for why both: a
-    /// `level.up` mid-visit is still this configuration's own evidence,
-    /// not just whatever level it started at). `None` if no `level.up`
-    /// line landed before any of them. A range, not one number: the same
-    /// configuration can be revisited at very different levels over time,
-    /// and swapping a class out drops the effective level with no log
-    /// line marking the drop itself -- see `Levels`'s doc in `ingest.rs`.
+    /// why: (lowest, highest) across zone visits from real level.up lines
+    /// inside them; None if no ding landed. A range since a class swap
+    /// drops effective level with no line marking it
     pub level_range: Option<(u8, u8)>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ClassConfigurationsDto {
     pub configurations: Vec<ClassConfigurationDto>,
-    /// Zone visits with real but incomplete class evidence that
-    /// subset-elimination couldn't unambiguously fold into any one
-    /// confirmed configuration -- see `visits_by_resolved_configuration`'s
-    /// doc. Reported as a plain count, not shown as configurations of
-    /// their own: above level 10 a 1- or 2-class loadout doesn't exist, so
-    /// these are genuinely unresolved, not a smaller real answer.
+    /// why: visits with incomplete evidence subset-elimination couldn't
+    /// fold in; a plain count, no smaller real configuration exists to show
     pub unresolved_visits: usize,
 }
 
-/// Every class configuration `name` has confirmed, across every zone visit
-/// they've ever played, most zone visits first, reconciled against the
-/// fixed-3-classes rule (see `ClassConfigurationsDto::unresolved_visits`'s
-/// doc). See `eqlp_session::classdetect`'s module doc for why this is a
-/// *list* of configurations rather than one rolling combination: a loadout
-/// used occasionally (kept for one specific fight, say) is just as real as
-/// whatever's played most, and collapsing to a single "current" answer is
-/// what was hiding it. Empty only if `name` has never landed a single
-/// unambiguous recognised cast.
+/// why: a list of configurations, not one rolling combination -- a
+/// rarely-used loadout is just as real as the most-played one; empty
+/// only if never landed a single unambiguous recognized cast
 pub fn class_configurations(ing: &Ingest, name: &str) -> ClassConfigurationsDto {
     let Some(sym) = ing.store.names.get(name) else {
         return ClassConfigurationsDto {
@@ -1318,26 +1022,11 @@ pub fn class_configurations(ing: &Ingest, name: &str) -> ClassConfigurationsDto 
     }
 }
 
-/// `(lowest, highest)` effective level across `visits`, from real
-/// `level.up` lines that fired *during* one of them (`Levels::between`) --
-/// never a boundary snapshot. An earlier version sampled `Levels::at` the
-/// instant each visit started and ended instead, on the assumption that
-/// "whatever the tracker last said" was a fair stand-in for a visit with
-/// no ding of its own. Checked against a real log and confirmed wrong: a
-/// config swap drops the effective level silently (see `Levels`' own
-/// doc), so the *start* sample routinely belongs to whatever different
-/// configuration was played right before this one, not this one --
-/// concretely, a visit that opened right after another trio dinged to 30
-/// reported `(18, 30)` for a configuration that, by its own real evidence,
-/// only ever actually climbed 11 through 18. 30 was never this
-/// configuration's level; it was the previous one's, still sitting in the
-/// tracker because nothing had re-dinged yet at the exact instant this
-/// visit opened.
-///
-/// This version trusts nothing but real dings that happened *inside* a
-/// visit's own window, so a visit with none contributes nothing (not a
-/// borrowed neighbor's value) -- honestly reflects "no evidence" as
-/// `None` overall rather than fabricating a number from outside it.
+/// why: real level.up lines fired inside the visit only, never a
+/// boundary snapshot -- an earlier version sampled Levels::at the visit
+/// boundary, confirmed wrong: a config swap drops effective level
+/// silently, so the start sample could belong to the previous
+/// configuration entirely. A visit with no ding contributes nothing.
 fn level_range_for(
     ing: &Ingest,
     visits: &[eqlp_session::classdetect::ZoneVisit],
@@ -1353,11 +1042,7 @@ fn level_range_for(
     Some((min, max))
 }
 
-/// Every zone visit that resolved to exactly `classes` under
-/// `class_configurations`'s same reconciliation, for drilling from one
-/// configuration row down to the specific visits (and from there,
-/// `list_encounters`, the fights) that make it up. Empty if `classes`
-/// doesn't match any configuration `name` actually has.
+/// why: drills from one configuration row down to its specific visits; empty if no match
 pub fn zone_visits_for_configuration(
     ing: &Ingest,
     name: &str,
@@ -1394,9 +1079,7 @@ mod level_range_tests {
         ing
     }
 
-    /// A ding still inside the visit that fired it is real evidence for
-    /// that visit, whether or not a later visit exists to happen to
-    /// re-sample it.
+    /// why: a ding inside the visit that fired it is real evidence, regardless of what's later
     #[test]
     fn a_mid_visit_ding_is_captured() {
         let text = "\
@@ -1410,13 +1093,7 @@ mod level_range_tests {
         assert_eq!(range, (46, 46));
     }
 
-    /// The actual bug this replaced boundary-sampling to fix: a level
-    /// seeded (or dinged) *before* a visit ever started must not leak
-    /// into that visit's own range just because nothing had re-dinged
-    /// yet by the instant it opened -- that's a different configuration's
-    /// level, not this one's. A real character arriving already
-    /// mid-progression (seeded at 45, not built up from a fabricated
-    /// chain of 44 prior dings) is exactly that case.
+    /// why: real bug fix -- a level seeded before the visit started must not leak in
     #[test]
     fn a_level_from_before_the_visit_started_does_not_leak_in() {
         let text = "\
@@ -1433,8 +1110,7 @@ mod level_range_tests {
         );
     }
 
-    /// A visit with no ding of its own contributes nothing -- not the
-    /// seeded/inherited level from before it started.
+    /// why: a visit with no ding contributes nothing, not an inherited level
     #[test]
     fn a_visit_with_no_ding_of_its_own_contributes_no_evidence() {
         let text = "[Tue Jul 28 15:00:00 2026] You have entered The Estate of Unrest.\n";
@@ -1443,12 +1119,7 @@ mod level_range_tests {
         assert_eq!(level_range_for(&ing, &visits), None);
     }
 
-    /// The real bug, reproduced: two zone visits, the first dinged to 30,
-    /// the second (a genuinely different configuration's own visit)
-    /// dinged 11 through 18 -- matching a real character's own log, where
-    /// swapping in a fresh, unleveled class drops the effective level with
-    /// no line marking the drop itself (`Levels`' own doc). The second
-    /// visit's own range must be exactly its own dings, never 30.
+    /// why: real bug reproduced -- a later visit's own dings must never inherit an earlier one's
     #[test]
     fn a_ding_from_an_earlier_unrelated_visit_never_leaks_into_a_later_one() {
         let text = "\
@@ -1465,7 +1136,7 @@ mod level_range_tests {
         let lines: Vec<&[u8]> = text.lines().map(str::as_bytes).collect();
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        // Befallen (index 0) is the only zone visit here.
+        // why: Befallen (index 0) is the only zone visit here
         let visits: Vec<ZoneVisit> = vec![Some(0)];
         let range =
             level_range_for(&ing, &visits).expect("3 real dings happened inside this visit");
@@ -1483,10 +1154,7 @@ mod list_encounters_paging_tests {
     use crate::ingest::backfill_lines;
     use crate::parser::build_engine;
 
-    /// 6 distinct, real-shaped kills (the exact "You hit X ... by Y." /
-    /// "You have slain X!" pattern confirmed elsewhere against a real
-    /// log -- see xp_tests::KILL_XP), one minute apart, each its own
-    /// target so paging can be told apart by name alone.
+    /// why: 6 real-shaped kills, one minute apart, distinct targets for paging by name
     fn six_kills() -> Ingest {
         let mut text = String::new();
         for i in 1..=6 {
@@ -1507,7 +1175,7 @@ mod list_encounters_paging_tests {
         let ing = six_kills();
         let page = list_encounters(&ing, None, 0, 3);
         assert_eq!(page.len(), 3);
-        // target 6 died last -- newest first means it's page one.
+        // why: target 6 died last, newest first means it's page one
         assert_eq!(page[0].target, "a target 6");
         assert_eq!(page[1].target, "a target 5");
         assert_eq!(page[2].target, "a target 4");
@@ -1541,8 +1209,7 @@ mod list_encounters_paging_tests {
         assert_eq!(list_encounters(&ing, None, 0, usize::MAX).len(), 6);
     }
 
-    /// Two adjacent pages, concatenated, must equal one page big enough
-    /// to hold both -- no fight lost or duplicated at the seam.
+    /// why: two adjacent pages concatenated must equal one big page, no fight lost or duplicated
     #[test]
     fn two_pages_back_to_back_cover_the_same_ground_as_one_big_page() {
         let ing = six_kills();
@@ -1561,11 +1228,8 @@ mod outcome_tests {
     use crate::ingest::backfill_lines;
     use crate::parser::build_engine;
 
-    /// A fight with nothing after its last line stays *open* (`expire`
-    /// only runs from `tick`, and `tick` only trusts the log's own clock,
-    /// which only moves forward on a real backfilled line) -- so every
-    /// case here gets one harmless trailing line, well past the graph's
-    /// 10s idle timeout, to force the real idle-close before querying.
+    /// why: a fight stays open without a later line to force idle-close;
+    /// every case gets one trailing filler line past the 10s idle timeout
     fn ingest_from(text: &str) -> Ingest {
         let mut text = text.to_string();
         text.push_str("[Tue Jul 28 15:01:30 2026] You hit a filler target for 1 points of fire damage by Burst of Flame.\n");
@@ -1577,8 +1241,7 @@ mod outcome_tests {
         ing
     }
 
-    /// The trailing filler line (see `ingest_from`) is its own encounter --
-    /// find the one under test by name rather than assuming position.
+    /// why: the filler line is its own encounter -- find by name not position
     fn find<'a>(list: &'a [EncounterDto], target: &str) -> &'a EncounterDto {
         list.iter()
             .find(|e| e.target == target)
@@ -1597,8 +1260,7 @@ mod outcome_tests {
         assert!(!e.wiped);
     }
 
-    /// The bug: `death.you_died` used to land in the same slain-name list
-    /// as a real target kill, so dying to a mob that lived read as a kill.
+    /// why: death.you_died used to land in the same slain list as a real kill
     #[test]
     fn dying_to_a_mob_that_survives_is_wiped_not_slain() {
         let ing = ingest_from(
@@ -1621,13 +1283,8 @@ mod ability_mitigation_dto_tests {
     use crate::ingest::backfill_lines;
     use crate::parser::build_engine;
 
-    /// The real gap this whole feature needed: `summarize` (what
-    /// `get_combat_summary`/the AllyTable expand panel actually reads)
-    /// queries `by_ability` with `.damage()`, which excludes
-    /// `EventKind::Miss` outright -- so a mitigated swing's counts must
-    /// be merged in from a *second*, `.kind(EventKind::Miss)` query, or
-    /// they never reach the DTO at all, no matter how correct the store
-    /// side is.
+    /// why: `.damage()` excludes Miss outright -- a mitigated swing must
+    /// merge in from a second `.kind(EventKind::Miss)` query
     #[test]
     fn a_mitigated_swing_reaches_the_ability_dto_on_the_actor_s_own_row() {
         let engine = build_engine().expect("pack builds");
@@ -1656,9 +1313,7 @@ mod ability_mitigation_dto_tests {
         assert_eq!(punch.parried, 0);
     }
 
-    /// Same point, for the team-aggregate path (`actor: None`), which
-    /// also has to subtract the fight's own target's mitigated swings the
-    /// same way it already subtracts their damage.
+    /// why: team-aggregate path must subtract the target's mitigated swings too
     #[test]
     fn team_aggregate_excludes_the_target_s_own_mitigated_swings() {
         let engine = build_engine().expect("pack builds");
@@ -1666,8 +1321,7 @@ mod ability_mitigation_dto_tests {
         let lines: Vec<&[u8]> = vec![
             b"[Tue Jul 28 15:01:00 2026] You punch a target for 5 points of damage.",
             b"[Tue Jul 28 15:01:01 2026] You try to punch a target, but a target blocks!",
-            // The target's own swing, dodged by the player -- must not
-            // pollute the *team's* Punch row.
+            // why: the target's own swing, dodged -- must not pollute the team's Punch row
             b"[Tue Jul 28 15:01:02 2026] a target tries to punch YOU, but YOU dodge!",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
