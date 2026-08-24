@@ -5,7 +5,7 @@
   import * as Select from '$lib/components/ui/select';
   import { spells, spellEffects, spellStackingGroups } from '$lib/stores/gamedata';
   import { activeClasses, spellRanks, damageSpells } from '$lib/stores/character';
-  import { spellLineOverrides, openSpellLinePriority } from '$lib/stores/spellLinePriority';
+  import { spellLineOverrides, spellLineCustomMembership, openSpellLinePriority } from '$lib/stores/spellLinePriority';
   import { ICON_BASE, ALL_CLASSES, MAX_CHARACTER_LEVEL } from '$lib/character/constants';
   import {
     usableClasses, isUsable, usableByClasses, isBuff, isSoloTarget, isTeamTarget,
@@ -127,7 +127,9 @@
     const count = emptySlotCount(bookIdx);
     if (count <= 0) return;
     const pool = $spells.filter((s) => isUsable(s) && isBuff(s) && isSoloTarget(s));
-    const picks = pickBuffSuggestions(pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, $spellLineOverrides);
+    const picks = pickBuffSuggestions(
+      pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, $spellLineOverrides, $spellLineCustomMembership,
+    );
     fillEmptySlots(bookIdx, picks);
   }
 
@@ -135,7 +137,9 @@
     const count = emptySlotCount(bookIdx);
     if (count <= 0) return;
     const pool = $spells.filter((s) => isUsable(s) && isBuff(s) && isTeamTarget(s));
-    const picks = pickBuffSuggestions(pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, $spellLineOverrides);
+    const picks = pickBuffSuggestions(
+      pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, $spellLineOverrides, $spellLineCustomMembership,
+    );
     fillEmptySlots(bookIdx, picks);
   }
 
@@ -157,7 +161,8 @@
     if (count <= 0) return;
     const damageSpellNames = new Set($damageSpells.map((s) => s.name));
     const supportPicks = pickSupportSuggestions(
-      $spells, $spellEffects, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, damageSpellNames, $spellLineOverrides,
+      $spells, $spellEffects, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, damageSpellNames,
+      $spellLineOverrides, $spellLineCustomMembership,
     );
     fillEmptySlots(bookIdx, supportPicks);
   }

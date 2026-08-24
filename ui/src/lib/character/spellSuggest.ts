@@ -108,10 +108,26 @@ export function isIllusion(s: SpellDto): boolean {
   return s.categories.includes('Illusions') || s.slots.some((sl) => /^Illusion/i.test(sl.effect));
 }
 
-/** why: tracks what a suggestion pass can't repeat -- same spell line,
- * a second Illusion, or a real stacking-group conflict (see
- * stackingdata.rs's own doc for why that last one only covers 48
- * legacy-carryover spells, not a general rule). */
+/** why: real correction -- automatic grouping (spellLineKey) is deliberately
+ * conservative (same wiki description only), so it can't know that two
+ * differently-flavored, cross-class spells overwrite each other in the
+ * real game (Slow from one class vs. another's equivalent) -- there's no
+ * scraped data that proves that generically, and guessing by "similar
+ * effect" risks false merges (Tash and Malosi are both resist-decrease
+ * debuffs but are NOT the same line and must never be merged automatically).
+ * So this is 100% a manual assertion: a spell name mapped here is pulled
+ * out of its natural line and grouped under the target line's key instead,
+ * wherever the player has said on the priority settings page "these
+ * overwrite each other." Never guessed, never inferred. */
+export function effectiveLineKey(s: SpellDto, customMembership: Record<string, string>): string {
+  return customMembership[s.name] ?? spellLineKey(s);
+}
+
+/** why: tracks what a suggestion pass can't repeat -- same spell line
+ * (natural or a manually-asserted cross-class merge, see
+ * effectiveLineKey), a second Illusion, or a real stacking-group
+ * conflict (see stackingdata.rs's own doc for why that last one only
+ * covers 48 legacy-carryover spells, not a general rule). */
 export interface ExclusivityContext {
   usedLineKeys: Set<string>;
   hasIllusion: boolean;
@@ -122,15 +138,21 @@ export function conflictsWithExisting(
   s: SpellDto,
   ctx: ExclusivityContext,
   groups: Record<string, number>,
+  customMembership: Record<string, string> = {},
 ): boolean {
-  if (ctx.usedLineKeys.has(spellLineKey(s))) return true;
+  if (ctx.usedLineKeys.has(effectiveLineKey(s, customMembership))) return true;
   if (ctx.hasIllusion && isIllusion(s)) return true;
   const g = groups[s.name];
   return g != null && ctx.usedStackingGroups.has(g);
 }
 
-function commit(s: SpellDto, ctx: ExclusivityContext, groups: Record<string, number>): void {
-  ctx.usedLineKeys.add(spellLineKey(s));
+function commit(
+  s: SpellDto,
+  ctx: ExclusivityContext,
+  groups: Record<string, number>,
+  customMembership: Record<string, string> = {},
+): void {
+  ctx.usedLineKeys.add(effectiveLineKey(s, customMembership));
   if (isIllusion(s)) ctx.hasIllusion = true;
   const g = groups[s.name];
   if (g != null) ctx.usedStackingGroups.add(g);
@@ -140,12 +162,13 @@ export function buildExclusivityContext(
   existingNames: string[],
   byName: Map<string, SpellDto>,
   groups: Record<string, number>,
+  customMembership: Record<string, string> = {},
 ): ExclusivityContext {
   const ctx: ExclusivityContext = { usedLineKeys: new Set(), hasIllusion: false, usedStackingGroups: new Set() };
   for (const name of existingNames) {
     const s = byName.get(name);
     if (s) {
-      commit(s, ctx, groups);
+      commit(s, ctx, groups, customMembership);
     } else {
       // why: catalog lookup miss shouldn't lose the dedup entirely -- still block an exact-shape repeat by name
       ctx.usedLineKeys.add(lineKey(name));
@@ -166,37 +189,60 @@ export interface SpellLine {
   members: SpellDto[];
 }
 
-export function allSpellLines(spells: SpellDto[]): SpellLine[] {
+function byDefaultLevelDesc(a: SpellDto, b: SpellDto): number {
+  const la = Math.max(0, ...a.classes.map((c) => c.level ?? 0));
+  const lb = Math.max(0, ...b.classes.map((c) => c.level ?? 0));
+  return lb - la;
+}
+
+function lineLabel(key: string, members: SpellDto[]): string {
+  // why: the line's own description (digits already stripped by
+  // spellLineKey) reads better as a label than a joined name list --
+  // "Causes your opponent to fall into an enchanted sleep…" identifies
+  // the line at a glance, member names show in the detail panel instead.
+  return members[0]?.description ? key : members.map((s) => s.name).join(' / ');
+}
+
+/** why: every spell sharing `key`'s effective line, any size (including
+ * a not-yet-merged singleton) -- used to open a spell's line detail
+ * panel directly from a name search, not just from allSpellLines' own
+ * 2+-member browse list (a brand new custom merge always starts from
+ * at least one side that has nothing to browse to yet). */
+export function membersOfLine(
+  spells: SpellDto[],
+  key: string,
+  customMembership: Record<string, string> = {},
+): SpellDto[] {
+  return spells.filter((s) => effectiveLineKey(s, customMembership) === key).sort(byDefaultLevelDesc);
+}
+
+export function allSpellLines(spells: SpellDto[], customMembership: Record<string, string> = {}): SpellLine[] {
   const groups = new Map<string, SpellDto[]>();
   for (const s of spells) {
-    const key = spellLineKey(s);
+    const key = effectiveLineKey(s, customMembership);
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(s);
   }
   const lines: SpellLine[] = [];
   for (const [key, members] of groups) {
     if (members.length < 2) continue;
-    const sorted = [...members].sort((a, b) => {
-      const la = Math.max(0, ...a.classes.map((c) => c.level ?? 0));
-      const lb = Math.max(0, ...b.classes.map((c) => c.level ?? 0));
-      return lb - la;
-    });
-    // why: the line's own description (digits already stripped by
-    // spellLineKey) reads better as a label than a joined name list --
-    // "Causes your opponent to fall into an enchanted sleep…" identifies
-    // the line at a glance, member names show in the detail panel instead.
-    const label = sorted[0].description ? key : sorted.map((s) => s.name).join(' / ');
-    lines.push({ key, label, members: sorted });
+    const sorted = [...members].sort(byDefaultLevelDesc);
+    lines.push({ key, label: lineLabel(key, sorted), members: sorted });
   }
   return lines.sort((a, b) => a.label.localeCompare(b.label));
 }
 
 /** why: an override's array index if the player has manually ranked
- * this spell's line and included this spell; else the same -level
- * fallback sortForSuggestion always used, so an untouched line's order
- * is unchanged. Offset so overridden entries (always small indices)
- * naturally sort ahead of any unconfigured member of a partially-ranked line. */
-export function priorityRank(s: SpellDto, overrides: Record<string, string[]>): number {
-  const order = overrides[spellLineKey(s)];
+ * this spell's (effective, post-merge) line and included this spell;
+ * else the same -level fallback sortForSuggestion always used, so an
+ * untouched line's order is unchanged. Offset so overridden entries
+ * (always small indices) naturally sort ahead of any unconfigured
+ * member of a partially-ranked line. */
+export function priorityRank(
+  s: SpellDto,
+  overrides: Record<string, string[]>,
+  customMembership: Record<string, string> = {},
+): number {
+  const order = overrides[effectiveLineKey(s, customMembership)];
   if (order) {
     const idx = order.indexOf(s.name);
     if (idx >= 0) return idx;
@@ -222,13 +268,14 @@ function sortForSuggestion(
   activeClasses: string[],
   preferSoloTarget: boolean,
   overrides: Record<string, string[]>,
+  customMembership: Record<string, string>,
 ): SortKey {
   const usable = usableClasses(s.classes);
   const known = usable.filter((c) => activeClasses.includes(c.class));
   const pool = known.length ? known : usable;
   const bestClass = pool.length ? [...pool].sort((a, b) => a.class.localeCompare(b.class))[0].class : '';
   const soloTier = preferSoloTarget ? (isSoloTarget(s) ? 0 : 1) : 1;
-  return [soloTier, known.length ? 0 : 1, priorityRank(s, overrides), bestClass, s.name];
+  return [soloTier, known.length ? 0 : 1, priorityRank(s, overrides, customMembership), bestClass, s.name];
 }
 
 function compareSortKeys(a: SortKey, b: SortKey): number {
@@ -250,23 +297,24 @@ export function pickBuffSuggestions(
   count: number,
   groups: Record<string, number>,
   overrides: Record<string, string[]> = {},
+  customMembership: Record<string, string> = {},
 ): string[] {
   if (count <= 0) return [];
   const candidates = pool.filter((s) => usableByClasses(s.classes, activeClasses));
   const byName = new Map(candidates.map((s) => [s.name, s]));
-  const ctx = buildExclusivityContext(existingBookNames, byName, groups);
+  const ctx = buildExclusivityContext(existingBookNames, byName, groups, customMembership);
   const sorted = [...candidates].sort((a, b) =>
     compareSortKeys(
-      sortForSuggestion(a, activeClasses, true, overrides),
-      sortForSuggestion(b, activeClasses, true, overrides),
+      sortForSuggestion(a, activeClasses, true, overrides, customMembership),
+      sortForSuggestion(b, activeClasses, true, overrides, customMembership),
     ),
   );
   const picked: string[] = [];
   for (const s of sorted) {
     if (picked.length >= count) break;
-    if (conflictsWithExisting(s, ctx, groups)) continue;
+    if (conflictsWithExisting(s, ctx, groups, customMembership)) continue;
     picked.push(s.name);
-    commit(s, ctx, groups);
+    commit(s, ctx, groups, customMembership);
   }
   return picked;
 }
@@ -287,10 +335,11 @@ export function pickSupportSuggestions(
   groups: Record<string, number>,
   damageSpellNames: Set<string>,
   overrides: Record<string, string[]> = {},
+  customMembership: Record<string, string> = {},
 ): string[] {
   if (count <= 0) return [];
   const byName = new Map(pool.map((s) => [s.name, s]));
-  const ctx = buildExclusivityContext(existingBookNames, byName, groups);
+  const ctx = buildExclusivityContext(existingBookNames, byName, groups, customMembership);
   const candidates = pool.filter(
     (s) =>
       usableByClasses(s.classes, activeClasses) &&
@@ -302,16 +351,16 @@ export function pickSupportSuggestions(
     const tb = effects[b.id]?.tags.some((t) => SUPPORT_TAGS.has(t)) ? 0 : 1;
     if (ta !== tb) return ta - tb;
     return compareSortKeys(
-      sortForSuggestion(a, activeClasses, false, overrides),
-      sortForSuggestion(b, activeClasses, false, overrides),
+      sortForSuggestion(a, activeClasses, false, overrides, customMembership),
+      sortForSuggestion(b, activeClasses, false, overrides, customMembership),
     );
   });
   const picked: string[] = [];
   for (const s of sorted) {
     if (picked.length >= count) break;
-    if (conflictsWithExisting(s, ctx, groups)) continue;
+    if (conflictsWithExisting(s, ctx, groups, customMembership)) continue;
     picked.push(s.name);
-    commit(s, ctx, groups);
+    commit(s, ctx, groups, customMembership);
   }
   return picked;
 }
