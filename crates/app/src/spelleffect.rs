@@ -1,73 +1,43 @@
-//! Derived spell mechanics: duration (normalized to seconds), damage/heal/
-//! buff/debuff/control-effect components, and a best-effort category tag
-//! -- computed from `spelldata::Spell`'s own raw fields (`duration`,
-//! `slots`, `description`, `spell_type`, `target_type`), not a separate
-//! scrape or a field baked into the catalog pack itself. Same relationship
-//! to `spelldata` that `aadata::relevant_stats`/`cost_modifiers` have to
-//! `aadata::Aa` -- pure derived interpretation, kept apart from the raw
-//! scraped data so a bad guess here never corrupts the catalog itself.
+//! why: derived spell mechanics (duration, damage/heal/buff/debuff/
+//! control components, category tags), computed from `spelldata::Spell`'s
+//! raw fields, not a separate scrape -- pure interpretation, kept apart
+//! from the raw data so a bad guess never corrupts the catalog itself.
 //!
-//! Two real, distinct sources feed the same output, in priority order:
+//! Two sources, in priority order:
+//! 1. **`slots`** -- structured effect rows, reliable when present, but
+//!    genuinely absent for some spells (Fire Bolt, an obvious nuke, has none).
+//! 2. **`description`** -- free prose fallback only when `slots` has
+//!    nothing damage/heal-shaped; 191 real Detrimental spells with empty
+//!    slots still say "damage" in their own description.
 //!
-//! 1. **`slots`** -- structured wiki-table effect rows ("Decrease
-//!    Hitpoints by 20 per tick", "Increase AC by 34", "Mesmerize
-//!    (2/55)", ...). Reliable when present, but genuinely absent for a
-//!    real fraction of spells (confirmed: Fire Bolt, an obvious 65-damage
-//!    nuke, has an empty `slots` list).
-//! 2. **`description`** -- free prose, used as a fallback only when
-//!    `slots` has nothing damage/heal-shaped to offer. Confirmed against
-//!    the real catalog: 191 `Detrimental`-typed spells with empty
-//!    `slots` still say "damage" somewhere in their own description text
-//!    ("causing 65 damage", "doing 30 damage every six seconds for
-//!    54s", "healing between 310 and 480 hit points", ...) -- exactly
-//!    the gap `slots` alone leaves.
-//!
-//! Neither source is exhaustive. A spell with no `slots` match and no
-//! recognized description phrasing gets no damage/heal component at
-//! all -- an honest gap, not a wrong number. Every parsed field also
-//! keeps the original raw text it came from, so a wrong guess is always
-//! checkable against what the wiki actually said.
+//! Neither source is exhaustive -- an unmatched spell gets no component
+//! at all, an honest gap. Every parsed field keeps its raw source text.
 
 use crate::spelldata::Spell;
 use regex::Regex;
 use serde::Serialize;
 use std::sync::OnceLock;
 
-/// One EQ tick, in seconds -- the unit `slots` text uses for DoT/HoT rate
-/// ("Decrease Hitpoints by 20 per tick") and some raw `duration` strings
-/// ("4 ticks"). Standard across classic-EQ-derived clients; not itself
-/// scraped from anywhere specific to this fork, so treat any tick-based
-/// number this produces as approximate, same caveat every other
-/// classic-EQ-assumed constant in this app already carries.
+/// why: one EQ tick in seconds, genre-standard, not confirmed for this fork
 const TICK_SECS: f64 = 6.0;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SpellDuration {
-    /// `None` for Permanent (no expiry) or when nothing here could parse
-    /// the raw string at all. Otherwise the low end -- equal to
-    /// `max_secs` unless the source string was a level-scaled range
-    /// ("3 minutes @L1 to 25 minutes @L9").
+    /// why: None for Permanent or unparseable; equal to max_secs unless leveled range
     pub min_secs: Option<f64>,
     pub max_secs: Option<f64>,
     pub is_instant: bool,
     pub is_permanent: bool,
-    /// The catalog's own string, always kept -- every number above is a
-    /// guess at what it means, this is what it actually said.
+    /// why: catalog's own string, always kept -- checkable against what it actually said
     pub raw: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct EffectComponent {
-    /// The affected stat/resource, as the wiki table names it
-    /// ("Hitpoints", "HP", "AC", "STR", "Movement Speed", "Poison
-    /// Counter", ...) -- not normalized against a fixed enum, since the
-    /// real vocabulary is large (see this module's own doc) and a raw
-    /// name is more honest than forcing it into a smaller set this app
-    /// would have to keep growing by hand.
+    /// why: wiki's own stat name, not normalized against a fixed enum -- vocabulary too large
     pub stat: String,
     pub direction: String, // "increase" | "decrease"
-    /// Whether `min_amount`/`max_amount` is a per-tick DoT/HoT rate
-    /// (`"... by N per tick"`) rather than a flat/instant amount.
+    /// why: whether the amount is a per-tick DoT/HoT rate vs a flat/instant one
     pub per_tick: bool,
     pub unit: String, // "flat" | "percent"
     pub min_amount: Option<f64>,
@@ -78,27 +48,16 @@ pub struct EffectComponent {
 #[derive(Debug, Clone, Serialize)]
 pub struct SpellEffects {
     pub duration: SpellDuration,
-    /// From `slots` -- see this module's own doc for why `description`-
-    /// derived damage/heal never becomes one of these: prose doesn't
-    /// reliably carry which *stat* changed the way a table row does, only
-    /// the number, which `description_damage`/`description_heal` below
-    /// carry on their own instead.
+    /// why: from `slots`; prose doesn't reliably carry which stat changed,
+    /// only the number, which description_damage/heal carry instead
     pub components: Vec<EffectComponent>,
-    /// Real control-effect labels found -- any of "Mesmerize", "Charm",
-    /// "Fear", "Stun", "Root". A spell can have none, one, or (rarely)
-    /// more than one.
+    /// why: found control labels, a spell can have none, one, or several
     pub control: Vec<String>,
-    /// Set only when `components` has no Hitpoints/HP-family entry (i.e.
-    /// `slots` didn't carry a usable damage number) and `description`'s
-    /// own prose matched one of this module's known damage phrasings.
-    /// `is_over_time` mirrors `EffectComponent::per_tick`'s own meaning
-    /// -- "every N seconds for M seconds" phrasing, not a flat hit.
+    /// why: set only when slots had no HP entry and description matched
+    /// a known phrasing; is_over_time mirrors per_tick's meaning
     pub description_damage: Option<DescriptionAmount>,
     pub description_heal: Option<DescriptionAmount>,
-    /// Best-effort category pills for the Spells-by-class view's own
-    /// "type" column -- see `categorize`'s own doc for exactly how these
-    /// are decided. A spell can carry several at once (a DoT that also
-    /// debuffs STR is legitimately both "Damage over Time" and "Debuff").
+    /// why: best-effort category pills, several can apply at once (not mutually exclusive)
     pub tags: Vec<String>,
 }
 
@@ -107,11 +66,7 @@ pub struct DescriptionAmount {
     pub min_amount: f64,
     pub max_amount: f64,
     pub is_over_time: bool,
-    /// How many times/targets the prose itself claims, when it says so
-    /// ("three waves of 125 damage, up to a maximum of 4 targets") --
-    /// `None` when the phrasing doesn't state one. Never guessed from
-    /// the AE/target_type field; only ever from the prose actually
-    /// saying a number.
+    /// why: repetitions the prose itself states, never guessed from target_type
     pub repetitions: Option<u32>,
 }
 
@@ -153,12 +108,8 @@ fn unit_secs(unit: &str) -> f64 {
     }
 }
 
-/// One non-range, non-level-scaled duration fragment ("2 hours 30
-/// minutes", "1 Min 30 Sec", "4 ticks", "36-40 ticks") -- sums every
-/// `<number><unit>` token found, handling a same-unit range ("N-N
-/// ticks") as its own case first since the plain unit scan would
-/// otherwise treat the range's two numbers as two *different* units'
-/// worth of time added together.
+/// why: sums every `<number><unit>` token; a same-unit range ("N-N
+/// ticks") handled first, else the plain scan would add both as separate units
 fn parse_duration_fragment(s: &str) -> Option<f64> {
     if let Some(caps) = range_ticks_re().captures(s) {
         let hi: f64 = caps[2].parse().ok()?;
@@ -193,9 +144,8 @@ pub fn parse_duration(raw: Option<&str>) -> SpellDuration {
         is_permanent: false,
         raw: Some(raw.to_string()),
     };
-    // `starts_with`/`contains`, not an exact match -- real variants exist
-    // ("Instant (until zoning/recast)", "Unlimited" alongside the plain
-    // "Permanent") that an exact-match check would miss.
+    // why: starts_with/contains not exact match -- real variants like
+    // "Instant (until zoning/recast)" would miss an exact check
     if trimmed.to_ascii_lowercase().starts_with("instant") {
         return SpellDuration {
             min_secs: Some(0.0),
@@ -214,10 +164,8 @@ pub fn parse_duration(raw: Option<&str>) -> SpellDuration {
             raw: Some(raw.to_string()),
         };
     }
-    // Level-scaled range: "<part> @L<n> to <part> @L<n>" -- split on the
-    // first " to " once "@L" has proven this is that shape (a plain
-    // "N hour N minutes" never contains "@L", so this never misfires on
-    // an ordinary combined-unit duration).
+    // why: leveled range shape, "@L" proves it so this never misfires on
+    // an ordinary combined-unit duration
     if trimmed.contains("@L") {
         if let Some(idx) = trimmed.find(" to ") {
             let (left, right) = trimmed.split_at(idx);
@@ -232,8 +180,7 @@ pub fn parse_duration(raw: Option<&str>) -> SpellDuration {
                 raw: Some(raw.to_string()),
             };
         }
-        // A single "@L" with no range ("7 minutes @L60") -- strip and
-        // parse the one value.
+        // why: single "@L" no range -- strip and parse the one value
         let stripped = at_level_re().replace_all(trimmed, "");
         let secs = parse_duration_fragment(&stripped);
         return SpellDuration {
@@ -244,10 +191,8 @@ pub fn parse_duration(raw: Option<&str>) -> SpellDuration {
             raw: Some(raw.to_string()),
         };
     }
-    // "H:MM:SS (H:MM:SS)" or "H:MM:SS" or "MM:SS" -- the first H:M:S is
-    // the primary value; a parenthetical second one (a buffed/alternate
-    // duration the wiki table also lists) is left in `raw` but not
-    // separately parsed.
+    // why: first H:M:S is the primary value; a parenthetical alternate
+    // duration stays in `raw`, not separately parsed
     if let Some(caps) = hms_re().captures(trimmed) {
         let a: f64 = caps[1].parse().ok().unwrap_or(0.0);
         let b: f64 = caps[2].parse().ok().unwrap_or(0.0);
@@ -331,12 +276,7 @@ fn stun_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"(?i)^(stun\b|spinstun)").unwrap())
 }
 
-/// One `slots` row -> either a stat component or a control-effect label.
-/// `None` for a row this module doesn't recognize at all (a real
-/// possibility -- the wiki's slot vocabulary is large; see this module's
-/// own doc) -- the row's text isn't lost, `EffectComponent::raw` on a
-/// recognized row keeps it, and an unrecognized row is simply absent
-/// from both `components` and `control` rather than guessed at.
+/// why: None for an unrecognized row -- absent from both lists rather than guessed at
 enum SlotEffect {
     Component(EffectComponent),
     Control(&'static str),
@@ -360,11 +300,8 @@ fn parse_slot(raw: &str) -> Option<SlotEffect> {
 
 // ---------------------------------------------------------------- description fallback
 
-// Tried in order (see description_damage/description_heal below), ranges
-// and over-time phrasings before the plain "N damage" catch-alls, so e.g.
-// "doing 30 damage every six seconds for 54s" doesn't get short-circuited
-// by a looser "N damage" pattern matching just the "30" and losing the
-// DoT/duration context.
+// why: ranges/over-time tried before plain "N damage" catch-alls, else a
+// looser pattern would short-circuit and lose the DoT/duration context
 fn desc_between_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r"(?i)between (\d+) and (\d+) (?:hit points|damage)").unwrap())
@@ -375,11 +312,7 @@ fn desc_waves_re() -> &'static Regex {
 }
 fn desc_over_time_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    // Lazy `[a-z\s]*?` between the number and "every" -- covers whatever
-    // noun sits there ("damage every", "hit points every", or nothing at
-    // all, "healing for 90 every ..."), rather than hardcoding just
-    // "hit points" and missing the (real, common) "N damage every..."
-    // shape entirely.
+    // why: lazy match covers whatever noun sits before "every", not just "hit points"
     RE.get_or_init(|| {
         Regex::new(r"(?i)(\d+)[a-z\s]*?\bevery\b\s+[a-z0-9 ]+?\s*(?:seconds?|secs?)").unwrap()
     })
@@ -495,11 +428,8 @@ fn description_heal(desc: &str) -> Option<DescriptionAmount> {
 
 const HP_STATS: &[&str] = &["hitpoints", "hit points", "hp", "current hit points"];
 
-/// Best-effort category pills -- combines `components`/`control` (from
-/// `slots`, when present) with `spell_type`/`target_type` (always
-/// present) and the description fallback (when `slots` had nothing
-/// HP-shaped). A spell can carry several tags at once; none of them are
-/// mutually exclusive the way a single "type" enum would force.
+/// why: combines slots-derived components/control with spell_type/
+/// target_type and the description fallback; not mutually exclusive
 fn categorize(
     components: &[EffectComponent],
     control: &[String],
@@ -561,10 +491,7 @@ fn categorize(
         tags.push("Snare".to_string());
     }
 
-    // Generic Buff/Debuff -- only when nothing more specific above
-    // already applies, so a DoT that also debuffs STR reads as "Damage
-    // over Time" + (no redundant bare "Debuff" unless it needs one to
-    // carry the fact at all).
+    // why: only when nothing more specific applies -- avoids a redundant bare "Debuff"
     if tags.is_empty() {
         match spell.spell_type.as_deref() {
             Some(t) if t.eq_ignore_ascii_case("beneficial") => tags.push("Buff".to_string()),
@@ -575,7 +502,7 @@ fn categorize(
     tags
 }
 
-/// Everything derived for one catalog spell -- see this module's own doc.
+/// why: everything derived for one catalog spell
 pub fn effects_for(spell: &Spell) -> SpellEffects {
     let duration = parse_duration(spell.duration.as_deref());
 
@@ -627,12 +554,8 @@ pub struct SpellEffectsEntry {
 
 static ALL_EFFECTS: OnceLock<Vec<SpellEffectsEntry>> = OnceLock::new();
 
-/// `effects_for` over the whole catalog, computed once and cached -- the
-/// derived data is a pure function of the (static, baked-in) catalog, so
-/// there's nothing that would make a cached copy stale for the life of
-/// the process. The Spells-by-class view's "type" column and the spell
-/// detail panel both read from this same list, keyed by `id`, rather
-/// than each calling `effects_for` per spell per render.
+/// why: computed once and cached -- pure function of the static catalog,
+/// never stale; two consumers read this list keyed by id rather than re-deriving
 pub fn all_effects() -> &'static [SpellEffectsEntry] {
     ALL_EFFECTS.get_or_init(|| {
         crate::spelldata::spells()
@@ -731,8 +654,7 @@ mod tests {
         ));
     }
 
-    /// Fire Bolt has empty `slots` -- this is the real case the
-    /// description fallback exists for.
+    /// why: Fire Bolt has empty slots -- the real case the fallback exists for
     #[test]
     fn fire_bolt_gets_its_damage_number_from_description_not_slots() {
         let dmg =
@@ -814,26 +736,10 @@ mod tests {
         assert!(effects.tags.contains(&"Damage over Time".to_string()));
     }
 
-    /// Coverage check against the *entire* real catalog -- this one's own
-    /// history, not just a hypothetical: it used to assert a >50-spell
-    /// population and a >15% description-fallback match rate, both real
-    /// against the catalog *as scraped at the time*. A fresh re-scrape
-    /// (re-run deliberately, per the user's own direct ask) found the
-    /// wiki's own `slots` data had gotten dramatically more complete
-    /// since then -- confirmed directly, not assumed: the *entire*
-    /// catalog now has exactly 2 slotless spells total (both
-    /// Detrimental), down from 50+. That's a real improvement in the
-    /// underlying data (`slots`-based parsing, not this module's weaker
-    /// description-text fallback, now covers nearly everything), not a
-    /// regression in this module -- `description_damage` itself is
-    /// unchanged and still covered directly by the hand-picked tests
-    /// above (`fire_bolt_gets_its_damage_number_from_description_not_
-    /// slots`, `suffocate_gets_an_instant_hit_and_a_dot_tick_and_two_
-    /// debuffs`). This asserts today's real, much smaller population by
-    /// name (so a *future* re-scrape that meaningfully changes it again
-    /// gets noticed here, the same way this one did) rather than
-    /// asserting a coverage percentage that a 2-spell sample can't say
-    /// anything statistically meaningful about.
+    /// why: coverage check, catalog history -- used to assert 50+ slotless
+    /// spells, a fresh re-scrape found the wiki's slots data got much more
+    /// complete (now only 2 slotless, both Detrimental). Asserts today's
+    /// small population by name so a future re-scrape gets noticed here.
     #[test]
     fn only_two_real_spells_are_still_slotless_and_neither_is_damage_shaped() {
         let slotless: Vec<&Spell> = crate::spelldata::spells()
@@ -855,11 +761,7 @@ mod tests {
         }
     }
 
-    /// Same coverage-check discipline, for `parse_duration` against every
-    /// real `duration` string in the catalog -- confirms the ~30+ format
-    /// variety found by hand is actually handled in bulk, not just the
-    /// handful of shapes `duration_handles_the_real_format_variety`
-    /// exercises directly.
+    /// why: same coverage discipline for parse_duration against the whole real catalog
     #[test]
     fn duration_parses_the_large_majority_of_real_catalog_strings() {
         let with_duration: Vec<&Spell> = crate::spelldata::spells()
