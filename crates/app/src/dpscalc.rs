@@ -1,65 +1,29 @@
-//! DPM/DPS calculator for the Spellbook builder's damage-spell auto-
-//! suggest feature. Parses each catalog spell's own `slots` effect text
-//! (never hand-curated -- 151 real DoT-shaped candidates alone, far too
-//! many to list by hand) into a usable hit amount + damage shape, then
-//! layers this session's own observed live rank on top.
+//! why: DPM/DPS calculator for the Spellbook's damage-spell auto-suggest.
+//! Parses each spell's `slots` effect text (151 real DoT candidates,
+//! never hand-curated) into a hit amount + shape, layers observed rank on top.
 //!
-//! Two things this is explicit about rather than silently assuming:
-//!
-//! - **A nuke's damage scales as `damage * (1 + RANK_DAMAGE_PER_TIER *
-//!   rank)`** -- +10% of *base* (unranked) damage per live in-game rank
-//!   tier, not the eqlwiki "Spell Upgrade System" guide page's stated 6%
-//!   compounding-per-tier. That page self-flags as still being tested
-//!   and possibly inaccurate; a real, gear-controlled measurement
-//!   against this character's own log landed on +10%/tier instead --
-//!   Ice Comet's rank climbed 4 -> 9 -> 10 in a single 19-second
-//!   mote-redemption burst, so damage sampled in a tight window either
-//!   side of that moment couldn't have been confounded by a gear/AA
-//!   change: (1321.7 - 834.9) / 808 base damage / 6 tiers = 10.04% of
-//!   base per tier, near-exact. Only damage is corrected this way for a
-//!   nuke -- cast time/mana cost are left at their catalog (unranked)
-//!   values, since those specific numbers were never independently
-//!   checked the same way and the wiki's own figures for them are
-//!   exactly as unconfirmed as the damage one turned out to be wrong.
-//! - **A DoT is different, per direct correction**: its *per-tick*
-//!   damage does **not** scale with rank at all -- only a one-time
-//!   "when cast" burst component (if the spell has one) gets the same
-//!   verified `RANK_DAMAGE_PER_TIER` treatment a nuke's hit does, since
-//!   that component is mechanically an instant hit, not a tick. Cast
-//!   time, mana cost, and duration *do* still shrink/grow with rank for
-//!   a DoT -- unlike the damage number, these three were never disputed,
-//!   so the wiki's own stated Damage-over-Time-category rates are used
-//!   as a labeled, unverified best guess (`DOT_CAST_TIME_PER_TIER` etc.
-//!   below), clearly distinct from the one number that's actually been
-//!   measured. Explicitly not handling exceptions to the flat-per-tick
-//!   rule ("things like Ice Storm" were named as one, unconfirmed which
-//!   catalog entry that is or how it differs) -- every DoT here is
-//!   treated the same way rather than guessing at a special case.
-//! - **DoT tick interval is assumed to be `TICK_SECS` (6 seconds)** --
-//!   the standard across this whole genre, not independently confirmed
-//!   for this specific game. Stated, not hidden.
-//! - **A multi-wave AE nuke (Frost Storm and its ~24 siblings) follows
-//!   the DoT rule on reuse, not the nuke rule** -- per direct
-//!   correction: it "isn't independent, recasting just extends the
-//!   effect/resets it", but "essentially fully scale[s] with rank since
-//!   every hit mimics [the] first hit". So its damage stays on the nuke
-//!   side (every wave gets the full verified rank multiplier, not a
-//!   flat DoT-tick amount), but its *reuse* is treated like a DoT's own
-//!   duration-bound cycle -- recast is floored at the spell's own
-//!   casting time (a stated, conservative *estimate* giving the wave
-//!   sequence room to resolve, since there's no wiki-stated "safe to
-//!   recast" time to read this from), not the catalog's short
-//!   `recast_time`, which real log evidence shows can't actually be
-//!   spammed for fresh volleys.
-//! - **A DoT's own duration already IS its "no reuse" cadence** --
-//!   direct correction: `dps_ignoring_reuse` must not divide a DoT's
-//!   *whole* multi-tick lifetime total by casting time (that fabricates
-//!   an absurd number by double-counting damage the DoT ticks out on
-//!   its own regardless of what's cast next). For a DoT this field
-//!   holds only its one-time instant/"on cast" component (0 for most
-//!   real DoTs, which have none) over casting time -- see
-//!   `DamageSpellDto::dps_ignoring_reuse`'s own doc for the full
-//!   reasoning and what it's actually for.
+//! - **Nuke damage scales +10%/rank tier of base**, not the wiki's
+//!   stated 6% compounding (self-flagged unreliable there) -- measured
+//!   directly: Ice Comet's rank climbed 4->9->10 in one 19s burst,
+//!   (1321.7-834.9)/808 base/6 tiers = 10.04% of base per tier. Cast
+//!   time/mana stay at catalog values, never independently checked.
+//! - **A DoT's per-tick damage does NOT scale with rank at all**, per
+//!   direct correction -- only a one-time "on cast" component (if any)
+//!   gets the verified rate, since that's mechanically a hit not a tick.
+//!   Cast time/mana/duration still scale, per wiki DoT-category rates
+//!   (unverified, labeled distinctly from the one measured number).
+//! - DoT tick interval assumed `TICK_SECS` (6s), genre-standard, not confirmed here.
+//! - **A multi-wave AE nuke (Frost Storm + ~24 siblings) follows the
+//!   DoT rule on reuse, the nuke rule on damage** -- per direct
+//!   correction, it's not independent (recasting extends/resets it) but
+//!   every wave fully scales with rank like a first hit. Recast floors
+//!   at casting time (a stated estimate, no wiki "safe to recast"
+//!   field), not the catalog's short `recast_time` which real log
+//!   evidence shows can't actually fire fresh volleys.
+//! - **A DoT's duration already IS its "no reuse" cadence** -- per
+//!   direct correction, `dps_ignoring_reuse` must not divide the whole
+//!   multi-tick lifetime by casting time (double-counts ticks that land
+//!   regardless of what's cast next). See `DamageSpellDto::dps_ignoring_reuse`.
 
 use crate::spelldata::{self, Spell, SpellClass};
 use regex::Regex;
@@ -96,13 +60,9 @@ fn parse_num(s: &str) -> f64 {
     s.replace(',', "").parse().unwrap_or(0.0)
 }
 
-/// Reads every damage-shaped slot line -- `(hit_amount, is_dot,
-/// upfront_amount)`, `None` if this spell has no recognizable damage
-/// effect at all (a buff/CC/summon/etc., or a wording this parser
-/// doesn't cover -- stays out of the candidate list rather than guess).
-/// `hit_amount` is the catalog's own highest-level value when the wiki
-/// states a level-scaled range ("2 (L1) to 51 (L50)") -- this app only
-/// ever deals with level-50 characters, per `MAX_CHARACTER_LEVEL`.
+/// why: (hit_amount, is_dot, upfront_amount); None if no recognizable
+/// damage effect. Takes the highest-level value for a leveled range --
+/// this app only deals with level-50 characters.
 fn parse_damage(spell: &Spell) -> Option<(f64, bool, f64)> {
     let mut hit = 0.0_f64;
     let mut is_dot = false;
@@ -147,19 +107,10 @@ fn word_to_num(w: &str) -> Option<f64> {
     }
 }
 
-/// A "Targeted AE"/"PB AE" nuke's own catalog damage is per-*wave*, and
-/// several fall in multiple waves that all land on a single target when
-/// nothing else is in range to spread across -- confirmed directly
-/// against the real log (Frost Storm, restricted to proper-named/unique
-/// targets so a same-named second mob can't be mistaken for a repeat
-/// hit): up to 4 real "You hit ... by Frost Storm" lines from *one*
-/// cast on one target, typically 2-3 (resist chance per wave presumably
-/// explains the variance). The wiki's own description states "three
-/// waves" for Frost Storm specifically -- one short of the observed
-/// max -- so this uses each spell's *own* stated wave count (sourced,
-/// spell-specific) rather than a blanket guess, with that known
-/// possible undercount stated rather than silently corrected by an
-/// invented fudge factor.
+/// why: AE nuke catalog damage is per-wave; confirmed against the real
+/// log (Frost Storm) -- up to 4 real hit lines from one cast on one
+/// target, typically 2-3. Wiki says "three waves", one short of the
+/// observed max -- uses the spell's own stated count, undercount stated not fudged.
 fn parse_wave_count(description: &str) -> Option<f64> {
     wave_count_re()
         .captures(description)
@@ -183,13 +134,9 @@ fn seconds_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"(?i)(\d+)\s*(?:sec(?:ond)?s?|s)\b").unwrap())
 }
 
-/// Parses a wiki `duration` string into total seconds -- `None` for
-/// "Permanent"/"Unlimited" (doesn't fit a refresh-cadence model at all)
-/// or a shape this parser doesn't recognize. A leveled range
-/// ("N ticks @L1 to M minutes @L50") takes its *last* segment (the
-/// highest level, same stance `parse_damage` takes on damage ranges) --
-/// units can differ between the two ends of a range, so the segment is
-/// re-parsed fresh rather than assumed to match the first one's unit.
+/// why: None for Permanent/Unlimited or unrecognized shapes. Leveled
+/// range takes the last (highest-level) segment, re-parsed fresh since
+/// units can differ between range ends.
 fn parse_duration_secs(raw: &str) -> Option<f64> {
     let s = raw.trim();
     if s.eq_ignore_ascii_case("instant") {
@@ -229,52 +176,28 @@ pub struct DamageSpellDto {
     pub icon: Option<String>,
     pub classes: Vec<SpellClass>,
     pub is_dot: bool,
-    /// This session's own observed live rank -- 0 if never cast this
-    /// session (not "unranked" fact, just "no evidence yet").
+    /// why: observed live rank this session, 0 means no evidence yet not "unranked"
     pub rank: u8,
-    /// `None` for a nuke (instant); a DoT's own duration in seconds,
-    /// rank-independent (see this module's own doc on what rank scaling
-    /// does and doesn't touch).
+    /// why: None for a nuke; DoT duration in seconds, rank-independent
     pub duration_secs: Option<f64>,
     pub mana: f64,
     pub casting_time: f64,
     pub recast_time: f64,
-    /// Full damage from one application, rank-adjusted -- a nuke's
-    /// single hit, or a DoT's (per-tick * tick count) + any one-time
-    /// "when cast" component.
+    /// why: full rank-adjusted damage from one application
     pub total_damage: f64,
-    /// The portion of `total_damage` that's genuinely instant -- equal
-    /// to `total_damage` for a nuke; for a DoT, just its one-time "on
-    /// cast" component (0 for the large majority, which have none).
-    /// This is `dps_ignoring_reuse`'s own numerator, exposed separately
-    /// so a caller applying its own damage modifier on top (the
-    /// Spellbook builder's Invocation toggle, e.g.) can rescale this the
-    /// same proportional way without needing to know which effect-text
-    /// shape produced it.
+    /// why: instant portion of total_damage -- all of it for a nuke,
+    /// just the "on cast" component for a DoT; exposed for callers
+    /// rescaling on top (e.g. Invocation toggle)
     pub instant_damage: f64,
     pub dpm: f64,
-    /// Cast it, then wait out its own recast timer before casting again
-    /// -- for a DoT, "recast" is really "how long until it's worth
-    /// refreshing", which is its own duration (or the cast+recast time
-    /// if that's somehow longer).
+    /// why: cast + wait recast; for a DoT, "recast" is really its own duration
     pub dps_with_reuse: f64,
-    /// No reuse wait at all -- damage per second of *casting time*
-    /// spent, as if you could always weave straight into your next
-    /// spell. For a nuke this is `total_damage / casting_time`, same as
-    /// `dps_with_reuse` minus the recast wait. **For a DoT it is NOT**
-    /// -- direct correction: a DoT already ticks on its own regardless
-    /// of what's cast next, so crediting the whole multi-tick lifetime
-    /// total here would double-count damage that lands anyway (already
-    /// captured via `dps_with_reuse`'s own duration-bound cycle). Only
-    /// the one-time "on cast" instant component (`upfront` -- 0 for the
-    /// large majority of DoTs, which have none) divided by casting time
-    /// is genuinely *this button press's* instant value, so that's what
-    /// this field holds for a DoT. This is also what the auto-suggest
-    /// rotation compares against a nuke's own rate to decide whether a
-    /// DoT is worth casting at all *as an instant hit* -- it is
-    /// deliberately not the metric for "is this DoT worth maintaining
-    /// over its full duration", which is a separate question answered
-    /// by `dps_with_reuse` instead.
+    /// why: damage per second of casting time, no reuse wait. For a
+    /// nuke this is total_damage/casting_time. NOT for a DoT --
+    /// crediting the whole tick-stream here would double-count damage
+    /// already captured by `dps_with_reuse`'s own cycle; only the
+    /// one-time instant component counts, the metric for "worth an
+    /// instant cast", not "worth maintaining" (that's `dps_with_reuse`).
     pub dps_ignoring_reuse: f64,
 }
 
@@ -284,10 +207,8 @@ fn build_dto(spell: &Spell, rank: u8) -> Option<DamageSpellDto> {
         return None;
     }
     let hit_mult = 1.0 + RANK_DAMAGE_PER_TIER * rank as f64;
-    // why: the upfront/instant component always gets the verified rate
-    // (it's mechanically a hit, DoT or not); the per-tick amount only
-    // does for a nuke -- for a real DoT it's a direct correction that it
-    // must NOT scale with rank at all, see this module's own doc.
+    // why: upfront always gets the verified rate (mechanically a hit);
+    // per-tick only does for a nuke, not a DoT -- see module doc
     let upfront = base_upfront * hit_mult;
 
     let base_mana = spell.mana.unwrap_or(0.0);
@@ -305,17 +226,11 @@ fn build_dto(spell: &Spell, rank: u8) -> Option<DamageSpellDto> {
             let casting_time = (base_casting_time * (1.0 + DOT_CAST_TIME_PER_TIER * r)).max(0.1);
             let dur = base_dur * (1.0 + DOT_DURATION_PER_TIER * r);
             let ticks = (dur / TICK_SECS).round().max(1.0);
-            // why: base_hit, unscaled -- the flat-per-tick correction.
+            // why: base_hit unscaled -- the flat-per-tick correction
             let total = base_hit * ticks + upfront;
-            // why: direct correction -- a DoT already has its own "no reuse
-            // needed" cadence (it ticks on its own regardless of what's cast
-            // next), so crediting the *whole* multi-tick lifetime total to
-            // "damage per second of casting time, ignoring reuse" double-
-            // counts damage that was going to land anyway. Only the one-time
-            // "on cast" burst (if any -- most DoTs have none, and correctly
-            // read as 0 here, not a wrong answer) is genuinely instant value
-            // from *this* button press; the tick stream is accounted for
-            // separately via `dps_with_reuse`'s own duration-bound cycle.
+            // why: only the one-time "on cast" burst is instant value from
+            // this press; the tick stream is already accounted separately
+            // via dps_with_reuse's own duration-bound cycle
             (
                 total,
                 upfront,
@@ -329,13 +244,10 @@ fn build_dto(spell: &Spell, rank: u8) -> Option<DamageSpellDto> {
             let hit = base_hit * hit_mult;
             let mana = base_mana.max(1.0);
             let casting_time = base_casting_time.max(0.1);
-            // why: a "Targeted AE"/"PB AE" nuke's catalog damage is per-wave
-            // -- see `parse_wave_count`'s own doc. Multi-target splash
-            // isn't modeled (this whole calculator assumes single-target
-            // play throughout), but a lone target really does eat every
-            // wave, confirmed against the real log. Every wave gets the
-            // full verified rank multiplier -- unlike a DoT's flat per-tick
-            // amount, each wave is its own full hit, not a tick.
+            // why: AE catalog damage is per-wave, see `parse_wave_count`.
+            // No multi-target splash modeled (single-target throughout),
+            // but a lone target really eats every wave, confirmed against
+            // the real log. Each wave is its own full hit, not a tick.
             let waves = match spell.target_type.as_deref() {
                 Some("Targeted AE") | Some("PB AE") => spell
                     .description
@@ -345,30 +257,17 @@ fn build_dto(spell: &Spell, rank: u8) -> Option<DamageSpellDto> {
                 _ => 1.0,
             };
             let total = hit * waves + upfront;
-            // why: direct correction -- a multi-wave spell follows the same
-            // "can't just spam it" rule a DoT does. Real log evidence: waves
-            // keep landing for several real seconds after cast (confirmed
-            // on Frost Storm, restricted to proper-named targets so a
-            // same-named second mob couldn't fake a repeat hit), yet the
-            // catalog's own `recast_time` is a token 1.5s -- recasting on
-            // that short a timer wouldn't fire a fresh, independent volley,
-            // it would reset/extend the wave sequence still resolving from
-            // the *previous* cast. There's no wiki-stated "how long until
-            // it's actually safe to recast" field to read this from (the
-            // spell's own `duration` is just "Instant"), so this uses a
-            // stated, conservative *estimate* -- recast is treated as no
-            // shorter than the cast itself, giving the wave sequence
-            // roughly its own cast time's worth of room to resolve before
-            // a recast is credited as a fresh volley rather than a wasted
-            // reset. Explicitly an estimate, not a measured number, unlike
-            // the wave *count* and the rank-damage rate above.
+            // why: a multi-wave spell follows the DoT "can't spam it" rule
+            // -- waves keep landing for real seconds after cast (confirmed
+            // on Frost Storm) but catalog recast_time is a token 1.5s. No
+            // wiki "safe to recast" field, so this floors recast at the
+            // cast time itself, a stated conservative estimate.
             let recast_time = if waves > 1.0 {
                 base_recast_time.max(casting_time)
             } else {
                 base_recast_time
             };
-            // why: a nuke's damage is *all* instant -- nothing deferred to
-            // account for separately, unlike a DoT.
+            // why: a nuke's damage is all instant, nothing deferred
             (
                 total,
                 total,
@@ -398,11 +297,8 @@ fn build_dto(spell: &Spell, rank: u8) -> Option<DamageSpellDto> {
     })
 }
 
-/// Every catalog spell with a recognizable damage effect, rank-adjusted
-/// against this session's own observed casts (`ing.spell_ranks`) --
-/// unfiltered by class/level, same stance the rest of the Spellbook
-/// picker takes (the caller already has the class/level-cap filtering
-/// logic and this shouldn't duplicate it a second, driftable way).
+/// why: every damage-capable spell, rank-adjusted; unfiltered by
+/// class/level -- caller already has that filtering logic
 pub fn list_damage_spells(ing: &crate::ingest::Ingest) -> Vec<DamageSpellDto> {
     spelldata::spells()
         .iter()
@@ -605,8 +501,7 @@ mod tests {
         let dto = build_dto(&spell, 0).unwrap();
         assert!(dto.is_dot);
         assert_eq!(dto.total_damage, 300.0); // 6 ticks * 50, the real lifetime total
-                                             // dps_ignoring_reuse must NOT be total_damage / casting_time (that
-                                             // would be 150.0) -- no upfront component here, so it's 0.
+                                             // why: must NOT be total_damage/casting_time (150.0); no upfront, so 0
         assert_eq!(dto.dps_ignoring_reuse, 0.0);
     }
 
@@ -624,6 +519,7 @@ mod tests {
         let dto = build_dto(&spell, 0).unwrap();
         assert!(dto.is_dot);
         assert_eq!(dto.total_damage, 340.0); // 40 upfront + 6*50 ticks
-        assert_eq!(dto.dps_ignoring_reuse, 40.0 / 2.0); // only the upfront component, over casting_time
+                                             // why: only the upfront component, over casting_time
+        assert_eq!(dto.dps_ignoring_reuse, 40.0 / 2.0);
     }
 }
