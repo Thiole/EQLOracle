@@ -1,7 +1,8 @@
 <script lang="ts">
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
-  import { api, type RaidRowDto, type RaidDto, type RaidTargetDto, type BestTimeDto } from '$lib/tauri/api';
+  import { type RaidDto, type RaidTargetDto, type BestTimeDto } from '$lib/tauri/api';
+  import { raidRows, raidRowsError, refreshRaidRows } from '$lib/stores/raiding';
 
   // why: same fixed 5-tier scale `zone::zone_tier` parses out of a zone
   // name everywhere else in the app -- index 0 is the base/untiered zone,
@@ -9,21 +10,23 @@
   // "D4" here to match the Solo/Group grid's own compact column headers.
   const TIER_LABELS = ['D0 (Base)', 'D1 (Awakened)', 'D2 (Adaptive)', 'D3 (Fused)', 'D4 (Refined)'];
 
-  let rows = $state<RaidRowDto[] | null>(null);
-  let error = $state<string | null>(null);
-
-  async function load() {
-    error = null;
-    try {
-      rows = await api.getRaids();
-    } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
-    }
-  }
-
+  // why: rows/refresh now live in a store (see `stores/raiding.ts`) so a
+  // live boss kill updates this tab from `parse-tick` without a manual
+  // reload -- this component just triggers the initial load.
   $effect(() => {
-    void load();
+    void refreshRaidRows();
   });
+
+  // why: per-zone open/closed state, not native <details> -- lets the
+  // expanded panel render full-width below the header instead of nested
+  // inside the right-aligned toggle's own flex slot
+  let openFastest = $state<Set<string>>(new Set());
+  function toggleFastest(zone: string) {
+    const next = new Set(openFastest);
+    if (next.has(zone)) next.delete(zone);
+    else next.add(zone);
+    openFastest = next;
+  }
 
   function dropsLootedCount(t: RaidTargetDto): number {
     return t.drops.filter((d) => d.looted).length;
@@ -73,28 +76,38 @@
   </div>
 {/snippet}
 
-{#snippet fastestTimes(raid: RaidDto)}
-  <!-- why: a `<details>` sitting as its own flex item to the right of the
-       zone heading -- opening it drops the panel below-right, in its own
-       box, rather than disturbing the heading row's own height. Colored
-       apart from the plain muted-foreground toggles elsewhere on this
-       page (drops/level etc.) on purpose -- it's the one thing on this
-       card that isn't a completion metric, and reads as "its own thing"
-       at a glance rather than blending into the rest. -->
-  <details class="shrink-0 text-right text-[11px]">
-    <summary class="cursor-pointer font-medium text-primary hover:text-primary/80">Fastest Times</summary>
-    <div class="mt-1.5 flex flex-col gap-1.5 rounded-sm border border-primary/30 bg-primary/5 px-2 py-1.5 text-left">
-      <p class="text-[10px] text-muted-foreground">first action → {raid.boss.name} kill, fastest per difficulty</p>
-      <div class="flex flex-col gap-0.5">
-        {@render timeRow('Solo', raid.times.solo)}
-        {@render timeRow('Group', raid.times.group)}
-      </div>
-      <div class="mt-1 flex items-baseline justify-between gap-2 border-t border-primary/20 pt-1">
-        <span class="text-muted-foreground">Full Clear <span class="italic">(coming soon)</span></span>
-        <span class="text-muted-foreground">--</span>
-      </div>
+{#snippet fastestTimesToggle(raid: RaidDto)}
+  <!-- why: plain toggle button, not <details> -- the expanded panel
+       renders separately below the whole header (see fastestTimesPanel)
+       so it can left-align under the zone title instead of nesting
+       under this right-aligned link. Colored apart from the plain
+       muted-foreground toggles elsewhere on this page (drops/level etc.)
+       on purpose -- it's the one thing on this card that isn't a
+       completion metric, and reads as "its own thing" at a glance. -->
+  <button
+    type="button"
+    class="shrink-0 text-[11px] font-medium text-primary hover:text-primary/80"
+    onclick={() => toggleFastest(raid.zone)}
+  >
+    Fastest Times
+  </button>
+{/snippet}
+
+{#snippet fastestTimesPanel(raid: RaidDto)}
+  <!-- why: mt-2 drops it a little below the header row; full-width and
+       left-aligned so it sits directly under the zone title, matching
+       the card's own left edge instead of the toggle's right-aligned spot. -->
+  <div class="mb-1.5 mt-2 flex flex-col gap-1.5 rounded-sm border border-primary/30 bg-primary/5 px-2 py-1.5 text-left text-[11px]">
+    <p class="text-[10px] text-muted-foreground">first action → {raid.boss.name} kill, fastest per difficulty</p>
+    <div class="flex flex-col gap-0.5">
+      {@render timeRow('Solo', raid.times.solo)}
+      {@render timeRow('Group', raid.times.group)}
     </div>
-  </details>
+    <div class="mt-1 flex items-baseline justify-between gap-2 border-t border-primary/20 pt-1">
+      <span class="text-muted-foreground">Full Clear <span class="italic">(coming soon)</span></span>
+      <span class="text-muted-foreground">--</span>
+    </div>
+  </div>
 {/snippet}
 
 {#snippet target(t: RaidTargetDto, kind: 'boss' | 'miniboss')}
@@ -148,16 +161,16 @@
   </div>
 {/snippet}
 
-{#if error}
+{#if $raidRowsError}
   <div class="flex items-center gap-2 text-[12px]">
-    <p class="text-destructive">{error}</p>
-    <button type="button" class="text-primary underline" onclick={load}>retry</button>
+    <p class="text-destructive">{$raidRowsError}</p>
+    <button type="button" class="text-primary underline" onclick={refreshRaidRows}>retry</button>
   </div>
-{:else if !rows}
+{:else if !$raidRows}
   <p class="text-[12px] text-muted-foreground">Loading…</p>
 {:else}
   <div class="flex flex-col gap-5">
-    {#each rows as row (row.row)}
+    {#each $raidRows as row (row.row)}
       <div class="flex flex-col gap-2">
         <h1 class="text-[13px] font-semibold text-foreground">{row.row}</h1>
         <div class="flex flex-wrap gap-3">
@@ -166,8 +179,11 @@
               <CardContent class="px-3 py-2.5">
                 <div class="mb-1.5 flex items-start justify-between gap-3">
                   <h2 class="panel-title">{raid.zone}</h2>
-                  {@render fastestTimes(raid)}
+                  {@render fastestTimesToggle(raid)}
                 </div>
+                {#if openFastest.has(raid.zone)}
+                  {@render fastestTimesPanel(raid)}
+                {/if}
                 <div class="flex flex-col divide-y divide-border">
                   {@render target(raid.boss, 'boss')}
                   {#each raid.minibosses as m (m.name)}
