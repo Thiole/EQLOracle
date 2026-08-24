@@ -2343,17 +2343,8 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "state.charm_broken" | "state.you_mesmerized" => Some(Action::Recovered {
             who: str_field("who").unwrap_or_else(|| "You".to_string()),
         }),
-        // Two entirely different client-generated lines for the same fact.
-        // loot.self is the "--You have looted X from Y's corpse.--" form;
-        // loot.self.direct is everything else the client says when you
-        // loot something -- no "--" bracketing, "looted" not "have
-        // looted", and a trailing clause that varies by what happened to
-        // the item after (sold to a vendor automatically, banked to
-        // currency, stored in a tradeskill depot or Dragon Hoard,
-        // combined to create a higher tier) -- see that rule's own doc in
-        // eql.toml for why one shared, permissive pattern beats a rule per
-        // trailing clause. Both produce the identical Action::Loot; which
-        // one fired doesn't matter past this point.
+        // why: two client line forms for the same fact (bracketed vs
+        // direct, varying trailing clause); both produce the identical Action::Loot
         "loot.self" | "loot.self.direct" => Some(Action::Loot {
             item: str_field("item")?,
             corpse: str_field("corpse")?,
@@ -2377,11 +2368,8 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "outputfile.complete" => Some(Action::OutputfileComplete {
             file: str_field("file")?,
         }),
-        // why: proc.item is generic (any "Your X (Y) Z." line) -- only
-        // the Exaltation-labeled case is this app's own signal for a
-        // live Proc exaltation socket. Every other `effect` value
-        // (there's no confirmed real one yet -- see ExaltationProcs'
-        // own doc) is left unrecorded rather than guessed at.
+        // why: proc.item is generic, only the Exaltation-labeled case is
+        // this app's signal for a live Proc socket; every other effect value left unrecorded
         "proc.item" => {
             let (item, effect) = (str_field("item")?, str_field("effect")?);
             effect
@@ -2395,10 +2383,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             who: str_field("who")?,
         }),
         "chat.directed" => {
-            // Only the channels that are provably player-to-player.
-            // `says`/`shouts`/`auctions` are excluded on purpose -- NPCs
-            // use `says` too, so it proves nothing. See
-            // docs/design/encounters.md, "Entity classification".
+            // why: only provably player-to-player channels -- says/shouts/auctions excluded, NPCs use says too
             let (who, chan) = (str_field("who")?, str_field("chan")?);
             let player_only = matches!(
                 chan.as_str(),
@@ -2415,11 +2400,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
     }
 }
 
-/// Melee verb -> canonical ability name. The pack's regex alternates both
-/// third-person ("slashes") and the base form EQ uses for "You" ("slash");
-/// both mean the same ability. Matches `melee.hit`/`melee.miss`'s exact verb
-/// set in `packs/eql.toml` -- see README's ingest note: "backstabs ->
-/// Backstab".
+/// why: verb -> canonical ability name; pack regex alternates 3rd-person and base form, same ability
 fn canonical_melee_ability(verb: &str) -> &'static str {
     match verb {
         "slashes" | "slash" => "Slash",
@@ -2446,11 +2427,7 @@ fn canonical_melee_ability(verb: &str) -> &'static str {
     }
 }
 
-/// `heal.by_spell`/`heal.plain` write a reflexive pronoun ("himself",
-/// "herself", "itself", "yourself") rather than the caster's name repeated,
-/// when someone heals themself. Resolved back to the caster so the store
-/// attributes the heal to an actual entity instead of the literal word
-/// "himself".
+/// why: resolves a written reflexive pronoun back to the caster's real name
 fn resolve_reflexive(target: &str, source: &str) -> String {
     match target {
         "himself" | "herself" | "itself" | "yourself" => source.to_string(),
@@ -2458,20 +2435,10 @@ fn resolve_reflexive(target: &str, source: &str) -> String {
     }
 }
 
-/// Full spell names that end in what looks like a rank numeral but are not
-/// rank-suffixed at all -- the numeral is part of the spell's own identity
-/// (`Yaulp`, `Yaulp II`, `Yaulp III` are three different spells; EQL's own
-/// rank system then nests a *second* numeral on some of them, e.g. `Yaulp II
-/// I` for rank I of `Yaulp II`), or the wiki bakes a numeral into even the
-/// lowest rank's title (`Rune I` has no bare `Rune` page at all). Naively
-/// stripping either merges two real, different spells into one identity, or
-/// invents a "base" name that doesn't exist -- confirmed against every
-/// `cast.begin` spell name in the reference log cross-referenced with a
-/// scrape of eqlwiki.com's spell pages (`~/eql/spells.json` on the
-/// scraping machine; see `~/eql/scrape_eqlwiki_spells.py`). Regenerate by
-/// re-running that cross-reference after a fresh scrape -- this list is a
-/// snapshot, not derived at build time, so it goes stale if the wiki's
-/// spell catalog changes.
+/// why: names ending in what looks like a rank numeral that's actually
+/// part of the spell's own identity (Yaulp/Yaulp II/Yaulp III are 3
+/// different spells) -- confirmed via cross-reference with the real
+/// spell scrape. A snapshot, regenerate after a fresh scrape.
 const PROTECTED_SPELL_NAMES: &[&str] = &[
     "Burnout II",
     "Burnout III",
@@ -2484,14 +2451,8 @@ const PROTECTED_SPELL_NAMES: &[&str] = &[
     "Yaulp III",
 ];
 
-/// Strips a trailing rank numeral ("Mesmerization IX" -> "Mesmerization"),
-/// standing in for real rank recovery (`BACKLOG.md`, "Rank recovery") so a
-/// `cast.begin` line's ranked spell name can be compared against a landed
-/// damage/heal line's unranked one in `eqlp_session::cast::Resolver`. A
-/// rank-1 cast has no numeral and passes through unchanged. Checked against
-/// `PROTECTED_SPELL_NAMES` first -- see its doc comment for why a handful of
-/// real spell names must never be stripped. Not a full solution otherwise --
-/// see the caveat in `eqlp_session::cast`'s module doc.
+/// why: strips a trailing rank numeral so a ranked cast name compares
+/// against an unranked damage/heal line; checks PROTECTED_SPELL_NAMES first
 fn base_spell_name(name: &str) -> &str {
     if PROTECTED_SPELL_NAMES.contains(&name) {
         return name;
@@ -2508,29 +2469,12 @@ fn is_roman_numeral(s: &str) -> bool {
             .all(|b| matches!(b, b'I' | b'V' | b'X' | b'L' | b'C' | b'D' | b'M'))
 }
 
-/// Splits a live cast-line spell name into its catalog base name and an
-/// observed live rank, if any -- e.g. "Ice Comet X" -> ("Ice Comet",
-/// Some(10)). This game has two unrelated roman-numeral phenomena on
-/// spell names, confirmed against real data, not assumed: (1) a spell
-/// *line* where the numeral is baked into the wiki's own canonical name
-/// and names a wholly separate spell, not a rank of anything --
-/// `packs/spells.json` has no bare "Monster Summoning" at all, only
-/// "Monster Summoning II"/"III" as their own real entries, same as
-/// "Yaulp"/"Yaulp II"/"Yaulp III" (`PROTECTED_SPELL_NAMES` above guards
-/// `base_spell_name` against exactly this, but only for the handful of
-/// names that specific function's own reference-log cross-check happened
-/// to need -- not exhaustive, and not this function's job to reuse,
-/// since a stale/incomplete guard list is exactly how a display bug
-/// slipped through once already); (2) a live, per-character rank the
-/// game appends only in combat-log text, never in the wiki's page title
-/// at all (confirmed: "Ice Comet" is the sole `packs/spells.json` entry,
-/// "Ice Comet X" never appears there, yet is real and common in the
-/// reference log -- see `SpellRanks`' own doc). Disambiguated here by
-/// checking the catalog directly rather than any hand-curated list: try
-/// the *full* name first -- if it's already real, the numeral is
-/// identity, no rank. Only if the full name isn't real *and* stripping
-/// the trailing numeral yields a name that *is* real does that numeral
-/// count as an observed rank.
+/// why: splits "Ice Comet X" -> ("Ice Comet", Some(10)). Two unrelated
+/// roman-numeral phenomena: a numeral baked into the spell's own
+/// identity (Monster Summoning II/III, no bare page exists), and a live
+/// per-character rank appended only in log text, never the wiki title.
+/// Disambiguated by checking the catalog directly: full name real -> no
+/// rank; only base-after-stripping real -> observed rank.
 fn split_cast_rank(name: &str) -> (&str, Option<u8>) {
     if crate::spelldata::spell_by_name(name).is_some() {
         return (name, None);
@@ -2545,11 +2489,8 @@ fn split_cast_rank(name: &str) -> (&str, Option<u8>) {
     }
 }
 
-/// Standard subtractive-notation roman numeral -> integer, clamped to
-/// `u8` (real observed ranks are nowhere near 255). `is_roman_numeral`
-/// already guarantees the character set; this additionally requires a
-/// well-formed value, returning `None` for a charset-valid but
-/// nonsensical ordering rather than a wrong number.
+/// why: subtractive-notation roman numeral -> integer, clamped to u8;
+/// None for charset-valid but nonsensical ordering, not a wrong number
 fn roman_to_u8(s: &str) -> Option<u8> {
     fn value(b: u8) -> u32 {
         match b {
@@ -2642,24 +2583,20 @@ mod spell_rank_tests {
         let mut r = SpellRanks::default();
         r.observe(0, "Ice Comet", 4);
         r.observe(1000, "Ice Comet", 9);
-        r.observe(2000, "Ice Comet", 6); // a lower re-observation must not regress it
+        r.observe(2000, "Ice Comet", 6); // why: a lower re-observation must not regress it
         assert_eq!(r.rank_of("Ice Comet"), Some(9));
         assert_eq!(r.rank_of("Never Cast"), None);
     }
 }
 
-/// Splits a `ds.damage` `source` capture ("Tranixx Darkpaw's flames",
-/// "Bravesirrobin's thorns", "YOUR thorns") into the shield wearer's name
-/// and the shield's flavour word. Falls back to treating the whole string
-/// as the wearer with a generic flavour if it doesn't match either shape,
-/// rather than panicking on a pack/log variant this hasn't seen.
+/// why: splits into wearer + flavour word; falls back to the whole string as wearer, no panic
 fn split_damage_shield_source(raw: &str) -> (String, String) {
     if let Some(flavour) = raw.strip_prefix("YOUR ") {
         return ("You".to_string(), flavour.to_string());
     }
     if let Some(pos) = raw.rfind("'s ") {
         let (wearer, rest) = raw.split_at(pos);
-        let flavour = &rest[3..]; // skip "'s "
+        let flavour = &rest[3..]; // why: skip "'s "
         if !wearer.is_empty() && !flavour.is_empty() {
             return (wearer.to_string(), flavour.to_string());
         }
@@ -2667,20 +2604,12 @@ fn split_damage_shield_source(raw: &str) -> (String, String) {
     (raw.to_string(), "Damage Shield".to_string())
 }
 
-/// `loot.self`'s `corpse` capture is always "<mob>'s corpse" -- confirmed
-/// against every loot line in the reference log (546 lines, 0 exceptions).
-/// Strips the fixed suffix to recover the mob's own display name, the same
-/// name combat lines would use as `target`.
+/// why: corpse capture is always "<mob>'s corpse", confirmed real 546/546; strips to the mob's display name
 fn strip_corpse_suffix(corpse: &str) -> &str {
     corpse.strip_suffix("'s corpse").unwrap_or(corpse)
 }
 
-/// EQ's four currency denominations, most to least valuable, with their
-/// copper equivalents (1 platinum = 10 gold = 100 silver = 1000 copper --
-/// the classic EQ conversion; nothing found scraping this fork's own data
-/// suggests EQL changed it). `Store::amount` for `EventKind::Currency` is
-/// always in copper, so a gain phrased in any mix of denominations still
-/// lands on one directly comparable number.
+/// why: classic EQ conversion (1p=10g=100s=1000c), nothing suggests EQL changed it
 const CURRENCY_DENOMINATIONS: &[(&str, u64)] = &[
     ("platinum", 1000),
     ("gold", 100),
@@ -2688,15 +2617,9 @@ const CURRENCY_DENOMINATIONS: &[(&str, u64)] = &[
     ("copper", 1),
 ];
 
-/// Reads a denomination list like "2 platinum, 5 gold, 7 silver and 2
-/// copper" into one copper-equivalent total. Deliberately not a regex on
-/// the whole clause, and not done in the rule pack at all: confirmed
-/// against the real log, this server phrases what's structurally the same
-/// 4-denomination list two different ways depending on which line it's
-/// on -- comma-and-"and" joined on an auto-sell/corpse-loot ("2 platinum,
-/// 5 gold, 7 silver and 2 copper"), plain space-joined on a direct vendor
-/// sale ("9 platinum 5 gold 7 silver") -- so this just walks the text
-/// looking for "<number> <denomination>" pairs directly, order- and
+/// why: not a whole-clause regex -- the server phrases the same
+/// 4-denomination list two different ways (comma-joined vs space-joined)
+/// depending on the line, so this walks looking for pairs directly, order- and
 /// separator-agnostic, rather than trying to encode every real variant
 /// into one pattern. Any subset of the four may be present, in any
 /// combination; an amount with none recognised (a parse this doesn't
