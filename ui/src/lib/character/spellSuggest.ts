@@ -71,6 +71,21 @@ export function lineKey(name: string): string {
   return tail.length > 0 && /^[IVXLCDM]+$/.test(tail) ? parts.slice(0, -1).join(' ') : name;
 }
 
+/** why: real bug -- many EQ spell lines rename entirely across level
+ * tiers (Allure/Beguile/Cajoling Whispers/Charm are all the same Charm
+ * line; Reconstitute/Renewal/Reparation/Restoration/Resurrection/
+ * Resuscitate/Revive are all Revive) -- `lineKey`'s roman-numeral
+ * stripping never catches this. Their wiki `description` is the same
+ * boilerplate with only the level/amount numbers swapped ("Charm up to
+ * level 51" vs "...level 46"), so stripping digits from the description
+ * groups them correctly -- verified against packs/spells.json directly
+ * (184 real multi-member groups, spot-checked for cross-line false
+ * positives: none of the ones checked mixed unrelated effects, only
+ * legitimately shared multi-class lines like Cancel Magic/Resist Cold). */
+export function spellLineKey(s: SpellDto): string {
+  return s.description ? s.description.replace(/\d+/g, '#').trim() : lineKey(s.name);
+}
+
 /** why: real self-illusion spells -- Illusions category or an "Illusion:"
  * slot effect. Detrimental illusion-flavored curses (Bone Melt etc.)
  * never reach this check since callers already filter to isBuff first. */
@@ -93,14 +108,14 @@ export function conflictsWithExisting(
   ctx: ExclusivityContext,
   groups: Record<string, number>,
 ): boolean {
-  if (ctx.usedLineKeys.has(lineKey(s.name))) return true;
+  if (ctx.usedLineKeys.has(spellLineKey(s))) return true;
   if (ctx.hasIllusion && isIllusion(s)) return true;
   const g = groups[s.name];
   return g != null && ctx.usedStackingGroups.has(g);
 }
 
 function commit(s: SpellDto, ctx: ExclusivityContext, groups: Record<string, number>): void {
-  ctx.usedLineKeys.add(lineKey(s.name));
+  ctx.usedLineKeys.add(spellLineKey(s));
   if (isIllusion(s)) ctx.hasIllusion = true;
   const g = groups[s.name];
   if (g != null) ctx.usedStackingGroups.add(g);
@@ -229,6 +244,36 @@ export interface RotationResult {
  * old bestWeavePair search already used. */
 const ROTATION_POOL_CAP = 10;
 
+/** why: mirrors dpscalc.rs's own TICK_SECS -- a DoT's tick cadence, needed
+ * here to spread its lifetime damage across real tick landing times
+ * instead of crediting it all at the cast moment (see simulateRotation). */
+const TICK_SECS = 6;
+
+/** why: real correction -- a DoT (and a multi-wave AE like Frost Storm,
+ * loosely) keeps dealing damage *after* the cast completes, on its own
+ * clock, independent of whatever gets cast next; crediting its whole
+ * lifetime total at the instant of casting over-counts when a DoT is
+ * cast near the window's end (ticks past the window haven't actually
+ * landed yet) and was the wrong number for "damage after 15/60s".
+ * Schedules each tick at its real landing time and only counts ones
+ * that land at or before `windowSecs`. A nuke (including a multi-wave
+ * one) has no separate tick data to schedule -- its whole total still
+ * lands at cast-complete, same as before. */
+function scheduleDamage(spell: DamageSpellDto, castStart: number, castEnd: number, windowSecs: number): number {
+  if (!spell.is_dot || spell.duration_secs == null) {
+    return castEnd <= windowSecs ? spell.total_damage : 0;
+  }
+  let credited = castEnd <= windowSecs ? spell.instant_damage : 0;
+  const tickDamage = spell.total_damage - spell.instant_damage;
+  const ticks = Math.max(1, Math.round(spell.duration_secs / TICK_SECS));
+  const perTick = tickDamage / ticks;
+  for (let i = 1; i <= ticks; i++) {
+    const tickTime = castEnd + i * TICK_SECS;
+    if (tickTime <= windowSecs) credited += perTick;
+  }
+  return credited;
+}
+
 /** why: greedy timeline scheduler -- at each point the caster is free,
  * cast whichever ready spell has the best `dps_with_reuse` (its own
  * steady-state rate, already correct for both nukes and DoTs since that
@@ -238,7 +283,11 @@ const ROTATION_POOL_CAP = 10;
  * not a global optimum (a true schedule optimizer is a much harder
  * problem), but validated against real data during design: alternating
  * Rend/Conflagration (5s cast, 1.5s recast each) beats spamming either
- * alone, exactly the pattern this reproduces on its own. */
+ * alone, exactly the pattern this reproduces on its own. A DoT already
+ * cast keeps ticking on its own clock while other spells get woven in
+ * (see scheduleDamage) -- it just can't be recast until its own
+ * duration fully resolves (`nextAvailable`), so it never overwrites/
+ * stacks with itself. */
 export function simulateRotation(candidates: DamageSpellDto[], windowSecs: number): RotationResult {
   const pool = [...candidates]
     .filter((s) => s.casting_time > 0 && s.casting_time <= windowSecs)
@@ -265,8 +314,8 @@ export function simulateRotation(candidates: DamageSpellDto[], windowSecs: numbe
     const best = ready.reduce((a, b) => (b.dps_with_reuse > a.dps_with_reuse ? b : a));
     const castStart = t;
     sequence.push(best);
-    totalDamage += best.total_damage;
     t = castStart + best.casting_time;
+    totalDamage += scheduleDamage(best, castStart, t, windowSecs);
     // why: total_damage / dps_with_reuse == cycle_secs (casting + recast,
     // or duration for a DoT) -- already-shipped fields, no new backend data
     const cycleSecs = best.total_damage / best.dps_with_reuse;
