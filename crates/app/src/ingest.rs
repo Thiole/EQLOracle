@@ -3364,11 +3364,8 @@ mod unmatched_shape_tests {
         );
     }
 
-    /// Throwaway: cross-checks the real numbers `eqlp coverage --pack
-    /// packs/eql.toml <log> --top 5` already printed against the full
-    /// 2.27M-line reference log (4096 distinct shapes, 177354-line
-    /// overflow, "The jig..." at count 7824) -- not a permanent test
-    /// (depends on a file path that only exists on this machine).
+    /// why: throwaway cross-check against `eqlp coverage`'s real
+    /// numbers on the full reference log; machine-local path
     #[test]
     #[ignore]
     fn cross_check_against_the_real_reference_log() {
@@ -3385,18 +3382,9 @@ mod unmatched_shape_tests {
             println!("{:>10}  {}", stat.count, String::from_utf8_lossy(shape));
         }
 
-        // The real invariant to hold, not an exact match against `eqlp
-        // coverage`'s own single-threaded output: which specific shapes
-        // land in the last few slots before the 4096 cap fills is
-        // sensitive to merge order (a chunk's HashMap iteration order
-        // isn't file order), so the *overflow count* genuinely isn't
-        // reproducible bit-for-bit across a parallel merge -- confirmed
-        // directly (it came out different on three different accounting
-        // strategies here, none of them matching the CLI's 177354).
-        // What must always hold regardless of ordering: every unmatched
-        // line is accounted for exactly once, either inside a tracked
-        // shape's count or in the overflow tally -- nothing silently
-        // vanishes and nothing gets double-counted.
+        // why: overflow count isn't reproducible bit-for-bit across a
+        // parallel merge (HashMap order != file order) -- the real
+        // invariant is every unmatched line counted exactly once
         let tracked_total: u64 = ing
             .unmatched_shapes_top(usize::MAX)
             .iter()
@@ -3407,9 +3395,7 @@ mod unmatched_shape_tests {
             ing.counts.unmatched
         );
 
-        // Order-INsensitive facts, which any correct accumulation must
-        // get right regardless of merge order -- these matched `eqlp
-        // coverage --top 5`'s own real output exactly:
+        // why: order-insensitive facts -- matched `eqlp coverage --top 5`'s real output exactly
         assert_eq!(
             ing.unmatched_shapes_distinct(),
             4096,
@@ -3431,13 +3417,8 @@ mod notification_wiring_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// `notifications::notification_for`'s own tests check the pure
-    /// rule-id -> message mapping; this checks the actual wiring
-    /// `tail_worker.rs` depends on -- that `Ingest::route`, run live
-    /// (`mark_live`), really does push into `pending_notifications`, and
-    /// that backfill (not live) does *not* -- a freshly-launched app
-    /// replaying days of history must not fire a burst of sounds for
-    /// things that already happened.
+    /// why: checks the live wiring -- route pushes notifications only
+    /// when live, not during backfill (no sound burst replaying history)
     #[test]
     fn route_collects_notifications_only_when_live() {
         let engine = build_engine().expect("pack builds");
@@ -3471,8 +3452,7 @@ mod newly_recognized_line_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// Each real line pulled from the unmatched-shape backlog now matches
-    /// its own rule, not the catch-all "unmatched" bucket.
+    /// why: each real line pulled from the unmatched-shape backlog now matches its own rule
     #[test]
     fn each_line_matches_its_own_rule() {
         let engine = build_engine().expect("pack builds");
@@ -3565,12 +3545,8 @@ mod newly_recognized_line_tests {
         }
     }
 
-    /// The actual point of the mitigation-flag design: a missed, blocked,
-    /// dodged, or parried swing lands on the *same* ability row a landed
-    /// one of that type would ("Punch", "Slash"), tagged by which kind of
-    /// avoidance it was -- not a separate synthetic "Miss"/"Block"/
-    /// "Dodge"/"Parry" ability. `attempts()` (landed + all four avoidance
-    /// counts) is the honest denominator for a real hit rate.
+    /// why: an avoided swing lands on the same ability row as a landed
+    /// one, tagged by avoidance kind, not a synthetic "Miss" ability; attempts() is the honest denominator
     #[test]
     fn avoided_swings_land_on_the_same_ability_row_as_a_real_hit_of_that_type() {
         let engine = build_engine().expect("pack builds");
@@ -3627,13 +3603,9 @@ mod newly_recognized_line_tests {
         assert_eq!(snake_slash.parried, 1);
     }
 
-    /// The real bug this session found in the other direction: all four
-    /// avoidance rules hard-anchored `!$` with nothing allowed to follow,
-    /// so a real flagged miss/block/dodge/parry ("(Riposte)", "(Rampage)",
-    /// "(Flurry)") fell through to unmatched *entirely* -- not even
-    /// counted as a plain avoidance. Real lines, all four kinds, each
-    /// still lands on its own ability row (proving the swing itself
-    /// wasn't lost) *and* carries the special-attack-type bit.
+    /// why: real bug -- avoidance rules hard-anchored !$ so a flagged
+    /// miss/block/dodge/parry (Riposte/Rampage/Flurry) fell through to
+    /// unmatched entirely; now each lands on its ability row and keeps the special-attack bit
     #[test]
     fn a_flagged_avoidance_still_counts_the_swing_and_keeps_its_own_flag() {
         let engine = build_engine().expect("pack builds");
@@ -3666,8 +3638,7 @@ mod newly_recognized_line_tests {
             "none of the 4 flagged swings should be lost"
         );
 
-        // Confirm the flag itself, not just that the swing landed on a
-        // row -- walk the raw store rows for the four Miss-kind events.
+        // why: confirm the flag itself, not just that the swing landed on a row
         let miss_flags: Vec<eqlp_store::Flags> = (0..ing.store.kind.len())
             .filter(|&i| {
                 ing.store.kind[i] == eqlp_store::EventKind::Miss && ing.store.actor[i] == socho
@@ -3760,11 +3731,8 @@ mod stance_evidence_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// A stance's own class list feeds `classdetect` the exact same way an
-    /// unambiguous spell already does -- two real "assume a berserker
-    /// stance" lines, on two distinct zone visits (`MIN_UNAMBIGUOUS_CASTS`
-    /// counts *visits*, not raw occurrences -- see its own doc), confirm
-    /// Berserker with no spell cast involved at all.
+    /// why: a stance's class list feeds classdetect like an unambiguous
+    /// spell -- two real stance lines on two zone visits confirm Berserker, no cast needed
     #[test]
     fn an_unambiguous_stance_confirms_its_one_class() {
         let engine = build_engine().expect("pack builds");
@@ -3787,8 +3755,7 @@ mod stance_evidence_tests {
         );
     }
 
-    /// The mirror case: one occurrence isn't enough evidence yet, same bar
-    /// a spell is held to.
+    /// why: mirror case -- one occurrence isn't enough evidence, same bar a spell is held to
     #[test]
     fn a_single_stance_line_is_not_enough_evidence_yet() {
         let engine = build_engine().expect("pack builds");
@@ -3812,18 +3779,14 @@ mod skill_evidence_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// Real shape from a real character's log: "You have become better at
-    /// Tracking! (N)" was already parsed by this pack (`skill.up`) but
-    /// never routed anywhere -- confirms it now reaches `classdetect` the
-    /// same way an unambiguous spell would (Tracking is Bard/Druid/Ranger
-    /// only, no other route -- see `skilldata`'s own doc).
+    /// why: skill.up was parsed but never routed -- confirms it now
+    /// reaches classdetect like an unambiguous spell (Tracking is Bard/Druid/Ranger only)
     #[test]
     fn a_tracking_skill_up_narrows_the_open_slot() {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
-        // Enchanter and Wizard proven and reinforced this visit, same as
-        // the real session this reproduces; then an ambiguous cast pool
-        // that only shares Ranger with Tracking's own pool.
+        // why: Enchanter/Wizard reinforced this visit; then an ambiguous
+        // pool sharing only Ranger with Tracking's pool
         let lines: Vec<&[u8]> = vec![
             b"[Tue Jul 28 15:01:00 2026] You have entered Befallen.",
             b"[Tue Jul 28 15:01:01 2026] You begin casting Kilan's Animation.",
@@ -3834,13 +3797,11 @@ mod skill_evidence_tests {
             b"[Tue Jul 28 15:03:00 2026] You have entered Blackburrow.",
             b"[Tue Jul 28 15:03:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:03:02 2026] You begin casting Shock of Lightning.",
-            // Cure Poison: {Beastlord, Cleric, Druid, Paladin, Ranger, Shaman}.
+            // why: Cure Poison pool {Beastlord,Cleric,Druid,Paladin,Ranger,Shaman}
             b"[Tue Jul 28 15:03:03 2026] You begin casting Cure Poison.",
-            // Evasive stance: {Bard, Monk, Ranger, Beastlord, Rogue} -- with
-            // Cure Poison's pool, narrows to {Beastlord, Ranger}.
+            // why: evasive stance narrows with Cure Poison to {Beastlord, Ranger}
             b"[Tue Jul 28 15:03:04 2026] You assume an evasive stance.",
-            // Tracking: {Bard, Druid, Ranger} -- the real evidence this
-            // whole test exists for; only Ranger survives all three pools.
+            // why: Tracking {Bard,Druid,Ranger} -- only Ranger survives all three pools
             b"[Tue Jul 28 15:03:05 2026] You have become better at Tracking! (1)",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
@@ -3866,13 +3827,8 @@ mod invocation_evidence_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// Real multi-source combination: an invocation, a stance, and a
-    /// skill-up, none individually enough, narrow the same open slot down
-    /// together the same way three ambiguous spells would. Deliberately
-    /// avoids any pool that overlaps an already-confirmed class -- one
-    /// that does is read as reinforcement of the confirmed class, not
-    /// evidence about the *other* candidate it also lists (correctly
-    /// conservative; see `apply_pool`'s own doc).
+    /// why: invocation + stance + skill-up, none alone enough, narrow the
+    /// open slot together like three ambiguous spells would
     #[test]
     fn an_invocation_combines_with_a_stance_and_a_skill_to_narrow_the_open_slot() {
         let engine = build_engine().expect("pack builds");
@@ -3887,13 +3843,11 @@ mod invocation_evidence_tests {
             b"[Tue Jul 28 15:03:00 2026] You have entered Blackburrow.",
             b"[Tue Jul 28 15:03:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:03:02 2026] You begin casting Shock of Lightning.",
-            // Spellblade: {Beastlord, Paladin, Ranger, Shadow Knight}.
+            // why: Spellblade pool {Beastlord,Paladin,Ranger,Shadow Knight}
             b"[Tue Jul 28 15:03:03 2026] You begin reciting the spellblade invocation.",
-            // Evasive: {Bard, Monk, Ranger, Beastlord, Rogue} -- combined,
-            // narrows to {Beastlord, Ranger}.
+            // why: Evasive narrows with Spellblade to {Beastlord, Ranger}
             b"[Tue Jul 28 15:03:04 2026] You assume an evasive stance.",
-            // Tracking: {Bard, Druid, Ranger} -- only Ranger survives all
-            // three pools.
+            // why: Tracking {Bard,Druid,Ranger} -- only Ranger survives all three
             b"[Tue Jul 28 15:03:05 2026] You have become better at Tracking! (1)",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
@@ -3919,11 +3873,8 @@ mod effect_ping_tests {
     use super::*;
     use crate::parser::build_engine;
 
-    /// The correction that started this: a recognized buff-landing line is
-    /// real evidence of what's true about "You" whether or not a Quick Buff
-    /// window is open (an ally could have cast it) -- so the ping must not
-    /// depend on the window the way class-evidence attribution does. Real
-    /// line, no activation anywhere nearby.
+    /// why: a recognized buff-landing line pings state on "You" whether
+    /// or not a Quick Buff window is open (an ally could have cast it)
     #[test]
     fn a_flavor_line_pings_state_with_no_quickbuff_window_open_at_all() {
         let engine = build_engine().expect("pack builds");
@@ -3940,11 +3891,8 @@ mod effect_ping_tests {
         );
     }
 
-    /// The other half of the same correction: recognizing the line as state
-    /// does *not* imply it's safe to use as class evidence. Same
-    /// unambiguous (Necromancer-only) flavor text, landing across two
-    /// distinct zone visits with no Quick Buff activation anywhere nearby
-    /// -- the ping still fires each time, but nothing gets confirmed.
+    /// why: recognizing state doesn't imply it's safe class evidence --
+    /// pings fire across two visits with no Quick Buff window, nothing confirmed
     #[test]
     fn a_flavor_line_with_no_open_window_never_becomes_class_evidence() {
         let engine = build_engine().expect("pack builds");
@@ -3963,17 +3911,15 @@ mod effect_ping_tests {
             .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
         assert!(configured.is_empty(), "{configured:?}");
 
-        // But the ping itself still landed both times.
+        // why: the ping itself still landed both times
         assert_eq!(
             ing.effects.recent(you.0, ing.now_ms(), 1_000),
             vec!["A blast of acid eats at your skin."]
         );
     }
 
-    /// Same unambiguous text, same two visits -- this time inside an open
-    /// Quick Buff window each time, matching the pre-existing attribution
-    /// behavior exactly (unchanged by this split): two distinct-visit
-    /// unambiguous sightings confirm the class.
+    /// why: same text, same visits, but inside an open Quick Buff window
+    /// each time -- two distinct-visit sightings confirm the class
     #[test]
     fn a_flavor_line_inside_an_open_quickbuff_window_still_confirms_a_class() {
         let engine = build_engine().expect("pack builds");
@@ -3985,13 +3931,8 @@ mod effect_ping_tests {
             b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
             b"[Tue Jul 28 15:02:01 2026] You activate Quick Buff.",
             b"[Tue Jul 28 15:02:02 2026] A blast of acid eats at your skin.",
-            // Past PULSE_WINDOW_MS -- flushes the pending evidence above
-            // via record_effect_ping's own staleness commit (see its
-            // doc). Nothing else advances the clock in a short synthetic
-            // test the way 72,000+ real pings would. A *different* real
-            // flavor line on purpose -- reusing the same text here would
-            // itself look like the exact pulsing pattern this whole
-            // mechanism now exists to catch.
+            // why: past PULSE_WINDOW_MS, flushes pending evidence; a
+            // different flavor line on purpose -- same text would look like the pulsing pattern itself
             b"[Tue Jul 28 15:02:20 2026] A burst of strength surges through your body.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
@@ -4006,10 +3947,8 @@ mod effect_ping_tests {
         );
     }
 
-    /// `fight_state_at`'s own DTO field, exercised end to end through a
-    /// real encounter: an ally's buff lands on "You" mid-fight (no
-    /// activation nearby -- just a real ally-cast effect), then a scrub
-    /// query for a moment shortly after shows it as a recent effect.
+    /// why: end-to-end through a real encounter -- an ally's buff lands
+    /// on "You" mid-fight, a scrub query shortly after shows it as recent
     #[test]
     fn fight_state_at_surfaces_a_recent_effect_on_you() {
         let engine = build_engine().expect("pack builds");
@@ -4039,10 +3978,8 @@ mod effect_ping_tests {
         );
     }
 
-    /// The Amplification correction: a third-person landing line is real
-    /// evidence of state on *whoever it landed on*, not "You" -- real
-    /// line, real repeat cadence (a bard song's own pulse), pulled
-    /// straight from the reference log.
+    /// why: a third-person landing line pings state on whoever it landed
+    /// on, not "You"; real bard-song pulse cadence from the reference log
     #[test]
     fn a_third_person_landing_pings_state_on_the_actual_target_not_you() {
         let engine = build_engine().expect("pack builds");
