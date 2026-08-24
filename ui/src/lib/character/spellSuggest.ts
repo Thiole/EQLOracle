@@ -463,11 +463,6 @@ export interface RotationResult {
   avgDps: number;
 }
 
-/** why: keeps the per-step scan small -- the best pair/trio is always
- * drawn from the strongest individual spells anyway, same reasoning the
- * old bestWeavePair search already used. */
-const ROTATION_POOL_CAP = 10;
-
 /** why: mirrors dpscalc.rs's own TICK_SECS -- a DoT's tick cadence, needed
  * here to spread its lifetime damage across real tick landing times
  * instead of crediting it all at the cast moment (see simulateRotation). */
@@ -498,41 +493,50 @@ function scheduleDamage(spell: DamageSpellDto, castStart: number, castEnd: numbe
   return credited;
 }
 
-/** why: real bug -- greedily picking by `dps_with_reuse` (a spell's own
- * *solo*, spammed-forever rate) undervalues a big one-shot nuke whose
- * long downtime other spells can fill anyway. Real numbers exposed it:
- * rank-10 Frost Storm (3072 dmg/5s cast, 12s recast) has a mediocre solo
- * dps_with_reuse (180) next to Rend/Conflagration's (263/342), so the
- * old criterion never picked it even though it was ready -- but Frost
- * Storm's single-cast payoff (3072) dwarfs a single Rend/Conflag cast
- * (1710/1800) for the *same* 5s of commitment. Weaving one FS cast in
- * wherever it's ready, instead of skipping it, raised a 60s window's
- * total from 21,060 to 25,146 on these exact numbers -- confirmed by
- * hand and by re-running this function. */
-function castValue(s: DamageSpellDto): number {
-  return s.total_damage / s.casting_time;
+/** why: real bug, caught from a live regression report -- a static
+ * total_damage/casting_time (the old `castValue`) massively overstates
+ * a long-duration DoT's real worth once the window can't fit all its
+ * ticks. Real example: rank-10 Plague (1220 lifetime dmg over a 117s
+ * duration, 1.8s cast) scored 677.8 by the old metric -- better than
+ * Conflagration's 360 -- but a 60s window can only ever land ~9 of its
+ * 20 ticks, so its *real* realizable value is closer to 340, no better
+ * than Rend. The old metric greedily grabbed it anyway, on real data
+ * displacing two full Conflagration casts (3600 real damage) for one
+ * Plague cast that only delivered a fraction of its nominal total --
+ * a real, reported DPS regression when a class with long DoTs got added.
+ * `realizedValueAt` asks the right question instead: "if cast starting
+ * *right now*, how much of this spell's damage would actually land
+ * before the window ends" -- reuses `scheduleDamage`, so a nuke (never
+ * truncated) scores the same as before, and Frost Storm's own weave-in
+ * behavior (see the old castValue doc, now folded into this one) is
+ * unaffected since its single-cast damage always lands whole. */
+function realizedValueAt(s: DamageSpellDto, castStart: number, windowSecs: number): number {
+  return scheduleDamage(s, castStart, castStart + s.casting_time, windowSecs) / s.casting_time;
 }
 
 /** why: greedy timeline scheduler -- at each point the caster is free,
  * cast whichever *ready* spell pays the most per second of casting time
- * committed right now (`castValue`), not whichever has the best rate if
- * spammed alone (`dps_with_reuse` -- see castValue's own doc for why
- * that criterion under-weaves a big one-shot nuke). Generalizes the old
- * single best-nuke-vs-worthwhile-DoT and 2-nuke weave-pair heuristics
- * into a real N-spell, real-timeline simulation -- not a global optimum
- * (a true schedule optimizer is a much harder problem), but validated
- * against real data: alternating Rend/Conflagration beats spamming
- * either alone, and weaving Frost Storm in wherever it's ready beats
- * skipping it, both reproduced by this same greedy rule on their own.
- * A DoT already cast keeps ticking on its own clock while other spells
- * get woven in (see scheduleDamage) -- it just can't be recast until
- * its own duration fully resolves (`nextAvailable`), so it never
- * overwrites/stacks with itself. */
+ * committed right now, given how much of it would actually land before
+ * the window ends (`realizedValueAt` -- see its own doc for why a raw
+ * total/casting_time comparison over-values a DoT the window can't fit).
+ * Generalizes the old single best-nuke-vs-worthwhile-DoT and 2-nuke
+ * weave-pair heuristics into a real N-spell, real-timeline simulation --
+ * not a global optimum (a true schedule optimizer is a much harder
+ * problem), but validated against real data: alternating Rend/
+ * Conflagration beats spamming either alone, weaving Frost Storm in
+ * wherever it's ready beats skipping it, and a long DoT no longer
+ * displaces real nuke damage for a payoff it can't actually deliver,
+ * all reproduced by this same greedy rule on their own. A DoT already
+ * cast keeps ticking on its own clock while other spells get woven in
+ * (see scheduleDamage) -- it just can't be recast until its own
+ * duration fully resolves (`nextAvailable`), so it never overwrites/
+ * stacks with itself. No pool cap -- the loop is cheap regardless of
+ * candidate count (bounded by windowSecs / shortest cast time, not by
+ * pool size squared), and real class combinations easily exceed what a
+ * small cap could safely pre-filter (58+ usable damage spells for just
+ * two classes, confirmed against the real catalog). */
 export function simulateRotation(candidates: DamageSpellDto[], windowSecs: number): RotationResult {
-  const pool = [...candidates]
-    .filter((s) => s.casting_time > 0 && s.casting_time <= windowSecs)
-    .sort((a, b) => castValue(b) - castValue(a))
-    .slice(0, ROTATION_POOL_CAP);
+  const pool = candidates.filter((s) => s.casting_time > 0 && s.casting_time <= windowSecs);
 
   const nextAvailable = new Map<string, number>();
   const sequence: DamageSpellDto[] = [];
@@ -551,7 +555,9 @@ export function simulateRotation(candidates: DamageSpellDto[], windowSecs: numbe
       t = nextT;
       continue;
     }
-    const best = ready.reduce((a, b) => (castValue(b) > castValue(a) ? b : a));
+    const best = ready.reduce((a, b) =>
+      (realizedValueAt(b, t, windowSecs) > realizedValueAt(a, t, windowSecs) ? b : a),
+    );
     const castStart = t;
     sequence.push(best);
     t = castStart + best.casting_time;
