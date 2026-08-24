@@ -1,5 +1,4 @@
-// Ported directly from the legacy app (ui/app-legacy/app.js) -- same
-// output, same edge cases, not reinvented.
+// why: same duration format as the rest of the app
 
 /** "3:07" -- minutes:seconds, zero-padded. */
 export function fmtDuration(ms: number | null | undefined): string {
