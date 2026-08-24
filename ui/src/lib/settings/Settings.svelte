@@ -9,10 +9,12 @@
     eraOptions,
     currentEra,
     saveProfile,
+    updateChannel,
     settingsLoaded,
     setVolume,
     setEra,
     setSaveProfile,
+    setUpdateChannel,
     loadPreferences,
   } from '$lib/stores/settings';
   import { mapPacks, rescanMapFolder } from '$lib/stores/maps';
@@ -104,6 +106,32 @@
           sees, same as always. On: also remembers your last-confirmed classes between launches, and falls back to
           them for zone routing on a new launch until this session's own replay reconfirms them itself -- it never
           overrides a class the current session has already confirmed on its own.
+        </p>
+      </CardContent>
+    </Card>
+
+    <Card class="rounded-sm">
+      <CardContent class="px-3 py-2.5">
+        <h2 class="panel-title mb-1.5">update channel</h2>
+        <label class="flex max-w-sm items-center gap-2 text-[12px]">
+          <span class="w-16 shrink-0 text-muted-foreground">channel</span>
+          <Select.Root
+            type="single"
+            value={$updateChannel}
+            onValueChange={(v) => v && setUpdateChannel(v as 'public' | 'beta')}
+          >
+            <Select.Trigger class="h-7 flex-1 text-[12px]">
+              {$updateChannel === 'beta' ? 'Beta' : 'Public'}
+            </Select.Trigger>
+            <Select.Content>
+              <Select.Item value="public">Public</Select.Item>
+              <Select.Item value="beta">Beta</Select.Item>
+            </Select.Content>
+          </Select.Root>
+        </label>
+        <p class="mt-1.5 text-[11px] text-muted-foreground">
+          Public (default): only real, deliberate releases. Beta: every build off the testing branch, ahead of a
+          real release but less tested -- expect rough edges.
         </p>
       </CardContent>
     </Card>

@@ -2,19 +2,19 @@ name: release
 
 on:
   push:
-    branches: [main]
+    branches: [main, testing]
     paths-ignore: ["**.md"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# why: a rolling "latest" release, not tag-triggered -- this workflow
-# already runs on every main push (see `on:` above), and nothing in the
-# repo does semver tagging yet. Re-publishing the same "latest" tag on
-# every green main build is what actually makes the builds land
-# somewhere a person can download them, without inventing a versioning
-# scheme nobody asked for.
+# why: two rolling channels, not tag-triggered -- routine work pushes to
+# `testing` (auto-published under the "testing" tag, prerelease), a real
+# release is a deliberate, separate push to `main` (published under
+# "latest", the channel GitHub's own "Latest release" badge follows).
+# Neither is semver-tagged -- nothing in the repo does that yet; each
+# channel's tag just moves to whatever that branch last built successfully.
 
 env:
   CARGO_TERM_COLOR: always
@@ -101,7 +101,7 @@ jobs:
             target/release/bundle/**/*.msi
 
   publish:
-    name: Publish latest release
+    name: Publish release
     needs: [linux, windows]
     runs-on: ubuntu-latest
     permissions:
@@ -113,17 +113,33 @@ jobs:
           pattern: eqlp-*
           merge-multiple: true
 
-      - name: Publish/replace the rolling "latest" release
+      # why: branch decides the channel -- main is the only deliberate,
+      # explicit release trigger (a separate push someone chose to make),
+      # everything else lands on testing
+      - name: Determine channel
+        id: channel
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+            echo "name=Latest release" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=testing" >> "$GITHUB_OUTPUT"
+            echo "name=Testing build" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish/replace the rolling channel release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: Latest build (main)
+          tag_name: ${{ steps.channel.outputs.tag }}
+          name: ${{ steps.channel.outputs.name }}
           # why: a rolling tag needs its own commit's notes, not
           # whatever an old release's body said -- overwritten every run
           body: |
-            Automated build from main @ ${{ github.sha }}.
-            Not a stable/tagged release -- this tag moves to whatever main last built successfully.
-          prerelease: true
-          make_latest: false
+            Automated build from ${{ github.ref_name }} @ ${{ github.sha }}.
+            Not a semver release -- this tag moves to whatever ${{ github.ref_name }} last built successfully.
+          prerelease: ${{ steps.channel.outputs.prerelease == 'true' }}
+          make_latest: ${{ github.ref_name == 'main' }}
           target_commitish: ${{ github.sha }}
           files: dist/**

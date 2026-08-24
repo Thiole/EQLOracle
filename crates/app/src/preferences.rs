@@ -11,6 +11,19 @@ fn default_volume() -> u8 {
     100
 }
 
+/// why: which release channel this install checks for updates against --
+/// `public` = the `latest` GitHub release (main, deliberate releases
+/// only), `beta` = the `testing` release (every push to `testing`,
+/// prerelease). See `.github/workflows/3-release.yml`'s own doc for the
+/// two tags this maps to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateChannel {
+    #[default]
+    Public,
+    Beta,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Preferences {
     /// why: 0-100, not yet wired to playback -- saved ahead of that port
@@ -27,6 +40,10 @@ pub struct Preferences {
     /// always wins once it exists.
     #[serde(default)]
     pub save_profile: bool,
+    /// why: defaults Public -- an install never opts into prerelease
+    /// builds without asking
+    #[serde(default)]
+    pub update_channel: UpdateChannel,
 }
 
 impl Default for Preferences {
@@ -35,6 +52,7 @@ impl Default for Preferences {
             volume: default_volume(),
             era: None,
             save_profile: false,
+            update_channel: UpdateChannel::default(),
         }
     }
 }
@@ -80,6 +98,11 @@ mod tests {
             !p.save_profile,
             "off by default -- every launch infers fresh unless the user opts in"
         );
+        assert_eq!(
+            p.update_channel,
+            UpdateChannel::Public,
+            "never opts into prerelease builds without being asked"
+        );
     }
 
     #[test]
@@ -88,12 +111,14 @@ mod tests {
             volume: 42,
             era: Some("All".to_string()),
             save_profile: true,
+            update_channel: UpdateChannel::Beta,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: Preferences = serde_json::from_str(&json).unwrap();
         assert_eq!(back.volume, 42);
         assert_eq!(back.era.as_deref(), Some("All"));
         assert!(back.save_profile);
+        assert_eq!(back.update_channel, UpdateChannel::Beta);
     }
 
     /// why: an old/partial file must still load via #[serde(default)]
@@ -103,5 +128,6 @@ mod tests {
         assert_eq!(back.volume, 100);
         assert_eq!(back.era, None);
         assert!(!back.save_profile);
+        assert_eq!(back.update_channel, UpdateChannel::Public);
     }
 }

@@ -828,6 +828,10 @@ export interface PreferencesDto {
    * hasn't confirmed a configuration for "You" yet -- see the Rust
    * `Preferences::save_profile` field's own doc for the full policy. */
   save_profile: boolean;
+  /** why: 'public' (default) checks the `latest` GitHub release (main,
+   * deliberate releases only); 'beta' checks `testing` (every push to
+   * `testing`, prerelease) -- see `.github/workflows/3-release.yml`. */
+  update_channel: 'public' | 'beta';
 }
 
 // ---------------------------------------------------------------- history

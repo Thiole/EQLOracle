@@ -18,6 +18,9 @@ export const currentEra = writable('Sky Era');
  * restarts as a fallback for zone routing -- see `PreferencesDto.
  * save_profile`'s own doc. */
 export const saveProfile = writable(false);
+/** why: which release channel this install checks for updates against --
+ * see PreferencesDto.update_channel's own doc */
+export const updateChannel = writable<'public' | 'beta'>('public');
 export const settingsLoaded = writable(false);
 
 /** why: what every era-aware API call should actually send -- resolves
@@ -36,13 +39,19 @@ export function loadPreferences(): Promise<void> {
     volume.set(prefs.volume);
     era.set(prefs.era);
     saveProfile.set(prefs.save_profile);
+    updateChannel.set(prefs.update_channel);
     settingsLoaded.set(true);
   })();
   return loading;
 }
 
 function currentPrefs(): PreferencesDto {
-  return { volume: get(volume), era: get(era), save_profile: get(saveProfile) };
+  return {
+    volume: get(volume),
+    era: get(era),
+    save_profile: get(saveProfile),
+    update_channel: get(updateChannel),
+  };
 }
 
 export async function setVolume(v: number) {
@@ -58,6 +67,11 @@ export async function setEra(e: string) {
 export async function setSaveProfile(on: boolean) {
   saveProfile.set(on);
   await api.setPreferences({ ...currentPrefs(), save_profile: on }).catch(() => {});
+}
+
+export async function setUpdateChannel(channel: 'public' | 'beta') {
+  updateChannel.set(channel);
+  await api.setPreferences({ ...currentPrefs(), update_channel: channel }).catch(() => {});
 }
 
 /** why: shared by every era-tagged Game Data category that carries a
