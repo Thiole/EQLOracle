@@ -20,31 +20,18 @@ use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
-/// How often to re-scan the directory for a newer `eqlog_*.txt`. Character
-/// switches are rare compared to line growth, so this runs far less often
-/// than the 250 ms tail poll.
+/// why: directory rescan interval; character switches are rare vs line growth
 const RESCAN_MS: i64 = 5_000;
 
-/// Emit a tick at least this often even when nothing new arrived, so the UI
-/// can show "still watching" instead of going stale-looking mid-lull.
+/// why: minimum tick cadence so the UI never looks stale mid-lull
 const HEARTBEAT_MS: i64 = 3_000;
 
-/// How many lines `backfill_lines` processes per call during history
-/// replay. A multi-million-line file replayed in one call holds
-/// `ingest`'s lock (and blocks the very first `get_status`, which is what
-/// lets the app show its main screen at all) for the file's *entire*
-/// replay, with no progress tick emitted until it's already done -- the
-/// app would sit on a blank window, then jump straight to "fully caught
-/// up" with no number ever counting up in between. Chunking bounds one
-/// lock hold to one chunk's worth of work and lets a tick land between
-/// chunks; small enough that the app shows up and starts counting almost
-/// immediately, large enough that per-chunk overhead (lock acquire, one
-/// `parse-tick` emit) stays negligible next to the work it's wrapping.
+/// why: bounds one lock hold to one chunk -- replaying a multi-million-line
+/// file in one call would block `get_status` for the whole replay with no
+/// progress tick until done
 const BACKFILL_CHUNK_LINES: usize = 100_000;
 
-/// What the toolbar/Overview module show: which file, whose character,
-/// whether we're still replaying history. Cheap to clone; read on every
-/// `get_status` and pushed on every tick.
+/// why: toolbar/Overview status -- cheap to clone, read every `get_status`
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct TailStatus {
     pub log_dir: Option<String>,
@@ -53,14 +40,10 @@ pub struct TailStatus {
     pub server: Option<String>,
     pub watching: bool,
     pub tail_status: &'static str,
-    /// True while replaying the file's existing content before catching up
-    /// to live. The Combat module's numbers are already usable during this
-    /// window -- it's the live feed and real-time idle-closing that wait
-    /// for it to clear. See `Ingest::mark_live`.
+    /// why: true while replaying existing content; Combat numbers already
+    /// usable during this window, only live feed/idle-closing wait for it
     pub backfilling: bool,
-    /// How many pets have been auto-attributed to an owner so far
-    /// (`Ingest::note_actor`) -- shown so that inference stays visible
-    /// rather than an invisible thing happening to the numbers.
+    /// why: pets auto-attributed so far, shown so inference stays visible
     pub pets_attributed: usize,
 }
 
@@ -71,12 +54,7 @@ struct ParseTick {
     recent: Vec<RecentLine>,
 }
 
-/// What the inv-toast listens for (`ui/app/app.js`) -- one per freshly
-/// written `/outputfile inventory` dump, named by an `outputfile.complete`
-/// line. `character` is read off the filename itself
-/// (`<Character>_<zone>-Inventory.txt`, confirmed against a real dump --
-/// see `inventory.rs`'s own doc), not looked up anywhere, so it's a
-/// best-effort label rather than a guaranteed-correct one.
+/// why: what the inv-toast listens for; `character` from filename, best-effort
 #[derive(Clone, Serialize)]
 struct InventoryDumpEvent {
     file: String,
@@ -98,8 +76,7 @@ pub struct WorkerHandle {
 }
 
 impl WorkerHandle {
-    /// Signals the worker to exit; does not block. The thread notices within
-    /// one poll interval and drops its file handle on the way out.
+    /// why: signals exit without blocking; thread notices within one poll interval
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Relaxed);
     }
@@ -133,19 +110,14 @@ fn run(
     };
     let mut matcher = engine.matcher();
     let clock = SystemClock;
-    // A backfill (replaying a file's existing content) parses in parallel;
-    // live growth is a few lines at a time and stays on the simple
-    // single-threaded path. See ingest::backfill_lines.
-    //
-    // why: 16-thread cap, re-measured via examples/backfill_bench.rs
+    // why: backfill parses in parallel, live growth stays single-threaded;
+    // 16-thread cap re-measured via examples/backfill_bench.rs
     let backfill_threads = thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
         .min(16);
 
-    // A fresh directory (first launch, or "change folder") starts from a
-    // fresh parsed db -- row indices and encounter ids from a previous
-    // directory mean nothing here.
+    // why: fresh directory starts fresh -- old row/encounter ids mean nothing here
     *ingest.lock().unwrap() = Ingest::default();
 
     let mut target: Option<PathBuf> = None;
@@ -165,9 +137,8 @@ fn run(
             if let Some(newest) = newest_log_in(&log_dir) {
                 if target.as_ref() != Some(&newest) {
                     target = Some(newest.clone());
-                    // Replay this file's existing content, then continue
-                    // live -- "watch live" and "browse past fights" are the
-                    // same tail, just before and after catching up.
+                    // why: "watch live" and "browse past fights" are the same
+                    // tail, just before/after catching up
                     tail = Some(Tail::from_start(newest));
                     framer = Framer::default();
                     backfilling = true;
@@ -180,21 +151,14 @@ fn run(
         let mut tail_status: &'static str = "idle";
         if let Some(t) = tail.as_mut() {
             if backfilling {
-                // First poll of a freshly opened file: `Tail::poll` already
-                // loops internally until it hits current EOF, so this one
-                // call *is* "everything on disk right now" -- pull it into
-                // one buffer and parse it with a bounded thread pool
-                // instead of the incremental single-line path live growth
-                // uses. See ingest::backfill_lines for why that split
-                // is worth it.
+                // why: `Tail::poll` loops to current EOF, so this one call
+                // is "everything on disk" -- parsed with a bounded thread
+                // pool, not the incremental single-line live path
                 let mut raw = Vec::new();
                 let ev = t.poll(|chunk| raw.extend_from_slice(chunk));
                 tail_status = tail_event_str(ev);
 
-                // Framed once, then fed through in bounded pieces -- see
-                // BACKFILL_CHUNK_LINES's doc for why one call over the
-                // whole file would leave the UI staring at a blank screen
-                // with no progress tick until backfill was already done.
+                // why: framed once, fed in bounded pieces -- see BACKFILL_CHUNK_LINES
                 let lines = ingest::framed_lines(&raw);
                 for chunk in lines.chunks(BACKFILL_CHUNK_LINES.max(1)) {
                     if stop.load(Ordering::Relaxed) {
@@ -204,9 +168,7 @@ fn run(
                         let mut ing = ingest.lock().unwrap();
                         ingest::backfill_lines(&mut ing, &engine, chunk, backfill_threads);
                     }
-                    // Unconditional, not gated by the heartbeat throttle
-                    // below -- this *is* the counting-up progress the app
-                    // shows while replaying history.
+                    // why: unconditional -- this is the counting-up progress the UI shows
                     last_emit = clock.now_ms();
                     emit_tick(&app, &log_dir, &target, tail_status, true, &ingest, &status);
                 }
@@ -225,14 +187,9 @@ fn run(
                     });
                 });
                 tail_status = tail_event_str(ev);
-                // The file's own content changed identity mid-tail (not a
-                // character switch, which already gets a fresh Ingest
-                // above). A carried partial line from before means nothing
-                // now; the parsed history in the store is not thrown away
-                // for it -- only the frame boundary resets, at the cost of
-                // possibly one misframed line at the seam. Rare enough, and
-                // cheap enough to accept, that rebuilding hours of parsed
-                // history over it would be the wrong trade.
+                // why: file changed identity mid-tail -- only the frame
+                // boundary resets (possibly one misframed seam line), not
+                // the parsed history; rebuilding it would be the wrong trade
                 if matches!(ev, TailEvent::Truncated | TailEvent::Replaced) {
                     framer = Framer::default();
                 }
@@ -258,14 +215,8 @@ fn run(
     }
 }
 
-/// Builds and emits one `parse-tick`: refreshed `TailStatus`, the store's
-/// running counts, whatever live-feed lines and finished-encounter records
-/// piled up since the last tick, and a best-effort append of each finished
-/// record to `parse_history.jsonl`. Shared by the backfill chunk loop
-/// (fires after *every* chunk, unconditionally -- that's the counting-up
-/// progress the app shows while replaying history) and the steady-state
-/// heartbeat (fires on real news or every `HEARTBEAT_MS`), so the two paths
-/// can never build a `TailStatus`/`ParseTick` differently.
+/// why: builds/emits one `parse-tick`; shared by backfill chunk loop and
+/// steady-state heartbeat so both paths build it identically
 fn emit_tick(
     app: &AppHandle,
     log_dir: &Path,
@@ -298,12 +249,8 @@ fn emit_tick(
     let finished = std::mem::take(&mut ing.pending_history);
     let inventory_files = std::mem::take(&mut ing.pending_inventory_files);
     let notifications = std::mem::take(&mut ing.pending_notifications);
-    // why: computed under the same lock hold as everything else above
-    // (one `ingest.lock()`, not a second just for this) -- `None` unless
-    // `save_profile` is on, so a feature that's off by default never pays
-    // for `class_configurations`'s own reconciliation work on every tick.
-    // See `preferences::Preferences::save_profile`'s own doc for the full
-    // policy this is one half of.
+    // why: one lock hold; None unless save_profile is on, avoids paying
+    // for reconciliation work on every tick when the feature is off
     let profile_classes = crate::preferences::load(app)
         .save_profile
         .then(|| crate::combat::class_configurations(&ing, "You"))
@@ -312,13 +259,8 @@ fn emit_tick(
     drop(ing);
 
     if !notifications.is_empty() {
-        // Loaded once per tick, not per notification -- a handful of
-        // notification-worthy lines a tick at most, so this is nowhere
-        // near a hot path, but no reason to re-read the same small file
-        // twice in a row either. Filtering (not the log line itself)
-        // decides whether a *disabled* kind ever reaches the frontend at
-        // all -- the backend owns "should this be audible right now",
-        // the frontend just plays whatever it's handed.
+        // why: loaded once per tick; backend owns whether a disabled kind
+        // reaches the frontend at all, not the log line itself
         let settings = crate::settings::load(app);
         for n in notifications
             .into_iter()
@@ -328,19 +270,13 @@ fn emit_tick(
         }
     }
     for record in &finished {
-        // Best-effort: a write failure here must not interrupt live
-        // tailing. Nothing surfaces it today beyond this log line --
-        // acceptable for now, but silent enough that it's worth
-        // revisiting if history ever looks incomplete.
+        // why: best-effort -- a write failure must not interrupt live tailing
         if let Err(e) = crate::history::append(app, record) {
             eprintln!("parse history write failed for {}: {e}", record.target);
         }
     }
-    // why: same best-effort stance as the history write just above -- a
-    // failed profile save must not interrupt live tailing either. `st.
-    // character` is `None` before the first zone/cast line has been seen
-    // at all (see `identity_from_filename`'s own doc); nothing to key a
-    // profile on yet in that window.
+    // why: same best-effort stance -- a failed profile save must not
+    // interrupt live tailing; character is None before first zone/cast line
     if let (Some(classes), Some(character)) = (&profile_classes, &st.character) {
         if let Err(e) = crate::profile::save_if_changed(app, character, classes) {
             eprintln!("profile save failed for {character}: {e}");
