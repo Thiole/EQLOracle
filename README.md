@@ -1,192 +1,54 @@
-# eqlp — an EverQuest Legends log parser core
+# EQL Oracle
 
-Rust workspace. The parser is a standalone library with **no dependency on
-Tauri, on file I/O, or on a UI**.
+a companion app for EverQuest Legends. reads your log file, tells you stuff you'd otherwise have to alt-tab to a wiki or do math for yourself to know.
 
-```
-crates/core/     framing → header → classification → coverage.  Pure bytes in, outcomes out.
-crates/cli/      eqlp lint | parse | coverage | shapes | bench.  No webview involved.
-packs/eql.toml   the rules, as data
-corpus/gen.py    synthetic log generator for tests that must not depend on a real log
-```
+not the game. it's a separate Tauri app that sits next to it and watches whatever `eqlog_<Character>_<Server>.txt` you were most recently writing to. point it at your install folder once, it replays what's already in the log, then keeps parsing live as you play. classes, AAs, spells, kills, all of it comes from what actually happened in your log, not from you telling it anything.
 
-That boundary is the point. When parsing and rendering are tangled, neither can
-be tested alone, which is why UI bugs and parse bugs start feeling like the same
-bug. Here the expensive-to-get-right half is a pure function you can fuzz,
-benchmark and diff without opening a window.
+## what it actually does
 
-## Status against the reference log
+- **Combat** — real-time DPS meter. team damage, incoming damage, per-fight and aggregated across a whole zone visit, follows whatever fight is current automatically.
+- **Character** — character sheet, gear, AA log, known spells, and a spellbook builder that actually suggests spells for you (solo buff / team buff / combat rotation), not just a flat list. it knows your classes, won't double up on the same spell line, and does real time-resolved DPS math — DoTs get credited for their tick damage over the actual window, not just their cast, and it accounts for your AA crit chance/damage as an expected-value bump on top (not a fake per-hit RNG sim, just the average going up by the math). there's a settings page to reorder which spell in a line wins when more than one of your classes has an upgrade to the same thing.
+- **Endgame** — raid boss/miniboss tracking. real kill counts, drop tables cross-referenced against what you've actually looted, solo vs group tiers tracked separately (they're genuinely different instances in this game), fastest-clear times per difficulty. updates live off the log, no manual refresh. also Sky's primary class unlocks and quest tracking.
+- **Game Data** — a real browsable catalog: zones, items, NPCs, AAs, spells. cross-linked, so you can click from a spell to the class that gets it, from an NPC to its drop table, whatever.
+- **Maps** — zone maps with markers, for when the wiki's version is wrong or missing.
 
-`eqlog_Manipulator_rivervale.txt` — 1,834,873 lines, 147 MiB, 28 Jul – 9 Aug 2026.
+everything's built off the log itself, not assumptions about how classic EQ worked — this game's log format differs from classic EverQuest in a bunch of specific ways (percentages on XP gain, different damage/heal message shapes, etc.), and every parsing rule here was written against real lines, not memory of a 20-year-old game.
 
-| | |
-|---|---|
-| Coverage | **81.9%** of event lines claimed by a rule |
-| Throughput | 2.4 s for the whole file (0.77 M lines/s, 62 MiB/s) |
-| With capture extraction off | 1.1 s (1.7 M lines/s) — 2.2× |
-| Malformed / headerless lines | **0** |
+## running it
 
-Measured on a single shared vCPU with Rust 1.75; treat the ratios as solid and
-the absolutes as a floor.
-
-## Pipeline
+grab a build from Releases, or build it yourself:
 
 ```
-bytes ──▶ Framer ──▶ HeaderParser ──▶ Matcher ──▶ Outcome
-                                         │           │
-                                    rule pack     Coverage
-                                      (TOML)     (+ shapes)
+cd ui && npm install
+npm run tauri -- build
 ```
 
-Every arrow is a trait or a data file. None of them knows about the game.
+needs Rust (stable) and Node 20+. first launch asks for your EverQuest Legends install folder — the one that directly contains `Logs`, not the `Logs` folder itself (that's also where `/outputfile inventory` writes its dump, needs to be reachable from the same place).
 
-### Framer
-Carries partial lines across chunk boundaries, since the game flushes mid-line
-while tailing. Refuses to be a memory bomb: an over-long line is truncated,
-counted, and resynchronised at the next newline.
-
-### HeaderParser
-`[Tue Jul 28 15:02:08 2026] ` — fixed-offset, no `chrono`, no allocation.
-Accepts space- or zero-padded days. Timestamps are stored as the log wrote them
-with **no timezone attached**: the game gives local time with no offset, and
-inventing a zone would be an unverifiable assumption that cannot be undone
-later. Ordering and deltas — all a DPS window needs — are correct regardless.
-
-### Matcher — two stages, and why
-A mature pack is hundreds of regexes. Running them in sequence is O(rules) per
-line; a single giant alternation cannot say which branch won and its DFA
-explodes as the pack grows.
-
-Game log lines are highly templated, so: one Aho-Corasick pass finds every
-literal *anchor* present in the line, which reduces hundreds of candidate rules
-to typically zero or one, and only those get a regex run.
-
-Anchors are **pure optimisation and must never change results** — see the
-differential test below.
-
-`excludes` are the opposite: literal vetoes that change meaning on purpose.
-Rust's regex crate has no lookaround (that is what buys the linear-time
-guarantee), so "match X but not when Y is present" has no clean regex spelling.
-Expressing it as a literal veto is clearer than a contorted pattern, and free —
-the exclusion literals ride along in the same Aho-Corasick pass.
-
-### Capture extraction is opt-in
-Pulling capture groups out costs roughly 2.2× everything else combined. So it is
-a runtime mask, not a fixed behaviour: a DPS meter alone pays for damage
-captures and nothing else; open a loot panel and the mask widens.
-
-```rust
-let mut m = engine.matcher();
-m.capture_only(&[dmg_rule, heal_rule]);   // everything else: boolean match
-```
-
-## The iteration loop
+for dev:
 
 ```
-eqlp shapes   yourlog.txt --top 60                      # what does the log actually say?
-eqlp coverage --pack packs/eql.toml yourlog.txt --top 40 # what don't we handle yet?
-   ... write rules for the top shapes, with examples ...
-eqlp lint     --pack packs/eql.toml --against yourlog.txt --min-rate 0.95
+cd ui && npm install
+npm run tauri
 ```
 
-`shapes` runs with **no pack at all**. Point it at a log nobody has parsed and it
-collapses the variable parts of every line and ranks the skeletons by frequency.
-Rule authoring becomes "work down the list."
-
-Getting that clustering right took three fixes, each found on real data:
-
-1. **Multi-word names became multiple placeholders**, so `casting Lifetap` and
-   `casting Garrison's Mighty Mana Shock X` were different shapes — one template
-   shattered into a dozen list entries. Fixed by collapsing runs.
-2. **`You` and `Your` were treated as names**, merging self with everyone else.
-   Fixed with a list of English function words. No game knowledge encoded.
-3. **Names containing connectives** (``Footman of V`Zher``, `Blessing of the
-   Squire`) split around the `of`. Fixed by bridging connectives inside a run.
-
-Together these took the top-60 coverage of the shape list from 28.1% to a list
-where the top entry is a real template rather than a fragment.
-
-## What the tooling caught
-
-Three of these are bugs the tooling found in my own rules, which is the case for
-having it:
-
-- **`lint` caught a shadowing collision**: `melee.hit` was eating
-  `"...was hit by non-melee for 100 points..."` as `src="a skeleton was",
-  verb="hit"`. That is what motivated `excludes`.
-- **30,164 lines said `1 point of damage`, singular.** The anchor
-  `"points of damage."` silently dropped every one. Anchor is now
-  `" of damage."`.
-- **22,375 hits carry a trailing flag** — `(Critical)`, `(Riposte)`,
-  `(Rampage)`, `(Crippling Blow)`, `(Double Bow Shot)` and combinations. The
-  pattern's `$` dropped all of them, including 15,798 crits: precisely the stat
-  a DPS meter leads with. Fixing these two recovered **52,633 events** in
-  `melee.hit` alone.
-- **`zone.enter` was matching** `"You have entered an area where levitation
-  effects do not function."` Fixed with an exclude.
-
-## Where EQL differs from classic EverQuest
-
-Every pattern in `packs/eql.toml` came from the log. Where classic-EQ intuition
-and the log disagreed, the log won:
-
-| | classic EQ | EQL |
-|---|---|---|
-| XP | `You gain experience!!` | `You gain experience! (11.000%)` — with a percentage |
-| Spell damage | `X was hit by non-melee for N` | `X hit Y for N points of magic damage by Spell.` — **the classic form does not occur even once** |
-| Heals | `X has healed Y for N` | `X healed Y for N (M) hit points by Spell.` — the `(M)` is the uncapped amount |
-| Loot | `--You have looted a X.--` | `--You have looted a X from a Y's corpse.--` |
-| DoT | — | `X has taken N damage from Spell by Caster.` (and a rarer uncredited form) |
-
-## Tests
-
-`cargo test --release` — 19 unit + 7 integration, all against real log data.
-
-The load-bearing one is **`anchors_never_change_the_answer`**: it builds two
-engines from the same pack, one with anchors and one with every anchor stripped,
-and asserts byte-identical output across the corpus. A wrong anchor is the one
-bug class that could silently drop events forever; this makes it unshippable.
-
-Alongside it:
-
-- `matcher_state_does_not_leak_between_lines` — the matcher reuses scratch
-  buffers, so results must not depend on history. Checked forward, reversed, and
-  against virgin matchers.
-- `epoch_wraparound_is_safe` — forces the u32 anchor-dedup epoch to wrap.
-- `streamed_framing_equals_batch_framing` — eight chunk sizes from 1 byte up.
-  This is what makes a live tail behave identically to a batch reparse.
-- `arbitrary_bytes_never_panic` — random bytes, valid-header-plus-garbage, and
-  every truncation of a real line (what a partial flush looks like).
-- `coverage_buckets_sum_to_the_line_count` — no line silently disappears.
-- `lazy_captures_match_eager_captures`.
-
-`eqlp lint` is the CI gate and needs no webview:
+## how it's put together
 
 ```
-eqlp lint --pack packs/eql.toml --against real.log --min-rate 0.95
+crates/core/     the log parser itself. no Tauri, no file I/O, no UI — pure bytes in, parsed events out.
+crates/session/  turns parsed events into encounters, class detection, timelines.
+crates/store/    the in-memory event store the app queries against.
+crates/app/      the actual Tauri app — commands, ingest pipeline, everything UI-facing.
+crates/cli/      eqlp lint | parse | coverage | shapes — standalone tools for working on the parser/rule pack.
+packs/eql.toml   every parsing rule, as data, not code.
+ui/              the frontend. Svelte 5 + Tailwind.
 ```
 
-It runs every rule's declared `examples` through the whole engine and fails if
-another rule claims them, verifies each anchor appears in its own examples,
-flags rules that never fire against a real log, and gates on coverage.
+the parser is deliberately its own thing, separate from the app and the UI. that split is what makes it possible to fuzz it, benchmark it, and diff its output without ever opening a window — and it means a parsing bug and a rendering bug never get confused for the same bug.
 
-## Next
+## CI
 
-**The remaining 18% is one architectural piece, not 200 more regexes.** The
-backlog is now dominated by spell landing and fading text — `Your feet move
-faster.`, `You feel an aura of mystic protection surrounding you.`, `The jig
-sends energy zinging through your body.` These are not templates with variable
-slots; they are a *dictionary* of fixed strings, one or more per spell. The
-right answer is an exact-body hash lookup consulted before the regex stage —
-O(1), and it drops in behind the existing `Classifier` seam without touching
-anything above it. That should take coverage well past 95%.
-
-Also outstanding:
-
-- **The live tailer** — rotation, partial flushes, the Windows file-locking
-  dance. `Framer` is already built for it.
-- **The Tauri boundary.** The fix for Electron-style jank is batching snapshots
-  to the webview at ~10 Hz through a bounded ring buffer rather than emitting
-  per event. At 0.77 M lines/s the parser is nowhere near the bottleneck; the
-  IPC chatter is.
-# EQLOracle
+- **verify** — fmt, clippy, the full test suite, a fuzz smoke pass, and a coverage-regression check on the rule pack. gates every push.
+- **beta** — Playwright against a mock IPC harness plus the real webview via tauri-driver, catches the stuff unit tests can't (window count, hit testing, layout).
+- **release** — builds and bundles Linux + Windows on every push to main.
+- **nightly** — the long fuzz campaign, too slow to gate a normal push.
