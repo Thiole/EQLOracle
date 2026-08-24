@@ -21,6 +21,9 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: ui/package-lock.json }
+
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
@@ -40,6 +43,10 @@ jobs:
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --locked
+
+      - name: Install frontend dependencies
+        working-directory: ui
+        run: npm ci
 
       - name: Build Linux application
         run: cargo tauri build
@@ -61,10 +68,17 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm, cache-dependency-path: ui/package-lock.json }
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli --locked
+
+      - name: Install frontend dependencies
+        working-directory: ui
+        run: npm ci
 
       - name: Build Windows application
         run: cargo tauri build
