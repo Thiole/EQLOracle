@@ -4008,10 +4008,8 @@ mod effect_ping_tests {
         );
     }
 
-    /// Never class evidence, even if it happens to fall inside an open
-    /// Quick Buff window -- a third-person line doesn't prove an *ally*
-    /// cast it, let alone the log owner (a mob's own DoT ticking on
-    /// someone lands the exact same way).
+    /// why: never class evidence even inside an open Quick Buff window --
+    /// a third-person line doesn't prove an ally cast it
     #[test]
     fn a_third_person_landing_never_becomes_class_evidence() {
         let engine = build_engine().expect("pack builds");
@@ -4026,20 +4024,15 @@ mod effect_ping_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        // "You" never even needs to be interned as an entity here -- every
-        // line in this test is third-person, so if class evidence leaked
-        // through, `known_entities` would be the first place it showed up.
+        // why: "You" never gets interned here -- if evidence leaked through, known_entities would show it
         assert!(
             ing.classes.known_entities().next().is_none(),
             "no evidence should ever be attributed to anyone from these lines"
         );
     }
 
-    /// A real possessive-shaped line whose first-person reconstruction is
-    /// *not* a known landing message (a fully unrelated buff this app has
-    /// no scraped text for, per the reference-log audit) produces no ping
-    /// at all -- the dictionary gate is what keeps this transform from
-    /// manufacturing false positives out of ordinary possessive sentences.
+    /// why: a possessive line whose reconstruction isn't a known message
+    /// pings nothing -- the dictionary gate stops false positives
     #[test]
     fn a_possessive_line_that_does_not_reconstruct_a_known_message_pings_nothing() {
         let engine = build_engine().expect("pack builds");
@@ -4054,9 +4047,7 @@ mod effect_ping_tests {
         );
     }
 
-    /// The conjugated (non-possessive) third-person form: "@ feels much
-    /// faster." from the user's own report. Real line, real regular verb
-    /// conjugation ("feel" -> "feels").
+    /// why: conjugated (non-possessive) third-person form, from the user's own report
     #[test]
     fn a_conjugated_third_person_landing_pings_state_on_the_actual_target() {
         let engine = build_engine().expect("pack builds");
@@ -4075,11 +4066,8 @@ mod effect_ping_tests {
         );
     }
 
-    /// A real *multi-word* entity name ("The Prophet"), proving the "try
-    /// every space as a possible split point" approach in
-    /// `verb_conjugated_flavor` finds the right boundary regardless of how
-    /// many words the name itself has -- and the irregular "are" -> "is"
-    /// conjugation, both from real log lines.
+    /// why: multi-word name proves the split-point search works
+    /// regardless of name length, plus the irregular "are" -> "is" conjugation
     #[test]
     fn a_multi_word_name_still_resolves_the_correct_split_point() {
         let engine = build_engine().expect("pack builds");
@@ -4104,8 +4092,7 @@ mod effect_ping_tests {
         );
     }
 
-    /// A real "Your <noun> <verb> ..." recovery: "adheres to the ground."
-    /// reconstructs "Your feet adhere to the ground.", not "You adhere...".
+    /// why: "Your <noun> <verb>" recovery -- reconstructs "Your feet adhere...", not "You adhere..."
     #[test]
     fn a_your_noun_verb_shape_recovers_its_own_real_key() {
         let engine = build_engine().expect("pack builds");
@@ -4124,10 +4111,8 @@ mod effect_ping_tests {
         );
     }
 
-    /// "@ combusts." is the one confirmed-by-hand exception
-    /// (`THIRD_PERSON_VERB_ALIASES`) -- same spell as "You feel your skin
-    /// combust.", just a shortened third-person announcement rather than
-    /// a conjugated one, per the user's own correction.
+    /// why: "@ combusts." is the one confirmed-by-hand alias -- a
+    /// shortened announcement, not a conjugated one, per the user's correction
     #[test]
     fn the_named_combust_alias_pings_the_canonical_first_person_text() {
         let engine = build_engine().expect("pack builds");
@@ -4146,9 +4131,7 @@ mod effect_ping_tests {
         );
     }
 
-    /// A real, still-genuine gap: no first-person text for this exists
-    /// anywhere in `spell_flavor.json` at all, so nothing can reconstruct
-    /// it -- correctly pings nothing rather than guessing.
+    /// why: a genuine gap -- no first-person text exists for this at all, pings nothing rather than guessing
     #[test]
     fn a_line_with_no_source_text_at_all_pings_nothing() {
         let engine = build_engine().expect("pack builds");
@@ -4161,12 +4144,8 @@ mod effect_ping_tests {
         assert!(lenekab.is_none_or(|s| ing.effects.recent(s.0, ing.now_ms(), 60_000).is_empty()));
     }
 
-    /// The noun-keeping sibling of the plain verb-conjugation rule: "You
-    /// feel your body pulse with energy." -> "'s body pulses with
-    /// energy.", contrasting `combust` above (same "You feel your <noun>
-    /// <verb>" shape, but that one *drops* the noun in third person while
-    /// this one keeps it -- confirmed against real, distinct data for
-    /// each, not assumed to generalize one way).
+    /// why: noun-keeping sibling of plain verb-conjugation -- same shape
+    /// as combust above, but this one keeps the noun in third person
     #[test]
     fn a_feel_your_noun_verb_line_keeps_the_noun_in_third_person() {
         let engine = build_engine().expect("pack builds");
@@ -4186,9 +4165,7 @@ mod effect_ping_tests {
         );
     }
 
-    /// The trailing "you." -> "them." sibling: when the effect lands on
-    /// someone else, the sentence's own trailing pronoun swaps too, not
-    /// just the subject.
+    /// why: trailing "you." -> "them." -- pronoun swaps too, not just the subject
     #[test]
     fn a_trailing_you_swaps_to_them_when_it_lands_on_someone_else() {
         let engine = build_engine().expect("pack builds");
@@ -4208,9 +4185,7 @@ mod effect_ping_tests {
         );
     }
 
-    /// The "feel ADJ" -> "looks ADJ" family: a whole set of single-
-    /// adjective buffs render as how the target visibly *looks* to
-    /// onlookers rather than a conjugated "feels ADJ.".
+    /// why: "feel ADJ" -> "looks ADJ" family -- renders as visible appearance, not conjugated "feels ADJ."
     #[test]
     fn a_single_adjective_buff_recognizes_its_looks_form() {
         let engine = build_engine().expect("pack builds");
@@ -4229,10 +4204,8 @@ mod effect_ping_tests {
         );
     }
 
-    /// `cast.blocked`: a real spell name in "Your <spell> spell did not
-    /// take hold..." is definite, first-person class evidence -- proven
-    /// end to end via two distinct real zone visits, the same
-    /// unambiguous-confirmation path a landed cast would use.
+    /// why: cast.blocked's spell name is definite class evidence,
+    /// proven via two zone visits, same path a landed cast would use
     #[test]
     fn a_blocked_cast_still_confirms_class_evidence_from_its_own_spell_name() {
         let engine = build_engine().expect("pack builds");
@@ -4245,9 +4218,7 @@ mod effect_ping_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        // "Berserker Strength" is an Enchanter spell in this data despite
-        // its name -- confirmed directly against packs/spell_classes.json,
-        // not assumed from the name.
+        // why: an Enchanter spell in this data despite its name -- confirmed against spell_classes.json
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
@@ -4258,9 +4229,7 @@ mod effect_ping_tests {
         );
     }
 
-    /// The `blocker` half: names a buff already active on the *target*,
-    /// not the caster -- real state, fed to `Effects` the same as any
-    /// other recognized fact.
+    /// why: blocker half -- names a buff already active on the target, fed to Effects as usual
     #[test]
     fn a_blocked_cast_pings_the_blocker_as_state_on_the_target() {
         let engine = build_engine().expect("pack builds");
@@ -4281,8 +4250,7 @@ mod effect_ping_tests {
         );
     }
 
-    /// The real minority with no trailing parenthetical at all -- class
-    /// evidence still lands, but there's nothing to ping.
+    /// why: real minority with no trailing parenthetical -- class evidence still lands, nothing to ping
     #[test]
     fn a_blocked_cast_with_no_named_blocker_still_confirms_class_evidence() {
         let engine = build_engine().expect("pack builds");
@@ -4301,11 +4269,8 @@ mod effect_ping_tests {
         );
     }
 
-    /// `dot.damage_from_you`: a real DoT tick previously fell through both
-    /// existing damage-from rules entirely (neither `dot.damage`'s "by
-    /// <caster>" clause nor `dot.damage_uncredited`'s no-caster shape
-    /// matches "damage from your ..."). Now a real `Damage` row,
-    /// attributed to "You".
+    /// why: dot.damage_from_you previously fell through both existing
+    /// damage-from rules ("damage from your ..." matched neither); now a real Damage row
     #[test]
     fn a_dot_tick_credited_via_your_is_a_real_damage_row() {
         let engine = build_engine().expect("pack builds");
@@ -4327,10 +4292,8 @@ mod effect_ping_tests {
         assert_eq!(row.crits, 1);
     }
 
-    /// Poison/disease were already matched (kind "state") but produced no
-    /// `Action` at all before `StateEffect` existed to feed -- now real
-    /// pings, self and third-party both, same as any other recognized
-    /// state fact.
+    /// why: poison/disease matched but produced no Action before
+    /// StateEffect existed to feed -- now real pings, self and third-party
     #[test]
     fn poison_and_disease_now_ping_state_on_the_right_entity() {
         let engine = build_engine().expect("pack builds");
