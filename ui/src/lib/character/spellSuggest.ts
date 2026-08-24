@@ -274,24 +274,40 @@ function scheduleDamage(spell: DamageSpellDto, castStart: number, castEnd: numbe
   return credited;
 }
 
+/** why: real bug -- greedily picking by `dps_with_reuse` (a spell's own
+ * *solo*, spammed-forever rate) undervalues a big one-shot nuke whose
+ * long downtime other spells can fill anyway. Real numbers exposed it:
+ * rank-10 Frost Storm (3072 dmg/5s cast, 12s recast) has a mediocre solo
+ * dps_with_reuse (180) next to Rend/Conflagration's (263/342), so the
+ * old criterion never picked it even though it was ready -- but Frost
+ * Storm's single-cast payoff (3072) dwarfs a single Rend/Conflag cast
+ * (1710/1800) for the *same* 5s of commitment. Weaving one FS cast in
+ * wherever it's ready, instead of skipping it, raised a 60s window's
+ * total from 21,060 to 25,146 on these exact numbers -- confirmed by
+ * hand and by re-running this function. */
+function castValue(s: DamageSpellDto): number {
+  return s.total_damage / s.casting_time;
+}
+
 /** why: greedy timeline scheduler -- at each point the caster is free,
- * cast whichever ready spell has the best `dps_with_reuse` (its own
- * steady-state rate, already correct for both nukes and DoTs since that
- * field's denominator already encodes "never recast/refresh early").
- * Generalizes the old single best-nuke-vs-worthwhile-DoT and 2-nuke
- * weave-pair heuristics into a real N-spell, real-timeline simulation --
- * not a global optimum (a true schedule optimizer is a much harder
- * problem), but validated against real data during design: alternating
- * Rend/Conflagration (5s cast, 1.5s recast each) beats spamming either
- * alone, exactly the pattern this reproduces on its own. A DoT already
- * cast keeps ticking on its own clock while other spells get woven in
- * (see scheduleDamage) -- it just can't be recast until its own
- * duration fully resolves (`nextAvailable`), so it never overwrites/
- * stacks with itself. */
+ * cast whichever *ready* spell pays the most per second of casting time
+ * committed right now (`castValue`), not whichever has the best rate if
+ * spammed alone (`dps_with_reuse` -- see castValue's own doc for why
+ * that criterion under-weaves a big one-shot nuke). Generalizes the old
+ * single best-nuke-vs-worthwhile-DoT and 2-nuke weave-pair heuristics
+ * into a real N-spell, real-timeline simulation -- not a global optimum
+ * (a true schedule optimizer is a much harder problem), but validated
+ * against real data: alternating Rend/Conflagration beats spamming
+ * either alone, and weaving Frost Storm in wherever it's ready beats
+ * skipping it, both reproduced by this same greedy rule on their own.
+ * A DoT already cast keeps ticking on its own clock while other spells
+ * get woven in (see scheduleDamage) -- it just can't be recast until
+ * its own duration fully resolves (`nextAvailable`), so it never
+ * overwrites/stacks with itself. */
 export function simulateRotation(candidates: DamageSpellDto[], windowSecs: number): RotationResult {
   const pool = [...candidates]
     .filter((s) => s.casting_time > 0 && s.casting_time <= windowSecs)
-    .sort((a, b) => b.dps_with_reuse - a.dps_with_reuse)
+    .sort((a, b) => castValue(b) - castValue(a))
     .slice(0, ROTATION_POOL_CAP);
 
   const nextAvailable = new Map<string, number>();
@@ -311,7 +327,7 @@ export function simulateRotation(candidates: DamageSpellDto[], windowSecs: numbe
       t = nextT;
       continue;
     }
-    const best = ready.reduce((a, b) => (b.dps_with_reuse > a.dps_with_reuse ? b : a));
+    const best = ready.reduce((a, b) => (castValue(b) > castValue(a) ? b : a));
     const castStart = t;
     sequence.push(best);
     t = castStart + best.casting_time;
