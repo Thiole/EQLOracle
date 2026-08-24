@@ -24,6 +24,16 @@
 //!   direct correction, `dps_ignoring_reuse` must not divide the whole
 //!   multi-tick lifetime by casting time (double-counts ticks that land
 //!   regardless of what's cast next). See `DamageSpellDto::dps_ignoring_reuse`.
+//! - **Every number here is an average that already folds in AA crits**,
+//!   not a per-hit simulation -- Spencer's own call: model the average
+//!   hit going up by chance*bonus, not real per-swing variance. Direct-
+//!   damage spells (Fury of Magic's crit chance, Destructive Fury's crit
+//!   damage) and DoTs (Critical Affliction, Destructive Cascade) use
+//!   separate real AAs with separate, larger numbers for DoTs -- see
+//!   `crit_multiplier`'s own doc. Only counts an AA the character has
+//!   actually confirmed-purchased this session (`Ingest::aa`), same as
+//!   every other real-evidence rule in this app; a rank never bought
+//!   contributes exactly 0%, not an assumed cap.
 
 use crate::spelldata::{self, Spell, SpellClass};
 use regex::Regex;
@@ -40,6 +50,44 @@ pub const TICK_SECS: f64 = 6.0;
 pub const DOT_CAST_TIME_PER_TIER: f64 = -0.04;
 pub const DOT_MANA_PER_TIER: f64 = -0.02;
 pub const DOT_DURATION_PER_TIER: f64 = 0.05;
+
+// why: real AA catalog values (packs/aa.json), index 0 = rank 1. Direct-
+// damage and DoT crits are separate AA pairs with separate numbers --
+// DoTs get a much bigger damage bonus (Destructive Cascade) than direct
+// damage spells do (Destructive Fury), confirmed against the catalog,
+// not assumed symmetric.
+const FURY_OF_MAGIC_CHANCE: [f64; 4] = [0.02, 0.04, 0.07, 0.10];
+const DESTRUCTIVE_FURY_BONUS: [f64; 3] = [0.30, 0.60, 1.00];
+const CRITICAL_AFFLICTION_CHANCE: [f64; 3] = [0.03, 0.06, 0.09];
+const DESTRUCTIVE_CASCADE_BONUS: [f64; 3] = [1.25, 1.50, 1.75];
+
+fn aa_rank_of(ing: &crate::ingest::Ingest, name: &str) -> u8 {
+    ing.aa
+        .all()
+        .filter(|(_, g)| g.name == name)
+        .map(|(_, g)| g.rank)
+        .max()
+        .unwrap_or(0)
+}
+
+fn table_value(table: &[f64], rank: u8) -> f64 {
+    rank.checked_sub(1)
+        .and_then(|i| table.get(i as usize))
+        .copied()
+        .unwrap_or(0.0)
+}
+
+/// why: expected-value fold-in, not a per-hit roll -- `1 + chance*bonus`
+/// is the average multiplier a spell's damage sees over many casts,
+/// whether the AA rolls once per cast (direct damage) or once per tick
+/// (Critical Affliction's own wording, "at each 6 second interval") --
+/// expectation is linear either way, so the same formula covers both,
+/// just fed a different (chance, bonus) AA pair per caller.
+fn crit_multiplier(ing: &crate::ingest::Ingest, chance_aa: &str, chance_table: &[f64], bonus_aa: &str, bonus_table: &[f64]) -> f64 {
+    let chance = table_value(chance_table, aa_rank_of(ing, chance_aa));
+    let bonus = table_value(bonus_table, aa_rank_of(ing, bonus_aa));
+    1.0 + chance * bonus
+}
 
 fn hit_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
@@ -205,15 +253,16 @@ pub struct DamageSpellDto {
     pub dps_ignoring_reuse: f64,
 }
 
-fn build_dto(spell: &Spell, rank: u8) -> Option<DamageSpellDto> {
+fn build_dto(spell: &Spell, rank: u8, dd_crit_mult: f64, dot_crit_mult: f64) -> Option<DamageSpellDto> {
     let (base_hit, is_dot, base_upfront) = parse_damage(spell)?;
     if base_hit <= 0.0 {
         return None;
     }
     let hit_mult = 1.0 + RANK_DAMAGE_PER_TIER * rank as f64;
     // why: upfront always gets the verified rate (mechanically a hit);
-    // per-tick only does for a nuke, not a DoT -- see module doc
-    let upfront = base_upfront * hit_mult;
+    // per-tick only does for a nuke, not a DoT -- see module doc. Gets
+    // the direct-damage crit treatment for the same reason (a hit, not a tick).
+    let upfront = base_upfront * hit_mult * dd_crit_mult;
 
     let base_mana = spell.mana.unwrap_or(0.0);
     let base_casting_time = spell.casting_time.unwrap_or(0.0);
@@ -230,8 +279,10 @@ fn build_dto(spell: &Spell, rank: u8) -> Option<DamageSpellDto> {
             let casting_time = (base_casting_time * (1.0 + DOT_CAST_TIME_PER_TIER * r)).max(0.1);
             let dur = base_dur * (1.0 + DOT_DURATION_PER_TIER * r);
             let ticks = (dur / TICK_SECS).round().max(1.0);
-            // why: base_hit unscaled -- the flat-per-tick correction
-            let total = base_hit * ticks + upfront;
+            // why: base_hit unscaled by rank -- the flat-per-tick
+            // correction; dot_crit_mult folds in Critical Affliction/
+            // Destructive Cascade's expected-value bump (see module doc)
+            let total = base_hit * dot_crit_mult * ticks + upfront;
             // why: only the one-time "on cast" burst is instant value from
             // this press; the tick stream is already accounted separately
             // via dps_with_reuse's own duration-bound cycle
@@ -245,7 +296,8 @@ fn build_dto(spell: &Spell, rank: u8) -> Option<DamageSpellDto> {
                 dur.max(casting_time + base_recast_time),
             )
         } else {
-            let hit = base_hit * hit_mult;
+            // why: dd_crit_mult folds in Fury of Magic/Destructive Fury's expected-value bump (see module doc)
+            let hit = base_hit * hit_mult * dd_crit_mult;
             let mana = base_mana.max(1.0);
             let casting_time = base_casting_time.max(0.1);
             // why: AE catalog damage is per-wave, see `parse_wave_count`.
@@ -311,6 +363,20 @@ pub fn list_damage_spells(
     ing: &crate::ingest::Ingest,
     assume_max_rank: bool,
 ) -> Vec<DamageSpellDto> {
+    let dd_crit_mult = crit_multiplier(
+        ing,
+        "Fury of Magic",
+        &FURY_OF_MAGIC_CHANCE,
+        "Destructive Fury",
+        &DESTRUCTIVE_FURY_BONUS,
+    );
+    let dot_crit_mult = crit_multiplier(
+        ing,
+        "Critical Affliction",
+        &CRITICAL_AFFLICTION_CHANCE,
+        "Destructive Cascade",
+        &DESTRUCTIVE_CASCADE_BONUS,
+    );
     spelldata::spells()
         .iter()
         .filter_map(|s| {
@@ -319,7 +385,7 @@ pub fn list_damage_spells(
             } else {
                 ing.spell_ranks.rank_of(&s.name).unwrap_or(0)
             };
-            build_dto(s, rank)
+            build_dto(s, rank, dd_crit_mult, dot_crit_mult)
         })
         .collect()
 }
@@ -497,7 +563,7 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&spell, 0).unwrap();
+        let dto = build_dto(&spell, 0, 1.0, 1.0).unwrap();
         assert_eq!(dto.total_damage, 100.0);
         assert_eq!(dto.dps_ignoring_reuse, 100.0 / 2.0); // total damage / casting_time
     }
@@ -513,7 +579,7 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&spell, 0).unwrap();
+        let dto = build_dto(&spell, 0, 1.0, 1.0).unwrap();
         assert!(dto.is_dot);
         assert_eq!(dto.total_damage, 300.0); // 6 ticks * 50, the real lifetime total
                                              // why: must NOT be total_damage/casting_time (150.0); no upfront, so 0
@@ -531,10 +597,57 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&spell, 0).unwrap();
+        let dto = build_dto(&spell, 0, 1.0, 1.0).unwrap();
         assert!(dto.is_dot);
         assert_eq!(dto.total_damage, 340.0); // 40 upfront + 6*50 ticks
                                              // why: only the upfront component, over casting_time
         assert_eq!(dto.dps_ignoring_reuse, 40.0 / 2.0);
+    }
+
+    #[test]
+    fn crit_multiplier_is_neutral_with_no_aa_purchased() {
+        let ing = crate::ingest::Ingest::default();
+        assert_eq!(
+            crit_multiplier(&ing, "Fury of Magic", &FURY_OF_MAGIC_CHANCE, "Destructive Fury", &DESTRUCTIVE_FURY_BONUS),
+            1.0
+        );
+    }
+
+    #[test]
+    fn crit_multiplier_matches_hand_computed_expectation_at_real_max_rank() {
+        // why: real catalog max ranks (packs/aa.json) -- Fury of Magic 4/4
+        // (10% chance), Destructive Fury 3/3 (+100% dmg) -> 1 + .10*1.00 = 1.10
+        let mut ing = crate::ingest::Ingest::default();
+        ing.aa.observe(0, "Fury of Magic".into(), 4, 0);
+        ing.aa.observe(0, "Destructive Fury".into(), 3, 0);
+        let mult = crit_multiplier(&ing, "Fury of Magic", &FURY_OF_MAGIC_CHANCE, "Destructive Fury", &DESTRUCTIVE_FURY_BONUS);
+        assert!((mult - 1.10).abs() < 1e-9);
+
+        // why: Critical Affliction 2/3 (6%), Destructive Cascade 1/3 (+125%) -> 1 + .06*1.25 = 1.075
+        ing.aa.observe(0, "Critical Affliction".into(), 2, 0);
+        ing.aa.observe(0, "Destructive Cascade".into(), 1, 0);
+        let dot_mult = crit_multiplier(&ing, "Critical Affliction", &CRITICAL_AFFLICTION_CHANCE, "Destructive Cascade", &DESTRUCTIVE_CASCADE_BONUS);
+        assert!((dot_mult - 1.075).abs() < 1e-9);
+    }
+
+    #[test]
+    fn aa_rank_of_takes_the_highest_observed_rank_not_the_last() {
+        // why: a character's log shows every purchase, e.g. rank 1 then
+        // rank 2 -- must report the max, not whichever was observed last
+        let mut ing = crate::ingest::Ingest::default();
+        ing.aa.observe(0, "Fury of Magic".into(), 1, 0);
+        ing.aa.observe(1, "Fury of Magic".into(), 2, 0);
+        assert_eq!(aa_rank_of(&ing, "Fury of Magic"), 2);
+    }
+
+    #[test]
+    fn build_dto_applies_the_crit_multiplier_to_nuke_and_dot_damage() {
+        let nuke = make_spell(&["Decrease Hitpoints by 100"], Some("Instant"), Some("Single"), None);
+        let dto = build_dto(&nuke, 0, 1.10, 1.0).unwrap();
+        assert!((dto.total_damage - 110.0).abs() < 1e-9);
+
+        let dot = make_spell(&["Decrease Hitpoints by 50 per tick"], Some("36 Sec"), Some("Single"), None);
+        let dto = build_dto(&dot, 0, 1.0, 1.075).unwrap();
+        assert!((dto.total_damage - 322.5).abs() < 1e-9); // 6 ticks * 50 * 1.075
     }
 }
