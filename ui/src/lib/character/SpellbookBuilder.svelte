@@ -7,7 +7,7 @@
   import { activeClasses, spellRanks, damageSpells } from '$lib/stores/character';
   import { ICON_BASE, ALL_CLASSES, MAX_CHARACTER_LEVEL } from '$lib/character/constants';
   import {
-    usableClasses, isUsable, isBuff, isSoloTarget, isTeamTarget,
+    usableClasses, isUsable, usableByClasses, isBuff, isSoloTarget, isTeamTarget,
     pickBuffSuggestions, pickSupportSuggestions, simulateRotation,
   } from '$lib/character/spellSuggest';
   import DpsSuggest from './DpsSuggest.svelte';
@@ -144,7 +144,7 @@
   function suggestCombat(bookIdx: number) {
     let count = emptySlotCount(bookIdx);
     if (count <= 0) return;
-    const usableDamage = $damageSpells.filter((s) => isUsable(s));
+    const usableDamage = $damageSpells.filter((s) => usableByClasses(s.classes, $activeClasses));
     const { sequence } = simulateRotation(usableDamage, 60);
     const distinct: string[] = [];
     for (const s of sequence) {

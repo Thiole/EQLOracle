@@ -16,6 +16,21 @@ export function isUsable(s: { classes: SpellClassDto[] }): boolean {
   return usableClasses(s.classes).length > 0;
 }
 
+/** why: real bug -- the Suggest buttons used bare `isUsable` (any class
+ * at all) as their pool filter, `activeClasses` only affected sort
+ * order, never which spells were even eligible -- a real "Suggest
+ * Combat" run mixed a Druid DoT, a Beastlord DoT, and a spell tagged to
+ * "A Freed Soul" (not even a real playable class) into one Enchanter's
+ * book. Strict when `activeClasses` is set (the normal case); falls
+ * back to level-only when it's genuinely empty/unknown, the same
+ * "no filter selected" convention already used elsewhere (e.g. the
+ * picker's own class-toggle row). */
+export function usableByClasses(classes: SpellClassDto[], activeClasses: string[]): boolean {
+  const usable = usableClasses(classes);
+  if (!activeClasses.length) return usable.length > 0;
+  return usable.some((c) => activeClasses.includes(c.class));
+}
+
 // ---------------------------------------------------------------- classification
 
 /** why: spell_type's beneficial-flavored values (~20 distinct real values total) -- everything else is combat by exclusion */
@@ -178,9 +193,10 @@ export function pickBuffSuggestions(
   groups: Record<string, number>,
 ): string[] {
   if (count <= 0) return [];
-  const byName = new Map(pool.map((s) => [s.name, s]));
+  const candidates = pool.filter((s) => usableByClasses(s.classes, activeClasses));
+  const byName = new Map(candidates.map((s) => [s.name, s]));
   const ctx = buildExclusivityContext(existingBookNames, byName, groups);
-  const sorted = [...pool].sort((a, b) =>
+  const sorted = [...candidates].sort((a, b) =>
     compareSortKeys(sortForSuggestion(a, activeClasses, true), sortForSuggestion(b, activeClasses, true)),
   );
   const picked: string[] = [];
@@ -213,7 +229,10 @@ export function pickSupportSuggestions(
   const byName = new Map(pool.map((s) => [s.name, s]));
   const ctx = buildExclusivityContext(existingBookNames, byName, groups);
   const candidates = pool.filter(
-    (s) => isUsable(s) && s.spell_type === 'Detrimental' && !damageSpellNames.has(s.name),
+    (s) =>
+      usableByClasses(s.classes, activeClasses) &&
+      s.spell_type === 'Detrimental' &&
+      !damageSpellNames.has(s.name),
   );
   const sorted = [...candidates].sort((a, b) => {
     const ta = effects[a.id]?.tags.some((t) => SUPPORT_TAGS.has(t)) ? 0 : 1;
