@@ -489,7 +489,7 @@ mod find_existing_dump_tests {
     #[test]
     fn picks_the_most_recently_modified_dump_and_ignores_other_files() {
         let dir = scratch_dir("newest");
-        let now = SystemTime::now();
+        let now = SystemTime::now(); // clock-exempt: test, touches real file mtimes on purpose
         touch(
             &dir.join("Manipulator_rivervale-Inventory.txt"),
             now - Duration::from_secs(60),

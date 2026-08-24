@@ -16,11 +16,11 @@ fn main() {
     let raw = std::fs::read(&path).unwrap_or_else(|e| panic!("couldn't read {path}: {e}"));
     println!("log size: {:.1} MiB", raw.len() as f64 / 1024.0 / 1024.0);
 
-    let t_frame = Instant::now();
+    let t_frame = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
     let lines = framed_lines(&raw);
     println!("frame: {:?} ({} lines)", t_frame.elapsed(), lines.len());
 
-    let t_engine = Instant::now();
+    let t_engine = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
     let engine = build_engine().expect("pack builds");
     println!(
         "engine build (rule pack + regex compile): {:?}",
@@ -39,7 +39,7 @@ fn main() {
 
     for threads in candidates {
         let mut ing = Ingest::default();
-        let t_backfill = Instant::now();
+        let t_backfill = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
         let mut chunk_count = 0;
         for chunk in lines.chunks(BACKFILL_CHUNK_LINES) {
             backfill_lines(&mut ing, &engine, chunk, threads);

@@ -71,7 +71,7 @@ fn full_scan_is_cheap_enough_to_need_no_materialised_aggregates() {
 
     let f = Filter::default().damage();
 
-    let t = Instant::now();
+    let t = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
     let rows = by_ability(&s, &f);
     let whole = t.elapsed();
     eprintln!(
@@ -81,16 +81,16 @@ fn full_scan_is_cheap_enough_to_need_no_materialised_aggregates() {
     );
 
     let last = s.encounters.last().unwrap().id;
-    let t = Instant::now();
+    let t = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
     let _ = by_ability(&s, &Filter::encounter(last).damage());
     eprintln!("by_ability, one encounter: {:?}", t.elapsed());
 
-    let t = Instant::now();
+    let t = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
     let _ = by_actor(&s, &f);
     eprintln!("by_actor, whole store   : {:?}", t.elapsed());
 
     let now = s.ts[s.len() - 1];
-    let t = Instant::now();
+    let t = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
     let mut d = 0.0;
     for _ in 0..10 {
         d += dps_window(&s, &f, now, 10_000);
@@ -103,7 +103,7 @@ fn full_scan_is_cheap_enough_to_need_no_materialised_aggregates() {
 
     // A per-encounter query is what the live panel actually runs; it must be
     // comfortably inside a frame budget.
-    let t = Instant::now();
+    let t = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
     for e in s.encounters.iter().rev().take(50) {
         let _ = by_ability(&s, &Filter::encounter(e.id).damage());
     }

@@ -525,7 +525,8 @@ fn hop_distance(
         .unwrap_or_default()
         .into_iter()
         .filter_map(|sp| {
-            if std::time::Instant::now() >= deadline {
+            let past_deadline = std::time::Instant::now() >= deadline; // clock-exempt: real wall-clock search budget, not log time
+            if past_deadline {
                 truncated = true;
                 return None;
             }
@@ -837,7 +838,7 @@ pub fn find_zone_route(
     // margin, while `hop_distance`'s own per-call deadline check (see its
     // own doc) and `pathfind::find_path`'s tightened expansion cap keep
     // any one pathological edge from eating the whole budget alone.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(12);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(12); // clock-exempt: real wall-clock search budget, not log time
 
     while let Some(Frontier { g, zone, .. }) = open.pop() {
         if settled.contains(&zone) {
@@ -874,7 +875,8 @@ pub fn find_zone_route(
             // carry 60+ teleport-inflated edges (see `zone_graph_for`'s
             // own doc), so a per-zone check alone could still overshoot
             // the deadline by a whole zone's worth of real calls.
-            if matches!(e.kind, EdgeKind::Walk) && std::time::Instant::now() >= deadline {
+            let past_deadline = std::time::Instant::now() >= deadline; // clock-exempt: real wall-clock search budget, not log time
+            if matches!(e.kind, EdgeKind::Walk) && past_deadline {
                 continue;
             }
             // Walk edges can add *two* hops, not one -- a winning succor
@@ -1208,7 +1210,7 @@ mod tests {
     /// this one.
     #[test]
     fn a_dead_end_zone_behind_a_dense_teleport_graph_resolves_quickly() {
-        let start = std::time::Instant::now();
+        let start = std::time::Instant::now(); // clock-exempt: test, measures its own real elapsed run time
         let route = find_zone_route(
             Path::new("/nonexistent"),
             "The Northern Desert of Ro",
@@ -1251,7 +1253,7 @@ mod tests {
     /// constant), not the real 25s-vs-instant timing itself.
     #[test]
     fn a_direct_adjacency_does_not_pay_for_losing_multihop_alternates() {
-        let start = std::time::Instant::now();
+        let start = std::time::Instant::now(); // clock-exempt: test, measures its own real elapsed run time
         let route = find_zone_route(
             Path::new("/nonexistent"),
             "The Northern Desert of Ro",

@@ -29,7 +29,7 @@ fn main() {
 
     // --- 1. cost of a poll when nothing changed (the common case) ---
     let n = 10_000;
-    let t0 = Instant::now();
+    let t0 = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
     for _ in 0..n {
         tail.poll(|_| {});
     }
@@ -56,7 +56,7 @@ fn main() {
             f.write_all(&buf).unwrap();
             f.flush().unwrap();
 
-            let t = Instant::now();
+            let t = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
             let mut parsed = 0u32;
             tail.poll(|chunk| {
                 fr.push(chunk, |line| {
@@ -80,7 +80,7 @@ fn main() {
     // --- 3. torn write: one byte at a time ---
     let line = b"[Wed Aug 06 21:14:33 2025] You slash a rat for 12 points of damage.\n";
     let mut emitted = 0;
-    let t = Instant::now();
+    let t = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
     for b in line.iter() {
         f.write_all(&[*b]).unwrap();
         f.flush().unwrap();
