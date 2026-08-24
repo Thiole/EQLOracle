@@ -1,39 +1,13 @@
-//! Reads EQ's own per-character UI config files out of the game's base
-//! install folder (`AppConfig::base_dir`, same folder `/outputfile
-//! inventory`/Achievements dumps sit in) -- confirmed against a real
-//! install, two real kinds:
+//! why: reads EQ's per-character UI config files from `AppConfig::base_dir`
 //!
-//! - `<Character>_<Zone>_LO1.ini` -- **hotbutton contents**: what's
-//!   actually assigned to each hotbutton slot (`[HotButtons]`'s own
-//!   `Page1Button<N>=<code>,...` rows -- `H<n>` a built-in command,
-//!   `G<n>` a reference to spell gem slot `n` (not the spell's own name
-//!   -- which spell currently sits in that gem is server-tracked
-//!   character state, never written to a local file at all, confirmed
-//!   by its absence from every section here), `E<id>` an item, `J<n>`
-//!   an AA -- plus a handful of small settings sections (`[Combat]`,
-//!   `[Friends]`, ...).
-//! - `UI_<Character>_<Zone>_LO1.ini` -- **window layout only**:
-//!   position/size/visibility for every window (`[HotButtonWnd]`,
-//!   `[CastSpellWnd]`, `[SpellBookWnd]`, ...), never *what's in* any of
-//!   them.
+//! Two kinds: `<Character>_<Zone>_LO1.ini` (hotbutton contents -- which
+//! gem/item/AA/command sits in each slot) and `UI_<Character>_<Zone>_
+//! LO1.ini` (window layout only, never contents). Plain INI, but
+//! real-world messy: real files found with pasted-text garbage before
+//! the first `[Section]` -- skipped, not corrupting, count still reported.
 //!
-//! Both are plain Windows-style INI (`[Section]` headers, `key=value`
-//! lines) -- but real-world messy: two of this player's own real files
-//! were found with several thousand characters of unrelated pasted text
-//! sitting *before* the first real `[Section]` header (apparently a
-//! chat transcript that ended up saved into the wrong file). `parse_ini`
-//! doesn't error on that -- it just can't attach a stray line to any
-//! section until the first real header appears, so that prefix is
-//! silently skipped rather than corrupting anything downstream. The
-//! skipped count is still reported (`ParsedUiFileDto::skipped_garbage_
-//! lines`) so a genuinely damaged file is visible, not silently clean.
-//!
-//! Read-only for now, on purpose: safely writing hotbutton assignments
-//! back into one of these files without disturbing anything else in it
-//! needs the encoding above nailed down with more certainty than one
-//! read-through gives (`H0,@-1,0000000000000000,0,,` -- the trailing
-//! fields past the type+id aren't understood yet), so this module only
-//! ever reads.
+//! Read-only on purpose: writing back needs the trailing-field encoding
+//! nailed down further than one read-through gives.
 
 use regex::Regex;
 use serde::Serialize;
@@ -45,14 +19,9 @@ pub struct UiFileInfoDto {
     pub file: String,
     pub character: String,
     pub zone: String,
-    /// `"hotbuttons"` (`<Character>_<Zone>_LO1.ini`) or `"layout"`
-    /// (`UI_<Character>_<Zone>_LO1.ini`) -- see this module's own doc
-    /// for what each actually holds.
+    /// why: "hotbuttons" or "layout" -- see module doc for what each holds
     pub kind: &'static str,
-    /// A launcher/client-made backup copy (`..._Backup_1.ini` etc, a
-    /// real, confirmed-seen naming convention) -- surfaced so the
-    /// picker can label or de-prioritize these rather than mixing them
-    /// in indistinguishably from the live file.
+    /// why: launcher-made backup copy, surfaced so the picker can label it
     pub is_backup: bool,
 }
 
@@ -66,11 +35,8 @@ fn name_pattern() -> &'static Regex {
     })
 }
 
-/// Every real `<Character>_<Zone>_LO1.ini` / `UI_<Character>_<Zone>_
-/// LO1.ini` sitting directly in `base_dir` -- not recursive, matching
-/// where every real example was found. `base_dir` not existing or not
-/// readable yields an empty list, same "nothing found yet" stance every
-/// other dump-finder in this app takes.
+/// why: every real UI file directly in `base_dir`, not recursive;
+/// missing/unreadable dir yields empty list
 pub fn list_ui_files(base_dir: &Path) -> Vec<UiFileInfoDto> {
     let Ok(entries) = std::fs::read_dir(base_dir) else {
         return Vec::new();
@@ -112,26 +78,18 @@ pub fn list_ui_files(base_dir: &Path) -> Vec<UiFileInfoDto> {
 #[derive(Debug, Clone, Serialize)]
 pub struct UiSectionDto {
     pub name: String,
-    /// In file order -- a repeated key within one section (not seen in
-    /// any real file checked) would just keep its last value here,
-    /// same as a real INI reader would.
+    /// why: file order; a repeated key would keep its last value, like a real INI reader
     pub entries: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ParsedUiFileDto {
     pub sections: Vec<UiSectionDto>,
-    /// See this module's own doc on the two real files found with a
-    /// large pasted-text prefix before any real `[Section]` header --
-    /// `0` for an ordinary, clean file.
+    /// why: nonzero only for real files with a pasted-text prefix garbage
     pub skipped_garbage_lines: usize,
 }
 
-/// `<base_dir>/<file>`, `file` trusted only as a bare filename (same
-/// "never a path in its own right" stance `inventory::dump_path`
-/// already takes, for the same reason: this always comes from a name
-/// `list_ui_files` itself already found on disk, but staying defensive
-/// costs nothing).
+/// why: `file` trusted only as a bare filename, same stance as `inventory::dump_path`
 pub fn ui_file_path(base_dir: &Path, file: &str) -> std::io::Result<PathBuf> {
     let name_only = Path::new(file).file_name().ok_or_else(|| {
         std::io::Error::new(std::io::ErrorKind::InvalidInput, "not a bare filename")
@@ -157,9 +115,7 @@ pub fn parse_ini(path: &Path) -> std::io::Result<ParsedUiFileDto> {
             continue;
         }
         let Some(current) = sections.last_mut() else {
-            // Nothing to attach to yet -- either genuine pre-section
-            // garbage (see this module's own doc), or a blank/odd line
-            // right at the very top of an otherwise-clean file.
+            // why: nothing to attach to yet -- pre-section garbage or a stray top line
             skipped += 1;
             continue;
         };
@@ -211,10 +167,7 @@ mod tests {
         );
     }
 
-    /// The exact real corruption found: a large pasted-text prefix with
-    /// no `[Section]` header at all before the real content starts.
-    /// Must not error, must not attach any of it to a section, and must
-    /// report a nonzero skipped count.
+    /// why: real corruption case -- pasted-text prefix, must not error or misattach
     #[test]
     fn a_pasted_text_prefix_before_the_first_section_is_skipped_not_misparsed() {
         let path = scratch_file(
