@@ -1464,94 +1464,48 @@ impl Ingest {
         Some(id)
     }
 
-    /// If `actor` was last known Dead and is now doing something (dealing
-    /// damage, healing, swinging, or -- via `Action::Cast` -- casting),
-    /// that action is itself proof of life. The log rarely states a clean
-    /// "you have been resurrected" or "you respawn" line, especially for a
-    /// corpse-run recovery, so recovery is inferred from the next thing the
-    /// entity does rather than waited for -- the same principle as `Lost`
-    /// in `drain_closed`, applied going the other direction. Without this,
-    /// a death recorded once stayed the last known state forever, which is
-    /// what made the state panel keep reporting "dead" long after a
-    /// respawn.
+    /// why: acting after Dead is itself proof of life -- the log rarely
+    /// states a clean respawn line, especially for a corpse run, so
+    /// recovery is inferred from the next action instead of waited for
     fn clear_dead_if_acting(&mut self, ts: Millis, actor: Sym) {
         if matches!(self.timeline.state_at(actor.0, ts), Some((State::Dead, _))) {
             self.timeline.inferred(ts, actor.0, State::Engaged);
         }
     }
 
-    /// Resolves `name` to whatever casing this identity was first observed
-    /// under (`Entities::display_name`), registering it with the entity
-    /// table if this is the first time it's been seen through this path (a
-    /// heal or miss can name someone before any damage line does). The
-    /// canonical form everything else here keys on.
+    /// why: canonical first-observed casing, registers the entity if this is the first sighting
     fn resolve_name(&mut self, name: &str) -> String {
         self.encounters.entities.observe(name);
         self.encounters.entities.display_name(name).to_string()
     }
 
-    /// Interns `name`, redirecting through inferred pet ownership first if
-    /// this identity has been matched to an owner (`pet_owner`, populated
-    /// by `note_actor`) -- so a merged pet's damage, heals, and misses all
-    /// land on the owner's `Sym` everywhere, not just wherever it was first
-    /// detected. Without the case-folding resolution this also does, the
-    /// store's symbol table could split one entity into two syms over a
-    /// sentence-position casing difference the same way the encounter
-    /// graph used to -- see `docs/design/session.md`, "Case folding".
+    /// why: interns via inferred pet ownership first, so a merged pet's
+    /// rows all land on the owner's Sym; also case-folds so casing can't split one entity into two
     fn sym(&mut self, name: &str) -> Sym {
         let resolved = self.resolve_name(name);
         let effective = self.pet_owner.get(&resolved).cloned().unwrap_or(resolved);
         self.store.sym(&effective)
     }
 
-    /// Called only from the `Cast` action, deliberately not also from
-    /// damage/heal/miss: a pet's first logged action is reliably its own
-    /// spawn self-buff cast, and restricting candidacy to "first-ever
-    /// cast" is what was actually measured against the real reference log
-    /// (see `PET_MATCH_WINDOW_MS`) before this shipped. Checking every
-    /// action type would catch a couple more real pets but was never
-    /// validated against real data, and widens the population of
-    /// first-time actors this runs against by orders of magnitude (every
-    /// new player and mob in the whole log, not just new casters) for a
-    /// case that's cheap to be conservative about instead.
-    ///
-    /// The first time a name casts, checks whether it's the pet a recent
-    /// "<Owner> summons a <flavour>." line was waiting on: if so, every
-    /// future `sym()` call for this name -- including the one about to
-    /// happen for this very cast -- resolves to the owner instead.
-    ///
-    /// Matches against the *closest-in-time* pending summon, not against
-    /// "exactly one pending, else give up": requiring the window to hold a
-    /// single candidate sounded safer, but measuring it against the real
-    /// reference log showed it was too strict to be useful -- a raid
-    /// buffing up summons several pets within a few seconds of each other
-    /// (each a real, resolvable match against its *own* nearest summon),
-    /// and the game itself sometimes logs one summon twice at an identical
-    /// timestamp, which alone was enough to make "exactly one" fail on
-    /// cases with an unambiguous correct answer. Closest-in-time matched
-    /// every case the stricter rule missed, including the two names this
-    /// was built to fix, without producing an implausible pairing in a
-    /// spot check of the first 20 resolved. Once a pending summon is used
-    /// it's removed, so it can't also match a second, later name.
+    /// why: only from Cast, not damage/heal/miss -- a pet's first logged
+    /// action is reliably its own spawn self-buff, and this scope was
+    /// what was actually measured safe (see PET_MATCH_WINDOW_MS).
+    /// Matches the closest-in-time pending summon, not "exactly one, else
+    /// give up" -- real raid buff-up summons several pets within seconds
+    /// of each other, and the game sometimes logs one summon twice at an
+    /// identical timestamp, which alone broke "exactly one". Closest-in-time
+    /// matched every case the stricter rule missed with no bad pairing in a spot check.
     fn note_actor(&mut self, ts: Millis, name: &str) {
         let resolved = self.resolve_name(name);
         if self.pet_owner.contains_key(&resolved) {
-            return; // already resolved, nothing to check
+            return; // why: already resolved, nothing to check
         }
         if !self.seen_actors.insert(resolved.clone()) {
-            return; // not their first time acting
+            return; // why: not their first time acting
         }
-        // Never a pet: the log's own player, and anyone already proven a
-        // player by a player-only chat channel. Without this, the worst
-        // case for the closest-in-time match is exactly session/zone-in --
-        // everyone's first cast (buffing up) and everyone's pet summon
-        // cluster into the same few seconds, and "closest in time" doesn't
-        // care whether the candidate is a person, only that it's new and
-        // nearby. A real player who hasn't spoken yet still isn't
-        // protected by this -- that half of the gap is the same
-        // unspoken-NPC-vs-unspoken-player ceiling `list_allies` already
-        // documents -- but "You" and anyone already known to be a player
-        // are unambiguous and cost nothing to exclude outright.
+        // why: never a pet -- "You" and anyone already proven a player are
+        // unambiguous and cost nothing to exclude; an unspoken real player
+        // stays unprotected, the same known list_allies ceiling
         if resolved.eq_ignore_ascii_case("you")
             || self.encounters.entities.kind(&resolved) == Kind::Player
         {
@@ -1569,61 +1523,30 @@ impl Ingest {
             let (_, owner) = self.pending_summons.remove(i);
             self.pet_owner.insert(resolved, owner);
         }
-        // No pending summons at all: leave unresolved.
+        // why: no pending summons at all, leave unresolved
     }
 
-    /// A "<Owner> summons a <flavour>." line: registers `owner` as a
-    /// pending candidate for whichever brand-new entity acts next. See
-    /// `note_actor`.
+    /// why: registers owner as a pending candidate for whichever new entity acts next
     fn note_pet_summon(&mut self, ts: Millis, owner: &str) {
         let resolved = self.resolve_name(owner);
         self.pending_summons.push((ts, resolved));
     }
 
-    /// "<Name> activates Quick Buff.": opens a window during which an
-    /// unmatched line gets checked against the buff-landing dictionary --
-    /// see `flavor_evidence_for` and `crate::flavordata`'s module doc.
+    /// why: opens a window during which an unmatched line gets checked against the flavor dictionary
     fn note_quickbuff(&mut self, ts: Millis, who: &str) {
         let resolved = self.resolve_name(who);
         self.pending_quickbuff.insert(resolved, ts);
     }
 
-    /// Checks one unmatched line's exact text against the buff-landing
-    /// flavor dictionary -- the live-tail path's entry point, where
-    /// classification happens one line at a time inline and the lookup can
-    /// be skipped outright on a miss. `backfill_lines`' parallel path can't
-    /// take this shortcut (no `Ingest` access on the classify threads) and
-    /// instead does the dictionary lookup itself during classification,
-    /// landing directly on `record_effect_ping`/`attribute_flavor_hit` in
-    /// the sequential merge -- see `Classified::SelfFlavorHit` and
-    /// `Classified::ThirdPersonFlavorHit`.
-    ///
-    /// Three independent checks, in order, cheapest and most specific
-    /// first:
-    ///
-    /// 1. Direct hit: `text` *is* a known first-person landing message
-    ///    verbatim, so it's about "You". This does two independent things
-    ///    -- unconditionally record it as a state ping on "You"
-    ///    (`record_effect_ping` -- the message says nothing about who cast
-    ///    it, but it's still real evidence of what's true about the player
-    ///    right now), and *conditionally* offer it as class evidence via
-    ///    `attribute_flavor_hit`, which only fires inside a still-open
-    ///    Quick Buff window. Different questions, different safety rules.
-    /// 2. Third-person possessive hit: see `third_person_flavor`
-    ///    (`"<Name>'s ..."`).
-    /// 3. Third-person conjugated hit: see `verb_conjugated_flavor`
-    ///    (`"<Name> feels ..."`, no possessive).
-    ///
-    /// Checks 2 and 3 are never class evidence -- a third-person line
-    /// doesn't even prove an *ally* cast it, let alone the log owner (a
-    /// mob's own DoT lands the same way) -- only ever a ping on whoever it
-    /// landed on.
-    ///
-    /// Returns whether any check hit -- callers use this to decide
-    /// whether the line still belongs in the Debug module's "Unparsed"
-    /// shape list (`note_unmatched_shape`): a line this recognizes is
-    /// *understood*, just not by a rule pattern, so it has no business
-    /// being reported as something needing a new rule.
+    /// why: live-tail's entry point for checking an unmatched line against
+    /// the flavor dictionary; backfill does this itself during parallel
+    /// classification instead (no Ingest access there). Three checks,
+    /// cheapest/most specific first: (1) direct first-person hit --
+    /// always a state ping, conditionally class evidence inside a
+    /// still-open Quick Buff window; (2) third-person possessive; (3)
+    /// third-person conjugated. (2)/(3) are never class evidence -- a
+    /// third-person line doesn't prove even an ally cast it. Return value
+    /// tells the caller whether the line is understood, just not by a rule.
     fn flavor_evidence_for(&mut self, ts: Millis, text: &str) -> bool {
         let classes = crate::flavordata::classes_for_flavor(text);
         if !classes.is_empty() {
@@ -1642,31 +1565,17 @@ impl Ingest {
         false
     }
 
-    /// Records a recognized buff/effect landing as a timestamped ping on
-    /// `target_name` -- resolved through inferred pet ownership like any
-    /// other actor name (see `resolve_name`), since a third-person hit's
-    /// captured name is exactly that: an arbitrary entity name pulled out
-    /// of log text, not a trusted symbol yet. Unconditional -- see
-    /// `Effects`' own doc for why this doesn't need (or get) the Quick
-    /// Buff gating `attribute_flavor_hit` requires.
-    ///
-    /// Also the *other* half of `attribute_flavor_hit`'s group-cast check
-    /// (see that method's doc): every landing, on every entity, passes
-    /// through here, so this is where a group cast reveals itself to
-    /// whatever pending Quick Buff evidence it disproves -- checked in
-    /// both time directions, since the group-mate's own landing can land
-    /// in the log before or after the one that opened the pending entry.
+    /// why: unconditional timestamped ping on target_name, resolved
+    /// through pet ownership. Also the other half of
+    /// attribute_flavor_hit's group-cast check -- every landing passes
+    /// through here, disproving pending evidence in either time direction.
     fn record_effect_ping(&mut self, ts: Millis, target_name: &str, text: &str) {
         let resolved = self.resolve_name(target_name);
         let sym = self.sym(&resolved).0;
         self.effects.push(sym, ts, text.to_string());
 
-        // Cancel: this landing disproves any pending entry for the same
-        // text nearby in time, two ways -- on a *different* entity (a
-        // group cast), or on the *same* entity again (a maintained buff
-        // pulsing, not a one-shot Quick Buff proc). `ts != p.ts` excludes
-        // the landing that created the pending entry from cancelling
-        // itself.
+        // why: cancel -- disproves a pending entry via a group cast (other
+        // entity) or a pulsing buff (same entity again); ts != p.ts excludes self-cancel
         self.pending_quickbuff_evidence.retain(|p| {
             if p.text != text {
                 return true;
@@ -1675,10 +1584,7 @@ impl Ingest {
             let pulsing = p.who == sym && ts != p.ts && (ts - p.ts).abs() <= PULSE_WINDOW_MS;
             !(group_cast || pulsing)
         });
-        // Commit: pending entries whose cancellation window has fully
-        // closed (the longer of the two checks above, since either can
-        // still cancel right up to its own deadline) with nothing showing
-        // up to disprove them.
+        // why: commit -- pending entries past the cancellation window with nothing to disprove them
         let (still_pending, ready): (Vec<_>, Vec<_>) =
             std::mem::take(&mut self.pending_quickbuff_evidence)
                 .into_iter()
@@ -1695,50 +1601,16 @@ impl Ingest {
             .push((ts, sym, text.to_string()));
     }
 
-    /// The order-dependent half: *tentatively* attributes `classes` as
-    /// evidence for whoever's Quick Buff window is still open at `ts` --
-    /// but only when *exactly one* window is open. Two or more overlapping
-    /// activations (a raid quickbuffing together) make "whose buff is
-    /// this" genuinely ambiguous, and attributing it to the wrong
-    /// activator is worse than not attributing it at all, the same
-    /// reasoning `flavordata`'s module doc applies to trusting the message
-    /// text in the first place.
-    ///
-    /// That safety check alone isn't enough, though -- it only guards
-    /// against *multiple people* Quick Buffing at once, not against an
-    /// unrelated caster's own group-wide buff coincidentally landing on
-    /// the activator during their own window, which happens constantly in
-    /// practice (everyone tends to buff up at the same moment before a
-    /// pull). Confirmed as a real false positive against the reference
-    /// log: a group buff landed on the player and three named allies in
-    /// the same log-second, 3 seconds after the player's own Quick Buff
-    /// activation, well inside `QUICKBUFF_WINDOW_MS` -- 110 of 240 real
-    /// activations had *some* group-cast text land in their window. Quick
-    /// Buff only ever affects its own activator, so the same text landing
-    /// on someone else at nearly the same instant is proof positive it
-    /// wasn't a personal Quick Buff proc.
-    ///
-    /// That still isn't the whole story -- a *single-target* ally buff
-    /// maintained on just the player (a bard repeatedly re-singing one
-    /// song on the group's main damage dealer, say) never lands on anyone
-    /// else at all, so the cross-entity check above can't see it either.
-    /// It has its own real signature, though: Quick Buff applies once at
-    /// activation and doesn't recur, while a maintained song pulses on a
-    /// short, regular cadence. Confirmed directly against the reference
-    /// log: "You feel an aura of mystic protection surrounding you."
-    /// pulsing on the player at 17:07:23, :29, :35, :41, :47, :53 -- a
-    /// steady ~6s cadence sustained for minutes, landing on no one else
-    /// at any point in 2.8M lines, yet 4,180 real occurrences against
-    /// only 240 real Quick Buff activations total. See `PULSE_WINDOW_MS`.
-    ///
-    /// So this doesn't commit immediately -- it queues a
-    /// `PendingQuickbuffEvidence` (first checking whether the text has
-    /// *already* landed on someone else moments ago via
-    /// `recent_flavor_landings`, or on the *same* entity moments ago via
-    /// `effects` -- either one disqualifies it before it's even queued)
-    /// and lets `record_effect_ping` cancel it later if either check's
-    /// evidence shows up after the fact instead, or commit it if neither
-    /// does.
+    /// why: tentatively attributes classes for whoever's Quick Buff
+    /// window is open -- only when exactly one is open (two overlapping
+    /// activators makes it ambiguous). Also guards against two other real
+    /// false positives, both confirmed against the reference log: a
+    /// group-wide buff landing on the activator during their own window
+    /// (110 of 240 real activations hit this), and a maintained
+    /// single-target buff pulsing on a regular cadence (confirmed ~6s
+    /// cadence, 4,180 real occurrences vs 240 real activations). Doesn't
+    /// commit immediately -- queues evidence, record_effect_ping cancels
+    /// it if either disproof shows up after the fact.
     fn attribute_flavor_hit(&mut self, ts: Millis, text: &str, classes: &'static [String]) {
         self.pending_quickbuff
             .retain(|_, t0| ts - *t0 <= QUICKBUFF_WINDOW_MS);
@@ -1757,7 +1629,7 @@ impl Ingest {
             .iter()
             .filter(|&&t| t == text)
             .count()
-            > 1; // > 1: `text`'s own current landing is already in there
+            > 1; // why: > 1 because text's own current landing is already in there
         if group_cast_already || already_pulsing {
             return;
         }
@@ -1770,54 +1642,31 @@ impl Ingest {
             });
     }
 
-    /// `name` resolved through inferred pet ownership, for callers outside
-    /// `Ingest` that walk `entities_by_enc` -- that list is the encounter
-    /// graph's raw entity names, untouched by pet merging (see `link`'s
-    /// doc comment on why), so a caller displaying or querying by name
-    /// needs this to land on the same identity `sym()` would have used.
+    /// why: resolved through pet ownership, for callers walking
+    /// entities_by_enc -- that list is raw, untouched by pet merging
     pub fn effective_name(&self, name: &str) -> String {
         let resolved = self.encounters.entities.display_name(name).to_string();
         self.pet_owner.get(&resolved).cloned().unwrap_or(resolved)
     }
 
-    /// How many pets have been matched to an owner so far -- surfaced in
-    /// the Overview module so the inference is visible, not silent.
+    /// why: pets matched so far, surfaced in Overview so the inference is visible not silent
     pub fn pet_owner_count(&self) -> usize {
         self.pet_owner.len()
     }
 
-    /// Routes one damage edge through the encounter graph, then resolves it
-    /// to a store `EncounterId`, opening one the first time this graph
-    /// component is seen.
-    ///
-    /// A merged-away graph component (`graph.rs`'s `merge`) doesn't share
-    /// `store::Encounter`'s single contiguous row range with the survivor,
-    /// so it keeps its own store-side counterpart -- `merge` pushes a
-    /// `Closed` record for it directly (not via `close`, which only runs
-    /// for ids still in `live`), so `drain_closed` still ends it instead of
-    /// leaving it open forever. See `graph.rs::merge`'s own comment.
+    /// why: routes one damage edge through the graph, resolves to a
+    /// store EncounterId, opening one the first time this component is
+    /// seen. A merged-away component keeps its own store counterpart, so
+    /// merge pushes a Closed record directly rather than leaving it open forever.
     fn link(&mut self, ts: Millis, actor: &str, target: &str) -> EncounterId {
         let enc_id = self.encounters.damage(ts, actor, target);
 
-        // Whichever side of *this* edge is provably not the mob -- "You"
-        // checked literally alongside proven identity, since `Kind::Player`
-        // for "You" itself is only proven once the log owner has spoken on
-        // a player channel, and a fresh session where they haven't yet must
-        // not lose that guarantee. Identity alone isn't enough, though: a
-        // proven player or pet who is *currently charmed* is fighting for
-        // the other side for as long as that lasts, so this checks
-        // `Allegiance::of(kind, state)` -- kind plus state *as of this
-        // edge's own timestamp* -- not raw `Kind`, the same reasoning
-        // `list_allies`/`fight_state_at` already apply per-query rather
-        // than trusting identity alone. An encounter this fight-scoped
-        // check ever anchors on a charmed ally is correct for exactly this
-        // fight; if the charm breaks and they go back to being themselves,
-        // that's a different moment with its own state, not a reason to
-        // revisit this one. Still not exhaustive: an ally who has neither
-        // spoken on a player channel nor summoned a pet stays
-        // `Kind::Unproven` and reads exactly like a real mob would -- the
-        // same unspoken-NPC-vs-unspoken-player ceiling `list_allies` and
-        // `note_actor` already document, not a new gap.
+        // why: "You" checked alongside proven identity -- Kind::Player for
+        // "You" only proves once they've spoken on a player channel.
+        // Checks Allegiance::of(kind, state) as of this edge's own
+        // timestamp, not raw Kind -- a currently-charmed ally fights for
+        // the other side for as long as that lasts. Still not exhaustive:
+        // an unspoken ally reads as a real mob, same known ceiling as list_allies.
         let actor_ally = self.is_ally(actor, ts);
         let target_ally = self.is_ally(target, ts);
         // `None` when both sides look like allies (self-inflicted damage --
