@@ -462,7 +462,13 @@
         <p class="text-[12px] text-muted-foreground">Loading…</p>
       {:else if searchResults.length}
         <div class="grid grid-cols-8 gap-x-2 gap-y-0.5">
-          {#each searchResults as s (s.name)}
+          <!-- why: index-keyed, not s.name -- real bug, caught live: spell
+               *names* aren't unique across the catalog ("Shield of
+               Thorns" is two separate entries), and DamageSpellDto (the
+               rank10 source) has no id field to key on instead. This
+               list is fully regenerated on every filter/sort change
+               anyway, so there's no per-item identity worth preserving. -->
+          {#each searchResults as s, i (i)}
             <button
               type="button"
               draggable="true"
