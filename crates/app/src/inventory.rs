@@ -1,39 +1,25 @@
-//! Parsing `/outputfile inventory` dumps into the gear planner's own slot
-//! vocabulary (`gearplanner::SLOTS`).
+//! why: parses `/outputfile inventory` dumps into `gearplanner::SLOTS`
 //!
-//! The dump itself is never in the log stream -- `outputfile.complete`
-//! (`packs/eql.toml`) only ever sees the client's one-line confirmation
-//! that a dump finished writing, naming the file. The file lands in the
-//! game's base install folder (`AppConfig::base_dir`), one level above
-//! `Logs`, which is the whole reason `AppConfig` was widened to store the
-//! base folder instead of `Logs` directly -- see that module's doc.
-//!
-//! why: frontend reaches this over IPC (`get_inventory_dump`), not a file
+//! The dump itself never appears in the log stream -- `outputfile.
+//! complete` only confirms it finished writing. Lands in `AppConfig::
+//! base_dir`, one level above `Logs` -- why `AppConfig` stores the base
+//! folder. Frontend reaches this over IPC, not a file.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// One equipped item, as read from the dump. `tier` is the "+N" the game
-/// itself prints on the item's name (0 if there isn't one) -- read
-/// directly off the dump, not derived or guessed at.
+/// why: `tier` is the "+N" the game prints, read directly off the dump
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct InventoryItem {
     pub name: String,
     pub tier: u8,
 }
 
-/// Maps the dump's own `Location` column values to the gear planner's slot
-/// keys -- confirmed against a real dump (`~/eqlp/Manipulator_rivervale-
-/// Inventory.txt`) matched up against the planner's actual `SLOTS` array,
-/// not assumed to line up by name alone. Four locations
-/// (`Ear`/`Wrist`/`Fingers`/`Any Slot`) each appear exactly twice in a
-/// real dump, once per physical slot, confirmed by counting a real file
-/// rather than assumed -- mapped by occurrence order (first row -> ...1,
-/// second -> ...2), since the dump carries no other way to distinguish
-/// them. Every other location the dump carries (Bank*/General
-/// */SharedBank*/KeyRing/Activated/Augmentation/Equipment/Held) has no
-/// entry here at all and is skipped -- real inventory, but not something
-/// the gear planner's paper doll has a slot for.
+/// why: dump `Location` -> planner slot keys, confirmed against a real
+/// dump. 4 locations appear twice each (Ear/Wrist/Fingers/Any Slot),
+/// mapped by occurrence order -- no other way to distinguish them.
+/// Every other dump location (Bank/General/SharedBank/...) is skipped,
+/// real inventory but no paper-doll slot for it.
 const SLOT_ORDER: &[(&str, &[&str])] = &[
     ("Ear", &["EAR1", "EAR2"]),
     ("Head", &["HEAD"]),
@@ -56,14 +42,8 @@ const SLOT_ORDER: &[(&str, &[&str])] = &[
     ("Any Slot", &["ANY1", "ANY2"]),
 ];
 
-/// `"Bloodstar Pendant +5"` -> `("Bloodstar Pendant", 5)`. A name with no
-/// trailing `" +N"` (untiered gear, or gear that's never been upgraded)
-/// returns the name unchanged with tier 0. `pub(crate)`: also reused by
-/// `raiding.rs` to match a real loot line's own tiered item name ("You
-/// looted an Engineer's Ring +4 from...") back against the wiki's
-/// untiered drop-table entry ("Engineer's Ring") -- an exact-string
-/// comparison between those two would otherwise never match at all,
-/// silently hiding a real, confirmed drop.
+/// why: splits "Name +N" -> (name, N), 0 if untiered; pub(crate) so
+/// `raiding.rs` can match a tiered loot line against the wiki's untiered entry
 pub(crate) fn strip_tier(name: &str) -> (&str, u8) {
     if let Some((base, tail)) = name.rsplit_once(" +") {
         if let Ok(n) = tail.parse::<u8>() {
@@ -73,33 +53,18 @@ pub(crate) fn strip_tier(name: &str) -> (&str, u8) {
     (name, 0)
 }
 
-/// `"Back-Slot7"` -> `Some("Back")`, `"General 1-Slot3"` -> `Some("General
-/// 1")`, `"Back"` -> `None` -- structural, not tied to any particular
-/// slot number (see `parse`'s own doc on why this has to catch *every*
-/// numbered sub-slot the dump carries, not just the ones this module
-/// goes on to actually model).
+/// why: strips any trailing "-Slot<N>", not just modelled ones -- see `parse`'s doc
 fn strip_trailing_numbered_slot(location: &str) -> Option<&str> {
     let (base, tail) = location.rsplit_once("-Slot")?;
     tail.parse::<u32>().ok()?;
     Some(base)
 }
 
-/// `<equip-slot location>-Slot<N>` -> the exaltation socket `N`
-/// corresponds to, for the 4 real socket types that actually hold a
-/// source item's effect -- confirmed empirically against a real dump,
-/// not assumed: every filled example found (`White Dragonscale Cloak`/
-/// `Rokyls Channelling Crystal`/`Robe of the Oracle`/`Ishva Mas Leggings`,
-/// all in a real `-Slot7`) carries `focus` as their *own* effect type in
-/// `packs/items.json`, and the one real `-Slot8` example
-/// (`Shield of the Immaculate`) carries `click` -- matching `gearplanner
-/// ::EXALT_SLOTS`' own declared order (ornament, focus, click, worn,
-/// proc) exactly, so `-Slot9`/`-Slot10` are inferred as `worn`/`proc` by
-/// that same order, not independently confirmed the same way (no filled
-/// real example of either seen yet). The `ornament` slot itself is
-/// deliberately not modelled here at all: its own dump slot number isn't
-/// even consistent (`Head-Slot1`, `Back-Slot2`, absent entirely for
-/// `Primary`) and no real filled example has been seen to confirm its
-/// naming convention against.
+/// why: `-Slot<N>` -> exalt socket type, for the 4 confirmed socket
+/// numbers (7=focus, 8=click confirmed via real filled examples against
+/// `packs/items.json`; 9/10 inferred by `gearplanner::EXALT_SLOTS`'
+/// order, not independently confirmed). `ornament` deliberately not
+/// modelled -- its dump slot number isn't even consistent.
 const EXALT_SOCKET_SUFFIXES: &[(&str, &str)] = &[
     ("-Slot7", "focus"),
     ("-Slot8", "click"),
@@ -107,74 +72,34 @@ const EXALT_SOCKET_SUFFIXES: &[(&str, &str)] = &[
     ("-Slot10", "proc"),
 ];
 
-/// A dump-reported exalt source's own display name always carries this
-/// literal suffix (confirmed against every real example seen) -- the
-/// underlying item is the same catalog entry either equipped or
-/// exalted-in, just annotated to say which.
+/// why: exalt source's display name always carries this literal suffix
 const EXALTATION_SUFFIX: &str = " (Exaltation)";
 
-/// Both halves of a real `/outputfile inventory` dump -- what's equipped
-/// (doll display) and how many of each name exist anywhere in the dump
-/// (bags/bank/equipped, all summed). Deliberately one pass, one struct:
-/// both are read off the same rows.
+/// why: both halves of a dump read in one pass -- equipped, and total owned
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct ParsedInventory {
     pub equipped: HashMap<String, InventoryItem>,
-    /// Base (tier-stripped) item name -> total copies owned, every
-    /// location summed. Each row is one real physical stack/item --
-    /// `Count` is per-row stack size (high for reagents, always 1 for
-    /// most gear, where a 2nd copy is instead a 2nd *row* in a different
-    /// bag slot) -- so summing `Count` across every row of a name is the
-    /// actual owned total either way, not an approximation. Deliberately
-    /// excludes exalt-socket rows (`exalted`, below) -- whatever's
-    /// already socketed into a piece isn't a spare copy sitting free to
-    /// use elsewhere, so counting it here would overstate what's
-    /// actually available.
+    /// why: total copies owned, `Count` summed across every row; excludes
+    /// exalt-socket rows -- socketed isn't a spare copy
     pub owned: HashMap<String, u32>,
-    /// Base item name -> highest "+N" tier owned of it, anywhere in the
-    /// dump. A player who owns several copies at different tiers only
-    /// gets the best one back here -- for scoring/display purposes
-    /// (`gearplanner::score_item`/`ItemDto::tier`), the best copy owned is
-    /// the one that actually matters.
+    /// why: highest tier owned of a name, since only the best copy matters
     pub owned_tier: HashMap<String, u8>,
-    /// Equip-doll slot key (`"BACK"`, `"EAR1"`, ...) -> (exalt socket key
-    /// `"focus"`/`"click"`/`"worn"`/`"proc"` -> the source item's own
-    /// base name already socketed there) -- straight off the dump, real
-    /// ground truth for "what's already exalted onto this piece", not
-    /// the proc-evidence-only inference `Ingest::exaltation_procs` still
-    /// has to fall back on. See `EXALT_SOCKET_SUFFIXES`'s own doc for
-    /// which socket numbers this covers (not `ornament`) and how
-    /// confidently. A slot/socket combination with nothing socketed
-    /// simply has no entry -- there is no empty placeholder to check
-    /// against.
+    /// why: equip slot -> (socket -> source item), real ground truth
+    /// unlike `Ingest::exaltation_procs`' proc-evidence inference; no
+    /// entry for an empty socket
     pub exalted: HashMap<String, HashMap<String, String>>,
 }
 
-/// Parses a real `/outputfile inventory` dump (tab-separated: `Location`,
-/// `Name`, `ID`, `Count`, `Slots` -- confirmed against a real dump, not
-/// assumed). `equipped` only ever comes from the bare `SLOT_ORDER`
-/// locations; `owned` sums every non-exalt-socket, non-empty row
-/// regardless of location, since owning a copy in the bank counts same
-/// as owning it in a bag.
+/// why: tab-separated dump (Location/Name/ID/Count/Slots); `equipped`
+/// only from `SLOT_ORDER`, `owned` sums every non-exalt-socket row.
 ///
-/// A bag's own numbered contents (`General 1-Slot3`, the 3rd item in bag
-/// "General 1") and *that* item's own augment sockets in turn
-/// (`General 1-Slot3-Slot2`) look exactly like an equip-doll slot's own
-/// exalt sockets do (`Back-Slot7`) -- both are a location with a
-/// trailing `-Slot<N>` -- confirmed against a real dump this is a real,
-/// nested nesting, not a parsing artifact. Distinguished here by walking
-/// the file in order and remembering the two things that matter about
-/// whatever base row was seen most recently: its own raw location string
-/// (`last_base_location`) and, only when that row really was a real
-/// equip-doll slot, which one (`last_equip_key`) -- a dump always lists
-/// an exalt-socket row immediately after the row it belongs to, so this
-/// single running pair is enough to tell a real `Back-Slot7` (whose
-/// stripped base, `"Back"`, matches `last_base_location`, itself a real
-/// equip slot) from a bag item's own nested one (whose stripped base,
-/// `"General 1-Slot3"`, is not a real equip-doll location at all --
-/// `last_equip_key` stays `None` for it, so it's correctly skipped, not
-/// misattributed to whatever equip slot happened to be seen earlier in
-/// the file).
+/// A bag item's own nested augment sockets look structurally identical
+/// to an equip-doll slot's exalt sockets (both a trailing `-Slot<N>`).
+/// Distinguished by walking in order, remembering the last base row's
+/// location and (if real) its equip key -- a socket row always
+/// immediately follows the row it belongs to, so this pair is enough to
+/// tell a real exalt socket from a bag item's nested one without
+/// misattributing to whatever equip slot came earlier in the file.
 pub fn parse(path: &Path) -> std::io::Result<ParsedInventory> {
     let text = std::fs::read_to_string(path)?;
     let mut seen: HashMap<&str, usize> = HashMap::new();
@@ -190,23 +115,10 @@ pub fn parse(path: &Path) -> std::io::Result<ParsedInventory> {
             continue;
         };
 
-        // why: a "-Slot<N>" row is a child of whatever base row came
-        // immediately before it -- true for *every* augment/exalt
-        // socket the dump carries, not just the 4 this module actually
-        // models (`EXALT_SOCKET_SUFFIXES`). The real, reported bug this
-        // guards against: the un-modelled ornament socket ("-Slot1" on
-        // Head, "-Slot2" everywhere else, inconsistent -- see
-        // `EXALT_SOCKET_SUFFIXES`'s own doc) used to fall all the way
-        // through to the "new base row" branch below, overwriting
-        // `last_base_location`/`last_equip_key` with itself -- which
-        // then broke matching for every real exalt-socket row that
-        // followed it in the same item's own block, since their own
-        // stripped base no longer equalled the (corrupted)
-        // `last_base_location`. Checked structurally (does stripping a
-        // trailing "-Slot<digits>" land back on `last_base_location`),
-        // not against the 4 modelled suffixes alone, so an unmodelled
-        // socket type is silently skipped without corrupting state for
-        // its real siblings either.
+        // why: checked structurally against every "-Slot<N>" row, not
+        // just the 4 modelled suffixes -- an unmodelled socket (e.g.
+        // ornament) used to fall through and corrupt last_base_location/
+        // last_equip_key, breaking matching for its real siblings
         if let Some(base) = strip_trailing_numbered_slot(location) {
             if base == last_base_location {
                 if name != "Empty" {
@@ -245,10 +157,7 @@ pub fn parse(path: &Path) -> std::io::Result<ParsedInventory> {
         };
         let idx = seen.entry(location).or_insert(0);
         let Some(&key) = slot_keys.get(*idx) else {
-            // More rows for this location than SLOT_ORDER expects for it --
-            // an assumption this module makes turned out wrong for this
-            // dump. Skip the overflow rather than silently misassigning it
-            // to a slot it doesn't belong to.
+            // why: more rows than SLOT_ORDER expects -- skip overflow, don't misassign
             continue;
         };
         *idx += 1;
@@ -264,14 +173,7 @@ pub fn parse(path: &Path) -> std::io::Result<ParsedInventory> {
     Ok(out)
 }
 
-/// `<base_dir>/<file>`, with `file` trusted only as a bare filename -- it
-/// comes straight from the client's own log line, which never contains a
-/// directory component in practice, but this joins it under `base_dir`
-/// rather than treating it as a path in its own right either way, so a
-/// stray `..` in a malformed line can't escape `base_dir`. Used to resolve
-/// a dump named by a fresh `outputfile.complete` line, and to build the
-/// full path for whatever `find_existing_dump` finds already sitting on
-/// disk.
+/// why: `file` trusted only as a bare filename -- a stray `..` can't escape `base_dir`
 pub fn dump_path(base_dir: &Path, file: &str) -> std::io::Result<PathBuf> {
     let name_only = Path::new(file).file_name().ok_or_else(|| {
         std::io::Error::new(
@@ -282,17 +184,12 @@ pub fn dump_path(base_dir: &Path, file: &str) -> std::io::Result<PathBuf> {
     Ok(base_dir.join(name_only))
 }
 
-/// `/outputfile` covers more than just `inventory` (spawns, guildlist,
-/// ...) -- this narrows down to dumps this module actually knows how to
-/// read (`parse` only understands the inventory dump's own column
-/// layout), so nothing ever offers to load a file that isn't one.
+/// why: `/outputfile` covers more than inventory -- narrows to dumps this module can read
 pub fn is_inventory_dump(file: &str) -> bool {
     file.ends_with("-Inventory.txt")
 }
 
-/// Read off the filename itself (`<Character>_<zone>-Inventory.txt`,
-/// confirmed against a real dump), not looked up anywhere -- a best-effort
-/// label, not a guaranteed-correct one.
+/// why: read off the filename, not looked up -- best-effort, not guaranteed
 pub fn inventory_character(file: &str) -> Option<String> {
     file.split('_')
         .next()
@@ -300,12 +197,7 @@ pub fn inventory_character(file: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// The most recently written inventory dump already sitting in `base_dir`,
-/// if any -- for offering to load one on startup/module-entry instead of
-/// only ever reacting to a fresh `outputfile.complete` line. A player who
-/// dumped their inventory last session, then closed and reopened the app,
-/// has a real file on disk this whole time; nothing about that requires a
-/// brand new dump before the app can use it.
+/// why: most recent dump already on disk, offered on startup not just fresh dumps
 pub fn find_existing_dump(base_dir: &Path) -> Option<(String, Option<String>)> {
     let entries = std::fs::read_dir(base_dir).ok()?;
     let newest = entries
@@ -330,8 +222,7 @@ mod parse_tests {
 
     #[test]
     fn owned_tier_keeps_the_highest_tier_seen_for_a_name() {
-        // Two copies of the same ring, at different tiers, in different
-        // bags -- owned_tier must report the best one, not the last row.
+        // why: two copies at different tiers -- owned_tier must report the best, not the last row
         let path = scratch_file(
             "tier",
             "Location\tName\tID\tCount\tSlots\n\
@@ -352,10 +243,7 @@ mod parse_tests {
         );
     }
 
-    /// Real lines, unedited, from a real dump -- Back's own two socketed
-    /// exaltations (focus + click), confirmed independently against
-    /// `packs/items.json`'s own effect-type tags for both source items
-    /// (see `EXALT_SOCKET_SUFFIXES`'s own doc for the full story).
+    /// why: real unedited lines, Back's two socketed exaltations, focus + click
     #[test]
     fn real_exaltation_sockets_resolve_to_their_confirmed_socket_keys() {
         let path = scratch_file(
@@ -389,10 +277,7 @@ mod parse_tests {
         );
     }
 
-    /// Two copies of the same equip-doll slot (Ear1/Ear2), each with
-    /// their own real exalt sockets -- the second Ear's own socketed
-    /// exaltation must land on EAR2, not silently overwrite or merge
-    /// into EAR1's.
+    /// why: two Ear slots, each own exalt socket -- must land EAR1/EAR2, not merge
     #[test]
     fn two_copies_of_the_same_doll_slot_keep_independent_exalt_sockets() {
         let path = scratch_file(
@@ -416,12 +301,8 @@ mod parse_tests {
         );
     }
 
-    /// A bag item's own nested exalt sockets (`General 1-Slot3-Slot2`,
-    /// the item sitting in bag slot 3's *own* socket 2) look exactly
-    /// like an equip-doll slot's exalt sockets do (a trailing
-    /// `-Slot<N>`), confirmed against a real dump -- must not be
-    /// misattributed to whatever equip-doll slot happened to be seen
-    /// earlier in the file.
+    /// why: a bag item's nested sockets look identical structurally --
+    /// must not be misattributed to an earlier equip-doll slot
     #[test]
     fn a_bagged_items_own_nested_exalt_sockets_are_not_attributed_to_an_equip_slot() {
         let path = scratch_file(
@@ -449,8 +330,7 @@ mod parse_tests {
         );
     }
 
-    /// A socketed exaltation source must never also inflate `owned` --
-    /// it's consumed into the socket, not a spare copy sitting free.
+    /// why: a socketed source must never inflate `owned` -- consumed, not spare
     #[test]
     fn a_socketed_exaltation_source_does_not_count_toward_owned() {
         let path = scratch_file(
