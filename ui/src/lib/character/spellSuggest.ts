@@ -154,6 +154,57 @@ export function buildExclusivityContext(
   return ctx;
 }
 
+// ---------------------------------------------------------------- spell lines
+
+/** why: every real multi-member spell line in the catalog, for the
+ * priority settings page -- 2+ members only (a 1-member "line" has
+ * nothing to reorder). Members pre-sorted by the default (-level) order
+ * so a line with no saved override still displays sensibly. */
+export interface SpellLine {
+  key: string;
+  label: string;
+  members: SpellDto[];
+}
+
+export function allSpellLines(spells: SpellDto[]): SpellLine[] {
+  const groups = new Map<string, SpellDto[]>();
+  for (const s of spells) {
+    const key = spellLineKey(s);
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(s);
+  }
+  const lines: SpellLine[] = [];
+  for (const [key, members] of groups) {
+    if (members.length < 2) continue;
+    const sorted = [...members].sort((a, b) => {
+      const la = Math.max(0, ...a.classes.map((c) => c.level ?? 0));
+      const lb = Math.max(0, ...b.classes.map((c) => c.level ?? 0));
+      return lb - la;
+    });
+    // why: the line's own description (digits already stripped by
+    // spellLineKey) reads better as a label than a joined name list --
+    // "Causes your opponent to fall into an enchanted sleep…" identifies
+    // the line at a glance, member names show in the detail panel instead.
+    const label = sorted[0].description ? key : sorted.map((s) => s.name).join(' / ');
+    lines.push({ key, label, members: sorted });
+  }
+  return lines.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** why: an override's array index if the player has manually ranked
+ * this spell's line and included this spell; else the same -level
+ * fallback sortForSuggestion always used, so an untouched line's order
+ * is unchanged. Offset so overridden entries (always small indices)
+ * naturally sort ahead of any unconfigured member of a partially-ranked line. */
+export function priorityRank(s: SpellDto, overrides: Record<string, string[]>): number {
+  const order = overrides[spellLineKey(s)];
+  if (order) {
+    const idx = order.indexOf(s.name);
+    if (idx >= 0) return idx;
+  }
+  const level = Math.max(0, ...s.classes.map((c) => c.level ?? 0));
+  return 1000 - level;
+}
+
 // ---------------------------------------------------------------- buff/support picking
 
 type SortKey = [number, number, number, string, string];
@@ -161,16 +212,23 @@ type SortKey = [number, number, number, string, string];
 /** why: light default ranking, mirrors SpellbookBuilder's own picker
  * heuristic -- known-class membership first (real bug precedent: raw
  * level sorting buries a played class's own mid-level spells under
- * other classes' level-60 raid content), then highest usable level,
- * then class/spell name for a stable order. */
-function sortForSuggestion(s: SpellDto, activeClasses: string[], preferSoloTarget: boolean): SortKey {
+ * other classes' level-60 raid content), then a manually-ranked spell
+ * line's saved priority if one exists (real bug: Mesmerization, an AE
+ * mez, is the better pick despite later single-target mez spells
+ * outranking it by level -- see priorityRank's own doc), falling back
+ * to highest usable level, then class/spell name for a stable order. */
+function sortForSuggestion(
+  s: SpellDto,
+  activeClasses: string[],
+  preferSoloTarget: boolean,
+  overrides: Record<string, string[]>,
+): SortKey {
   const usable = usableClasses(s.classes);
   const known = usable.filter((c) => activeClasses.includes(c.class));
   const pool = known.length ? known : usable;
-  const level = pool.length ? Math.max(...pool.map((c) => c.level ?? 0)) : 0;
   const bestClass = pool.length ? [...pool].sort((a, b) => a.class.localeCompare(b.class))[0].class : '';
   const soloTier = preferSoloTarget ? (isSoloTarget(s) ? 0 : 1) : 1;
-  return [soloTier, known.length ? 0 : 1, -level, bestClass, s.name];
+  return [soloTier, known.length ? 0 : 1, priorityRank(s, overrides), bestClass, s.name];
 }
 
 function compareSortKeys(a: SortKey, b: SortKey): number {
@@ -191,13 +249,17 @@ export function pickBuffSuggestions(
   existingBookNames: string[],
   count: number,
   groups: Record<string, number>,
+  overrides: Record<string, string[]> = {},
 ): string[] {
   if (count <= 0) return [];
   const candidates = pool.filter((s) => usableByClasses(s.classes, activeClasses));
   const byName = new Map(candidates.map((s) => [s.name, s]));
   const ctx = buildExclusivityContext(existingBookNames, byName, groups);
   const sorted = [...candidates].sort((a, b) =>
-    compareSortKeys(sortForSuggestion(a, activeClasses, true), sortForSuggestion(b, activeClasses, true)),
+    compareSortKeys(
+      sortForSuggestion(a, activeClasses, true, overrides),
+      sortForSuggestion(b, activeClasses, true, overrides),
+    ),
   );
   const picked: string[] = [];
   for (const s of sorted) {
@@ -224,6 +286,7 @@ export function pickSupportSuggestions(
   count: number,
   groups: Record<string, number>,
   damageSpellNames: Set<string>,
+  overrides: Record<string, string[]> = {},
 ): string[] {
   if (count <= 0) return [];
   const byName = new Map(pool.map((s) => [s.name, s]));
@@ -238,7 +301,10 @@ export function pickSupportSuggestions(
     const ta = effects[a.id]?.tags.some((t) => SUPPORT_TAGS.has(t)) ? 0 : 1;
     const tb = effects[b.id]?.tags.some((t) => SUPPORT_TAGS.has(t)) ? 0 : 1;
     if (ta !== tb) return ta - tb;
-    return compareSortKeys(sortForSuggestion(a, activeClasses, false), sortForSuggestion(b, activeClasses, false));
+    return compareSortKeys(
+      sortForSuggestion(a, activeClasses, false, overrides),
+      sortForSuggestion(b, activeClasses, false, overrides),
+    );
   });
   const picked: string[] = [];
   for (const s of sorted) {

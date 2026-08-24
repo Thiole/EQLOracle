@@ -5,6 +5,7 @@
   import * as Select from '$lib/components/ui/select';
   import { spells, spellEffects, spellStackingGroups } from '$lib/stores/gamedata';
   import { activeClasses, spellRanks, damageSpells } from '$lib/stores/character';
+  import { spellLineOverrides, openSpellLinePriority } from '$lib/stores/spellLinePriority';
   import { ICON_BASE, ALL_CLASSES, MAX_CHARACTER_LEVEL } from '$lib/character/constants';
   import {
     usableClasses, isUsable, usableByClasses, isBuff, isSoloTarget, isTeamTarget,
@@ -126,7 +127,7 @@
     const count = emptySlotCount(bookIdx);
     if (count <= 0) return;
     const pool = $spells.filter((s) => isUsable(s) && isBuff(s) && isSoloTarget(s));
-    const picks = pickBuffSuggestions(pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups);
+    const picks = pickBuffSuggestions(pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, $spellLineOverrides);
     fillEmptySlots(bookIdx, picks);
   }
 
@@ -134,7 +135,7 @@
     const count = emptySlotCount(bookIdx);
     if (count <= 0) return;
     const pool = $spells.filter((s) => isUsable(s) && isBuff(s) && isTeamTarget(s));
-    const picks = pickBuffSuggestions(pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups);
+    const picks = pickBuffSuggestions(pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, $spellLineOverrides);
     fillEmptySlots(bookIdx, picks);
   }
 
@@ -156,7 +157,7 @@
     if (count <= 0) return;
     const damageSpellNames = new Set($damageSpells.map((s) => s.name));
     const supportPicks = pickSupportSuggestions(
-      $spells, $spellEffects, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, damageSpellNames,
+      $spells, $spellEffects, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, damageSpellNames, $spellLineOverrides,
     );
     fillEmptySlots(bookIdx, supportPicks);
   }
@@ -412,7 +413,16 @@
     <CardContent class="px-3 py-2.5">
       <div class="mb-1.5 flex items-center justify-between gap-2">
         <h2 class="panel-title">Suggested spells</h2>
-        <Input bind:value={search} placeholder="search spells…" class="h-7 w-56 text-[12px]" />
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            class="text-[11px] text-muted-foreground underline-offset-2 hover:text-primary hover:underline"
+            onclick={() => openSpellLinePriority(null)}
+          >
+            customize spell line priority →
+          </button>
+          <Input bind:value={search} placeholder="search spells…" class="h-7 w-56 text-[12px]" />
+        </div>
       </div>
 
       <!-- why: kept tiny/compact on purpose -- these are filters glanced

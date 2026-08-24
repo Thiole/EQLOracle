@@ -16,6 +16,7 @@
     loadPreferences,
   } from '$lib/stores/settings';
   import { mapPacks, rescanMapFolder } from '$lib/stores/maps';
+  import SpellLinePriority from './SpellLinePriority.svelte';
 
   $effect(() => {
     void loadPreferences();
@@ -126,6 +127,12 @@
           <b class="text-foreground">pack list itself</b> (Base game / Brewall / …), which is only checked once per
           launch. Use this if you install a new map pack while the app is already running.
         </p>
+      </CardContent>
+    </Card>
+
+    <Card class="rounded-sm">
+      <CardContent class="px-3 py-2.5">
+        <SpellLinePriority />
       </CardContent>
     </Card>
   {/if}
