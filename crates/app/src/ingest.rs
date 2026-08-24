@@ -4331,8 +4331,7 @@ mod effect_ping_tests {
         );
     }
 
-    /// The named `yaulp` alias: same effect as the scraped first-person
-    /// text, just reworded rather than conjugated.
+    /// why: named yaulp alias -- same effect as scraped text, reworded not conjugated
     #[test]
     fn the_named_yaulp_alias_pings_the_canonical_first_person_text() {
         let engine = build_engine().expect("pack builds");
@@ -4352,9 +4351,7 @@ mod effect_ping_tests {
         );
     }
 
-    /// The "feel X" -> "is X" family (multi-word tail, not just a single
-    /// adjective) -- a second real substitute-verb pattern off the same
-    /// "feel" source as the "looks ADJ" family.
+    /// why: "feel X" -> "is X" family (multi-word tail), a second substitute-verb pattern off "feel"
     #[test]
     fn a_feel_x_buff_recognizes_its_is_x_form() {
         let engine = build_engine().expect("pack builds");
@@ -4374,10 +4371,8 @@ mod effect_ping_tests {
         );
     }
 
-    /// `ability.activated`: real, almost-always-third-person lines are
-    /// class evidence for *whoever activated it*, not "You" -- the point
-    /// this whole rule exists for. Two distinct visits, same real poison,
-    /// confirms Rogue for the activator, not the log owner.
+    /// why: ability.activated is class evidence for the activator, not
+    /// "You" -- two visits confirm Rogue for the activator, not the log owner
     #[test]
     fn an_activated_ability_confirms_class_evidence_for_its_own_activator() {
         let engine = build_engine().expect("pack builds");
@@ -4401,17 +4396,14 @@ mod effect_ping_tests {
             .configuration_of_visit(aella.0, ing.zone.index_at(ing.now_ms()));
         assert!(configured.contains(&"Rogue".to_string()), "{configured:?}");
 
-        // "Aella" herself, not "You" -- the log owner gets no evidence at
-        // all from a line they were never the subject of.
+        // why: Aella herself, not "You" -- log owner gets no evidence from a line they weren't subject of
         assert!(
             ing.store.names.get("You").is_none(),
             "You should never be interned by this"
         );
     }
 
-    /// The state-ping half: fed to `Effects` on the activator regardless
-    /// of whether `classdata` recognizes the ability -- "what's now on
-    /// their weapon" is real state either way.
+    /// why: state-ping half -- fed to Effects on the activator regardless of whether classdata recognizes it
     #[test]
     fn an_activated_ability_pings_state_on_its_activator_even_when_unrecognized() {
         let engine = build_engine().expect("pack builds");
@@ -4430,10 +4422,7 @@ mod effect_ping_tests {
         );
     }
 
-    /// Regression guard: the general rule must never shadow Quick Buff's
-    /// own dedicated rule (which opens the buff-attribution window) --
-    /// confirmed by checking the *specific* real behavior only
-    /// `ability.quickbuff` triggers still fires.
+    /// why: regression guard -- the general rule must never shadow Quick Buff's own dedicated rule
     #[test]
     fn quick_buff_still_opens_its_own_window_not_the_general_rule() {
         let engine = build_engine().expect("pack builds");
@@ -4444,9 +4433,7 @@ mod effect_ping_tests {
             b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
             b"[Tue Jul 28 15:02:01 2026] You activate Quick Buff.",
             b"[Tue Jul 28 15:02:02 2026] A blast of acid eats at your skin.",
-            // See the matching comment in the test above -- a different
-            // real flavor line, past PULSE_WINDOW_MS, flushes the pending
-            // evidence.
+            // why: different flavor line past PULSE_WINDOW_MS, flushes pending evidence
             b"[Tue Jul 28 15:02:20 2026] A burst of strength surges through your body.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
@@ -4461,12 +4448,9 @@ mod effect_ping_tests {
         );
     }
 
-    /// The exact real false positive the user caught: a group-wide buff
-    /// (not the player's own Quick Buff) lands on the player *and* a
-    /// named ally within the same tight window as the player's own
-    /// activation. Real text, real timing (3s after activation, matching
-    /// the reference log) -- "Magician" must never get confirmed, because
-    /// it was never the player's own Quick Buff proc.
+    /// why: real false positive the user caught -- a group-wide buff
+    /// landing on the player and an ally within the activation window;
+    /// "Magician" must never get confirmed, it was never the player's own Quick Buff
     #[test]
     fn a_group_cast_landing_on_someone_else_cancels_pending_quickbuff_evidence() {
         let engine = build_engine().expect("pack builds");
@@ -4492,19 +4476,15 @@ mod effect_ping_tests {
             "a group cast on Kabanab too must never confirm Magician for the player: {configured:?}"
         );
 
-        // The ping itself is still real and unconditional -- the player
-        // really was enveloped by flame, whoever cast it. Only the class
-        // *attribution* is what gets cancelled.
+        // why: ping is still real and unconditional -- only the class attribution gets cancelled
         assert_eq!(
             ing.effects.recent(you.0, ing.now_ms(), 60_000),
             vec!["You are enveloped by flame."]
         );
     }
 
-    /// The positive control: the exact same mechanism, but nothing lands
-    /// on anyone else -- a genuine solo Quick Buff burst still confirms
-    /// class evidence once its window safely closes. Proves the fix
-    /// narrows the false positive without breaking the true positive.
+    /// why: positive control -- a genuine solo Quick Buff burst still
+    /// confirms class evidence; the fix narrows false positives without breaking true ones
     #[test]
     fn a_solo_quickbuff_landing_with_no_group_cast_still_confirms_class_evidence() {
         let engine = build_engine().expect("pack builds");
@@ -4516,10 +4496,7 @@ mod effect_ping_tests {
             b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
             b"[Tue Jul 28 15:02:00 2026] You activate Quick Buff.",
             b"[Tue Jul 28 15:02:02 2026] A blast of acid eats at your skin.",
-            // A different real flavor line, past PULSE_WINDOW_MS, flushes
-            // the second window's pending evidence -- see the matching
-            // comment on the tests above (reusing the same text here
-            // would itself look like a pulse).
+            // why: different flavor line past PULSE_WINDOW_MS, flushes the second window's pending evidence
             b"[Tue Jul 28 15:02:20 2026] A burst of strength surges through your body.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
@@ -4534,20 +4511,15 @@ mod effect_ping_tests {
         );
     }
 
-    /// The other real false-positive shape: a single-target ally buff
-    /// maintained (pulsing) on just the player, which never lands on
-    /// anyone else at all -- so the cross-entity check above can't catch
-    /// it, but its own repeat cadence gives it away. Real text, real
-    /// cadence (~6s, matching the reference log's own "mystic protection"
-    /// pulse).
+    /// why: other false-positive shape -- a maintained ally buff pulsing
+    /// only on the player; cross-entity check can't catch it, but its own repeat cadence gives it away
     #[test]
     fn a_pulsing_ally_buff_on_only_the_player_cancels_pending_quickbuff_evidence() {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
             b"[Tue Jul 28 15:01:00 2026] You have entered Befallen.",
-            // Pulsing before the player ever Quick Buffs -- already
-            // proof this isn't tied to Quick Buff timing at all.
+            // why: pulsing before the player ever Quick Buffs -- proves it isn't tied to Quick Buff timing
             b"[Tue Jul 28 15:01:29 2026] You feel an aura of mystic protection surrounding you.",
             b"[Tue Jul 28 15:01:35 2026] You feel an aura of mystic protection surrounding you.",
             b"[Tue Jul 28 15:01:39 2026] You activate Quick Buff.",
@@ -4569,12 +4541,11 @@ mod effect_ping_tests {
             "a maintained ally song must never confirm Bard for the player: {configured:?}"
         );
 
-        // Still real, unconditional state -- the pulse ping itself is
-        // untouched, only the class attribution is cancelled.
+        // why: still real, unconditional state -- only class attribution is cancelled
         assert!(!ing.effects.recent(you.0, ing.now_ms(), 60_000).is_empty());
     }
 
-    /// `state.location`: the real `/loc` line from the reference log.
+    /// why: real /loc line from the reference log
     #[test]
     fn a_loc_reading_is_captured_as_last_loc() {
         let engine = build_engine().expect("pack builds");
@@ -4592,11 +4563,8 @@ mod effect_ping_tests {
         assert_eq!(z, -20.19);
     }
 
-    /// Real reference-log sequence (13:19:46 cast -> 13:20:01 zone.enter,
-    /// ~15s apart): "You begin casting Translocate: X" followed shortly by
-    /// a zone.enter marks that visit as a confirmed Wizard teleport
-    /// landing, with the exact wiki-sourced coordinates, for the Maps
-    /// module's entrance guess.
+    /// why: real cast->zone.enter sequence (~15s apart) marks the visit
+    /// a confirmed Wizard teleport, with wiki-sourced coordinates
     #[test]
     fn a_translocate_cast_followed_by_zoning_marks_the_visit_teleported() {
         let engine = build_engine().expect("pack builds");
@@ -4613,9 +4581,7 @@ mod effect_ping_tests {
         assert_eq!((landing.x, landing.y, landing.z), (-3685.0, 1209.0, -5.0));
     }
 
-    /// "Circle of X" is a Druid-class teleport, distinguished from the
-    /// Wizard's Translocate so the Maps module shows "druid circle"
-    /// rather than "wizard spire" in its landing note.
+    /// why: Circle of X is a Druid teleport, distinguished from Wizard's Translocate
     #[test]
     fn a_circle_cast_followed_by_zoning_marks_the_visit_druid_teleported() {
         let engine = build_engine().expect("pack builds");
@@ -4632,10 +4598,8 @@ mod effect_ping_tests {
         assert_eq!((landing.x, landing.y, landing.z), (-2706.0, -1494.0, -4.0));
     }
 
-    /// A proven ally's teleport cast counts too, not just "You" -- the
-    /// group-shaped siblings (Portal/Ring, and Translocate/Circle cast on
-    /// a group) land the whole group, so the caster being someone else in
-    /// the group must still mark your own zone visit as teleported.
+    /// why: a proven ally's teleport cast counts too -- group-shaped
+    /// spells land the whole group, so an ally caster still marks your visit teleported
     #[test]
     fn a_proven_allys_translocate_cast_marks_your_visit_teleported() {
         let engine = build_engine().expect("pack builds");
@@ -4652,8 +4616,7 @@ mod effect_ping_tests {
         assert_eq!(landing.class, teleportdata::TeleportClass::Wizard);
     }
 
-    /// An ordinary zone-line walk, no recent teleport cast, must not be
-    /// mistaken for a spire/circle landing.
+    /// why: an ordinary zone-line walk with no recent teleport cast must not read as a landing
     #[test]
     fn an_ordinary_zone_change_is_not_marked_teleported() {
         let engine = build_engine().expect("pack builds");
@@ -4663,10 +4626,8 @@ mod effect_ping_tests {
         assert!(ing.entered_via_teleport.is_none());
     }
 
-    /// A teleport cast too long before the zone change (well past
-    /// cast-time-plus-loading-screen) must not still be credited --
-    /// otherwise an unrelated later zone-line walk that happens to follow
-    /// a translocate from hours earlier would wrongly read as a landing.
+    /// why: a teleport cast too long before the zone change must not be
+    /// credited -- else an unrelated later zone-line walk wrongly reads as a landing
     #[test]
     fn a_stale_translocate_cast_does_not_mark_a_later_zone_change() {
         let engine = build_engine().expect("pack builds");
@@ -4679,10 +4640,8 @@ mod effect_ping_tests {
         assert!(ing.entered_via_teleport.is_none());
     }
 
-    /// The bare "Gate" spell (no zone suffix -- returns the caster to
-    /// their own bind point, not a fixed zone landmark) has no coordinate
-    /// data in the wiki-confirmed pack and must never trigger the spire
-    /// guess -- see `teleportdata`'s own doc.
+    /// why: bare "Gate" (returns to bind point, not a fixed landmark)
+    /// has no coordinate data and must never trigger the spire guess
     #[test]
     fn a_bare_gate_cast_does_not_mark_the_visit_teleported() {
         let engine = build_engine().expect("pack builds");
