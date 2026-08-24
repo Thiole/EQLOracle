@@ -1,32 +1,16 @@
-//! Native gear planner: item browsing, BiS-style recommendation, and a
-//! "seen configurations" hookup that pre-selects your classes from the
-//! live parse instead of asking you to pick them by hand.
+//! why: native gear planner -- item browsing, BiS-style recommendation,
+//! pre-selects classes from the live parse.
 //!
-//! The scoring model (`STAT_WEIGHTS`, the tuning constants, `derived_
-//! weights`) is a direct port of the standalone planner
-//! (`ui/app/planner/`, kept as its own reference copy, not loaded by the
-//! app anymore) -- ported faithfully rather than re-derived, since it's
-//! the user's own tuned system, not a blank slate. `STAT_WEIGHTS` is
-//! stated the same way its source states it: a heuristic opinion about
-//! what matters per class, not verified EQL game data (there is no public
-//! source for "how much is a point of AC worth to a Paladin" -- this is a
-//! judgement call, carried over as-is rather than re-guessed).
+//! Scoring model is a faithful port of the standalone planner
+//! (`ui/app/planner/`), a heuristic opinion not verified game data.
+//! Deliberately a subset -- 2H/dual-wield hand-pairing and exaltation
+//! auto-assignment aren't ported. INT/WIS diverge from the standalone's
+//! flat number though -- see `derived_weights` for the mana-pool
+//! mechanic that flat weight couldn't see, confirmed against a real character.
 //!
-//! Deliberately a *subset* of the standalone planner's full feature set:
-//! two-hand/dual-wield hand-pairing and exaltation auto-assignment aren't
-//! ported. Each is a real, separate chunk of logic in its own right;
-//! porting them half-correct under time pressure would be worse than
-//! leaving them out and saying so, which is what this module doc does.
-//! INT/WIS *diverge* from the standalone planner's flat per-class number,
-//! though -- see `derived_weights`'s doc for the mana-pool mechanic (top 2
-//! of 3 classes' own mana values, summed) that flat weight couldn't see,
-//! confirmed against the user's own real character rather than assumed.
-//!
-//! LORE duplicates *are* handled (`recommend`'s `claimed_lore`), but as a
-//! single greedy pass over `SLOTS` in a fixed order, not the standalone
-//! planner's fuller coverage-optimizing assignment -- good enough to never
-//! suggest an unwearable loadout, not guaranteed to be the globally best
-//! way to spread scarce LORE items across slots that could each use one.
+//! LORE duplicates handled via a single greedy pass over SLOTS
+//! (`recommend`'s `claimed_lore`), not the standalone's fuller
+//! coverage-optimizing assignment -- never suggests unwearable, not guaranteed globally best.
 
 use crate::ingest::ExaltationProcs;
 use crate::itemdata::{self, Item};
@@ -36,13 +20,7 @@ use std::collections::HashMap;
 
 // ---------------------------------------------------------------- classes/races
 
-/// Class code -> full name, the same 15-class roster
-/// `ui/app/planner/index.html`'s own `CLASSES` map uses. The *other*
-/// direction (full name -> code) is what `recommend`/`list_items`/
-/// `weights_for` need, to translate the full names their `classes`
-/// parameter takes (the same shape `default_classes` returns, and the
-/// same shape the frontend's class chips are keyed by) into this module's
-/// codes.
+/// why: class code -> full name, same roster as the standalone planner
 pub const CLASS_NAMES: &[(&str, &str)] = &[
     ("WAR", "Warrior"),
     ("CLR", "Cleric"),
@@ -68,9 +46,7 @@ fn code_to_name(code: &str) -> Option<&'static str> {
         .find(|(c, _)| *c == code)
         .map(|(_, n)| *n)
 }
-/// `pub(crate)`, not private: `crate::character`'s own estimate needs the
-/// same name -> code translation this module already owns, rather than a
-/// second copy that could drift from `CLASS_NAMES`.
+/// why: pub(crate) so `crate::character` shares this instead of a second copy
 pub(crate) fn name_to_code(name: &str) -> Option<&'static str> {
     CLASS_NAMES
         .iter()
@@ -78,12 +54,7 @@ pub(crate) fn name_to_code(name: &str) -> Option<&'static str> {
         .map(|(c, _)| *c)
 }
 
-/// The same 15-race roster `recommend`'s own local table used to carry
-/// inline -- pulled out to a module-level const so `crate::character` can
-/// translate a race name the same way this module does, instead of a
-/// second hand-copied list that could quietly drift out of sync with this
-/// one (exactly the kind of gap `CLASS_NAMES` vs. a duplicate class list
-/// would also risk, if `crate::character` had needed its own).
+/// why: module-level const so `crate::character` shares this instead of a drifting copy
 pub(crate) const RACE_NAMES: &[(&str, &str)] = &[
     ("HUM", "Human"),
     ("BAR", "Barbarian"),
@@ -106,9 +77,7 @@ pub(crate) fn race_name_to_code(name: &str) -> Option<&'static str> {
     RACE_NAMES.iter().find(|(_, n)| *n == name).map(|(c, _)| *c)
 }
 
-/// `["Wizard", "Enchanter", "Magician"]` (full names) -> `["WIZ", "ENC",
-/// "MAG"]` (this module's codes) -- names that don't match any known class
-/// are dropped rather than guessed at.
+/// why: full names -> this module's codes; unmatched names dropped, not guessed
 fn names_to_codes(names: &[String]) -> Vec<String> {
     names
         .iter()
@@ -117,17 +86,9 @@ fn names_to_codes(names: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Every class in `classes` this game actually has above level 10 (from
-/// `eqlp_session::classdetect`), as full class names -- the same shape
-/// `recommend`/`list_items` take in `classes` (they do their own
-/// name-to-code translation) and the same shape the frontend's class chips
-/// are keyed by. Returning codes here instead once meant the chips could
-/// never match a default against their own labels: nothing would render as
-/// selected, yet the 3-class cap still saw a full `classes` array and
-/// disabled every chip -- "stuck at 3 selected" with none actually picked.
-/// Empty if `name` hasn't confirmed a configuration yet -- the planner
-/// already handles "no classes selected" (shows everything unfiltered), so
-/// this deliberately doesn't fall back to a guess.
+/// why: full class names, matching the frontend's chip labels -- codes
+/// here once broke chip matching (bug: "stuck at 3" with none actually
+/// picked). Empty if unconfirmed, deliberately no fallback guess.
 pub fn default_classes(ing: &crate::ingest::Ingest, name: &str) -> Vec<String> {
     let Some(sym) = ing.store.names.get(name) else {
         return Vec::new();
@@ -139,13 +100,11 @@ pub fn default_classes(ing: &crate::ingest::Ingest, name: &str) -> Vec<String> {
     dominant
 }
 
-/// `item.classes` is either a plain code list, `["ALL"]` (every class), or
-/// `["ALL_EXCEPT", <excluded codes...>]` (every class but these) --
-/// confirmed against real entries in `packs/items.json`, not assumed. The
-/// only place in this module that sentinel gets interpreted.
+/// why: `item.classes` is a plain code list, ["ALL"], or ["ALL_EXCEPT",
+/// codes...]; the only place that sentinel gets interpreted
 fn usable_by(item: &Item, active: &[String]) -> bool {
     if active.is_empty() {
-        return true; // no filter selected -- show everything
+        return true; // why: no filter selected, show everything
     }
     if item.classes.first().map(String::as_str) == Some("ALL") {
         return true;
@@ -158,14 +117,8 @@ fn usable_by(item: &Item, active: &[String]) -> bool {
     active.iter().any(|c| item.classes.iter().any(|x| x == c))
 }
 
-/// `item.classes`' own `ALL`/`ALL_EXCEPT` sentinels, expanded to the
-/// concrete code list they actually mean -- what exaltation narrowing
-/// (`intersect_classes`, below) needs, since intersecting a literal
-/// `["ALL"]` against a real code list with plain list intersection would
-/// wrongly produce an empty result instead of "everything `b` allows".
-/// Mirrors the standalone planner's own `cx()` doing this inline; split
-/// out here since this module intersects in more than the one place that
-/// function did.
+/// why: expands ALL/ALL_EXCEPT sentinels to a concrete code list --
+/// intersecting a literal ["ALL"] with plain list intersection would wrongly produce empty
 fn expand_classes(classes: &[String]) -> Vec<String> {
     match classes.first().map(String::as_str) {
         Some("ALL") | None => CLASS_NAMES.iter().map(|(c, _)| c.to_string()).collect(),
@@ -178,21 +131,14 @@ fn expand_classes(classes: &[String]) -> Vec<String> {
     }
 }
 
-/// Real list intersection, both sides already expanded past `ALL`/
-/// `ALL_EXCEPT` (see `expand_classes`) -- an exaltation's class list
-/// narrows the target's own to whatever both sides allow. An empty
-/// result means the swap would leave nothing able to wear the item at
-/// all, which `exalt_candidates` treats as illegal, not just narrowed.
+/// why: real intersection, both sides pre-expanded; empty means the swap
+/// leaves nothing able to wear the item, illegal not just narrowed
 fn intersect_str(a: &[String], b: &[String]) -> Vec<String> {
     a.iter().filter(|x| b.contains(x)).cloned().collect()
 }
 
-/// `item`'s own class/slot lists, narrowed by every exaltation in
-/// `assignments` *except* `exclude_key` (the socket a candidate is being
-/// chosen for right now -- its own not-yet-committed pick obviously isn't
-/// part of "what's already narrowing this item"). Mirrors the standalone
-/// planner's `effective()`, minus the stat-scaling half of that function
-/// (`ItemDto`'s own tier scaling already covers that elsewhere).
+/// why: item's class/slot lists narrowed by every exaltation except
+/// `exclude_key`, mirrors the standalone planner's `effective()`
 fn effective_classes_slots(
     item: &Item,
     assignments: &HashMap<String, String>,
@@ -213,12 +159,8 @@ fn effective_classes_slots(
     (classes, slots)
 }
 
-/// A summoned item's effect can't be extracted -- you can't level a
-/// second copy of something a spell conjures, so there's no exaltation
-/// to pull out of it. Mirrors the standalone planner's own `isSummoned`
-/// (`TEMPORARY` tag, or a name starting with "Summoned:" for the wiki
-/// pages missing that tag -- confirmed both signals are needed, neither
-/// alone catches every real case).
+/// why: a summoned item's effect can't be extracted; both TEMPORARY tag
+/// and "Summoned" name-prefix needed, neither alone catches every real case
 fn is_summoned(item: &Item) -> bool {
     item.tags.iter().any(|t| t == "TEMPORARY") || item.name.to_lowercase().starts_with("summoned")
 }
@@ -228,34 +170,22 @@ fn race_ok(item: &Item, race: Option<&str>) -> bool {
     item.races.is_empty() || item.races.iter().any(|r| r == "ALL" || r == race)
 }
 
-/// The wiki's own "doesn't actually exist here" marker. eqlwiki is a fork
-/// of a P99 dataset, and a page like Orb of Draconic Energy can carry full
-/// stats, a real era-looking layout, and *no* Era category at all, yet
-/// never have been implemented on this server -- `Category:Non-P99
-/// Content` is how the wiki itself flags that, separately from era. Era
-/// filtering can't substitute for this: `in_era` treats an item with no
-/// resolved era as always-in-era (see its own doc), so an unimplemented
-/// item with no Era category sailed straight through as "current" instead
-/// of being caught by any era check.
+/// why: wiki's "doesn't actually exist here" marker -- era filtering
+/// alone can't catch this, an unimplemented item with no Era category
+/// would sail through as "current" otherwise
 fn on_server(item: &Item) -> bool {
     !item.categories.iter().any(|c| c == "Non-P99 Content")
 }
 
-/// Single toggle for the whole app -- flip to `true` once Imbue spells go
-/// live, no per-item changes needed (`Item::requires_imbue` already tracks
-/// which items need it, recomputed fresh on every re-scrape).
+/// why: single toggle, flip once Imbue spells go live, no per-item changes needed
 const IMBUE_SPELLS_LIVE: bool = false;
 
 fn imbue_ok(item: &Item) -> bool {
     IMBUE_SPELLS_LIVE || !item.requires_imbue
 }
 
-/// LORE and LORE_EQUIPPED both mean the same restriction (you can't have
-/// two copies of *this* item equipped at once -- LORE_EQUIPPED is EQ's own
-/// finer-grained variant, worn-slot-specific, but the "no second copy"
-/// rule reads identically for this module's purposes). Enforced per item
-/// *name*, not "one LORE item total" -- see `recommend`'s `claimed_lore`
-/// for where that distinction matters.
+/// why: LORE and LORE_EQUIPPED both mean "no second copy equipped",
+/// enforced per item name -- see `recommend`'s `claimed_lore`
 fn is_lore(item: &Item) -> bool {
     item.tags
         .iter()
@@ -264,8 +194,7 @@ fn is_lore(item: &Item) -> bool {
 
 // ---------------------------------------------------------------- era
 
-/// Chronological by the live-EQ dates the wiki's own era categories
-/// correspond to -- direct port of the standalone planner's `ERA_ORDER`.
+/// why: chronological by live-EQ dates, direct port of the standalone planner's ERA_ORDER
 pub const ERA_ORDER: &[&str] = &[
     "Classic Era",
     "Fear Era",
@@ -281,31 +210,17 @@ pub const ERA_ORDER: &[&str] = &[
     "Chardok Revamp Era",
 ];
 
-/// Where EQ Legends actually is right now -- the standalone planner's own
-/// `CURRENT_ERA`, carried over as-is (it's a fact about the live server at
-/// the time that constant was set, not derived from anything scraped).
+/// why: where the live server actually is, a stated fact not derived from the scrape
 pub const CURRENT_ERA: &str = "Sky Era";
 
 fn era_ix(era: &str) -> Option<usize> {
     ERA_ORDER.iter().position(|e| *e == era)
 }
 
-/// The earliest era this item is known to exist in, or `None` if that's
-/// genuinely unresolvable from the scrape. Prefers `available_from`
-/// (the scraper's own best answer) over the raw `eras` list's minimum
-/// (multiple era categories on one page, earliest wins) over the single
-/// `era` field.
-///
-/// Deliberately simpler than the standalone planner's full resolution
-/// chain: that version also carries a small hardcoded override list for
-/// items EQL made available earlier than their wiki era, and a
-/// zone-name-to-era voting fallback for the ~30% of pages with no era
-/// category at all (see its own doc for why: an item's zone is a much
-/// weaker signal than its own category, and a zone that doesn't reach an
-/// 80% majority is left unresolved rather than guessed at). Neither is
-/// ported -- an item this can't resolve is left `None` and always shown,
-/// matching that same "unresolved, not hidden" stance, just without the
-/// zone-voting step that occasionally resolves what this leaves open.
+/// why: earliest era, None if genuinely unresolvable; prefers
+/// available_from, then eras minimum, then era. Simpler than the
+/// standalone planner's full chain (no override list, no zone-voting
+/// fallback) -- unresolved is left None and always shown, same stance.
 pub fn era_index(item: &Item) -> Option<usize> {
     if let Some(af) = &item.available_from {
         if let Some(ix) = era_ix(af) {
@@ -320,18 +235,9 @@ pub fn era_index(item: &Item) -> Option<usize> {
     item.era.as_deref().and_then(era_ix)
 }
 
-/// Whether `item` exists at or before `max_era` -- `None` defaults to
-/// `CURRENT_ERA`, matching `preferences::Preferences::era`'s own default
-/// (a fresh install with no era preference saved yet browses the live
-/// server's own current era, not the unfiltered whole catalog). `Some(
-/// "All")` is the Settings module's explicit "every era" choice -- not a
-/// name `ERA_ORDER` carries, checked before the lookup below rather than
-/// left to fall out of `era_ix` returning `None` for an unrecognized
-/// string, so this bypass reads as an intentional case, not an
-/// unrecognized-input fallback that happens to also do the right thing.
-/// An item whose own era is unresolved (see `era_index`'s doc) still
-/// always passes either way, since there's nothing there to compare
-/// against and hiding it would be a guess in the other direction.
+/// why: None defaults to CURRENT_ERA, matching preferences' own default.
+/// Some("All") is an explicit bypass checked before lookup, not a fallback
+/// from an unrecognized string. An unresolved item's era always passes.
 fn in_era(item: &Item, max_era: Option<&str>) -> bool {
     let max_era = max_era.unwrap_or(CURRENT_ERA);
     if max_era == "All" {
@@ -346,13 +252,7 @@ fn in_era(item: &Item, max_era: Option<&str>) -> bool {
     }
 }
 
-/// Maps a gear-planner slot key (`EAR1`, `WRIST2`, `ANY1`, ...) to the
-/// `item.slots` token that fills it -- `EAR1`/`EAR2` both accept `EAR`,
-/// same physical-slot-pairing the dump parser in `inventory.rs` already
-/// uses, confirmed against real `packs/items.json` slot tokens (`EAR`,
-/// `WRIST`, `FINGERS` -- plural, unlike the planner's singular `FINGER1`/
-/// `FINGER2` keys). `ANY1`/`ANY2` are flex slots that accept anything with
-/// at least one real equip slot (not a purely cosmetic/no-slot item).
+/// why: slot key -> item.slots token; ANY1/ANY2 accept anything with at least one real equip slot
 fn fits_slot(item: &Item, slot_key: &str) -> bool {
     let token = match slot_key {
         "EAR1" | "EAR2" => "EAR",
@@ -380,10 +280,8 @@ const W_MANA_PER_CASTER: f64 = 0.05;
 const W_RATIO_MELEE: f64 = 200.0;
 const W_EFFECT: f64 = 4.0;
 
-/// One class code's own opinionated stat priorities -- see this module's
-/// doc for why this is carried over as-is from the standalone planner
-/// rather than re-derived: a heuristic judgement call, not verified game
-/// data, same caveat its source states.
+/// why: opinionated stat priorities, carried over as-is from the standalone
+/// planner -- a heuristic judgement call, not verified game data
 fn stat_weights(code: &str) -> &'static [(&'static str, f64)] {
     match code {
         "WAR" => &[
@@ -496,16 +394,8 @@ fn uses_mana(code: &str) -> bool {
         .any(|(k, v)| *k == "MANA" && *v > 0.0)
 }
 
-/// Which stat a class's own mana pool is computed from, if any -- read
-/// straight off its `stat_weights` row (whichever of INT/WIS appears there
-/// with a positive weight) rather than a second hand-maintained table, so
-/// the two can't quietly drift apart. `None` for a class with no mana pool
-/// at all (WAR/MNK/ROG/BER: no MANA entry in `stat_weights` either).
-/// `pub(crate)`, not private: `crate::character`'s own naked-stat mana
-/// estimate uses this exact same per-class casting-stat lookup, rather
-/// than a second hand-maintained copy -- see this function's own doc for
-/// why it's derived from `stat_weights` instead of a dedicated table in
-/// the first place.
+/// why: read straight off stat_weights so it can't drift; None for a
+/// no-mana class. pub(crate) so `crate::character` shares this lookup too.
 pub(crate) fn casting_stat(code: &str) -> Option<&'static str> {
     if !uses_mana(code) {
         return None;
@@ -515,27 +405,13 @@ pub(crate) fn casting_stat(code: &str) -> Option<&'static str> {
         .find_map(|&(k, v)| (v > 0.0 && (k == "INT" || k == "WIS")).then_some(k))
 }
 
-/// The real in-game mana formula lives in `crate::manadata` now, not here
-/// -- a spreadsheet the user found (reconstructed from this server's own
-/// `EQEmu`-derived client formulas) turned out to have it exactly, which
-/// superseded three straight rounds of this module reverse-engineering an
-/// approximation from play data alone (5, then 2.5, then a two-part
-/// level-base-plus-stat-bonus fit -- see git history / `manadata`'s own
-/// module doc for what each of those got right and wrong). Verified
-/// against nine real measurements: four of five absolute naked readings
-/// matched exactly, the fifth within 0.3%, every delta consistent.
-///
-/// What's left here is `mana_marginal_rate`, a *scoring* helper -- how
-/// much one more point of INT/WIS is worth for ranking gear, not a pool
-/// reconstruction, so it doesn't need (and can't cheaply have) a real
-/// character's actual current stat total the way `manadata::class_mana_
-/// pool` does.
+/// why: real formula lives in `crate::manadata` now, superseded three
+/// earlier reverse-engineered approximations here. What's left is a
+/// scoring helper -- marginal value of one more INT/WIS point for
+/// ranking gear, not a pool reconstruction.
 fn mana_marginal_rate(active: &[String], level: u8) -> f64 {
-    // A fixed reference stat, not any one character's real total -- this
-    // is a relative weight for ranking items against each other, not an
-    // attempt to match a specific pool number, so where exactly on the
-    // curve it's measured matters far less than that every class is
-    // measured at the same point.
+    // why: fixed reference stat, not a real total -- a relative weight
+    // for ranking, measured at the same point for every class
     const REFERENCE_STAT: f64 = 150.0;
     let rates: Vec<f64> = active
         .iter()
@@ -552,49 +428,15 @@ fn mana_marginal_rate(active: &[String], level: u8) -> f64 {
     }
 }
 
-/// The class-derived starting weight vector for `active` (up to 3 class
-/// codes), `level` from `Ingest::levels` (`None` if no `level.up` line has
-/// been seen yet this session -- see that method's doc). AC/HP/MANA are
-/// the mean across the active classes (defensive stats the whole trio
-/// shares); most other stats are the max (only the class that actually
-/// wants a given stat should drive its number) -- INT/WIS are the one
-/// exception, and only once `level` is known.
-///
-/// A flat per-class INT/WIS number (the max-based rule every other stat
-/// uses) can't represent this game's actual mana mechanic: your usable
-/// mana pool is the sum of the *top two* of your three classes' own mana
-/// values, each computed from the real formula in `crate::manadata` (see
-/// that module's own doc). Two or three of your classes drawing mana
-/// from the *same* stat means growing that stat helps two pool-slots at
-/// once -- a real, roughly double return a flat weight has no way to see,
-/// and exactly the case that prompted this (three INT-casters at once).
-///
-/// So once `level` is known, INT/WIS stop being flat per-class priorities
-/// and become *purely* derived from the mana math: `mana_per_point` (the
-/// same number `w["MANA"]` below gets, i.e. how much one point of actual
-/// mana pool is worth to this loadout) times how much pool a point of that
-/// stat actually buys. That "how much pool" multiplier is capped at 2 (only
-/// two slots exist) and handles the classes-share-a-stat cases directly:
-///
-/// - Only one of your classes uses a given stat (or two, on different
-///   stats -- e.g. one INT class + one WIS class + one non-caster): no
-///   contest, that stat fills exactly one slot, multiplier 1.
-/// - Two or three classes share a stat and it's the only casting stat in
-///   play (or shared by strictly more classes than the other one): that
-///   stat is treated as filling *both* slots, multiplier 2, and the other
-///   (minority) stat gets 0 -- it can plan to end up in your top two, but
-///   this app has no live INT/WIS totals to know if it currently does, and
-///   optimizing toward the stat more of your build already leans on is the
-///   more useful default for a planning tool than guessing.
-/// - Equal counts on both stats (the only way that happens with 3 classes
-///   is one-and-one, with a non-caster third) aren't a contest at all --
-///   each of your two real casters just gets its own slot outright, so
-///   both stats get multiplier 1, not 2 and 0.
-///
-/// Because both INT/WIS and MANA all resolve through the same
-/// `mana_per_point` number, a point of raw +MANA and the mana-equivalent
-/// value of a point of INT/WIS are directly comparable instead of two
-/// independently-tuned numbers that could double-count the same pool.
+/// why: class-derived weight vector. AC/HP/MANA are the mean across
+/// active classes; most stats are the max; INT/WIS are the exception,
+/// once `level` is known -- a flat max-based weight can't represent the
+/// real mana mechanic (top-2-of-3 classes' pools summed), so growing a
+/// shared stat helps two pool-slots at once. Multiplier capped at 2:
+/// one class on a stat = 1, majority-shared stat = 2 (minority gets 0,
+/// since this app can't know if it lands in the real top two), equal
+/// split = 1 each. All resolve through the same mana_per_point number
+/// so +MANA and INT/WIS stay directly comparable, no double-counting.
 fn derived_weights(active: &[String], level: Option<u8>) -> HashMap<String, f64> {
     let mut w: HashMap<String, f64> = HashMap::new();
     for &k in &[
@@ -676,19 +518,10 @@ fn derived_weights(active: &[String], level: Option<u8>) -> HashMap<String, f64>
 
 const SCORED_EFFECTS: &[&str] = &["focus", "click", "worn"];
 
-/// A single number for how good `item` is against `weights` -- dot
-/// product of the item's stats against the weight vector, plus a weapon's
-/// damage/delay ratio and a flat bonus per scored effect slot present
-/// (proc excluded, same reasoning `derivedWeights`'s source states: proc
-/// is graftable via exaltation onto whatever wins on stats, so scoring it
-/// directly would let a mediocre item win purely on an effect that isn't
-/// actually tied to it).
-///
-/// `tier` scales stats/damage the same way an equipped dump's own real
-/// tier does (`scale_stat`) before scoring -- `0` (the catalog's own base
-/// stats) for a plain browse/recommend, the real owned tier for an item
-/// the player already has upgraded, so a copy sitting at +8 scores as the
-/// +8 item it actually is, not as if it were freshly dropped at +0.
+/// why: dot product of stats against weights, plus damage/delay ratio and
+/// a flat bonus per scored effect (proc excluded -- graftable via
+/// exaltation, scoring it directly could let a mediocre item win on it).
+/// `tier` scales before scoring, so an owned +8 item scores as +8, not fresh.
 fn score_item(item: &Item, weights: &HashMap<String, f64>, tier: u8) -> f64 {
     let mut s = 0.0;
     for (stat, val) in &item.stats {
@@ -716,33 +549,11 @@ fn is_two_hand(item: &Item) -> bool {
 
 // ---------------------------------------------------------------- item tiers
 
-/// A tier-0 stat/damage value scaled to `tier` (0-10, the game's own "+N"
-/// item-upgrade system) -- ported from the standalone planner's own
-/// `scaleStat` (`ui/app/planner/index.html`), which the user re-confirmed
-/// the shape of: +10% of base per tier, minimum +1 per tier (so a stat too
-/// small for 10% to round to anything still climbs), whichever of the two
-/// is larger -- at +10 that's `max(2x base, base + 10)`, "essentially
-/// doubling, or adding 10, whichever is more". Equivalent to that source's
-/// own `atTier` (its "mid-tier creep" half, `cumBonus`'s fractional-XP
-/// interpolation, doesn't apply here: an equipped item's dump only ever
-/// reports its settled integer tier, never the exact XP within it, so
-/// there's nothing to interpolate between -- see `crate::inventory::
-/// InventoryItem::tier`'s own doc).
-///
-/// Rounds to the nearest whole number, not down -- corrected against a
-/// real item the user checked in-game: Tobrin's Mystical Eyepatch, base
-/// INT 15, is 17 at +1, not 16. `15 * 1.1 = 16.5`; the standalone
-/// planner's own source used `Math.floor` here (16), which this had
-/// carried over unquestioned -- wrong the moment the 10% step lands
-/// exactly on a half-point, which `Umbral Platemail Breastplate`'s own
-/// worked example (AC 30, an exact multiple of 10) could never have
-/// caught. `f64::round` breaks ties away from zero, matching this.
-///
-/// The negative branch mirrors the source's own explicit caveat: eqlwiki
-/// publishes no negative-stat worked example, so applying the same +10%-
-/// per-tier growth to a penalty (deepening it as the item upgrades) is
-/// what the formula says taken literally, not independently confirmed.
-/// Carried over as-is rather than guessed at differently.
+/// why: +10% of base per tier, min +1/tier, whichever is larger -- ported
+/// from the standalone planner, re-confirmed. Rounds not floors -- a real
+/// item (Tobrin's Mystical Eyepatch, INT 15->17 at +1) caught the source's
+/// own floor as wrong on a half-point the AC-30 wiki example never hit.
+/// Negative branch is the formula taken literally, not independently confirmed.
 fn scale_stat(base: f64, tier: u8) -> f64 {
     if base == 0.0 || tier == 0 {
         return base;
@@ -755,13 +566,8 @@ fn scale_stat(base: f64, tier: u8) -> f64 {
     }
 }
 
-/// The other half of the standalone planner's `scaledItem` (`ui/app-
-/// legacy/planner/index.html`): weight *shrinks* as an item tempers up,
-/// same cumulative-bonus fraction `scale_stat` grows stats by (at an
-/// item's own settled tier, with no partial xp into the next one, that
-/// fraction is just `tier / 10`), floored at 0.1 so an item never reaches
-/// zero weight. Rounded to one decimal place, matching the source's own
-/// `Math.round(... * 10) / 10`.
+/// why: weight shrinks as an item tempers up, same fraction scale_stat
+/// grows by, floored at 0.1 so it never reaches zero
 fn scale_weight(base: f64, tier: u8) -> f64 {
     if tier == 0 {
         return base;
@@ -770,13 +576,8 @@ fn scale_weight(base: f64, tier: u8) -> f64 {
     ((shrunk * 10.0).round() / 10.0).max(0.1)
 }
 
-/// One item's own native effect, in the shape the doll/preview panel
-/// actually needs -- `Item::effects`' raw `serde_json::Value` (whatever
-/// shape `scrape.py` happened to capture per key: always `name`,
-/// sometimes `detail`/`level` alongside it) narrowed down to what's ever
-/// displayed. `None` if the key is present but somehow missing even a
-/// name -- treated as absent rather than a panic, since this is scraped
-/// data, not something this app controls the shape of.
+/// why: native effect narrowed to what the preview panel needs; missing
+/// name treated as absent, not a panic -- scraped data, shape not controlled here
 #[derive(Debug, Clone, Serialize)]
 pub struct ItemEffectDto {
     pub name: String,
@@ -791,12 +592,8 @@ fn item_effect(item: &Item, key: &str) -> Option<ItemEffectDto> {
     })
 }
 
-/// The exaltation socket family, in unlock order -- `eqlwiki.com/
-/// Exaltations`' own thresholds, ported from the standalone planner's
-/// `EXALTS` (`ui/app-legacy/planner/index.html`). `effect_key` is which
-/// of `Item::effects`' keys that socket type corresponds to; the
-/// Ornamentation slot has none -- it takes a cosmetic token, not an
-/// effect, so it never has a "native" occupant to report.
+/// why: exaltation socket family in unlock order, ported from the
+/// standalone planner; Ornamentation has no effect_key, takes a cosmetic token
 const EXALT_SLOTS: &[(&str, &str, u8, Option<&str>)] = &[
     ("ornament", "Ornamentation", 0, None),
     ("focus", "Focus", 1, Some("focus")),
@@ -805,15 +602,8 @@ const EXALT_SLOTS: &[(&str, &str, u8, Option<&str>)] = &[
     ("proc", "Proc", 4, Some("proc")),
 ];
 
-/// One socket's state for `item` at `tier`: whether upgrading has opened
-/// it yet, and -- if it corresponds to an effect type the item actually
-/// carries -- that effect. This only ever reports the item's *own*
-/// effect occupying its *own* socket; grafting a different item's effect
-/// into an open-but-empty socket ("exaltation" proper, the standalone
-/// planner's `autoExaltAll`) is real EQL gear-planning behavior this
-/// module deliberately doesn't attempt yet -- see this module's own doc
-/// comment. An open socket with no native effect just reports `unlocked:
-/// true, effect: None`: room for one, nothing assigned by this app.
+/// why: one socket's unlock state + native effect only; grafting a
+/// different item's effect (real "exaltation") isn't attempted here yet
 #[derive(Debug, Clone, Serialize)]
 pub struct ExaltSlotDto {
     pub key: String,
@@ -858,70 +648,38 @@ pub struct ItemDto {
     pub skill: Option<String>,
     pub era: Option<String>,
     pub icon: Option<String>,
-    /// First drop source, formatted the same "zone — mob" shape the
-    /// standalone planner's slot badge used, for the same reason: a mob
-    /// drop takes priority when there is one, otherwise whatever real
-    /// source (quest/vendor/crafted) the item actually has.
+    /// why: first drop source, "zone — mob" shape, mob drop takes priority
     pub source: Option<String>,
-    /// Every zone `item.drops` names, deduplicated, in scrape order.
-    /// `source` above only ever surfaces the first one -- these two plus
-    /// `mobs` are what the alt list's two source lines render, since a
-    /// drop can span more than one zone and this app shouldn't hide that.
+    /// why: every zone deduplicated; source only surfaces the first, a drop can span several
     pub zones: Vec<String>,
-    /// Every mob `item.drops` names across all its zones, deduplicated,
-    /// in scrape order.
+    /// why: every mob across all zones, deduplicated
     pub mobs: Vec<String>,
     pub url: Option<String>,
     pub wt: Option<f64>,
     pub size: Option<String>,
-    /// The "+N" this specific instance is at -- always `0` for a browsed/
-    /// recommended item (wiki-scraped base stats, before any upgrading),
-    /// the real dump-reported tier for an equipped one from `resolve_
-    /// inventory`. `stats`/`dmg` above are already scaled to this tier
-    /// (see `scale_stat`) -- `tier` is carried alongside them for display
-    /// (an equipped item's own "+N" badge), not as a caller's cue to
-    /// scale anything itself.
+    /// why: "+N" this instance is at, 0 for a browse/recommend; stats/dmg
+    /// already scaled to this, carried alongside for display only
     pub tier: u8,
-    /// Total copies owned anywhere (bags/bank/equipped), from the last
-    /// loaded `/outputfile inventory` dump -- `0` with no dump loaded, or
-    /// genuinely `0` owned. Never a same-slot-only count: a ring owned
-    /// once shows `1` even while equipped in the other ring slot, so the
-    /// UI can tell "own one, need a second" from "own none at all".
+    /// why: total copies owned anywhere; never same-slot-only, tells
+    /// "own one, need a second" from "own none"
     pub owned: u32,
-    /// This item's own native effects, keyed `"focus"/"click"/"worn"/
-    /// "proc"` -- tier-independent (an item either has a given effect or
-    /// it doesn't; upgrading only unlocks the *socket* that exposes it,
-    /// see `exalts` below). Straight from `Item::effects`, just narrowed
-    /// to the shape the preview panel actually renders.
+    /// why: native effects, tier-independent -- upgrading only unlocks the socket, see exalts
     pub effects: HashMap<String, ItemEffectDto>,
-    /// The 5 exaltation sockets (`EXALT_SLOTS`), evaluated at this DTO's
-    /// own `tier` -- which are open yet, and which hold this item's own
-    /// effect. See `exalt_slots`' doc for what this does and doesn't
-    /// model.
+    /// why: the 5 exaltation sockets at this tier, see `exalt_slots`
     pub exalts: Vec<ExaltSlotDto>,
-    /// Real-session evidence that this specific equipped item's Proc
-    /// exaltation socket has actually fired -- `None` for every browsed/
-    /// recommended item (this is only ever filled in by `resolve_
-    /// inventory`, the one place a "this instance, right now" item
-    /// exists at all) and for an equipped item whose proc simply hasn't
-    /// fired yet this session. See `ProcEvidenceDto`'s own doc for
-    /// exactly what this can and can't say.
+    /// why: real-session proc evidence, only ever filled by `resolve_inventory`
     pub proc_evidence: Option<ProcEvidenceDto>,
 }
 
-/// What a real "Your `<item>` (Exaltation) ..." combat-proc line can
-/// prove -- see `crate::ingest::ExaltationProcs`' own doc for the full
-/// story of why this is the *only* per-item exaltation fact this app can
-/// ever confirm: never which effect resulted, only that the socket is
-/// genuinely live and how many times it's fired.
+/// why: the only per-item exaltation fact this app can confirm -- never
+/// which effect, only that the socket is live and how many times it fired
 #[derive(Debug, Clone, Serialize)]
 pub struct ProcEvidenceDto {
     pub fires: u32,
     pub first_seen_ms: Millis,
 }
 
-/// First-occurrence dedup, order preserved -- small lists (a handful of
-/// zones/mobs per item at most), so a HashSet-backed filter is plenty.
+/// why: first-occurrence dedup, order preserved; small lists, a HashSet filter is plenty
 fn dedup_keep_order(items: impl IntoIterator<Item = String>) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     items
@@ -949,9 +707,7 @@ fn source_label(item: &Item) -> Option<String> {
     None
 }
 
-/// `tier` is `0` for every caller except `resolve_inventory` -- see
-/// `ItemDto::tier`'s own doc. At `0`, `scale_stat` is a no-op, so this is
-/// exactly the old always-base-stats behavior for browsing/recommending.
+/// why: tier 0 for every caller except resolve_inventory -- a no-op at 0, old base-stats behavior
 fn to_dto(item: &Item, tier: u8, owned: u32) -> ItemDto {
     ItemDto {
         id: item.id.clone(),
@@ -995,26 +751,15 @@ fn to_dto(item: &Item, tier: u8, owned: u32) -> ItemDto {
     }
 }
 
-/// A single catalog item, re-derived at a caller-chosen `tier` (clamped
-/// to the game's own 0-10 range) -- the "level this up and show me" what-
-/// if the doll's tier picker drives, independent of whatever tier the
-/// item actually sits at in a loaded dump. `None` if `id` doesn't match
-/// anything in the catalog (stale/bad id from the frontend). Always
-/// reports `owned: 0`: this call has no dump context of its own, and the
-/// frontend already has the real owned count from wherever it got this
-/// item in the first place -- it's the tier-dependent fields (`stats`,
-/// `dmg`, `wt`, `tier`, `exalts`) this exists to refresh, not ownership.
+/// why: "level this up and show me" what-if preview; None for a bad id.
+/// Always owned: 0 -- this has no dump context, only refreshes tier-dependent fields.
 pub fn item_at_tier(id: &str, tier: u8) -> Option<ItemDto> {
     let item = itemdata::by_id(id)?;
     Some(to_dto(item, tier.min(10), 0))
 }
 
-/// `exalt_slots`' own logic, but a socket with a real assignment shows
-/// *that source's* effect instead of the item's native one -- what
-/// actually happens in-game when you exalt a different item's effect
-/// into an open socket. Kept separate from `exalt_slots` itself (not an
-/// added parameter there) so every existing caller/test of the plain
-/// native-effect-only path stays untouched.
+/// why: shows the assigned source's effect instead of the item's native
+/// one, what actually happens in-game; separate fn so plain native-effect callers stay untouched
 fn exalt_slots_with_assignments(
     item: &Item,
     tier: u8,
@@ -1043,12 +788,7 @@ fn exalt_slots_with_assignments(
         .collect()
 }
 
-/// `item_at_tier`'s own DTO, with `exalts` re-derived against a set of
-/// "what if I socket this other item's effect here" assignments (socket
-/// key -> source item id) instead of the item's own native effects. Every
-/// other field (`stats`/`dmg`/`wt`/`tier`) is unaffected by exaltation --
-/// only the socket contents change, which is exactly what
-/// `exalt_slots_with_assignments` recomputes.
+/// why: item_at_tier's DTO with exalts re-derived against "what if" assignments; other fields unaffected
 pub fn item_with_exalts(
     id: &str,
     tier: u8,
@@ -1061,28 +801,11 @@ pub fn item_with_exalts(
     Some(dto)
 }
 
-/// Legal exaltation sources for `socket_key` on `item_id`, given whatever
-/// *other* sockets on that same item are already assigned (`other_
-/// assignments` -- excludes `socket_key` itself, since a not-yet-
-/// committed pick for the very socket being filled obviously isn't part
-/// of "what's already narrowing this item"). Mirrors the standalone
-/// planner's own `legalSources`: a candidate must carry the matching
-/// effect type, and intersecting its class/slot list with the target's
-/// own (already-narrowed) list must leave something real -- an empty
-/// intersection means the swap would make the item unwearable outright,
-/// so it isn't offered at all, not just flagged.
-///
-/// `classes` (full names) both filters the candidate by the *player's*
-/// active trio (no point suggesting a source only a class you're not
-/// playing could equip) and, combined with `expand_classes`, is what
-/// makes an `ALL`/`ALL_EXCEPT` source narrow correctly rather than
-/// vanishing under plain list intersection. Empty `classes` means no
-/// player-class filter at all (matches `usable_by`'s own convention).
-///
-/// Excludes the item itself (assigning an item's own native effect to
-/// its own socket is a no-op already covered by leaving the socket
-/// unassigned) and every summoned/out-of-era/off-server source, the same
-/// pool `exaltPool()` filters to.
+/// why: legal exaltation sources for a socket, mirrors the standalone
+/// planner's legalSources -- must carry the matching effect and leave a
+/// real class/slot intersection, or it isn't offered at all. `classes`
+/// filters by the player's active trio; empty means no filter. Excludes
+/// the item itself and every summoned/out-of-era/off-server source.
 pub fn exalt_candidates(
     item_id: &str,
     socket_key: &str,
@@ -1095,7 +818,7 @@ pub fn exalt_candidates(
     };
     let Some(&(_, _, _, Some(effect_key))) = EXALT_SLOTS.iter().find(|&&(k, ..)| k == socket_key)
     else {
-        return Vec::new(); // unknown socket, or ornament (no effect_key -- nothing to source)
+        return Vec::new(); // why: unknown socket, or ornament -- nothing to source
     };
     let (eff_classes, eff_slots) =
         effective_classes_slots(item, other_assignments, Some(socket_key));
@@ -1119,48 +842,21 @@ pub fn exalt_candidates(
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InventoryDumpDto {
-    /// Slot key -> the matched item, full DTO -- icon, stats, wiki link,
-    /// everything the doll and detail panel need, same shape a
-    /// recommendation's own items carry.
+    /// why: matched item, full DTO, same shape a recommendation's items carry
     pub resolved: HashMap<String, ItemDto>,
-    /// Slot key -> the dump's own printed name, for equipped items that
-    /// didn't match anything in this module's catalog by exact name (a
-    /// renamed item, a tier variant not in the wiki, a straight scrape
-    /// gap). Surfaced rather than silently dropped, so "some of my gear
-    /// didn't load" has a concrete answer instead of just a lower count.
+    /// why: dump's own printed name for an unmatched item, surfaced not silently dropped
     pub unresolved: HashMap<String, String>,
-    /// Base item name -> total copies owned, straight from the dump --
-    /// `crate::inventory::ParsedInventory::owned`, passed through so the
-    /// frontend has ownership counts for items beyond what's equipped
-    /// (a spare ring in the bank, say).
+    /// why: total copies owned, passed through for items beyond what's equipped
     pub owned: HashMap<String, u32>,
-    /// Base item name -> highest tier owned, straight from
-    /// `ParsedInventory::owned_tier` -- passed through so a call to
-    /// `recommend`/`list_items` can score and display an owned candidate
-    /// at the tier the player actually has, not a fresh +0.
+    /// why: highest tier owned, so recommend/list_items score at the real tier not +0
     pub owned_tier: HashMap<String, u8>,
 }
 
-/// Matches a parsed `/outputfile inventory` dump (slot key -> the item
-/// name/tier the game itself printed) against this module's own item
-/// catalog by exact name (case-insensitive; the dump's own "+N" tier
-/// suffix is already stripped by `inventory::parse` before this ever sees
-/// the name, kept separately as `inv_item.tier`). That real tier is what
-/// makes this different from `list_items`/`recommend`'s own `to_dto`
-/// calls: this is the one place stats get scaled to what's *actually*
-/// equipped (`scale_stat`) rather than left at wiki-scraped base -- an
-/// inventory dump means real gear at a real tier, not a browsing/what-if
-/// view.
-/// `parsed.exalted[slot]` (socket key -> source item *name*, straight off
-/// the dump -- see `inventory::ParsedInventory::exalted`'s own doc) into
-/// what `exalt_slots_with_assignments` actually needs (socket key ->
-/// source item *id*) -- same by-name catalog match this function's own
-/// caller already uses for the equipped item itself, just applied to
-/// each socketed source too. A name the catalog doesn't resolve is
-/// dropped from the map rather than kept as a dangling id nothing can
-/// look up -- that socket falls back to reporting the equipped item's
-/// own native effect (`exalt_slots_with_assignments`' default when a key
-/// is simply absent), not a wrong one.
+/// why: matches a parsed dump against the catalog by exact name
+/// (case-insensitive); the one place stats get scaled to what's
+/// actually equipped, not wiki-scraped base. Converts exalted[slot]'s
+/// socket key -> source name into socket key -> source id; an
+/// unresolvable name is dropped, falling back to the native effect.
 fn resolve_exalt_assignments(
     exalted_for_slot: &HashMap<String, String>,
 ) -> HashMap<String, String> {
@@ -1175,10 +871,7 @@ fn resolve_exalt_assignments(
         .collect()
 }
 
-/// `proc_evidence` is `Ingest::exaltation_procs` -- `None` for any caller
-/// with no live session to check against (there currently isn't one;
-/// every real call site has an `Ingest`, this stays optional so a test
-/// building a bare `ParsedInventory` isn't forced to construct one).
+/// why: None for a caller with no live session; stays optional so a bare test doesn't need one
 pub fn resolve_inventory(
     parsed: &crate::inventory::ParsedInventory,
     proc_evidence: Option<&ExaltationProcs>,
@@ -1197,13 +890,8 @@ pub fn resolve_inventory(
             Some(it) => {
                 let owned = parsed.owned.get(&it.name).copied().unwrap_or(0);
                 let mut item_dto = to_dto(it, inv_item.tier, owned);
-                // why: the dump's own real socketed exaltations (see
-                // `inventory::ParsedInventory::exalted`'s own doc) beat
-                // `to_dto`'s default native-effect-only sockets -- real
-                // ground truth for "what's actually socketed here", not
-                // a guess. A slot with nothing in `parsed.exalted` (or
-                // an empty map after name resolution) falls straight
-                // back to the native-effect display, unaffected.
+                // why: the dump's real socketed exaltations beat native
+                // effects -- real ground truth; empty falls back unaffected
                 if let Some(exalted) = parsed.exalted.get(slot) {
                     let assignments = resolve_exalt_assignments(exalted);
                     if !assignments.is_empty() {
@@ -1230,12 +918,7 @@ pub fn resolve_inventory(
     dto
 }
 
-/// Every item usable by `classes` (full class names -- `["Wizard",
-/// "Enchanter"]`, translated to this module's codes internally), `race`
-/// (full race name or `None` for no filter), and at or before `max_era`
-/// (an `ERA_ORDER` name, or `None` for no era filter -- see `in_era`'s
-/// doc), optionally narrowed to one slot. Empty `classes` means
-/// unfiltered, matching `usable_by`'s own "no filter" rule.
+/// why: every usable item, filtered by class/race/era, optionally one slot; empty classes = unfiltered
 pub fn list_items(
     classes: &[String],
     slot: Option<&str>,
@@ -1303,29 +986,11 @@ pub const SLOTS: &[(&str, &str)] = &[
     ("ANY2", "Any"),
 ];
 
-/// Top `per_slot` candidates for every slot, scored against `classes`'
-/// own derived weight vector, or `custom_weights` in place of it if given
-/// -- the compact weight row under the doll edits are user overrides, not
-/// a request to re-derive from classes (see `derived_weights`'s doc for
-/// what that vector means and doesn't mean). LORE duplicates are handled
-/// (see `claimed_lore` below): slots are still scored independently, but
-/// a LORE item's name, once placed, is removed from every other slot's
-/// candidate pool -- you can't actually equip a second copy of it, so a
-/// recommendation set that suggested one wouldn't be a wearable loadout.
-/// Different LORE items still stack fine; it's only the same name twice
-/// that's disallowed.
-///
-/// `equipped` (slot key -> real item name, from a loaded inventory dump)
-/// seeds `claimed_lore` with whatever's *actually* worn, not just this
-/// call's own greedy picks -- without it, a LORE ring truly equipped in
-/// FINGER1 could still show up as a FINGER2 candidate, since scoring
-/// alone has no idea a real copy is already spoken for. `owned` (base
-/// item name -> copies owned) feeds `ItemDto::owned` for display; `owned_
-/// tier` (base item name -> highest tier owned) feeds both `ItemDto::
-/// tier` *and* the score itself (`score_item`'s own `tier` param) -- an
-/// item already upgraded to +8 is scored and shown as the +8 item it
-/// really is, not as a fresh +0 drop. All three are `None` for a pure
-/// browsing/what-if call with no dump loaded.
+/// why: top candidates per slot, scored against derived or custom
+/// weights. LORE duplicates handled via `claimed_lore` -- once placed, a
+/// name is removed from every other slot's pool. `equipped` seeds
+/// claimed_lore with what's actually worn; `owned`/`owned_tier` feed
+/// display and score at the real owned tier, not a fresh +0.
 ///
 /// why: nets 2H Primary score against best forfeited Secondary (melee only)
 #[allow(clippy::too_many_arguments)] // each param is its own real, independently-optional filter -- see doc above
@@ -1362,15 +1027,10 @@ pub fn recommend(
         0.0
     };
 
-    // Name -> the one slot key allowed to claim it. Names, not ids -- a
-    // LORE item can turn up under more than one entry in packs/items.json
-    // (different drop sources scraped as separate rows) and the in-game
-    // restriction is on the name regardless. Seeded first from what's
-    // *really* equipped (a slot's own real item is never filtered out of
-    // its own candidate list), then filled in by each slot's own greedy
-    // top pick as the walk goes -- walked in SLOTS order, which puts the
-    // two ANY slots last, so a dedicated slot (a finger, a wrist, ...)
-    // claims a LORE item before the catch-all slots ever get a turn at it.
+    // why: name -> the one slot allowed to claim it (names not ids, the
+    // in-game restriction is on the name). Seeded from what's really
+    // equipped, then filled by each slot's own greedy top pick in SLOTS
+    // order -- ANY slots last, so a dedicated slot claims a LORE item first.
     let mut claimed_lore: HashMap<&str, &str> = HashMap::new();
     if let Some(eq) = equipped {
         for (slot_key, name) in eq {
@@ -1414,9 +1074,7 @@ pub fn recommend(
                 .collect();
             scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
             scored.truncate(per_slot);
-            // Only the top pick actually claims the name -- an alt further
-            // down this same slot's own list isn't being worn, so it
-            // shouldn't lock other slots out of it.
+            // why: only the top pick claims the name -- an alt further down isn't worn
             if let Some((_, top)) = scored.first() {
                 if is_lore(top) {
                     claimed_lore.entry(top.name.as_str()).or_insert(key);
@@ -1436,9 +1094,7 @@ pub fn recommend(
         .collect()
 }
 
-/// The scoring vector itself, for display -- lets the UI show *why*
-/// items are ranked the way they are (see `derived_weights`'s doc for
-/// what it is and isn't).
+/// why: the scoring vector itself, so the UI can show why items rank the way they do
 pub fn weights_for(classes: &[String], level: Option<u8>) -> HashMap<String, f64> {
     derived_weights(&names_to_codes(classes), level)
 }
@@ -1447,9 +1103,7 @@ pub fn weights_for(classes: &[String], level: Option<u8>) -> HashMap<String, f64
 mod scale_stat_tests {
     use super::*;
 
-    /// The wiki's own worked example (see `scale_stat`'s doc, and the
-    /// standalone planner's own comment this was ported from): Umbral
-    /// Platemail Breastplate, AC 30 -> 33 at tier 1, 36 at tier 2.
+    /// why: wiki's own worked example, Umbral Platemail Breastplate AC 30
     #[test]
     fn matches_the_wiki_worked_example() {
         assert_eq!(scale_stat(30.0, 1), 33.0);
@@ -1458,25 +1112,17 @@ mod scale_stat_tests {
 
     #[test]
     fn ten_percent_wins_when_it_beats_the_per_tier_floor() {
-        // floor(100 * 1.1) = 110, vs. the +1/tier floor of 101 -- 10% wins.
+        // why: floor(100*1.1)=110 vs +1/tier floor of 101 -- 10% wins
         assert_eq!(scale_stat(100.0, 1), 110.0);
     }
 
     #[test]
     fn per_tier_floor_wins_when_ten_percent_rounds_too_low() {
-        // round(3 * 1.1) = round(3.3) = 3 (10% of 3 rounds down to
-        // nothing extra), but the +1/tier floor guarantees at least +1 --
-        // 4 wins.
+        // why: round(3.3)=3, 10% rounds to nothing, but +1/tier floor guarantees +1 -- 4 wins
         assert_eq!(scale_stat(3.0, 1), 4.0);
     }
 
-    /// Real item the user checked in-game: Tobrin's Mystical Eyepatch,
-    /// base INT 15 (confirmed in packs/items.json), reads 17 at +1, not
-    /// 16 -- `15 * 1.1 = 16.5`, and this is what caught `scale_stat`
-    /// still using `floor` (16) instead of rounding to the nearest whole
-    /// number (17). The wiki's own worked example (AC 30, exact multiples
-    /// throughout) could never have caught this -- it never landed on a
-    /// half-point.
+    /// why: real item, INT 15 reads 17 at +1 not 16 -- caught scale_stat's old floor bug
     #[test]
     fn ties_round_up_not_down() {
         assert_eq!(scale_stat(15.0, 1), 17.0);
@@ -1504,20 +1150,11 @@ mod scale_stat_tests {
 
     #[test]
     fn negative_stats_scale_the_same_percentage_without_a_floor() {
-        // No wiki example exists for a negative stat (see this function's
-        // own doc) -- this pins the literal reading of the formula, not
-        // an independently confirmed in-game number.
+        // why: no wiki example for negative stats -- pins the literal formula reading
         assert_eq!(scale_stat(-20.0, 2), -24.0);
     }
 
-    /// End to end through `resolve_inventory`, not just the isolated
-    /// function -- a real catalog item ("A Bone Necklace", AC 2, confirmed
-    /// present in packs/items.json) at a real tier, the same path an
-    /// actual `/outputfile inventory` dump goes through. AC 2 at +5:
-    /// floor(2 * 1.5) = 3 vs. the +1/tier floor of 2 + 5 = 7 -- the floor
-    /// wins for a stat this small, same as `per_tier_floor_wins...` above,
-    /// just exercised through the real resolve path instead of calling
-    /// `scale_stat` directly.
+    /// why: end to end through resolve_inventory, not the isolated function
     #[test]
     fn resolve_inventory_scales_a_real_catalog_item() {
         let mut equipped = HashMap::new();
@@ -1543,12 +1180,7 @@ mod scale_stat_tests {
         assert_eq!(item.stats.get("AC"), Some(&7.0));
     }
 
-    /// Real dump lines/items -- `Shield of the Immaculate` carries no
-    /// *native* focus effect of its own (only a native `click`, "Cure
-    /// Disease"), so its own `focus` socket reporting `White Dragonscale
-    /// Cloak`'s real "Improved Damage III" only happens if the dump's
-    /// own real exalt-socket data is actually being read, not the
-    /// item's native effects alone.
+    /// why: real dump data, item has no native focus -- socketed effect must come from the dump
     #[test]
     fn resolve_inventory_shows_the_dumps_own_real_socketed_exaltation() {
         let mut equipped = HashMap::new();
@@ -1598,13 +1230,8 @@ mod two_hand_tradeoff_tests {
             "Warrior is melee -- RATIO should carry weight"
         );
 
-        // Same filter chain `recommend`'s own `best_secondary_score`
-        // precompute uses -- `in_era`/`race_ok` included even though this
-        // call passes `None`/`None` for both, since `None` era means "the
-        // current era ceiling", not "unfiltered" (see `in_era`'s own
-        // doc) -- an era-locked item the real precompute excludes has to
-        // stay excluded here too, or this test would be comparing against
-        // a bigger, wrong candidate pool than `recommend` actually used.
+        // why: same filter chain recommend's own precompute uses -- None
+        // era means current-era ceiling not unfiltered, must match exactly
         let secondary_best = itemdata::items()
             .iter()
             .filter(|it| fits_slot(it, "SECONDARY"))
@@ -1620,12 +1247,8 @@ mod two_hand_tradeoff_tests {
             "the real catalog should have at least one usable Warrior secondary item"
         );
 
-        // No `per_slot` truncation -- a real, well-scored 2H candidate can
-        // legitimately net negative once the best real Secondary
-        // (dual-wielding the game's single best-ratio weapon, say) is
-        // subtracted off, and would otherwise fall out of a small top-N
-        // before this test ever saw it. The netting math is what's under
-        // test, not where a 2H happens to rank.
+        // why: no per_slot truncation -- a real 2H can net negative and
+        // fall out of a small top-N; the netting math is under test, not ranking
         let recs = recommend(&classes, None, None, 1000, None, Some(50), None, None, None);
         let primary = recs
             .iter()
@@ -1657,12 +1280,7 @@ mod two_hand_tradeoff_tests {
         assert!(two_hander.score < raw, "netting against a real positive SECONDARY score should always reduce the 2H's own ranking score");
     }
 
-    /// The opposite case: a pure caster's RATIO weight is 0 (see
-    /// `derived_weights`), so a 2H candidate's score is left exactly as
-    /// `score_item` computed it -- no SECONDARY-forfeit adjustment,
-    /// because a caster's own Secondary is ordinarily just another
-    /// independently-scored stat-stick, not something in a weapon-ratio
-    /// contest with Primary the way melee's is.
+    /// why: opposite case -- pure caster's RATIO weight is 0, no forfeit adjustment
     #[test]
     fn a_casters_2h_score_is_left_unadjusted() {
         let classes = vec!["Wizard".to_string()];
@@ -1942,10 +1560,7 @@ mod scale_weight_tests {
 mod exalt_slot_tests {
     use super::*;
 
-    /// "A Dark Reaver" (confirmed in packs/items.json): a real item whose
-    /// only effect is a proc, req tier 4 -- below that tier the proc
-    /// socket must report unlocked:false and no effect, even though the
-    /// item genuinely has one; at or above it, the effect must show.
+    /// why: real proc-only item req tier 4 -- locked below it, shows at or above
     #[test]
     fn a_procs_own_socket_stays_locked_below_its_required_tier() {
         let item = itemdata::items()
@@ -1966,9 +1581,7 @@ mod exalt_slot_tests {
         );
     }
 
-    /// Ornamentation has no effect key at all -- it's a cosmetic token
-    /// slot, not tied to anything `Item::effects` carries -- so it must
-    /// always report `effect: None`, unlocked from tier 0 on.
+    /// why: ornamentation is a cosmetic token slot, always None, unlocked from tier 0
     #[test]
     fn ornamentation_never_has_a_native_effect() {
         let item = itemdata::items()
@@ -2018,12 +1631,7 @@ mod item_at_tier_tests {
 mod era_filter_tests {
     use super::*;
 
-    /// A real Velious-era item (a later era than the default `CURRENT_
-    /// ERA`/"Sky Era") is hidden with no era override, shown once "All"
-    /// is selected -- the Settings module's own era preference, threaded
-    /// straight through to `list_items`'s existing `max_era` param (no
-    /// new filtering logic needed, this is exercising the thing that was
-    /// already there and just never had a UI in front of it).
+    /// why: a real later-era item hidden by default, shown once "All" is selected
     #[test]
     fn all_bypasses_the_default_current_era_ceiling() {
         let velious_item = itemdata::items()
@@ -2044,9 +1652,7 @@ mod era_filter_tests {
         );
     }
 
-    /// A specific, earlier era name (not "All", not the default) still
-    /// narrows the catalog to that ceiling -- picking an era in Settings
-    /// isn't just an All/current binary.
+    /// why: a specific earlier era still narrows -- not just an All/current binary
     #[test]
     fn a_specific_era_name_filters_to_its_own_ceiling() {
         let classic_ix = era_ix("Classic Era").unwrap();
@@ -2119,10 +1725,7 @@ mod proc_evidence_tests {
 mod exalt_candidate_tests {
     use super::*;
 
-    /// Real catalog items (confirmed in packs/items.json): "Brass Ring"
-    /// (ALL classes, FINGERS-only, no native effects -- the target) and
-    /// "Adamantite Band" (also ALL/FINGERS, a real focus effect -- a
-    /// legal source with zero narrowing either way).
+    /// why: real ALL-class FINGERS target and a legal focus source with zero narrowing
     #[test]
     fn a_same_slot_same_class_source_is_a_legal_candidate() {
         let candidates = exalt_candidates("Brass_Ring", "focus", &HashMap::new(), &[], None);
@@ -2132,10 +1735,7 @@ mod exalt_candidate_tests {
         );
     }
 
-    /// "A Shimmering Orb" is a real focus source, but SECONDARY-only --
-    /// exalting it onto a FINGERS-only ring would leave the ring with
-    /// nowhere it could still be worn (empty slot intersection), which
-    /// must exclude it outright, not just warn about it.
+    /// why: a SECONDARY-only source onto a FINGERS ring would leave nowhere to wear it
     #[test]
     fn a_source_with_no_overlapping_slot_is_illegal() {
         let candidates = exalt_candidates("Brass_Ring", "focus", &HashMap::new(), &[], None);
@@ -2145,16 +1745,10 @@ mod exalt_candidate_tests {
         );
     }
 
-    /// A candidate legitimately usable in the target's slot, but by a
-    /// class the player isn't actually running, must not be offered --
-    /// "relevant pieces" means relevant to the player, not just legal in
-    /// the abstract. "Band of Screaming Winds" (NEC-only click, FINGERS)
-    /// vs. a Warrior-only active roster.
+    /// why: a candidate legal in the abstract but for an unplayed class must not be offered
     #[test]
     fn a_source_usable_by_a_different_class_than_the_player_is_excluded() {
-        // why: "All" era -- isolating the class filter, not the (separately
-        // tested) era one; Berserkers Ring is real but a later era than
-        // the default CURRENT_ERA ceiling would allow through.
+        // why: "All" era isolates the class filter from the separately tested era one
         let candidates = exalt_candidates(
             "Brass_Ring",
             "click",
@@ -2165,7 +1759,7 @@ mod exalt_candidate_tests {
         assert!(!candidates
             .iter()
             .any(|c| c.name == "Band of Screaming Winds"));
-        // "Berserkers Ring" -- WAR is one of its classes -- must still show up.
+        // why: WAR is one of its classes, must still show up
         assert!(candidates.iter().any(|c| c.name == "Berserkers Ring"));
     }
 
@@ -2189,15 +1783,11 @@ mod exalt_candidate_tests {
 
     #[test]
     fn ornament_has_no_candidates_at_all() {
-        // Ornamentation takes a cosmetic token, not an exaltable effect --
-        // EXALT_SLOTS carries no effect_key for it, so there's nothing to
-        // source from the item catalog.
+        // why: cosmetic token slot, no effect_key, nothing to source
         assert!(exalt_candidates("Brass_Ring", "ornament", &HashMap::new(), &[], None).is_empty());
     }
 
-    /// End to end: socketing a real source's effect into a target with no
-    /// native effect of its own must show the *source's* effect, not a
-    /// bare "open" socket.
+    /// why: end to end -- socketing a source into a no-native-effect target must show the source
     #[test]
     fn item_with_exalts_shows_the_socketed_sources_own_effect() {
         let mut assignments = HashMap::new();
@@ -2215,14 +1805,12 @@ mod exalt_candidate_tests {
         );
     }
 
-    /// A socket with no assignment still falls back to the item's own
-    /// native effect (or "open" if it has none) -- assigning one socket
-    /// must not disturb the others.
+    /// why: an unassigned socket falls back to native effect -- assigning one must not disturb others
     #[test]
     fn unassigned_sockets_still_show_the_items_own_native_effect() {
         let mut assignments = HashMap::new();
         assignments.insert("focus".to_string(), "Adamantite_Band".to_string());
-        // "Berserkers Ring" has a real native click effect of its own.
+        // why: real native click effect of its own
         let dto = item_with_exalts("Berserkers_Ring", 5, &assignments).expect("real catalog id");
         let click = dto.exalts.iter().find(|e| e.key == "click").unwrap();
         assert_eq!(
