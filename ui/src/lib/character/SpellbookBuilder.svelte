@@ -9,7 +9,7 @@
   import { ICON_BASE, ALL_CLASSES, MAX_CHARACTER_LEVEL } from '$lib/character/constants';
   import {
     usableClasses, isUsable, usableByClasses, isBuff, isSoloTarget, isTeamTarget,
-    pickBuffSuggestions, pickSupportSuggestions, simulateRotation,
+    pickBuffSuggestions, pickSupportSuggestions, simulateRotation, resistTypeOf,
   } from '$lib/character/spellSuggest';
   import DpsSuggest from './DpsSuggest.svelte';
   import { api, type UiFileInfoDto, type ParsedUiFileDto, type SpellDto, type DamageSpellDto } from '$lib/tauri/api';
@@ -144,8 +144,11 @@
   }
 
   // why: leads with the actual DPS-optimal rotation (real damage math,
-  // real weaving), then tops up with best-guess supporting skills
-  // (debuffs/CC) since there's no real ranking system for those yet.
+  // real weaving), then tops up with support -- crowd control and
+  // target-independent debuffs first, a resist debuff only if it
+  // actually strips a type the rotation's own damage checks (real
+  // correction: level alone isn't the right axis, see
+  // pickSupportSuggestions' own doc).
   function suggestCombat(bookIdx: number) {
     let count = emptySlotCount(bookIdx);
     if (count <= 0) return;
@@ -160,9 +163,12 @@
     count = emptySlotCount(bookIdx);
     if (count <= 0) return;
     const damageSpellNames = new Set($damageSpells.map((s) => s.name));
+    const rotationResistTypes = new Set(
+      usableDamage.map((s) => resistTypeOf(s.resist)).filter((t): t is string => t != null),
+    );
     const supportPicks = pickSupportSuggestions(
       $spells, $spellEffects, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, damageSpellNames,
-      $spellLineOverrides, $spellLineCustomMembership,
+      $spellLineOverrides, $spellLineCustomMembership, rotationResistTypes,
     );
     fillEmptySlots(bookIdx, supportPicks);
   }

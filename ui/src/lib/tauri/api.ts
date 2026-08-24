@@ -348,6 +348,8 @@ export interface DamageSpellDto {
   name: string;
   icon: string | null;
   classes: SpellClassDto[];
+  /** What this spell's own damage checks against, e.g. "Cold (-10)"; null for Unresistable. */
+  resist: string | null;
   is_dot: boolean;
   /** This session's own observed live rank, 0 if never cast this session. */
   rank: number;

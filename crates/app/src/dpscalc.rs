@@ -175,6 +175,10 @@ pub struct DamageSpellDto {
     pub name: String,
     pub icon: Option<String>,
     pub classes: Vec<SpellClass>,
+    /// why: what this spell's own damage checks against (e.g. "Cold
+    /// (-10)"); lets a caller line a debuff's own decreased-resist
+    /// types up against what the character's rotation actually needs
+    pub resist: Option<String>,
     pub is_dot: bool,
     /// why: observed live rank this session, 0 means no evidence yet not "unranked"
     pub rank: u8,
@@ -283,6 +287,7 @@ fn build_dto(spell: &Spell, rank: u8) -> Option<DamageSpellDto> {
         name: spell.name.clone(),
         icon: spell.icon.clone(),
         classes: spell.classes.clone(),
+        resist: spell.resist.clone(),
         is_dot,
         rank,
         duration_secs,

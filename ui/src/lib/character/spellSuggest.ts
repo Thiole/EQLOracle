@@ -71,8 +71,58 @@ export function isTeamTarget(s: SpellDto): boolean {
   return !!s.target_type && TEAM_TARGET_TYPES.has(s.target_type);
 }
 
-/** why: support/control tag family from spelleffect.rs's own categorization -- used to prefer real debuffs/CC over an arbitrary Detrimental spell for the "supporting skills" fill */
-export const SUPPORT_TAGS = new Set(['Debuff', 'Slow', 'Snare', 'Mez', 'Charm', 'Fear', 'Stun']);
+// ---------------------------------------------------------------- effect-aware support ranking
+
+/** why: a damage spell's own `resist` field names what it checks --
+ * "Cold (-10)" -> "Cold". "Unresistable" (no type at all) and a missing
+ * field both mean there's nothing to line a debuff's own resist-decrease
+ * up against. */
+export function resistTypeOf(raw: string | null): string | null {
+  if (!raw || raw.toLowerCase() === 'unresistable') return null;
+  const m = raw.match(/^(\w+)/);
+  return m ? m[1] : null;
+}
+
+/** why: a debuff's own slots name exactly what it decreases -- Malosi
+ * has four such slots (Fire/Cold/Magic/Poison), Tashania has one
+ * (Magic only), confirmed against packs/spells.json directly. Used to
+ * weigh a resist debuff against what the character's own rotation
+ * actually needs, not just its level. */
+export function decreasedResistTypes(s: SpellDto): string[] {
+  const types: string[] = [];
+  for (const sl of s.slots) {
+    const m = sl.effect.match(/^Decrease (\w+) Resist\b/i);
+    if (m) types.push(m[1]);
+  }
+  return types;
+}
+
+export type SupportCategory = 'control' | 'offense_debuff' | 'resist_debuff' | 'dispel' | 'other';
+
+/** why: real bug -- ranking every debuff by level alone treated a
+ * Mesmerize/Stun (real survivability, target-independent) the same as a
+ * resist debuff (only useful if the rotation's own damage checks that
+ * resist) and the same as a reactive dispel (situational at best).
+ * Checked in this order since a spell can plausibly match more than one
+ * -- the more decisive category wins. */
+export function supportCategoryOf(s: SpellDto, effectsEntry: SpellEffectsEntryDto | undefined): SupportCategory {
+  // why: Root has no dedicated spelleffect.rs control label yet (real
+  // example: Paralyzing Earth's own slot is the literal word "Root")
+  if ((effectsEntry?.control.length ?? 0) > 0 || s.slots.some((sl) => /^Root\b/i.test(sl.effect))) return 'control';
+  if (s.slots.some((sl) => /^Decrease (Attack Speed|ATK)\b/i.test(sl.effect))) return 'offense_debuff';
+  if (decreasedResistTypes(s).length > 0) return 'resist_debuff';
+  if (s.slots.some((sl) => /^Cancel Magic\b/i.test(sl.effect))) return 'dispel';
+  return 'other';
+}
+
+/** why: a debuff you can actually leave slotted beats one that expires
+ * in seconds, at the same level -- a minor tiebreaker, not a filter
+ * (spelleffect.rs's own duration parse, already shipped via the
+ * spellEffects store, no new data needed). */
+export function isPersistentDuration(effectsEntry: SpellEffectsEntryDto | undefined): boolean {
+  if (!effectsEntry) return false;
+  return effectsEntry.duration.is_permanent || (effectsEntry.duration.max_secs ?? 0) >= 60;
+}
 
 // ---------------------------------------------------------------- exclusivity
 
@@ -321,13 +371,23 @@ export function pickBuffSuggestions(
   return picked;
 }
 
-/** why: "for now" heuristic fill for debuffs/CC -- there's no real
- * ranking system for these yet (unlike combat's real DPS math), so this
- * just prefers a tagged support/control effect over a bare Detrimental
- * one, then falls back to the same known-class/level ordering as buffs.
- * `damageSpellNames` excludes anything that's actually a DPS spell
- * (Rend/Conflagration etc. are `spell_type: "Detrimental"` too, despite
- * being pure nukes, not support). */
+const SUPPORT_CATEGORY_ORDER: SupportCategory[] = ['control', 'offense_debuff', 'resist_debuff', 'dispel', 'other'];
+
+/** why: real correction -- ranking every debuff by level alone put a
+ * resist debuff (only useful if the rotation's own damage checks that
+ * resist type -- Tash strips Magic only, Malosi strips Fire/Cold/Magic/
+ * Poison) on equal footing with real target-independent survivability
+ * (Mez/Stun/Root) and a purely reactive dispel. Classifies by
+ * `supportCategoryOf`, drops an irrelevant resist debuff entirely
+ * (`rotationResistTypes` empty means "no info", not "nothing's
+ * relevant" -- stays permissive rather than wiping every resist debuff
+ * out for a caller that didn't pass rotation data), then round-robins
+ * one pick per category per pass so survivability and a rotation-
+ * relevant resist debuff both get a real shot instead of one category
+ * (usually whichever has the single highest-level member) monopolizing
+ * every slot. `damageSpellNames` excludes anything that's actually a
+ * DPS spell (Rend/Conflagration etc. are `spell_type: "Detrimental"`
+ * too, despite being pure nukes, not support). */
 export function pickSupportSuggestions(
   pool: SpellDto[],
   effects: Record<string, SpellEffectsEntryDto>,
@@ -338,31 +398,59 @@ export function pickSupportSuggestions(
   damageSpellNames: Set<string>,
   overrides: Record<string, string[]> = {},
   customMembership: Record<string, string> = {},
+  rotationResistTypes: Set<string> = new Set(),
 ): string[] {
   if (count <= 0) return [];
   const byName = new Map(pool.map((s) => [s.name, s]));
   const ctx = buildExclusivityContext(existingBookNames, byName, groups, customMembership);
-  const candidates = pool.filter(
+  const usable = pool.filter(
     (s) =>
       usableByClasses(s.classes, activeClasses) &&
       s.spell_type === 'Detrimental' &&
       !damageSpellNames.has(s.name),
   );
-  const sorted = [...candidates].sort((a, b) => {
-    const ta = effects[a.id]?.tags.some((t) => SUPPORT_TAGS.has(t)) ? 0 : 1;
-    const tb = effects[b.id]?.tags.some((t) => SUPPORT_TAGS.has(t)) ? 0 : 1;
-    if (ta !== tb) return ta - tb;
+
+  const candidates = usable.filter((s) => {
+    if (supportCategoryOf(s, effects[s.id]) !== 'resist_debuff') return true;
+    if (rotationResistTypes.size === 0) return true;
+    return decreasedResistTypes(s).some((t) => rotationResistTypes.has(t));
+  });
+
+  function compareWithinCategory(a: SpellDto, b: SpellDto): number {
+    if (supportCategoryOf(a, effects[a.id]) === 'resist_debuff') {
+      const overlapA = decreasedResistTypes(a).filter((t) => rotationResistTypes.has(t)).length;
+      const overlapB = decreasedResistTypes(b).filter((t) => rotationResistTypes.has(t)).length;
+      if (overlapA !== overlapB) return overlapB - overlapA;
+    }
+    const pa = isPersistentDuration(effects[a.id]) ? 0 : 1;
+    const pb = isPersistentDuration(effects[b.id]) ? 0 : 1;
+    if (pa !== pb) return pa - pb;
     return compareSortKeys(
       sortForSuggestion(a, activeClasses, false, overrides, customMembership),
       sortForSuggestion(b, activeClasses, false, overrides, customMembership),
     );
-  });
+  }
+
+  const byCategory = new Map<SupportCategory, SpellDto[]>(SUPPORT_CATEGORY_ORDER.map((c) => [c, []]));
+  for (const s of candidates) byCategory.get(supportCategoryOf(s, effects[s.id]))!.push(s);
+  for (const list of byCategory.values()) list.sort(compareWithinCategory);
+
   const picked: string[] = [];
-  for (const s of sorted) {
-    if (picked.length >= count) break;
-    if (conflictsWithExisting(s, ctx, groups, customMembership)) continue;
-    picked.push(s.name);
-    commit(s, ctx, groups, customMembership);
+  let progress = true;
+  while (picked.length < count && progress) {
+    progress = false;
+    for (const cat of SUPPORT_CATEGORY_ORDER) {
+      if (picked.length >= count) break;
+      const list = byCategory.get(cat)!;
+      while (list.length) {
+        const s = list.shift()!;
+        if (conflictsWithExisting(s, ctx, groups, customMembership)) continue;
+        picked.push(s.name);
+        commit(s, ctx, groups, customMembership);
+        progress = true;
+        break;
+      }
+    }
   }
   return picked;
 }
