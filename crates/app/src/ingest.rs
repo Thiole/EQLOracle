@@ -1159,11 +1159,8 @@ impl Ingest {
         }
     }
 
-    /// Damage is what defines the encounter graph (`docs/design/encounters.md`:
-    /// "each damage line is an edge"), so this is the only event kind that
-    /// opens a new fight. Everything else attaches to whatever fight is
-    /// already open, if any.
-    #[allow(clippy::too_many_arguments)] // each param is a distinct field straight off a real damage log line
+    /// why: damage is what defines the encounter graph, the only event kind that opens a new fight
+    #[allow(clippy::too_many_arguments)] // why: each param is a distinct field off a real damage log line
     fn record_damage(
         &mut self,
         ts: Millis,
@@ -1188,37 +1185,19 @@ impl Ingest {
         self.drain_closed();
     }
 
-    /// "If someone is able to damage the same target as me, they are in my
-    /// party" -- the log gives no roster line, but landing damage on the
-    /// very same mob in the very same fight "You" are also fighting is
-    /// stronger, far more common evidence than chat (which a busy raid
-    /// tank may never once use -- see the Monsters-module leak this was
-    /// written to close). Promotes via `Entities::note_shared_target`, the
-    /// same monotonic, sticky-forever mechanism `note_player_channel`
-    /// already uses: once earned, `Kind::Player` is a permanent identity
-    /// fact, same as proof-by-chat.
-    ///
-    /// Two paths: the moment "You" lands the hit that confirms this fight
-    /// (`src` resolves to "You" and `dst` is this fight's own anchor),
-    /// sweep back over everyone who already hit that anchor earlier in the
-    /// same fight -- they were just as much a party member before "You" had
-    /// proof as after, and were likely fighting before "You" even got
-    /// there. After that, every future hit on the anchor promotes its actor
-    /// inline, no sweep needed.
-    ///
-    /// Guards against two false positives: the anchor mob "hitting itself"
-    /// (a reflected damage shield) never promotes, and a *currently
-    /// charmed* actor never does either -- a charmed mob temporarily
-    /// fighting on your side is already correctly handled by
-    /// `Allegiance::of`'s `State::Charmed` flip, and promoting it to
-    /// permanent `Kind::Player` here would outlive the charm, reading as an
-    /// ally forever after it breaks.
+    /// why: "same mob damage as me" proves party membership, stronger and
+    /// more common than chat evidence -- promotes via note_shared_target,
+    /// same sticky-forever mechanism as chat proof. Two paths: the moment
+    /// "You" confirms the fight, sweep back over everyone who already hit
+    /// the anchor; after that, every future hit promotes inline. Never
+    /// promotes the anchor hitting itself (reflected shield) or a currently
+    /// charmed actor (would outlive the charm).
     fn note_shared_target(&mut self, ts: Millis, enc: EncounterId, src: &str, dst_sym: Sym) {
         let Some(anchor) = self.store.encounter(enc).map(|e| e.target) else {
             return;
         };
         if dst_sym != anchor {
-            return; // damage to something other than this fight's own mob proves nothing
+            return; // why: damage to something other than this fight's own mob proves nothing
         }
         let src_resolved = self.resolve_name(src);
         if src_resolved.eq_ignore_ascii_case("you") {
@@ -1239,9 +1218,8 @@ impl Ingest {
         }
     }
 
-    /// Shared guard for both `note_shared_target` promotion paths -- never
-    /// promotes a *currently charmed* entity. See `note_shared_target`'s
-    /// doc for why (a temporary ally must not become a permanent one).
+    /// why: shared guard, never promotes a currently charmed entity -- a
+    /// temporary ally must not become a permanent one
     fn promote_party_member(&mut self, sym: Sym, ts: Millis) {
         if matches!(self.timeline.state_at(sym.0, ts), Some((State::Charmed, _))) {
             return;
@@ -1275,14 +1253,9 @@ impl Ingest {
         }
     }
 
-    /// A swing that dealt zero damage because it was fully avoided --
-    /// miss, block, dodge, or parry (`mitigation` is the one matching
-    /// `flag::MITIGATED` bit). Lands on the *same* ability row a landed
-    /// swing of this `verb` would (`canonical_melee_ability`), tagged with
-    /// which kind of avoidance it was, rather than a separate synthetic
-    /// "Miss"/"Block"/"Dodge"/"Parry" ability -- see `flag::MITIGATED`'s
-    /// own doc for why this belongs on the attacker's own swing, not
-    /// invented as an ability the defender "used".
+    /// why: a fully-avoided swing lands on the same ability row a landed
+    /// swing would, tagged with how it was avoided -- not a synthetic
+    /// "Miss"/"Block"/... ability the defender "used"
     fn record_avoided(&mut self, ts: Millis, src: &str, dst: &str, verb: &str, mitigation: Flags) {
         let enc = self
             .current_encounter_of(src)
@@ -1312,23 +1285,17 @@ impl Ingest {
 
     fn record_death(&mut self, ts: Millis, victim: &str) {
         self.encounters.death(ts, victim);
-        // Resolve any XP gain still waiting on its own kill -- see
-        // `pending_xp`'s doc. Must run after `self.encounters.death` (so
-        // the encounter it just closed is findable) and before
-        // `drain_closed` (so eviction can't remove it out from under this
-        // lookup first).
+        // why: resolves pending_xp; must run after death() (encounter
+        // findable) and before drain_closed (before eviction)
         if let Some(p) = self.pending_xp.take() {
             if p.ts == ts {
-                // Same second as this death -- consumed either way, found
-                // or not: a gain that matches on timing but somehow can't
-                // resolve to a real encounter isn't going to do better
-                // waiting for some later, unrelated death instead.
+                // why: same second as this death, consumed either way -- a
+                // non-resolving match won't do better waiting for a later death
                 if let Some(id) = self.encounter_id_for_victim(victim) {
                     self.store.enc[p.row as usize] = id.0;
                 }
             } else {
-                // Not this death's to claim -- put it back for whatever
-                // death (if any) actually shares its timestamp.
+                // why: not this death's to claim, put back for whatever death shares its timestamp
                 self.pending_xp = Some(p);
             }
         }
@@ -1337,19 +1304,10 @@ impl Ingest {
         self.drain_closed();
     }
 
-    /// The most recently opened encounter targeting `victim` -- `record_
-    /// death`'s own lookup for attributing a `pending_xp` row, right after
-    /// `self.encounters.death` has already resolved which fight this death
-    /// belongs to. Deliberately not `recent_encounter_for`: that one
-    /// exists to match *loot* to kill order among several unclaimed
-    /// same-named corpses, with claim-tracking side effects that make
-    /// sense for loot specifically (see its own doc) but have no business
-    /// here -- XP attribution runs at the exact moment a death resolves,
-    /// when there's only ever one real answer (whichever encounter
-    /// `self.encounters.death` just closed), so a plain reverse scan for
-    /// the newest matching name is enough, and reusing loot's claim state
-    /// would only risk the two features quietly interfering with each
-    /// other over encounters neither actually shares.
+    /// why: most recent encounter targeting victim, for pending_xp
+    /// attribution -- deliberately not recent_encounter_for (that one's
+    /// claim-tracking is for loot specifically; XP resolves at the exact
+    /// moment a death closes, only one real answer, a plain reverse scan is enough)
     fn encounter_id_for_victim(&self, victim: &str) -> Option<EncounterId> {
         self.store
             .encounters
@@ -1359,32 +1317,13 @@ impl Ingest {
             .map(|e| e.id)
     }
 
-    /// "You gain experience!" -- always self-directed (see `Action::Xp`'s
-    /// doc), so `actor`/`target` are both "You"; `ability` reuses the
-    /// interner to carry `scope` ("solo"/"party"/"group"/"raid") the same
-    /// way `record_loot` reuses it for an item name -- not really an
-    /// ability, but the column is already exactly "interned name -> per-
-    /// row metadata", and a dedicated scope column for one row kind isn't
-    /// worth adding. `amount` is `pct` in milli-percent (`11.000%` ->
-    /// `11000`), not the bare percentage -- `Store::amount` is a `u64`, so
-    /// this is what preserves the log's own three decimal digits without a
-    /// new float column; divide by 1000.0 to get the percentage back.
-    ///
-    /// `enc` starts as `NO_ENCOUNTER` and is filled in later, if at all, by
-    /// `record_death` -- unlike loot, there's nothing to search for yet at
-    /// this point: a kill's XP line comes *before* its own "You have
-    /// slain" line, not after, so the encounter that earned it may not
-    /// even be closed (or exist as a lookup target) when this runs. See
-    /// `pending_xp`'s own doc for the row-index handoff that makes the
-    /// later backfill possible.
-    ///
-    /// Confirmed against the real log, not assumed: this line fires for
-    /// both kill XP (near-always immediately above a matching "You have
-    /// slain" line, same second) *and* quest turn-in XP ("You gain
-    /// experience!" immediately followed by "You complete the trade with
-    /// ..."). Only the first kind has a death line to attach to; the
-    /// second is expected to stay `NO_ENCOUNTER` forever, and that's
-    /// correct, not a gap -- there is no kill to blame it on.
+    /// why: always self-directed, actor/target both "You"; `ability`
+    /// reuses the interner for scope, not a dedicated column. `amount` is
+    /// milli-percent, preserving 3 decimal digits in a u64.
+    /// `enc` starts NO_ENCOUNTER, filled in later by record_death -- XP
+    /// arrives before its own death line, nothing to search for yet.
+    /// Confirmed real: fires for both kill XP and quest turn-in XP; only
+    /// the first has a death to attach to, the second stays NO_ENCOUNTER forever, correctly.
     fn record_xp(&mut self, ts: Millis, scope: &str, pct: f64) {
         let scope = match scope.trim() {
             "party" => "party",
@@ -1410,16 +1349,8 @@ impl Ingest {
         self.pending_xp = Some(PendingXp { row, ts });
     }
 
-    /// Platinum/gold/silver/copper actually received -- always the player,
-    /// same self-directed shape `record_xp` has, and for the same reason
-    /// (`ability` carries `source`, not a dedicated column -- see
-    /// `EventKind::Currency`'s doc). `text` is parsed by `parse_currency_
-    /// copper`; a line whose amount clause parses to nothing (`0`) is
-    /// dropped rather than pushed as an empty row -- that only happens if
-    /// the log phrases an amount this parser genuinely doesn't recognise,
-    /// and a silent zero-value row would be worse than a silently missed
-    /// one, since it would look like real data to every caller that reads
-    /// `Store::amount` without checking.
+    /// why: always the player, same self-directed shape as record_xp;
+    /// a zero-parse is dropped not pushed -- a zero row would look like real data
     fn record_currency(&mut self, ts: Millis, source: &str, text: &str) {
         let copper = parse_currency_copper(text);
         if copper == 0 {
@@ -1441,19 +1372,11 @@ impl Ingest {
         );
     }
 
-    /// Linked to a *best-effort* `EncounterId` (`recent_encounter_for`,
-    /// below), not left as `NO_ENCOUNTER`: by the time a corpse is
-    /// looted, the kill that produced it has almost always already closed
-    /// (`drain_closed`, via `record_death`), so there's no *live* fight to
-    /// attach to the ordinary way `link` does for damage/heal/miss. Two
-    /// mobs sharing a name fighting close together doesn't make "which
-    /// one's corpse" a coin flip, though: `recent_encounter_for` matches
-    /// loot to *kill order* (oldest still-unclaimed death first), not
-    /// just recency -- see its own doc. `crate::monsters`' own mob-name
-    /// aggregation doesn't depend on this at all (it groups by the row's
-    /// own `target`, set from the corpse text a few lines down,
-    /// independent of `enc`) -- this is for call sites that want "what
-    /// did *this* pull drop", like `combat::encounter_detail`.
+    /// why: best-effort EncounterId, not NO_ENCOUNTER -- the kill has
+    /// almost always closed by loot time, no live fight to link to
+    /// normally. recent_encounter_for matches kill order, not just
+    /// recency. `monsters`' own aggregation doesn't depend on this at all
+    /// (groups by target text); this is for "what did this pull drop" call sites.
     fn record_loot(&mut self, ts: Millis, item: &str, corpse: &str, qty: u64, sold: bool) {
         let mob = strip_corpse_suffix(corpse);
         let looter = self.sym("You");
@@ -1464,12 +1387,8 @@ impl Ingest {
             .recent_encounter_for(mob, ts)
             .map(|id| id.0)
             .unwrap_or(NO_ENCOUNTER);
-        // why: `sold` (the same "and sold it for..." clause `Action::
-        // Loot::sold_for`'s presence already signals) means this exact
-        // item never actually stuck around to turn in anywhere -- flagged
-        // on the row itself rather than left to a separate same-timestamp
-        // Currency-row correlation, which a busy multi-item corpse could
-        // make ambiguous. See `flag::LOOT_AUTO_SOLD`'s own doc.
+        // why: flagged on the row itself, not left to a same-timestamp
+        // Currency-row correlation a busy multi-item corpse could make ambiguous
         let flags = if sold { flag::LOOT_AUTO_SOLD } else { 0 };
         self.store.push(
             ts,
@@ -1484,67 +1403,27 @@ impl Ingest {
         );
     }
 
-    /// How long a gap between two loot lines against the same mob name
-    /// still reads as "still working through the one corpse's loot
-    /// window" rather than "moved on to a different one". Not just "how
-    /// fast someone clicks" -- an advanced-loot item without an "Always"
-    /// rule opens an interactive window that sits there until manually
-    /// resolved (see `LOOT_GRACE_MS`'s doc for the same mechanic), so two
-    /// items off the *same* corpse can legitimately land minutes apart if
-    /// the player got pulled into something else between them. Set well
-    /// Best-effort: which encounter a loot line against `mob` (at `ts`)
-    /// belongs to. Matches *kill order*, not just recency: killing two
-    /// same-named mobs close together isn't ambiguous if there's both a
-    /// death count and a claim count to go on, and the naive version of
-    /// this (always the single most-recent same-named encounter) breaks
-    /// the instant a third same-named mob dies before the first corpse
-    /// gets looted -- it would keep pointing at the newest death even
-    /// while a player's still working through the oldest one's items.
+    /// why: best-effort encounter for a loot line, matches kill order not
+    /// just recency -- the naive "most recent same-named encounter"
+    /// breaks once a third same-named mob dies before the first corpse is looted.
     ///
     /// Two-part rule:
-    /// 1. `loot_cursor`: if the encounter currently claimed for this
-    ///    exact mob name is still within `combat::LOOT_GRACE_MS` of `ts`
-    ///    -- judged off *that encounter's own* last activity, not off
-    ///    the gap since the last loot line against this name -- reuse
-    ///    it. This is what lets a slow manual loot-window resolution
-    ///    (`combat::LOOT_GRACE_MS`'s doc: an advanced-loot item without
-    ///    an "Always" rule can sit unresolved for many minutes) still
-    ///    land on the right corpse. An earlier version instead tracked
-    ///    "how long since the last loot line for this name" as its own
-    ///    separate sticky window -- a second, independent guess layered
-    ///    on top of this one, and it broke exactly that case: once that
-    ///    unrelated gap lapsed, the re-search below would find this same
-    ///    corpse already sitting in `loot_claimed` and wrongly skip past
-    ///    it, even though the player was still mid-way through looting
-    ///    it. Checking the encounter's own recency directly instead of a
-    ///    proxy for it removes that whole failure mode.
-    /// 2. Otherwise, advance: the OLDEST same-named encounter within
-    ///    `combat::LOOT_GRACE_MS` of `ts` that hasn't already been
-    ///    claimed (`loot_claimed`) by an earlier loot line. Marking it
-    ///    claimed here is what lets a *later* same-named corpse resolve
-    ///    to a genuinely different encounter instead of this one being
-    ///    picked again.
+    /// 1. `loot_cursor`: reuse the currently-claimed encounter if it's
+    ///    still within LOOT_GRACE_MS of its own last activity (not the
+    ///    gap since the last loot line) -- lets a slow manual loot window
+    ///    still land right. An earlier version tracked its own separate
+    ///    sticky gap and broke exactly this case once that gap lapsed.
+    /// 2. Otherwise advance to the oldest unclaimed same-named encounter
+    ///    within LOOT_GRACE_MS, marking it claimed.
     ///
-    /// Known remaining trade-off: two same-named mobs killed close
-    /// together, where the *first* one's loot window is left open for a
-    /// long time while the second gets looted promptly, can still have
-    /// the second one's loot line "win" the cursor and then, later, get
-    /// re-claimed onto the first once the second ages out -- rule 1 only
-    /// protects a single corpse being slowly resolved, not perfectly
-    /// disambiguating several interleaved ones. That's the right thing
-    /// to trade for: one corpse resolved slowly is the case this was
-    /// actually reported against, and looting corpses out of kill order
-    /// at all is the one thing a log alone can never fully resolve
-    /// anyway.
+    /// Known trade-off: two same-named mobs killed close together where
+    /// the first's window stays open long can still have the second
+    /// "win" the cursor and later get re-claimed onto the first -- rule 1
+    /// only protects one slowly-resolved corpse, not several interleaved
+    /// ones, the real reported case.
     ///
-    /// A full scan of `Store::encounters` per call, not an early-exit
-    /// windowed search -- deliberately simple over clever: this runs
-    /// once, at ingest time, not on a poll, and even a long session's
-    /// encounter count (thousands, not millions) keeps this well under
-    /// the cost that actually mattered elsewhere in this app (the full
-    /// *event*-store scans fixed earlier). Worth revisiting only if a
-    /// real session's ingest time measures as a problem, not
-    /// pre-emptively.
+    /// Full scan of Store::encounters per call, not windowed -- runs
+    /// once at ingest time, thousands of encounters is well under cost that mattered elsewhere.
     fn recent_encounter_for(&mut self, mob: &str, ts: Millis) -> Option<EncounterId> {
         let key = mob.to_ascii_lowercase();
         if let Some(&id) = self.loot_cursor.get(&key) {
