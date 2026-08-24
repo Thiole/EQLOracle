@@ -1,47 +1,20 @@
-//! Zone-to-zone route finding: "how do I get from here to zone X", as a
-//! sequence of zone-line crossings and/or teleport shortcuts, weighted by
-//! **real in-zone walking distance** (via `pathfind::find_path`), not just
-//! hop count -- see `docs/design/maps.md`'s "Pathfinding" section for the
-//! full design rationale.
+//! why: zone-to-zone route finding, weighted by real in-zone walking
+//! distance (`pathfind::find_path`), not just hop count. See
+//! `docs/design/maps.md`'s "Pathfinding" section for the full rationale.
 //!
-//! **Dijkstra over real distance, not "generate cheap candidates then
-//! score them."** An earlier version worked in two blind stages: cheaply
-//! enumerate zone-hop sequences by hop count alone, *then* real-score each
-//! one. That shape has a real, measured failure: candidate generation
-//! doesn't know a 3-hop detour through a huge zone is ever going to lose,
-//! so it fully real-pathfinds every hop of it anyway before comparing --
-//! confirmed directly, a plain 1-hop `The Northern Desert of Ro` -> `Oasis
-//! of Marr` query (real answer: ~2,188 units, one hop) took **25 seconds**
-//! against the actual configured install, because the same query also
-//! generated and fully real-scored several 2-3 hop alternates through
-//! unrelated neighboring zones that could never have won. Dijkstra fixes
-//! this structurally, not with a bigger cap: it explores zones in
-//! increasing *real accumulated distance* order and finalizes (never
-//! re-expands) each one the first time it's popped, so a partial route
-//! already costing more than a completed one is never extended further --
-//! exactly the "you don't need to see the whole length to discount it"
-//! cull the user asked for, not bolted on but the algorithm's own
-//! termination property. `to_zone` is provably optimal the instant it's
-//! popped; no separate MAX_CANDIDATES/HOP_SLACK bookkeeping is needed
-//! (removed), because nothing is ever "one candidate among several" any
-//! more -- there is exactly one running best per zone at any time.
+//! **Dijkstra over real distance, not "generate candidates then score."**
+//! An earlier two-stage version fully real-pathfound every hop of every
+//! candidate before comparing -- measured 25s for a trivial 1-hop query
+//! because it also scored losing multi-hop alternates. Dijkstra explores
+//! in increasing real-distance order and finalizes each zone the first
+//! time it's popped -- an already-more-expensive partial route is never
+//! extended further, the algorithm's own termination property, not a cap.
 //!
-//! Real per-hop distance (`hop_distance`, a full `pathfind::find_path`
-//! call plus a succor-relay comparison) is still the expensive part, so
-//! it's computed lazily -- only when Dijkstra actually settles a zone and
-//! relaxes its outgoing edges, never for a whole candidate sequence up
-//! front -- and memoized process-lifetime via `cached_hop_distance`
-//! (same `OnceLock`-cache shape `cached_map` already uses) keyed on
-//! `(from_zone, from_position, to_zone)`, since every walk-hop's `from`
-//! position is itself deterministic (either `best_start_position`'s
-//! stand-in or a prior hop's own fixed exit/landing point, never a live
-//! player coordinate -- see `find_zone_route`'s own doc) -- so the *same*
-//! real pathfinding call, if two different explored edges ever need it
-//! again, only ever runs once for the life of the process. Teleport edges
-//! stay O(1) (a flat `TELEPORT_HOP_COST`, no geometry lookup at all), so
-//! only real walk edges ever pay for a `pathfind::find_path` call -- still
-//! never a precomputed matrix across all 117 zones, cost stays
-//! proportional to what a given query's search frontier actually touches.
+//! Real per-hop distance is the expensive part, computed lazily (only
+//! when Dijkstra settles a zone) and memoized process-lifetime via
+//! `cached_hop_distance`, keyed on `(from_zone, from_position, to_zone)`
+//! -- sound because every walk-hop's `from` is deterministic. Teleport
+//! edges stay O(1), no geometry lookup at all.
 
 use crate::mapsdata;
 use crate::pathfind;
@@ -52,17 +25,10 @@ use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// A real, measured performance finding, not a hypothetical: a route with
-/// several walked hops re-loads and re-parses the same zone's map file
-/// every time that zone is visited by any candidate sequence -- a real
-/// query (`Ak'Anon` -> `Northern Plains of Karana`, walk-only, 13 real
-/// hops) took **12.7s** against the actual configured install before this
-/// cache existed. Keyed by shortname only (not `base_dir`) -- the
-/// configured install doesn't change mid-session, and this is a plain
-/// process-lifetime cache, not something that needs invalidating. `Arc`,
-/// not a clone-per-hit, since the largest real zones run 26k+ wall
-/// segments (`everfrost.txt`) and copying that on every hop would defeat
-/// the point.
+/// why: avoids re-loading/re-parsing the same zone map per visit --
+/// measured 12.7s for a 13-hop query before this cache existed. Keyed by
+/// shortname only, process-lifetime. Arc, not clone-per-hit -- the
+/// largest zones run 26k+ wall segments.
 fn cached_map(base_dir: &Path, shortname: &str) -> Option<Arc<mapsdata::ParsedZoneMap>> {
     static CACHE: OnceLock<Mutex<HashMap<String, Arc<mapsdata::ParsedZoneMap>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
@@ -77,37 +43,14 @@ fn cached_map(base_dir: &Path, shortname: &str) -> Option<Arc<mapsdata::ParsedZo
     Some(map)
 }
 
-/// A teleport hop's cost, in the same units as real walking distance --
-/// not free (a Wizard/Druid teleport still costs mana and cast time), but
-/// small relative to real zone crossings (confirmed real range against
-/// the actual configured install: walk hops from ~400 to ~15,000 units)
-/// so it reads as the shortcut it actually is. Not derived from anything
-/// more precise than "clearly cheaper than walking any real zone,
-/// clearly not literally free."
-///
-/// **Real, stated limitation this cost model does not capture**: it has
-/// no notion of whether the querying player can actually *cast* a given
-/// teleport spell at all -- every teleport edge in `zone_graph` is
-/// unconditionally available, the same way a Wizard's `Gate` and a
-/// Druid's `Circle` both appear as options regardless of which class (if
-/// either) the player actually plays. A winning route can legitimately
-/// require casting several unrelated spells across classes nobody plays
-/// at once. This is why `RouteHopDto` tags every teleport hop with its
-/// exact spell name rather than folding it into a generic "shortcut" --
-/// the frontend surfaces it plainly (see `Maps.svelte`) so the *player*
-/// judges viability, rather than the backend silently assuming access to
-/// every spell in the game.
+/// why: small relative to real crossings (measured ~400-15,000 units),
+/// not literally free. Note: gated per-query, but the graph itself
+/// offers every teleport edge unconditionally -- `RouteHopDto` tags each
+/// with its exact spell name so the player judges real viability.
 const TELEPORT_HOP_COST: f64 = 200.0;
 
-/// The cost of relocating to a zone's own succor/evacuate point -- per
-/// the user's own confirmation of the mechanic, this is reachable from
-/// *anywhere* in the zone by casting Lesser Evacuate or simply changing
-/// the zone's difficulty tier, not gated to a specific class the way
-/// Wizard/Druid teleports are (so, unlike `TELEPORT_HOP_COST`, a succor
-/// relay never needs a `via_spell` tag -- see `HopKind`'s own doc).
-/// Smaller than `TELEPORT_HOP_COST` since it's a same-zone relocation,
-/// not a full zone-to-zone jump -- not derived from anything more precise
-/// than "a real, discrete action, clearly not free."
+/// why: relocating to a zone's own succor point, reachable from anywhere
+/// in the zone (Lesser Evacuate or a tier change), smaller than a full jump
 const SUCCOR_WARP_COST: f64 = 100.0;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -115,18 +58,9 @@ pub enum HopKind {
     Walk,
     /// Cast this spell to make the jump.
     Teleport(String),
-    /// Relocate to this zone's own succor/evacuate point (via Lesser
-    /// Evacuate or a difficulty-tier change -- see `SUCCOR_WARP_COST`'s
-    /// own doc). A real, measured gap this fixes: `hop_distance` always
-    /// *computed* whichever was cheaper, direct walk or succor-then-walk,
-    /// but used to silently fold a winning succor relay into the walk
-    /// hop's own distance number with no indication a real action was
-    /// needed to achieve it -- a player who just walked from wherever
-    /// they actually landed, without succoring first, would never reach
-    /// that number. Now a real, separate, explicit step in the route
-    /// (`RouteHop { kind: HopKind::Succor, .. }`, arriving in the *same*
-    /// zone the walk that follows it starts from -- succor/difficulty
-    /// change repositions within a zone, it never crosses one).
+    /// why: explicit step for a winning succor relay -- used to be
+    /// silently folded into the walk-hop number with no indication a
+    /// real action was needed; arrives in the same zone the walk starts from
     Succor,
 }
 
@@ -156,55 +90,25 @@ struct Edge {
     kind: EdgeKind,
 }
 
-/// The cheap, distance-agnostic *walk-only* graph -- nodes are
-/// `zonedata::Zone::name` strings. Built once, `OnceLock`-cached, same
-/// pattern `zonedata`/`teleportdata` already use for their own embedded
-/// data. Teleport edges are deliberately **not** baked in here -- unlike
-/// zone adjacency, which is a fixed fact of the world, which teleport
-/// edges exist depends on *who's asking* (see `zone_graph_for`'s own doc),
-/// so they can't share one cached, query-independent graph.
+/// why: cheap distance-agnostic walk-only graph, built once and cached.
+/// Teleport edges deliberately not baked in -- who can use them depends
+/// on the player, so they can't share one query-independent graph.
 fn walk_graph() -> &'static HashMap<String, Vec<Edge>> {
     static GRAPH: OnceLock<HashMap<String, Vec<Edge>>> = OnceLock::new();
     GRAPH.get_or_init(|| {
         let mut g: HashMap<String, Vec<Edge>> = HashMap::new();
-        // Every real zone gets a key up front, even with zero edges (the 2
-        // real zones with no adjacent_zones data at all) -- so a lookup by
-        // name never has to distinguish "no key" from "key with an empty
-        // edge list", and BFS can always borrow a `&'static str` node
-        // reference straight out of this map's own keys (see below) rather
-        // than allocating a fresh owned string per visit.
+        // why: every zone gets a key up front, even with zero edges --
+        // lookup never distinguishes "no key" from "key, empty edge list"
         for z in zonedata::zones() {
             g.entry(z.name.clone()).or_default();
         }
 
-        // Walk edges: adjacent_zones is populated for 115/117 real zones
-        // (confirmed against the real pack) -- unioned bidirectionally
-        // since the source data isn't guaranteed symmetric in both
-        // directions. Resolved through `resolve_zone_name` (same fn
-        // `zone_graph_for` already uses for teleport landings), not a bare
-        // exact-name check -- a real, measured bug found via the user's
-        // own report that a suggested walking route should have gone
-        // through `Cazic Thule (Zone)` but never did: an exact-name check
-        // silently drops 29 of the pack's own real adjacency edges,
-        // because a zone's own `adjacent_zones` entry routinely uses the
-        // wiki's shorter/older name for its neighbor (`"Feerrott"` vs the
-        // neighbor's own canonical `"The Feerrott"`, `"Cazic Thule"` vs
-        // the neighbor's own canonical `"Cazic Thule (Zone)"`) -- the
-        // *exact* same naming inconsistency `resolve_zone_name` already
-        // exists to solve for `teleportdata::TeleportLanding::zone`
-        // strings, just previously never applied here too. Confirmed
-        // directly: `Cazic Thule (Zone) <-> The Feerrott` was one of the
-        // 29 silently-dropped edges (broken in *both* directions, for two
-        // different reasons -- `Cazic Thule (Zone)`'s own listing says
-        // `"Feerrott"`, missing "The"; `The Feerrott`'s own listing says
-        // `"Cazic Thule"`, missing "(Zone)"), which is exactly why a
-        // Cazic-Thule-teleport route into `Lower Guk` was never found: no
-        // path existed in the graph at all, not a search/heuristic
-        // mistake. A genuinely unresolvable name (wiki scrape junk like
-        // `"Wizard"`, or an ambiguous short form with no real match) still
-        // correctly drops rather than inventing a dead-end node -- see
-        // `resolve_zone_name`'s own doc for what that fallback chain does
-        // and doesn't cover.
+        // why: unioned bidirectionally, resolved through `resolve_zone_name`
+        // not a bare exact-name check -- a real reported bug: an exact
+        // check silently dropped 29 real adjacency edges (e.g. "Feerrott"
+        // vs "The Feerrott") because a zone's adjacent_zones entry
+        // routinely uses a shorter/older neighbor name. A genuinely
+        // unresolvable name still correctly drops, not invents a node.
         for z in zonedata::zones() {
             for adj in &z.adjacent_zones {
                 let Some(resolved) = resolve_zone_name(adj) else {
@@ -224,21 +128,10 @@ fn walk_graph() -> &'static HashMap<String, Vec<Edge>> {
     })
 }
 
-/// One query's actual candidate-generation graph: the cached walk-only
-/// base, plus teleport edges filtered to what *this specific player*
-/// could actually cast -- `player_classes` (their confirmed class
-/// configuration, e.g. from `combat::class_configurations`'s dominant
-/// entry) and `player_level` (that configuration's own assumed level,
-/// e.g. its `level_range`'s upper bound) gate every teleport edge before
-/// it's ever offered as a route option. A Wizard/Druid teleport spell is
-/// not zone-gated in this game -- it can be cast from anywhere the caster
-/// happens to be standing, landing at a fixed spot in its own destination
-/// zone (see `teleportdata`'s own doc) -- so a castable spell isn't a
-/// normal A<->B edge, it's an edge *from every zone* to the landing's
-/// zone. Rebuilt per query (cloning the cached base graph, ~117 small
-/// vecs, then filtering ~103 real landings) rather than cached itself --
-/// cheap enough at this scale that caching per-player would just be
-/// premature complexity for no measured benefit.
+/// why: cached walk-only base plus teleport edges gated by real player
+/// capability. A teleport isn't zone-gated in this game -- castable from
+/// anywhere, landing at a fixed spot -- so it's an edge from every zone
+/// to the landing zone. Rebuilt per query, cheap enough not to cache.
 fn zone_graph_for(player_classes: &[String], player_level: u8) -> HashMap<String, Vec<Edge>> {
     let mut g = walk_graph().clone();
     for (spell, landing) in teleportdata::all_landings() {
@@ -257,7 +150,7 @@ fn zone_graph_for(player_classes: &[String], player_level: u8) -> HashMap<String
         };
         for z in zonedata::zones() {
             if z.name == dest {
-                continue; // already there, not a real hop
+                continue; // why: already there, not a real hop
             }
             g.entry(z.name.clone()).or_default().push(Edge {
                 to: dest.to_string(),
@@ -268,36 +161,12 @@ fn zone_graph_for(player_classes: &[String], player_level: u8) -> HashMap<String
     g
 }
 
-/// A raw string that names a zone, but not with its exact canonical
-/// `Zone::name` text -- three real sources feed this table, all the same
-/// underlying problem (older/shorter/differently-ordered names for a zone
-/// than its own wiki-guide title), confirmed by hand against the real
-/// pack one entry at a time, the same "small stated exceptions" shape
-/// `zone.rs::ZONE_ALIASES` already uses for the analogous log-label-vs-
-/// wiki-name problem (a different input shape, so not reused directly,
-/// but the same pattern):
-/// - `teleportdata::TeleportLanding::zone` (a spell's wiki page prose,
-///   e.g. `"North Karana"` for the zone-guide's own `"Northern Plains of
-///   Karana"`) -- the original, smaller version of this table only
-///   covered this source; only 6 of its 105 real entries failed to
-///   resolve at all, one (`"Grimling Forest"`) a genuine upstream gap
-///   (isn't in the 117-zone scrape at all).
-/// - `Zone::adjacent_zones` entries (one zone's own listing of a
-///   neighbor's name, e.g. `"Cazic Thule"` for the neighbor's own
-///   canonical `"Cazic Thule (Zone)"`).
-/// - Real map-file exit-marker labels (`P ... to_X` lines) -- these
-///   turned out to be the least clean source, confirmed directly: 43
-///   distinct unmatched labels pack-wide, most genuinely out-of-scope
-///   later-expansion zones this 117-zone pack never covers (`Bazaar`,
-///   `Nexus`, `Shadowhaven`...), but several real, in-pack zones with a
-///   classic in-game name the map author used instead of the wiki's
-///   modern title (`"The City of Guk"` for `Upper Guk`, `"The Ruins of
-///   Old Guk"` for `Lower Guk` -- this exact pair is what silently broke
-///   a real user-reported route through `Lower Guk`, both hops in it
-///   fell back to a generic distance constant because neither marker
-///   ever matched at all), plain map-author typos (`"Feerott"` missing a
-///   letter), or word-order swaps (`"The Castle of Mistmoore"` vs the
-///   zone's own `"Mistmoore Castle"`).
+/// why: raw non-canonical zone-name strings, same pattern as
+/// `zone.rs::ZONE_ALIASES` for a different input shape. Three sources
+/// feed this: teleport landing prose (6/105 real entries didn't
+/// resolve), adjacent_zones neighbor names, and map exit-marker labels
+/// (least clean -- 43 unmatched, some real in-pack zones with classic
+/// in-game names, some typos, some word-order swaps).
 const ZONE_NAME_ALIASES: &[(&str, &str)] = &[
     ("Cazic Thule", "Cazic Thule (Zone)"),
     ("Temple of Cazic-Thule", "Cazic Thule (Zone)"),
@@ -318,15 +187,8 @@ const ZONE_NAME_ALIASES: &[(&str, &str)] = &[
     ("The Castle of Mistmoore", "Mistmoore Castle"),
 ];
 
-/// Resolves any of this module's three raw zone-name-ish string shapes
-/// (see `ZONE_NAME_ALIASES`'s own doc) to a real `Zone::name`: tries an
-/// exact match first, then the alias table, then falls back to matching
-/// against each zone's own resolved map shortnames (`zonedata::
-/// map_shortnames`, the same resolution `commands::map_zones_for_raw_label`
-/// already does for a raw log zone label, reused here for these
-/// differently-shaped raw strings) -- this is what lets a bare
-/// shortname-looking string (`"butcher"`, `"commons"`) resolve even
-/// without an explicit alias entry.
+/// why: exact match, then alias table, then map-shortname match --
+/// lets a bare shortname string ("butcher") resolve without an explicit alias
 fn resolve_zone_name(raw: &str) -> Option<&'static str> {
     let zones = zonedata::zones();
     if let Some(z) = zones.iter().find(|z| z.name.eq_ignore_ascii_case(raw)) {
@@ -352,22 +214,10 @@ fn resolve_zone_name(raw: &str) -> Option<&'static str> {
         })
         .map(|z| z.name.as_str())
 }
-/// Real-world (x, y) markers in `zone`'s own map file whose label plausibly
-/// names `target_zone`. Tries `resolve_zone_name` first (handles the real,
-/// hand-verified cases in `ZONE_NAME_ALIASES` -- classic in-game names,
-/// typos, word-order swaps -- with exact precision), falling back to a
-/// loose, both-directions substring match on normalized text for anything
-/// that doesn't resolve -- a Rust port of `ui/src/lib/maps/
-/// zoneMatch.ts::looksLikeEntranceFor`, **not fully in sync with it any
-/// more**: the frontend still only does the loose fuzzy match (a separate,
-/// smaller-stakes display feature -- which markers get highlighted on the
-/// map view -- not the real distances this module computes), so it can
-/// now show a marker as a plausible match for a zone name this resolves
-/// with real confidence but the frontend's own fuzzy pass wouldn't catch
-/// (e.g. `"to_The_City_of_Guk"` for `Upper Guk`). A real, stated
-/// divergence, not an oversight -- porting the alias table to
-/// `zoneMatch.ts` too is a reasonable follow-up if that display gap ever
-/// matters, not required for this module's own real-distance correctness.
+/// why: markers whose label plausibly names `target_zone` -- tries
+/// `resolve_zone_name` first for exact precision, falls back to loose
+/// substring match. Diverges from the frontend's `zoneMatch.ts`, which
+/// still only does the loose pass -- a stated gap, not required to fix here.
 fn entrance_markers<'a>(
     map: &'a mapsdata::ParsedZoneMap,
     target_zone: &str,
@@ -409,51 +259,27 @@ fn entrance_markers<'a>(
         .collect()
 }
 
-/// Real walking distance for one walk edge Dijkstra is relaxing, from
-/// `from` (a real point already known to be in `from_zone`) to whichever
-/// marker in `from_zone`'s own map looks like the exit toward `to_zone`. Also
-/// tries relocating to `from_zone`'s own succor/evacuate point(s) first
-/// (see `SUCCOR_WARP_COST`'s own doc) and walking from *there* instead,
-/// taking whichever real option is actually shorter -- the user's own
-/// explicit direction: "I'd rather cross 2 short stones... than 1 really
-/// long one", i.e. a succor relocation should win whenever it genuinely
-/// shortens the walk, not be ignored in favor of the naive direct route.
-/// Falls back to straight-line distance when either the map/marker can't
-/// be resolved or `pathfind::find_path` itself finds no route (a real,
-/// confirmed possibility, not hypothetical -- see `pathfind.rs`'s own doc
-/// for a real zone-line marker that landed in a small, genuinely isolated
-/// pocket of a real zone's geometry) -- an honest approximation stated as
-/// one, never a silent zero or a dropped candidate.
+/// why: real walking distance for one edge Dijkstra is relaxing, from
+/// `from` to the exit marker toward `to_zone`. Also tries a succor relay
+/// and takes whichever is shorter, per direct correction ("2 short stones
+/// beats 1 long one"). Falls back to straight-line distance when the
+/// map/marker can't resolve or no route exists at all -- an honest
+/// approximation, never a silent zero.
 ///
-/// Which real option won resolving one walk edge -- everything a caller
-/// needs to build the right *number* of `RouteHop`s for it. A direct walk
-/// (or the no-real-data fallback) is one hop; a winning succor relay is
-/// two, a `HopKind::Succor` hop followed by the walk from there (see
-/// `HopKind::Succor`'s own doc for the real bug this fixes -- a winning
-/// succor relay used to be silently folded into one walk-hop number with
-/// no indication a real in-game action was needed to achieve it).
+/// Which real option won -- a direct walk is one hop, a winning succor
+/// relay is two (`HopKind::Succor` then the walk from there).
 #[derive(Debug, Clone, Copy)]
 enum WalkOutcome {
-    /// Real walking distance straight from `from` to the exit.
+    /// why: real distance straight from `from` to the exit
     Direct(f64),
-    /// A succor relay won: the real walk distance *from the succor
-    /// point* to the exit. `SUCCOR_WARP_COST` isn't included here -- the
-    /// caller adds it as its own separate `HopKind::Succor` hop.
+    /// why: walk distance from the succor point; caller adds SUCCOR_WARP_COST separately
     ViaSuccor(f64),
-    /// Neither a direct nor a succor real path could be computed at all
-    /// (no map/marker, or every real search failed) -- see `hop_distance`'s
-    /// own doc for exactly when.
+    /// why: neither real path could be computed (no map/marker, or search failed)
     Fallback(f64),
 }
 
-/// The actual decision -- pulled out of `hop_distance` as its own pure
-/// function specifically so it's unit-testable without real map files
-/// (`hop_distance` itself needs both a real embedded zone catalog entry
-/// and real map files on disk, neither of which a synthetic test can
-/// inject -- see this module's own tests for why). `fallback` is a
-/// closure, not a plain value, so the (mildly expensive) euclidean
-/// distance it computes is never paid unless both real options are
-/// unavailable.
+/// why: pulled out as a pure function so it's unit-testable without real
+/// map files; `fallback` is a closure so euclidean distance is only paid when needed
 fn choose_walk_outcome(
     direct: Option<f64>,
     succor_walk: Option<f64>,
@@ -467,19 +293,11 @@ fn choose_walk_outcome(
     }
 }
 
-/// `deadline` is checked before *every* individual `pathfind::find_path`
-/// call this makes -- a real, measured bug this fixes: one `hop_distance`
-/// call can run several real searches back to back (the direct route,
-/// plus one per succor point), so a caller-side deadline check between
-/// Dijkstra edges alone can't stop a single pathological zone (several
-/// succor points, one or more of them genuinely unreachable and each
-/// paying close to `pathfind::find_path`'s own worst case) from blowing
-/// past budget entirely -- confirmed directly, one such call took 4+
-/// seconds on its own even after that per-call cap was already tightened.
-/// The returned `bool` is whether this call actually hit the deadline
-/// (skipped at least one real search it would otherwise have run) --
-/// `cached_hop_distance` uses it to avoid permanently caching a
-/// time-pressured, possibly-worse-than-achievable answer.
+/// why: `deadline` checked before every individual find_path call -- one
+/// hop_distance call can run several searches (direct + per succor
+/// point), measured 4+s on its own even after per-call caps. Returned
+/// bool tells `cached_hop_distance` not to permanently cache a
+/// time-pressured answer.
 fn hop_distance(
     base_dir: &Path,
     from_zone: &str,
@@ -508,15 +326,9 @@ fn hop_distance(
 
     let direct = walk_distance(&map, from, exit);
 
-    // Succor relay: real coordinates have no Z (see `zonedata::
-    // SuccorPoint`'s own doc), so `from`'s own Z is reused as a same-floor
-    // assumption -- the same kind of approximation `pathfind.rs`'s
-    // Z-banding already makes everywhere else in this module. Stops
-    // trying further succor points once past deadline, taking whatever
-    // real options were already computed rather than starting another
-    // potentially-expensive search. Kept as a *raw* walk distance here
-    // (no `SUCCOR_WARP_COST` folded in) -- that cost belongs to the
-    // caller's own separate `HopKind::Succor` hop, not this number.
+    // why: succor points carry no Z, so `from`'s own Z stands in
+    // (same-floor assumption). Stops trying further points past
+    // deadline. Kept as raw walk distance, SUCCOR_WARP_COST added by the caller.
     let mut truncated = false;
     let succor_relay = z
         .succor_evacuate
@@ -540,16 +352,9 @@ fn hop_distance(
     (exit, outcome, truncated)
 }
 
-/// Memoized `hop_distance` -- process-lifetime cache, same `OnceLock`
-/// shape `cached_map` already uses, keyed on `(from_zone, from, to_zone)`.
-/// Sound because `from` is always deterministic here (see this module's
-/// top doc): either `best_start_position`'s stand-in for the very first
-/// hop, or a prior edge's own fixed exit-marker/teleport-landing point --
-/// never a live, ever-changing player coordinate. `from` is quantized to
-/// the nearest 0.01 unit purely so `f32` bit-pattern noise (there isn't
-/// any in practice, since callers always pass through the exact same
-/// value, but nothing about `f32` guarantees that) can't split one real
-/// cache entry into two.
+/// why: memoized hop_distance, process-lifetime, keyed on (from_zone,
+/// from, to_zone) -- sound because `from` is always deterministic here.
+/// Quantized to 0.01 so f32 bit-noise can't split one cache entry into two.
 fn cached_hop_distance(
     base_dir: &Path,
     from_zone: &str,
@@ -573,21 +378,16 @@ fn cached_hop_distance(
         return v;
     }
     let (pos, outcome, truncated) = hop_distance(base_dir, from_zone, from, to_zone, deadline);
-    // Never cache a deadline-truncated answer -- it may be worse than
-    // what a full computation would find, and this cache is process-
-    // lifetime (see this fn's own doc), so a stale time-pressured value
-    // would otherwise haunt every future query for this exact edge.
+    // why: never cache a truncated answer -- it may be worse than a full
+    // computation, and this cache is process-lifetime
     if !truncated {
         cache.lock().unwrap().insert(key, (pos, outcome));
     }
     (pos, outcome)
 }
 
-/// Real walking distance between two points on `map`, or `None` if
-/// `pathfind::find_path` can't find one -- a thin wrapper so callers
-/// comparing several real options (direct walk vs. a succor relay) can
-/// each apply their own fallback, rather than one baked-in euclidean
-/// substitution hiding which option actually failed.
+/// why: thin wrapper so callers comparing several options apply their
+/// own fallback, rather than hiding which option failed
 fn walk_distance(
     map: &mapsdata::ParsedZoneMap,
     from: (f32, f32, f32),
@@ -601,21 +401,13 @@ fn euclid(a: (f32, f32, f32), b: (f32, f32, f32)) -> f64 {
     (((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2) + (a.2 - b.2).powi(2)) as f64).sqrt()
 }
 
-/// Used only when a hop's own zone/map/marker can't be resolved at all --
-/// a large, clearly-penalized-but-finite value so a candidate with one
-/// unresolvable hop can still lose fairly to a candidate that resolved
-/// every hop for real, rather than being silently treated as free or
-/// crashing the whole query.
+/// why: penalized-but-finite so an unresolvable hop loses fairly, not free or crashing
 fn straight_line_fallback() -> f64 {
     2000.0
 }
 
-/// One entry in the search frontier: `zone`'s best *known* real distance
-/// (`g`) from `from_zone` so far, plus `priority` (`g` + a heuristic lower
-/// bound on the remaining real distance to the target -- see
-/// `hops_to_target`'s own doc) used only for ordering. Reversed `Ord`
-/// (like `pathfind::QueueEntry`) since `BinaryHeap` is a max-heap and this
-/// search wants the lowest priority popped first.
+/// why: search frontier entry -- `g` is best known real distance,
+/// `priority` = g + heuristic, reversed Ord so lowest pops first
 struct Frontier {
     priority: f64,
     g: f64,
@@ -641,24 +433,11 @@ impl PartialOrd for Frontier {
     }
 }
 
-/// Cheap, graph-only reverse-BFS hop count from every zone that can reach
-/// `target` (over `graph`'s own edges, teleports included -- a teleport
-/// hop still counts as one step closer) to `target` itself. Paired with
-/// `HEURISTIC_HOP_COST` (see its own doc for why it's a *typical*, not
-/// strictly admissible, per-hop estimate) this is what turns the search in
-/// `find_zone_route` into weighted A* instead of plain Dijkstra: `h(zone)
-/// = HEURISTIC_HOP_COST * hops_to_target(zone)` biases the frontier
-/// (`g + h`) toward zones actually closer to the target, so the search
-/// stops wasting real pathfinding calls on zones nowhere near it.
-///
-/// **Real, measured failure this fixes**: plain Dijkstra (no heuristic at
-/// all) against a real walk-only query fanned out across the *entire*
-/// 105-zone connected walk graph -- `Great Divide`, `Thurgadin`,
-/// `Butcherblock Mountains`, zones on the opposite side of the map --
-/// before ever settling `Lower Guk`, because nothing biased exploration
-/// toward the actual target; confirmed directly, that query took **34+
-/// seconds** and its own real hop-distance trace showed dozens of
-/// completely unrelated zones being priced out first.
+/// why: reverse-BFS hop count to `target`, teleports included. Paired
+/// with `HEURISTIC_HOP_COST` this turns the search into weighted A*,
+/// biasing the frontier toward the target. Plain Dijkstra (no heuristic)
+/// measured 34+s fanning across the entire 105-zone graph before ever
+/// settling a real target.
 fn hops_to_target(graph: &HashMap<String, Vec<Edge>>, target: &str) -> HashMap<String, usize> {
     let mut incoming: HashMap<&str, Vec<&str>> = HashMap::new();
     for (u, edges) in graph {
@@ -686,62 +465,24 @@ fn hops_to_target(graph: &HashMap<String, Vec<Edge>>, target: &str) -> HashMap<S
     dist
 }
 
-/// The per-hop multiplier `hops_to_target`'s heuristic uses -- deliberately
-/// a realistic *typical* real hop cost (matches the bulk of real
-/// distances actually measured against the configured install: most
-/// real walk hops landed in the ~1,700-3,500 range, not spread evenly
-/// across the full documented 400-15,000 extremes), not the strict
-/// worst-case-safe *minimum* (`TELEPORT_HOP_COST` = 200).
-///
-/// **This makes the search weighted A*, not strict A*: the heuristic can
-/// overestimate for an unusually cheap real hop, so the route found is
-/// not provably optimal in every case.** A real, measured tradeoff, not
-/// an oversight: the strictly-admissible version (200/hop) only cut a
-/// real walk-only query's settled-zone count from unbounded to 24, and
-/// still took 30+ seconds, because 200/hop is such a loose bound against
-/// real costs an order of magnitude higher that it barely biased
-/// exploration away from plain Dijkstra's behavior. This module already
-/// tolerates several other stated, non-exact approximations for the same
-/// reason (`TELEPORT_HOP_COST`/`SUCCOR_WARP_COST` are themselves "not
-/// derived from anything more precise than a plausible real range") --
-/// a fast, honest, usually-optimal-in-practice route beats a
-/// provably-exact one that takes 30+ seconds to compute.
+/// why: typical real hop cost (measured ~1,700-3,500), not the strict
+/// admissible minimum (200). Makes this weighted A*, not strict A* --
+/// can overestimate, route not provably optimal in every case. The
+/// strictly-admissible version still took 30+s (too loose a bound to
+/// bias exploration) -- fast and usually-optimal beats provably-exact and slow.
 const HEURISTIC_HOP_COST: f64 = 2000.0;
 
-/// A real walking-and/or-teleporting route from `from_zone` to `to_zone`,
-/// scored by real in-zone distance (see this module's own top doc), or
-/// `None` if the two zones aren't connected at all in `zone_graph_for`'s
-/// graph. `player_classes`/`player_level` are the querying player's own
-/// assumed class configuration -- e.g. `combat::class_configurations(ing,
-/// "You")`'s dominant (most zone-visits) entry and that entry's own
-/// `level_range` upper bound -- gating which teleport shortcuts are even
-/// considered (see `zone_graph_for`'s own doc). Pass an empty slice /
-/// `0` to route walk-only, ignoring every teleport shortcut regardless of
-/// level.
+/// why: real walk/teleport route, scored by real distance; None if
+/// unconnected. `player_classes`/`player_level` gate which teleports are
+/// considered -- empty/0 for walk-only. `known_start`, when Some, is a
+/// real confirmed position (a /loc reading or teleport landing), used
+/// for the first hop instead of `best_start_position`'s stand-in --
+/// strict precision improvement, never required.
 ///
-/// `known_start`, when `Some`, is the player's real, confirmed position in
-/// `from_zone` right now -- a real `/loc` reading or a confirmed teleport
-/// landing (`Ingest::last_loc`/`Ingest::entered_via_teleport`, both
-/// map-file-space already), used for the route's own first hop instead of
-/// `best_start_position`'s succor-point stand-in. Per the user's own
-/// direct point: a zone entered via a recognized teleport cast, or a real
-/// `/loc` reading, is 100% known -- exactly the same "confirmed" tier
-/// docs/design/maps.md's "You are here" ladder already uses for the map
-/// marker, now also the real distance this module reports for the first
-/// hop, not just the visual overlay. `None` (a fresh session with no
-/// evidence yet, or a query not actually about the player's live position)
-/// falls back to the stand-in exactly as before -- this is a strict
-/// improvement in precision when available, never a required input.
-///
-/// Dijkstra over real distance (see this module's top doc for why, and
-/// the real freeze this replaced) -- `zone`'s `from_zone`-relative
-/// distance is only ever finalized once, the first time it's popped off
-/// `open` (standard lazy-deletion Dijkstra: a zone can sit in `open`
-/// multiple times at different costs from different relaxations, so a
-/// `settled` check at pop time, not a separate "is this entry stale"
-/// value comparison, is what skips the redundant ones). Every hop after
-/// the first starts from the *previous* hop's own fixed exit/landing
-/// point, which is what makes `cached_hop_distance`'s memoization sound.
+/// Standard lazy-deletion Dijkstra: a zone's distance finalizes once,
+/// the first time popped; `settled` at pop time skips stale heap
+/// entries. Each hop starts from the previous hop's fixed exit point,
+/// which is what makes `cached_hop_distance` sound.
 pub fn find_zone_route(
     base_dir: &Path,
     from_zone: &str,
@@ -760,11 +501,8 @@ pub fn find_zone_route(
     if !graph.contains_key(from_zone) || !graph.contains_key(to_zone) {
         return None;
     }
-    // Cheap graph-only reachability + heuristic lower bound -- see
-    // `hops_to_target`'s own doc. Also a fast, honest early-out: if
-    // `to_zone` can't be reached from `from_zone` at all (no walk or
-    // teleport chain whatsoever), no amount of real pathfinding will
-    // change that, so don't even start the expensive search.
+    // why: cheap early-out -- if unreachable in the graph at all, no
+    // amount of real pathfinding changes that
     let h_to_target = hops_to_target(&graph, to_zone);
     if !h_to_target.contains_key(from_zone) {
         return None;
@@ -789,60 +527,23 @@ pub fn find_zone_route(
         zone: from_zone.to_string(),
     }]);
 
-    // Belt-and-suspenders cap, same "generous but bounded" shape used
-    // throughout this codebase (`pathfind::find_path`'s own
-    // `expansion_cap`) -- Dijkstra over this graph is already bounded by
-    // real node/edge count (117 zones, a few hundred real walk edges,
-    // teleport edges O(1) to relax), so this should never actually bind;
-    // it exists so a future graph shape can't silently reintroduce an
-    // unbounded search here.
+    // why: belt-and-suspenders cap -- Dijkstra is already bounded by real
+    // node/edge count, this guards against a future graph shape reintroducing
+    // an unbounded search
     const MAX_SETTLED: usize = 500;
 
-    // Real, measured problem this guards against: teleport edges are
-    // O(1) and unconditionally offered "from every zone" (see
-    // `zone_graph_for`'s own doc), so a real multi-teleport-class player
-    // config gives almost every one of the 117 real zones a very low
-    // tentative cost -- meaning nearly all of them get *settled*, and
-    // settling a zone means really pathfinding every one of its real walk
-    // edges, before a target that's only walk-reachable (like `Lower
-    // Guk`, whose only real neighbor is `Upper Guk`) is ever settled.
-    // Confirmed directly against the actual configured install: even
-    // after this rewrite and after fixing `pathfind::find_path`'s own
-    // worst-case cost, a real `The Northern Desert of Ro` -> `Lower Guk`
-    // query with a Wizard/Enchanter/Magician config still hadn't returned
-    // after 60+ seconds, because the graph's real walk-edge count (472
-    // directed edges total) is large enough that settling "everything
-    // cheap-by-teleport first" still means really pathfinding a large
-    // share of them. A per-call cost cap bounds *one* call; it can't
-    // bound *how many* calls a maximally-connected teleport graph forces.
-    // A wall-clock deadline is the honest fix for that: once it passes,
-    // stop paying for further real walk-edge evaluations (teleport edges,
-    // being free, still relax normally) and settle for the best route
-    // found so far to `to_zone`, if any -- not proven optimal in that
-    // case, but a real, reachable route rather than an indefinite hang.
-    // Real, measured regression from an earlier, too-tight value (2s):
-    // before the `hops_to_target`/`HEURISTIC_HOP_COST` weighted-A* fix
-    // (see those doc comments), even a *walk-only* query (no teleport
-    // edges at all -- a fresh session with no confirmed class yet, since
-    // classes never survive an app restart, see `history::reset`'s own
-    // doc) fanned out across dozens of irrelevant zones before ever
-    // settling `Lower Guk`, and a 2s deadline cut it off before the real
-    // 5-hop chain (Northern Ro -> Oasis of Marr -> Southern Desert of Ro
-    // -> Innothule Swamp -> Upper Guk -> Lower Guk) ever finished --
-    // returning "no route" for a zone the user correctly pointed out is
-    // reachable. The A* fix is the real one (cut that same real query
-    // from 34s/dozens of zones down to ~5s/6 zones, exactly the zones on
-    // the real path), but this deadline stays as the honest backstop for
-    // whatever real-world graph shape it hasn't been measured against
-    // yet -- 12s comfortably covers the ~5s typical case above with
-    // margin, while `hop_distance`'s own per-call deadline check (see its
-    // own doc) and `pathfind::find_path`'s tightened expansion cap keep
-    // any one pathological edge from eating the whole budget alone.
+    // why: teleport edges from every zone give almost everything a low
+    // tentative cost, so nearly everything gets settled before a
+    // walk-only-reachable target does -- measured 60+s even post-A*-fix
+    // for a real dense-teleport query. A wall-clock deadline stops
+    // paying for further real walk-edge evaluations (teleport edges stay
+    // free) and settles for the best route found so far. 12s comfortably
+    // covers the ~5s typical case with margin.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(12); // clock-exempt: real wall-clock search budget, not log time
 
     while let Some(Frontier { g, zone, .. }) = open.pop() {
         if settled.contains(&zone) {
-            continue; // stale heap entry -- a cheaper path already settled this zone
+            continue; // why: stale heap entry, a cheaper path already settled this zone
         }
         settled.insert(zone.clone());
         if zone == to_zone {
@@ -864,28 +565,17 @@ pub fn find_zone_route(
             if settled.contains(&e.to) {
                 continue;
             }
-            // No path from `e.to` reaches `to_zone` at all -- never worth
-            // relaxing, real cost or not (see `hops_to_target`'s own doc).
+            // why: no path from e.to reaches to_zone -- never worth relaxing
             let Some(&h) = h_to_target.get(e.to.as_str()) else {
                 continue;
             };
-            // Past deadline: teleport edges stay free to relax (O(1), no
-            // real cost), but stop paying for further real pathfinding.
-            // Checked per-edge, not once per zone -- a single zone can
-            // carry 60+ teleport-inflated edges (see `zone_graph_for`'s
-            // own doc), so a per-zone check alone could still overshoot
-            // the deadline by a whole zone's worth of real calls.
+            // why: checked per-edge not per-zone -- a zone can carry 60+
+            // teleport-inflated edges, a per-zone check could overshoot
             let past_deadline = std::time::Instant::now() >= deadline; // clock-exempt: real wall-clock search budget, not log time
             if matches!(e.kind, EdgeKind::Walk) && past_deadline {
                 continue;
             }
-            // Walk edges can add *two* hops, not one -- a winning succor
-            // relay (`WalkOutcome::ViaSuccor`) becomes its own explicit
-            // `HopKind::Succor` hop, arriving in `zone` (the zone we're
-            // already in -- succor/difficulty change repositions within a
-            // zone, it never crosses one) followed by the real walk from
-            // there. See `HopKind::Succor`'s own doc for why this can't
-            // stay one blended number the way it used to.
+            // why: a winning succor relay adds two hops, not one -- see HopKind::Succor
             let (new_pos, new_hops) = match &e.kind {
                 EdgeKind::Teleport(spell) => {
                     let landing = teleportdata::landing_for(spell)
@@ -943,10 +633,8 @@ pub fn find_zone_route(
             }
         }
     }
-    // Deadline or MAX_SETTLED cut the search short of settling `to_zone`
-    // -- fall back to whatever tentative route reached it, if any (not
-    // proven optimal, a real reachable route beats no answer at all; see
-    // the comment above `deadline`'s own declaration).
+    // why: deadline/cap cut the search short -- fall back to the best
+    // tentative route, not proven optimal but real and reachable
     best_hops.remove(to_zone).map(|hops| {
         let total = hops.iter().map(|h| h.distance).sum();
         ZoneRoute {
@@ -956,27 +644,11 @@ pub fn find_zone_route(
     })
 }
 
-/// The best available "somewhere in this zone" stand-in for a route's own
-/// first hop, where no live position is part of the query (see
-/// `find_zone_route`'s own doc). Prefers the zone's own first real
-/// succor/evacuate point -- a genuine, game-accurate "you can always be
-/// here" landmark, not a mathematical average that could land inside a
-/// wall or an odd corner of the map -- falling back to the wall-line
-/// centroid only for the 4 real zones with no usable succor coordinate
-/// (see `zonedata::succor_points`'s own doc for exactly which). Succor
-/// coordinates carry no Z (see `SuccorPoint`'s own doc), so the wall-line
-/// average Z stands in for elevation either way.
-///
-/// `pub(crate)`, not just internal to this module: `commands::
-/// live_start_position` reuses this directly for a real, confirmed case
-/// this function's own logic already covers exactly -- Origin (the
-/// class-agnostic AA that returns the caster to their starting city) has
-/// no fixed, wiki-quotable landing coordinate the way Gate/Translocate/
-/// Circle/Ring do (per the user's own point: it's genuinely dynamic, only
-/// knowable by observing where a real cast actually lands), but once
-/// `Ingest::learned_origin` has empirically confirmed *which zone*,
-/// "where in that zone" is exactly this function's own question -- no
-/// second implementation needed.
+/// why: "somewhere in this zone" stand-in for the first hop with no live
+/// position. Prefers the real succor point (a genuine game-accurate
+/// landmark), falls back to wall-line centroid for the 4 zones without
+/// one. `pub(crate)` -- `commands::live_start_position` reuses this for
+/// Origin (no fixed landing coordinate, only knowable empirically per zone).
 pub(crate) fn best_start_position(base_dir: &Path, zone_name: &str) -> (f32, f32, f32) {
     let Some(z) = zonedata::zones().iter().find(|z| z.name == zone_name) else {
         return (0.0, 0.0, 0.0);
@@ -1019,12 +691,8 @@ pub(crate) fn best_start_position(base_dir: &Path, zone_name: &str) -> (f32, f32
 mod tests {
     use super::*;
 
-    /// Real data: Ak'Anon's own `adjacent_zones` names exactly one real
-    /// neighbor (confirmed directly against `packs/zones.json`) -- a
-    /// direct route between them must be exactly one walk hop. A
-    /// nonexistent `base_dir` is fine here -- `hop_distance` falls back to
-    /// `straight_line_fallback` when it can't load a real map, which is
-    /// all this test needs (hop *structure*, not real distance).
+    /// why: Ak'Anon has exactly one real neighbor -- a direct route must
+    /// be one hop; nonexistent base_dir fine, tests hop structure not distance
     #[test]
     fn a_real_direct_adjacency_is_a_single_walk_hop() {
         let route = find_zone_route(
@@ -1039,11 +707,8 @@ mod tests {
         assert_eq!(route.hops.len(), 1, "expected a 1-hop route, got {route:?}");
     }
 
-    /// A real teleport spell's destination zone is reachable from an
-    /// unrelated, non-adjacent zone in a single teleport hop, *when the
-    /// player's assumed class/level actually has it* -- the whole point
-    /// of modeling teleports as "from every zone", not a normal adjacency
-    /// edge, gated by real capability.
+    /// why: a teleport destination is reachable from an unrelated zone
+    /// when the player can actually cast it -- teleports model as "from every zone"
     #[test]
     fn a_real_teleport_spell_is_reachable_when_the_player_can_cast_it() {
         let graph = zone_graph_for(&["Wizard".to_string()], 99);
@@ -1057,10 +722,7 @@ mod tests {
         );
     }
 
-    /// The gating actually gates: a level-1 Wizard doesn't have `North
-    /// Karana Gate` (real level requirement 18, confirmed against the raw
-    /// scrape) yet, and a Warrior never has it at all, regardless of
-    /// level -- neither should see the shortcut.
+    /// why: gating actually gates -- level-1 Wizard and any-level Warrior both excluded
     #[test]
     fn teleport_edges_are_excluded_when_the_player_cannot_cast_them() {
         let too_low_level = zone_graph_for(&["Wizard".to_string()], 1);
@@ -1079,11 +741,7 @@ mod tests {
             .all(|e| matches!(e.kind, EdgeKind::Walk)));
     }
 
-    /// `resolve_zone_name` must handle all three real shapes confirmed in
-    /// the actual pack: a proper display name, the alias table (the
-    /// wiki's own spell-page prose using a shorter name than its
-    /// zone-guide title for the same zone), and a bare map-shortname-style
-    /// string the wiki left unlinked.
+    /// why: must handle all three real shapes -- display name, alias table, bare shortname
     #[test]
     fn resolve_zone_name_handles_all_real_shapes() {
         assert_eq!(
@@ -1094,32 +752,19 @@ mod tests {
             resolve_zone_name("North Karana"),
             Some("Northern Plains of Karana")
         );
-        // "butcher" is Butcherblock Mountains' real who_name shortname,
-        // confirmed directly against packs/zones.json.
+        // why: real Butcherblock Mountains who_name shortname
         assert_eq!(resolve_zone_name("butcher"), Some("Butcherblock Mountains"));
     }
 
-    /// The one real, stated gap in `ZONE_NAME_ALIASES`: `"Grimling
-    /// Forest"` genuinely isn't in the 117-zone scrape at all -- must
-    /// resolve to `None`, not silently guess a near-match.
+    /// why: "Grimling Forest" genuinely isn't in the scrape -- must resolve None, not guess
     #[test]
     fn a_genuinely_unscraped_zone_name_has_no_resolution() {
         assert_eq!(resolve_zone_name("Grimling Forest"), None);
     }
 
-    /// Real, reported bug: a user-suggested route through `Lower Guk`
-    /// looked wrong to them, and it was -- both its final two hops
-    /// (`Innothule Swamp` -> `Upper Guk` and `Upper Guk` -> `Lower Guk`)
-    /// were silently using the generic `straight_line_fallback` constant
-    /// instead of a real computed distance, because the real map files'
-    /// own exit markers use classic in-game zone names (`"to_The_City_of_
-    /// Guk"`, `"to_The_Ruins_of_Old_Guk"`) that never matched `entrance_
-    /// markers`' old loose-substring match against the modern `"Upper
-    /// Guk"`/`"Lower Guk"` names at all -- confirmed directly against the
-    /// real map files. `entrance_markers` now tries `resolve_zone_name`
-    /// first specifically to catch cases like this. Synthetic map data
-    /// here (not the real install) since this is testing the *matching
-    /// logic*, not real geometry.
+    /// why: real reported bug -- classic in-game exit labels never
+    /// matched modern zone names, silently fell back to the generic
+    /// constant. Synthetic map data, testing matching logic not geometry.
     #[test]
     fn classic_in_game_exit_labels_resolve_via_the_alias_table() {
         let map = mapsdata::ParsedZoneMap {
@@ -1158,23 +803,8 @@ mod tests {
         .is_none());
     }
 
-    /// Real, reported bug: the user pointed out a real, valid walking
-    /// route through `Cazic Thule (Zone)` that the router never
-    /// considered -- traced to `walk_graph` matching a zone's own
-    /// `adjacent_zones` entries by *exact* name against the pack's other
-    /// zones, when the pack routinely uses a shorter/older name for the
-    /// neighbor than that neighbor's own canonical `Zone::name` (the same
-    /// inconsistency `resolve_zone_name` already exists to solve for
-    /// teleport landings -- `ZONE_NAME_ALIASES` literally lists this
-    /// exact pair). Confirmed directly against the real pack: `The
-    /// Feerrott`'s own `adjacent_zones` says `"Cazic Thule"` (missing
-    /// "(Zone)"), and `Cazic Thule (Zone)`'s own says `"Feerrott"`
-    /// (missing "The") -- broken in *both* directions, so the edge was
-    /// entirely absent from the graph, not just weighted badly. 29 such
-    /// edges were silently dropped pack-wide before this fix (`resolve_
-    /// zone_name` reused for adjacency resolution, not just teleport
-    /// landings) -- this test is the one the user's own report traced to
-    /// directly, not a synthetic stand-in for the general class of bug.
+    /// why: real reported bug -- exact-name adjacency matching missed
+    /// this pair in both directions, 29 such edges silently dropped pack-wide
     #[test]
     fn cazic_thule_and_feerrott_are_walk_connected_despite_the_real_naming_mismatch() {
         let graph = walk_graph();
@@ -1192,22 +822,8 @@ mod tests {
         );
     }
 
-    /// Real, reported bug: querying a route toward a zone that's a dead
-    /// end behind one narrow real connection (`Lower Guk`'s only
-    /// `adjacent_zones` entry is `Upper Guk`), from a start with a dense
-    /// teleport-augmented graph (a real multi-teleport-class config makes
-    /// `zone_graph_for` put 100+ edges on almost every node), used to spin
-    /// the old candidate-generation DFS for minutes/forever hunting for
-    /// enough successes through overwhelmingly dead-end branches -- the
-    /// user's own report was the whole app freezing with the CPU pegged.
-    /// The Dijkstra rewrite (see this module's top doc) removes that
-    /// failure mode structurally rather than bounding it, but this test
-    /// stays as the regression guard for the *reported symptom*: must
-    /// resolve in well under a second and find the real route through
-    /// Upper Guk. Nonexistent `base_dir` keeps this portable (no real
-    /// install needed) -- see `a_real_direct_adjacency_is_a_single_walk_hop`'s
-    /// own comment for why that's fine for a structural assertion like
-    /// this one.
+    /// why: real reported bug -- dense teleport graph + dead-end target
+    /// used to hang the old candidate-generation DFS (app freeze, CPU pegged)
     #[test]
     fn a_dead_end_zone_behind_a_dense_teleport_graph_resolves_quickly() {
         let start = std::time::Instant::now(); // clock-exempt: test, measures its own real elapsed run time
@@ -1238,19 +854,8 @@ mod tests {
         );
     }
 
-    /// Real, measured bug this fixes, kept as the regression guard: a
-    /// plain 1-hop walk-only query used to fully real-score several
-    /// 2-3-hop alternates through unrelated zones that could never have
-    /// won, because candidate generation was blind to real distance --
-    /// 25s against the actual configured install for `The Northern Desert
-    /// of Ro` -> `Oasis of Marr` (a real, direct adjacency). Dijkstra
-    /// settles the direct 1-hop route and returns as soon as it's popped,
-    /// without ever having to enumerate or score the losing alternates at
-    /// all. Portable (`/nonexistent` base_dir, see the other tests in
-    /// this module for why): asserts the same structural property --
-    /// resolves near-instantly and picks the fewest-hops route when nothing
-    /// distinguishes real distance (every walk hop falls back to the same
-    /// constant), not the real 25s-vs-instant timing itself.
+    /// why: regression guard -- a plain 1-hop query used to score several
+    /// losing multi-hop alternates too, measured 25s; Dijkstra settles direct
     #[test]
     fn a_direct_adjacency_does_not_pay_for_losing_multihop_alternates() {
         let start = std::time::Instant::now(); // clock-exempt: test, measures its own real elapsed run time
@@ -1270,24 +875,16 @@ mod tests {
         assert_eq!(route.expect("route exists").hops.len(), 1);
     }
 
-    /// Real, reported bug: a real teleport spell's landing point (e.g.
-    /// `Translocate: Cazic`'s own wizard-spire coordinates) can genuinely
-    /// be a bad spot to start walking from -- `hop_distance` always
-    /// *computed* the cheaper succor-relay option in that case, but used
-    /// to fold it into the walk hop's own number with no indication a
-    /// real in-game action (Lesser Evacuate, or a difficulty-tier change)
-    /// was needed to actually achieve it. `choose_walk_outcome` is what
-    /// decides this now; these are its two real decision boundaries.
+    /// why: real reported bug -- a teleport landing can be a bad spot to
+    /// walk from; `choose_walk_outcome`'s two real decision boundaries
     #[test]
     fn succor_relay_wins_only_when_it_genuinely_beats_the_direct_walk() {
-        // Succor relay (50) + its cost (100) = 150, strictly cheaper than
-        // walking directly (500) -- must win.
+        // why: relay (50) + cost (100) = 150, strictly cheaper than 500 -- must win
         assert!(matches!(
             choose_walk_outcome(Some(500.0), Some(50.0), || 0.0),
             WalkOutcome::ViaSuccor(50.0)
         ));
-        // Succor relay (50) + its cost (100) = 150, *not* cheaper than a
-        // short direct walk (120) -- must lose, direct wins.
+        // why: relay (50) + cost (100) = 150, not cheaper than a short 120 walk -- direct wins
         assert!(matches!(
             choose_walk_outcome(Some(120.0), Some(50.0), || 0.0),
             WalkOutcome::Direct(120.0)
@@ -1314,21 +911,10 @@ mod tests {
         ));
     }
 
-    /// Real, full-corpus audit, per the user's own direct ask ("try to go
-    /// use all the teleports and make sure they are marked"): every real
-    /// teleport spell's landing zone must resolve to a real `Zone::name`
-    /// via `resolve_zone_name`, or it silently never becomes a usable
-    /// route edge at all (`zone_graph_for` just `continue`s past it, no
-    /// error, no log -- a landing that fails to resolve is invisible, not
-    /// loud). Confirmed against the real, current pack: 102 of 103
-    /// resolve; the one exception (`Grimling Gate` -> `Grimling Forest`)
-    /// is the same already-documented, genuine upstream gap
-    /// `a_genuinely_unscraped_zone_name_has_no_resolution` covers --
-    /// `Grimling Forest` isn't part of this pack's zone scrape at all,
-    /// not a resolution bug. Asserts the exact known-good count, not just
-    /// "no failures", so a *new* unresolved landing (a future teleport
-    /// spell added with a raw zone string this doesn't yet know how to
-    /// read) fails loudly here instead of silently vanishing from routing.
+    /// why: full-corpus audit per direct ask -- every teleport landing
+    /// must resolve or silently vanish from routing; 102/103 do, the one
+    /// exception is the already-documented Grimling Forest gap. Asserts
+    /// the exact count so a new unresolved landing fails loudly.
     #[test]
     fn every_teleport_landing_resolves_except_the_one_documented_gap() {
         let unresolved: Vec<(&str, &str)> = teleportdata::all_landings()
