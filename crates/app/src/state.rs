@@ -7,17 +7,11 @@ use std::sync::{Arc, Mutex};
 
 pub struct AppState {
     pub config: Mutex<Option<AppConfig>>,
-    /// The running tail thread, if a directory has been picked. Replaced
-    /// (old one told to stop) whenever the user changes folders.
+    /// why: replaced (old one stopped) whenever the user changes folders
     pub worker: Mutex<Option<WorkerHandle>>,
-    /// The parsed db: every event classified from the current tail file,
-    /// plus the encounter graph and zone spans built from it. Written by
-    /// the worker thread, queried directly by the Combat module's commands
-    /// -- no round trip through the worker needed to answer a query.
+    /// why: written by worker thread, queried directly by Combat commands
     pub ingest: Arc<Mutex<Ingest>>,
-    /// Lightweight status (file/character/server/watching), separate from
-    /// `ingest` so a toolbar repaint never waits on a combat query and vice
-    /// versa.
+    /// why: separate from `ingest` so a toolbar repaint never blocks on a query
     pub status: Arc<Mutex<TailStatus>>,
 }
 

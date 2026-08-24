@@ -1,21 +1,8 @@
-//! Wires the scraped skill -> class lookup (`packs/skill_classes.json`)
-//! into the live app, same pattern `classdata.rs`/`stancedata.rs` use.
+//! why: skill -> class lookup, same pattern as `classdata.rs`/`stancedata.rs`
 //!
-//! Deliberately small: a skill only counts as class evidence when its
-//! access is purely class-gated, with no other route to it. Confirmed
-//! against eqlwiki.com (fetched 2026-08-19) one skill at a time, not
-//! guessed:
-//! - **Tracking** -- Bard/Druid/Ranger only, no other route. Real
-//!   evidence: "You have become better at Tracking! (N)" (`skill.up`)
-//!   is a genuine, already-parsed log line this pack just never routed
-//!   anywhere.
-//! - **Forage** -- checked and deliberately left out. Bard/Druid/Ranger/
-//!   Shaman get it from class, but Iksar and Wood Elf characters get it
-//!   from *race* regardless of class -- and this app has no race
-//!   detection at all. Treating a Forage skill-up as class-only evidence
-//!   would manufacture a false positive for any Iksar/Wood Elf character
-//!   playing an unrelated class. Left out until race is ever tracked,
-//!   not an oversight.
+//! Only skills purely class-gated count as evidence. Tracking included
+//! (Bard/Druid/Ranger only). Forage deliberately excluded -- Iksar/Wood
+//! Elf get it from race regardless of class, would false-positive.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -24,9 +11,7 @@ const SKILL_DATA_JSON: &str = include_str!("../../../packs/skill_classes.json");
 
 static SKILL_DATA: OnceLock<HashMap<String, Vec<String>>> = OnceLock::new();
 
-/// Classes that can train `skill`, or an empty slice if the name isn't
-/// recognized -- same "unknown, not zero-eligible-classes" stance
-/// `classdata::classes_for` takes for a spell it doesn't have data for.
+/// why: empty means unknown skill, not zero eligible classes
 pub fn classes_for(skill: &str) -> &'static [String] {
     let map = SKILL_DATA.get_or_init(|| {
         serde_json::from_str(SKILL_DATA_JSON)

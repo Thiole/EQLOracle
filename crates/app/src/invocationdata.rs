@@ -1,24 +1,8 @@
-//! Wires the scraped invocation -> class lookup
-//! (`packs/invocation_classes.json`) into the live app, same pattern
-//! `stancedata.rs` uses for stances.
+//! why: invocation -> class lookup, same pattern as `stancedata.rs`
 //!
-//! Confirmed against eqlwiki.com's "Stances & Invocations" page (fetched
-//! 2026-08-19), not guessed: 9 real invocations, each with its own class
-//! list -- "Inviolable" (Bard/Wizard) and "Spellblade" (Beastlord/
-//! Paladin/Ranger/Shadow Knight) are narrow enough to be real evidence;
-//! "Inversion"/"Over Channel"/"Recovery" are essentially "every caster or
-//! hybrid class" and rarely narrow anything on their own, but cost
-//! nothing to include -- they're just as real, the elimination step
-//! either uses them or doesn't.
-//!
-//! Real log line: "You begin reciting the <name> invocation." Checked
-//! against a real character's own log for the exact spelling each
-//! invocation actually prints, which doesn't always match the wiki's own
-//! page-title casing/spacing: "overchannel" and "spellblade" print as one
-//! word (not "Over Channel"/"Spellblade"), and "Empower" prints as
-//! "empowering". `classes_for` normalizes both sides (lowercase, spaces
-//! stripped) plus that one real word-form alias, rather than trusting the
-//! log to match the wiki's own prose exactly.
+//! 9 real invocations confirmed against eqlwiki. Log spelling doesn't
+//! always match wiki casing ("overchannel", "empowering" for Empower) --
+//! `classes_for` normalizes both sides plus that one word-form alias.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -26,7 +10,7 @@ use std::sync::OnceLock;
 const INVOCATION_DATA_JSON: &str = include_str!("../../../packs/invocation_classes.json");
 
 static INVOCATION_DATA: OnceLock<HashMap<String, Vec<String>>> = OnceLock::new();
-/// Normalized (lowercase, no spaces) name -> the JSON's own canonical key.
+/// why: normalized name -> the JSON's own canonical key
 static NORMALIZED_INDEX: OnceLock<HashMap<String, String>> = OnceLock::new();
 
 fn normalize(s: &str) -> String {
@@ -36,9 +20,7 @@ fn normalize(s: &str) -> String {
         .to_lowercase()
 }
 
-/// Classes that grant `invocation`, or an empty slice if the name isn't
-/// recognized. `invocation` is the raw log-text name ("overchannel",
-/// "empowering", ...), not necessarily the wiki's own spelling.
+/// why: `invocation` is the raw log-text spelling, not the wiki's
 pub fn classes_for(invocation: &str) -> &'static [String] {
     let map = INVOCATION_DATA.get_or_init(|| {
         serde_json::from_str(INVOCATION_DATA_JSON)
@@ -47,8 +29,7 @@ pub fn classes_for(invocation: &str) -> &'static [String] {
     let index = NORMALIZED_INDEX.get_or_init(|| {
         let mut idx: HashMap<String, String> =
             map.keys().map(|k| (normalize(k), k.clone())).collect();
-        // Real word-form difference confirmed in a real log: the client
-        // prints "empowering", the wiki's own page title is "Empower".
+        // why: client log prints "empowering", wiki page title is "Empower"
         idx.insert(normalize("empowering"), "Empower".to_string());
         idx
     });

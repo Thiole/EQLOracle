@@ -1,12 +1,7 @@
-//! The real per-class HP formula -- pulled from the same source spreadsheet
-//! as `crate::manadata`'s mana formula (that module's own doc has the full
-//! provenance story). Structurally the same shape as mana -- a per-class,
-//! per-level `(base, fac)` pair, summed over the *top two* of the active
-//! trio -- but keyed off STA instead of INT/WIS, every class has an HP
-//! pool (no WAR/MNK/ROG/BER-style exclusion the way mana has), and there's
-//! a flat `+5` added once at the very end rather than folded into either
-//! class's own contribution -- confirmed directly from the source
-//! spreadsheet's own `Char_Builder` sheet (`=5+LARGE(...,1)+LARGE(...,2)`).
+//! why: per-class HP formula, same source spreadsheet as `crate::manadata`
+//!
+//! Same shape as mana (per-class/level `(base, fac)`, summed over top two
+//! of the trio) but keyed off STA, every class has HP, plus a flat +5.
 
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -14,9 +9,7 @@ use std::sync::OnceLock;
 
 const HP_TABLE_JSON: &str = include_str!("../../../packs/hp_table.json");
 
-/// Flat HP every character gets regardless of class or stats -- the
-/// `Char_Builder` sheet's own `5 + ...` on top of the summed class
-/// contributions.
+/// why: flat HP every character gets, `Char_Builder`'s own `5 + ...`
 pub(crate) const HP_BASE: f64 = 5.0;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -45,12 +38,8 @@ fn hp_row(class_code: &str, level: u8) -> Option<(f64, f64)> {
     Some((row.hp, row.hp_fac))
 }
 
-/// EQ's own "adjusted" STA for HP purposes -- confirmed directly from the
-/// source spreadsheet's `Calc_Backend` sheet (`Adjusted STA (for HP)`
-/// cell): full value up to 255, then diminishing returns above it. A
-/// *different* threshold and shape from `manadata::conv_stat`'s own
-/// INT/WIS adjustment -- HP and mana clearly aren't the same formula
-/// reused, so this isn't factored to share code with that one.
+/// why: EQ's adjusted STA for HP -- full to 255, diminishing above;
+/// different curve from `manadata::conv_stat`'s INT/WIS, not shared code
 pub(crate) fn adjusted_sta(sta: f64) -> f64 {
     if sta > 255.0 {
         ((sta - 255.0) / 2.0).round() + 255.0
@@ -59,8 +48,7 @@ pub(crate) fn adjusted_sta(sta: f64) -> f64 {
     }
 }
 
-/// One class's own HP contribution at `level`, given `sta` (its total
-/// value, gear included). `None` for a level outside 1-50.
+/// why: one class's HP contribution at `level`; `None` outside 1-50
 pub(crate) fn class_hp_contribution(class_code: &str, level: u8, sta: f64) -> Option<f64> {
     let (base, fac) = hp_row(class_code, level)?;
     Some((base + fac * adjusted_sta(sta)).floor())
@@ -78,9 +66,7 @@ mod tests {
         assert_eq!(adjusted_sta(300.0), 278.0); // 255 + round((300-255)/2) = 255 + round(22.5) = 255+23
     }
 
-    /// The source spreadsheet's own worked example (`Char_Builder` sheet):
-    /// Iksar Magician/Warrior/Rogue, total STA 100 -> HP 621 at level 10,
-    /// 3705 at level 50.
+    /// why: source spreadsheet's own worked example, Iksar MAG/WAR/ROG STA 100
     #[test]
     fn matches_the_source_spreadsheets_worked_example() {
         for &(level, expected) in &[(10u8, 621.0), (50u8, 3705.0)] {

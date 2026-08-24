@@ -1,23 +1,13 @@
-//! A mob's name as the log states it doesn't always match the wiki's own
-//! bestiary page title -- same gap `zone.rs`'s `ZONE_ALIASES` closes for
-//! zones, for the same reason (two independent scrapes/sources, not a
-//! formatting difference `eq_ignore_ascii_case` alone can bridge).
+//! why: log mob names don't always match the wiki bestiary title
 //!
-//! Confirmed real case: the log calls him "Innoruuk, the Prince of Hate"
-//! (`packs/eql.toml`'s own `melee.hit` examples), but `packs/npcs.json`'s
-//! entry (id `Innoruuk_(God)`) has `name: "Innoruuk"` -- the "(God)"
-//! disambiguator lives only in the id/URL slug, and the log's own longer
-//! title doesn't appear on the wiki page at all.
+//! Same gap `zone.rs`'s `ZONE_ALIASES` closes for zones. Confirmed case:
+//! log says "Innoruuk, the Prince of Hate", `packs/npcs.json` has just
+//! "Innoruuk" -- the "(God)" disambiguator lives only in the id slug.
 
-/// Log name -> wiki `Npc::name`. Keep short; add an entry only once a real
-/// mismatch is confirmed against `packs/npcs.json`, the same standard
-/// `ZONE_ALIASES` holds itself to.
+/// why: log name -> wiki `Npc::name`, add only on a confirmed mismatch
 const MOB_ALIASES: &[(&str, &str)] = &[("Innoruuk, the Prince of Hate", "Innoruuk")];
 
-/// Whether `raw` (a mob name as `Store::name` / an encounter's own target
-/// holds it) and `wiki_name` (`npcdata::Npc::name`) refer to the same
-/// mob. The one function anything cross-referencing a log mob name
-/// against the bestiary should call.
+/// why: the one function anything should call to match log mob to wiki mob
 pub fn mob_matches(raw: &str, wiki_name: &str) -> bool {
     if raw.eq_ignore_ascii_case(wiki_name) {
         return true;
@@ -27,9 +17,7 @@ pub fn mob_matches(raw: &str, wiki_name: &str) -> bool {
         .any(|(k, v)| k.eq_ignore_ascii_case(raw) && v.eq_ignore_ascii_case(wiki_name))
 }
 
-/// Every alias pair, for exposing to the frontend (`get_name_aliases`) so
-/// Game Data's own cross-links can resolve the same mismatches this file
-/// already knows about, without a second, driftable copy of the table.
+/// why: exposes the table to the frontend, avoids a second driftable copy
 pub fn all() -> &'static [(&'static str, &'static str)] {
     MOB_ALIASES
 }

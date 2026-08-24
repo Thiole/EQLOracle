@@ -7,9 +7,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-// Every module lives in the library target (src/lib.rs), not here -- see
-// that file's own doc for why a bin-side `mod ingest;` alongside the
-// lib's own would silently produce two incompatible `Ingest` types.
+// why: modules live in lib.rs -- a bin-side `mod ingest;` here would
+// silently produce a second, incompatible `Ingest` type
 use eqlp_app::{commands, config, history, state::AppState, tail_worker};
 use tauri::Manager;
 
@@ -20,8 +19,7 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             let state = app.state::<AppState>();
-            // Every start parses clean -- see `history`'s module doc for
-            // why persisted parse history doesn't survive a restart.
+            // why: every start parses clean, history doesn't survive a restart
             history::reset(&handle);
             if let Some(cfg) = config::load(&handle) {
                 let log_dir = cfg.log_dir();
@@ -35,9 +33,7 @@ fn main() {
                     );
                     *state.worker.lock().unwrap() = Some(worker);
                 }
-                // Directory on record but gone (drive unmounted, prefix
-                // moved): fall through to the setup screen rather than
-                // spin up a worker that can only ever see `Missing`.
+                // why: dir on record but gone -- fall through to setup screen
             }
             Ok(())
         })
