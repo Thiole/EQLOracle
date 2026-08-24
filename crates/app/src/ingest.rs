@@ -1017,13 +1017,14 @@ impl Ingest {
                     crate::classdata::classes_for(base),
                 );
             }
-            Action::CastResisted { spell } => {
-                // why: pattern hardcodes "resisted your", caster is always
-                // the player, resister's name never extracted
-                let you = self.sym("You").0;
+            Action::CastResisted { source, spell } => {
+                let src = self.sym(&source).0;
                 let spell_sym = self.store.sym(base_spell_name(&spell)).0;
                 self.casts
-                    .resolve(ts, you, spell_sym, CastOutcome::Resisted);
+                    .resolve(ts, src, spell_sym, CastOutcome::Resisted);
+            }
+            Action::PetSpellWoreOff { spell } => {
+                self.record_effect_ping(ts, "Your pet", &spell);
             }
             Action::CastInterrupted { source, spell } => {
                 let src = self.sym(&source).0;
@@ -1540,13 +1541,15 @@ impl Ingest {
 
     /// why: live-tail's entry point for checking an unmatched line against
     /// the flavor dictionary; backfill does this itself during parallel
-    /// classification instead (no Ingest access there). Three checks,
+    /// classification instead (no Ingest access there). Four checks,
     /// cheapest/most specific first: (1) direct first-person hit --
     /// always a state ping, conditionally class evidence inside a
     /// still-open Quick Buff window; (2) third-person possessive; (3)
-    /// third-person conjugated. (2)/(3) are never class evidence -- a
-    /// third-person line doesn't prove even an ally cast it. Return value
-    /// tells the caller whether the line is understood, just not by a rule.
+    /// third-person conjugated; (4) spell-identity dictionary (a
+    /// different lookup from (1)-(3): names the exact spell, not just
+    /// its classes, so it can also confirm a pending cast actually
+    /// landed -- see `confirm_spell_effect`). Return value tells the
+    /// caller whether the line is understood, just not by a rule.
     fn flavor_evidence_for(&mut self, ts: Millis, text: &str) -> bool {
         let classes = crate::flavordata::classes_for_flavor(text);
         if !classes.is_empty() {
@@ -1562,7 +1565,25 @@ impl Ingest {
             self.record_effect_ping(ts, &who, &canonical);
             return true;
         }
+        if let Some(m) = crate::spelltext::match_spell_text(text) {
+            self.confirm_spell_effect(ts, m);
+            return true;
+        }
         false
+    }
+
+    /// why: shared by the live path (flavor_evidence_for) and backfill's
+    /// sequential merge -- a landing confirms whatever pending cast of
+    /// this exact spell "You" have open (a safe no-op if there isn't
+    /// one, see `CastResolver::resolve`'s own doc); a wears-off is the
+    /// opposite end of an already-landed buff, nothing to resolve.
+    fn confirm_spell_effect(&mut self, ts: Millis, m: crate::spelltext::SpellTextMatch) {
+        self.record_effect_ping(ts, &m.target, m.spell);
+        if !m.is_wearsoff {
+            let you = self.sym("You").0;
+            let spell_sym = self.store.sym(m.spell).0;
+            self.casts.confirm_landed(ts, you, spell_sym);
+        }
     }
 
     /// why: unconditional timestamped ping on target_name, resolved
@@ -1927,8 +1948,20 @@ enum Action {
         who: String,
         spell: String,
     },
-    /// why: pattern hardcodes "resisted your", caster always the player, resister never extracted
+    /// why: three real phrasings resolve here now -- "X resisted your Y!"
+    /// (source hardcoded "You" at the call site, resister never
+    /// extracted -- irrelevant, the cast tracker is keyed by caster),
+    /// "You resist X's Y!", and third-party "X resisted Y's Z!" (neither
+    /// side is You; still real, still worth resolving -- the cast
+    /// tracker is multi-actor already, see `Action::Cast`'s own handling)
     CastResisted {
+        source: String,
+        spell: String,
+    },
+    /// why: same shape as `state.charm_broken`'s own "worn off of
+    /// <target>" rule, but for a pet's buff specifically -- no target to
+    /// extract, always "Your pet"
+    PetSpellWoreOff {
         spell: String,
     },
     /// why: source already resolved to a bare name, possessive stripped by the pattern
@@ -2261,12 +2294,25 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             Some(Action::Cast { who, spell })
         }
         "spell.resisted" => Some(Action::CastResisted {
+            source: "You".to_string(),
+            spell: str_field("spell")?,
+        }),
+        "spell.you_resisted" | "spell.resisted_by" => Some(Action::CastResisted {
+            source: str_field("caster")?,
             spell: str_field("spell")?,
         }),
         "cast.blocked" => Some(Action::CastBlocked {
             spell: str_field("spell")?,
             target: str_field("target")?,
             blocker: str_field("blocker"),
+        }),
+        "cast.blocked_self" => Some(Action::CastBlocked {
+            spell: str_field("spell")?,
+            target: "You".to_string(),
+            blocker: str_field("blocker"),
+        }),
+        "spell.pet_wore_off" => Some(Action::PetSpellWoreOff {
+            spell: str_field("spell")?,
         }),
         "state.you_poisoned" => Some(Action::StateEffect {
             target: "You".to_string(),
@@ -2689,6 +2735,14 @@ enum Classified {
         who: String,
         text: String,
     },
+    /// why: spell-identity dictionary hit -- a different lookup from the
+    /// two above, carries the spell itself so the sequential merge can
+    /// also confirm a pending cast landed
+    SpellEffectHit {
+        spell: &'static str,
+        target: String,
+        is_wearsoff: bool,
+    },
 }
 
 /// why: one chunk's classification, replayed sequentially; keeps every
@@ -2755,6 +2809,17 @@ fn classify_chunk(engine: &Engine, lines: &[&[u8]]) -> ChunkResult {
                         Some(Classified::ThirdPersonFlavorHit {
                             who,
                             text: canonical,
+                        }),
+                    ));
+                    true
+                } else if let Some(m) = crate::spelltext::match_spell_text(&text) {
+                    let ts_ms = ts.secs() * 1000;
+                    matched.push((
+                        ts_ms,
+                        Some(Classified::SpellEffectHit {
+                            spell: m.spell,
+                            target: m.target,
+                            is_wearsoff: m.is_wearsoff,
                         }),
                     ));
                     true
@@ -2849,6 +2914,20 @@ pub fn backfill_lines(ing: &mut Ingest, engine: &Engine, lines: &[&[u8]], thread
                 }
                 Some(Classified::ThirdPersonFlavorHit { who, text }) => {
                     ing.record_effect_ping(ts_ms, &who, &text);
+                }
+                Some(Classified::SpellEffectHit {
+                    spell,
+                    target,
+                    is_wearsoff,
+                }) => {
+                    ing.confirm_spell_effect(
+                        ts_ms,
+                        crate::spelltext::SpellTextMatch {
+                            spell,
+                            target,
+                            is_wearsoff,
+                        },
+                    );
                 }
                 None => {}
             }
@@ -3292,8 +3371,8 @@ mod unmatched_shape_tests {
     /// show up here, one matched line unaffected; 4 threads on 6 lines
     /// forces multiple chunks, exercising the per-thread merge
     const LINES: &str = "\
-[Tue Jul 28 15:02:14 2026] Xscyte's hand is covered with a dull aura.
-[Tue Jul 28 15:02:15 2026] Harli's hand is covered with a dull aura.
+[Tue Jul 28 15:02:14 2026] Xscyte's hand is covered with a nonexistent aura.
+[Tue Jul 28 15:02:15 2026] Harli's hand is covered with a nonexistent aura.
 [Tue Jul 28 15:02:16 2026] The jig sends energy zinging through your body.
 [Tue Jul 28 15:02:17 2026] Deathklokk's voice booms.
 [Tue Jul 28 15:02:18 2026] Moxie's voice booms.
@@ -3308,12 +3387,12 @@ mod unmatched_shape_tests {
         backfill_lines(&mut ing, &engine, &lines, 4);
 
         // why: counts every rule-engine miss regardless of flavor-recognition -- pattern match, not understanding
-        assert_eq!(ing.counts.unmatched, 5); // dull-aura x2 + jig + voice-booms x2
+        assert_eq!(ing.counts.unmatched, 5); // nonexistent-aura x2 + jig + voice-booms x2
         assert_eq!(ing.counts.matched, 1); // death.you_slew
         assert_eq!(
             ing.unmatched_shapes_distinct(),
             1,
-            "only the genuinely-unrecognized dull-aura pair should cluster here"
+            "only the genuinely-unrecognized nonexistent-aura pair should cluster here"
         );
         assert_eq!(ing.unmatched_shapes_overflow(), 0);
 
@@ -3326,7 +3405,7 @@ mod unmatched_shape_tests {
             .map(|(_, s)| String::from_utf8_lossy(&s.example).into_owned())
             .collect();
         assert!(
-            examples.iter().any(|e| e.contains("dull aura")),
+            examples.iter().any(|e| e.contains("nonexistent aura")),
             "the genuinely-unrecognized pair should be kept as the example"
         );
         assert!(
@@ -3348,7 +3427,7 @@ mod unmatched_shape_tests {
         let mut matcher = engine.matcher();
         let mut ing = Ingest::default();
         for line in [
-            &b"[Tue Jul 28 15:02:14 2026] Xscyte's hand is covered with a dull aura."[..],
+            &b"[Tue Jul 28 15:02:14 2026] Xscyte's hand is covered with a nonexistent aura."[..],
             &b"[Tue Jul 28 15:02:16 2026] The jig sends energy zinging through your body."[..],
             &b"[Tue Jul 28 15:02:17 2026] Deathklokk's voice booms."[..],
         ] {
@@ -3360,12 +3439,12 @@ mod unmatched_shape_tests {
         assert_eq!(
             ing.unmatched_shapes_distinct(),
             1,
-            "only the genuinely-unrecognized dull-aura line should show up"
+            "only the genuinely-unrecognized nonexistent-aura line should show up"
         );
         let top = ing.unmatched_shapes_top(10);
         assert!(top
             .iter()
-            .any(|(_, s)| String::from_utf8_lossy(&s.example).contains("dull aura")));
+            .any(|(_, s)| String::from_utf8_lossy(&s.example).contains("nonexistent aura")));
         assert!(
             !top.iter().any(|(_, s)| {
                 let e = String::from_utf8_lossy(&s.example);
@@ -4048,8 +4127,9 @@ mod effect_ping_tests {
     fn a_possessive_line_that_does_not_reconstruct_a_known_message_pings_nothing() {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
-        let lines: Vec<&[u8]> =
-            vec![b"[Fri Aug 07 16:30:31 2026] Bravesirrobin's hand is covered with a dull aura."];
+        let lines: Vec<&[u8]> = vec![
+            b"[Fri Aug 07 16:30:31 2026] Bravesirrobin's hand is covered with a nonexistent aura.",
+        ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let bravesirrobin = ing.store.names.get("Bravesirrobin");

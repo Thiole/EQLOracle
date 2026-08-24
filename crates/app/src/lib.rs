@@ -39,6 +39,7 @@ pub mod skilldata;
 pub mod skyquests;
 pub mod spelldata;
 pub mod spelleffect;
+pub mod spelltext;
 pub mod stackingdata;
 pub mod stancedata;
 pub mod state;

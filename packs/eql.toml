@@ -1113,6 +1113,36 @@ who = { from = "who", as = "str" }
 spell = { from = "spell", as = "str" }
 
 [[rule]]
+id = "spell.you_resisted"
+kind = "resist"
+priority = 40
+anchors = ["You resist "]
+# The mirror of spell.resisted -- an incoming spell landing on the
+# player, resisted. Present tense ("resist" not "resisted"), unlike
+# every other resist line here -- confirmed real, not a typo.
+pattern = '''^You resist (?P<caster>.+?)'s (?P<spell>.+?)!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You resist Unbound Flame's Instill!"]
+[rule.fields]
+caster = { from = "caster", as = "str" }
+spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "spell.resisted_by"
+kind = "resist"
+priority = 40
+anchors = ["resisted "]
+excludes = ["resisted your"]
+# Third-party form of spell.resisted -- neither side is the player, both
+# named explicitly instead of "your". Excludes "resisted your" so that
+# more specific rule keeps owning its own case.
+pattern = '''^(?P<who>.+?) resisted (?P<caster>.+?)'s (?P<spell>.+?)!$'''
+examples = ["[Thu Jul 30 18:51:45 2026] Gynok Moltor resisted Kobeker's Cease!"]
+[rule.fields]
+who = { from = "who", as = "str" }
+caster = { from = "caster", as = "str" }
+spell = { from = "spell", as = "str" }
+
+[[rule]]
 id = "cast.blocked"
 kind = "cast"
 priority = 40
@@ -1132,6 +1162,34 @@ examples = [
 spell = { from = "spell", as = "str" }
 target = { from = "target", as = "str" }
 blocker = { from = "blocker", as = "str" }
+
+[[rule]]
+id = "cast.blocked_self"
+kind = "cast"
+priority = 40
+anchors = ["did not take hold."]
+# Sibling of cast.blocked -- same "(Blocked by X.)" clause, but self-cast
+# (no "on <target>" at all, confirmed real: 333/1419 of these lines).
+# Target is always You -- there's no third-person form of this either.
+pattern = '''^Your (?P<spell>.+?) spell did not take hold\.(?: \(Blocked by (?P<blocker>.+?)\.\))?$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your Mist spell did not take hold. (Blocked by Turtle Skin.)"]
+[rule.fields]
+spell = { from = "spell", as = "str" }
+blocker = { from = "blocker", as = "str" }
+
+[[rule]]
+id = "spell.pet_wore_off"
+kind = "spell"
+priority = 40
+anchors = ["Your pet's "]
+# Sibling of state.charm_broken's "worn off of <target>" shape, but for
+# any of a pet's own buffs -- confirmed real: every "Your <spell> spell
+# has worn off." line in the reference log is this pet form (1601/1601),
+# never a non-pet equivalent.
+pattern = '''^Your pet's (?P<spell>.+?) spell has worn off\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your pet's Clinging Darkness spell has worn off."]
+[rule.fields]
+spell = { from = "spell", as = "str" }
 
 [[rule]]
 id = "pet.summoned"
