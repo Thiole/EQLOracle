@@ -23,8 +23,25 @@ export const BENEFICIAL_TYPES = new Set([
   'Beneficial', 'Statistic Buff', 'Resist Buff', 'Utility Beneficial', 'Heal', 'Heal Over Time',
   'Pet Buff', 'Pet Heal', 'Haste', 'Cure', 'Movement Buff', 'Remove Curse',
 ]);
+
+/** why: real bug -- 167 real Beneficial-typed spells (food/water/reagent/
+ * tradeskill-bar conjuring, "Enchant Gold" etc.) are Summon effects, not
+ * stat buffs; anchored at the start of the effect text on purpose --
+ * "Limit Effect: Exclude Summon Item" (a real AA clause on genuine buffs
+ * like Reagent Conservation) must not false-positive on the substring. */
+export function isSummon(s: SpellDto): boolean {
+  return s.slots.some((sl) => /^Summon/i.test(sl.effect));
+}
+
+/** why: real bug -- Translocate/Teleport/Gate/Circle-of/Portal lines are
+ * all Beneficial-typed with a Single/Group target, so they'd otherwise
+ * pass as a solo/team buff; these are movement, not a combat/support buff. */
+export function isTeleport(s: SpellDto): boolean {
+  return s.slots.some((sl) => /^(Translocate|Teleport|Evacuate|Gate)\b/i.test(sl.effect));
+}
+
 export function isBuff(s: SpellDto): boolean {
-  return !!s.spell_type && BENEFICIAL_TYPES.has(s.spell_type);
+  return !!s.spell_type && BENEFICIAL_TYPES.has(s.spell_type) && !isSummon(s) && !isTeleport(s);
 }
 
 /** why: lands on you or one other friendly, not a whole group */
