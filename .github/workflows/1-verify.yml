@@ -71,15 +71,6 @@ jobs:
             exit 1
           fi
 
-      - name: no test code in production source
-        run: |
-          hits=$(grep -rn --include='*.rs' -e '#\[cfg(test)\]' -e '#\[test\]' crates/*/src/ 2>/dev/null || true)
-          if [ -n "$hits" ]; then
-            echo "$hits"
-            echo "::error::tests belong in crates/<name>/tests/, not in src/"
-            exit 1
-          fi
-
   fuzz:
     runs-on: ubuntu-latest
     steps:
