@@ -298,12 +298,22 @@ fn build_dto(spell: &Spell, rank: u8) -> Option<DamageSpellDto> {
 }
 
 /// why: every damage-capable spell, rank-adjusted; unfiltered by
-/// class/level -- caller already has that filtering logic
-pub fn list_damage_spells(ing: &crate::ingest::Ingest) -> Vec<DamageSpellDto> {
+/// class/level -- caller already has that filtering logic.
+/// `assume_max_rank`: substitutes a flat rank 10 for every spell instead
+/// of this session's observed rank -- a "what would be best once maxed"
+/// preview, reusing the same verified scaling math.
+pub fn list_damage_spells(
+    ing: &crate::ingest::Ingest,
+    assume_max_rank: bool,
+) -> Vec<DamageSpellDto> {
     spelldata::spells()
         .iter()
         .filter_map(|s| {
-            let rank = ing.spell_ranks.rank_of(&s.name).unwrap_or(0);
+            let rank = if assume_max_rank {
+                10
+            } else {
+                ing.spell_ranks.rank_of(&s.name).unwrap_or(0)
+            };
             build_dto(s, rank)
         })
         .collect()

@@ -1,7 +1,9 @@
 <script lang="ts">
   import { Card, CardContent } from '$lib/components/ui/card';
+  import { Checkbox } from '$lib/components/ui/checkbox';
   import { ICON_BASE, ALL_CLASSES, MAX_CHARACTER_LEVEL } from '$lib/character/constants';
-  import { activeClasses } from '$lib/stores/character';
+  import { activeClasses, damageSpells } from '$lib/stores/character';
+  import { usableClasses as levelUsableClasses, lineKey, simulateRotation, collapseSequence } from '$lib/character/spellSuggest';
   import { api, type DamageSpellDto } from '$lib/tauri/api';
 
   // why: three modes, matching exactly what was asked for -- DPM
@@ -38,34 +40,29 @@
     selectedClasses = selectedClasses.includes(c) ? selectedClasses.filter((x) => x !== c) : [...selectedClasses, c];
   }
 
-  let spells = $state<DamageSpellDto[] | null>(null);
-  let loadError = $state<string | null>(null);
+  // why: "assume rank 10" swaps the whole data source to a hypothetical
+  // max-rank preview ("what's worth ranking up") instead of this
+  // session's real observed ranks -- fetched separately since it's a
+  // distinct dataset, not something the shared real-rank store carries.
+  let assumeMaxRank = $state(false);
+  let assumeMaxRankSpells = $state<DamageSpellDto[] | null>(null);
+  let assumeMaxRankError = $state<string | null>(null);
   $effect(() => {
+    if (!assumeMaxRank || assumeMaxRankSpells !== null) return;
     api
-      .getDamageSpells()
-      .then((s) => (spells = s))
-      .catch((e) => (loadError = e instanceof Error ? e.message : String(e)));
+      .getDamageSpells(true)
+      .then((s) => (assumeMaxRankSpells = s))
+      .catch((e) => (assumeMaxRankError = e instanceof Error ? e.message : String(e)));
   });
+  const spells = $derived(assumeMaxRank ? assumeMaxRankSpells : $damageSpells);
 
   // why: usable = at least one class entry (scoped to the selected
   // classes, if any are chosen) at or below the level cap -- the exact
   // same rule the "Suggested spells" picker above already uses, so what
   // shows up here never quietly disagrees with what shows up there.
   function usableClasses(s: DamageSpellDto) {
-    const pool = s.classes.filter((c) => c.level == null || c.level <= MAX_CHARACTER_LEVEL);
+    const pool = levelUsableClasses(s.classes);
     return selectedClasses.length ? pool.filter((c) => selectedClasses.includes(c.class)) : pool;
-  }
-
-  // why: groups same spell-line variants ("System Shock III"/"IV"/"V")
-  // under one key so a rotation never doubles up on two tiers of the
-  // same effect -- a pure grouping key, not a rank claim (unlike the
-  // reverted spellRank.ts attempt, the stripped numeral is never shown
-  // or treated as "this spell's rank", only used to notice two names
-  // belong to the same family).
-  function lineKey(name: string): string {
-    const parts = name.split(' ');
-    const tail = parts[parts.length - 1];
-    return tail.length > 0 && /^[IVXLCDM]+$/.test(tail) ? parts.slice(0, -1).join(' ') : name;
   }
 
   function metricOf(s: DamageSpellDto): number {
@@ -149,96 +146,18 @@
     return [...groups.values()];
   });
 
-  // why: "worth maintaining" per-DoT test, direct correction applied --
-  // a DoT's own `dps_ignoring_reuse` excludes its tick stream entirely
-  // now (see api.ts's own doc on `instant_damage`), so it can no longer
-  // be compared against a nuke's rate the way it used to be. Reworked
-  // around the real opportunity-cost question instead: casting a DoT
-  // commits `casting_time` seconds that could otherwise have gone to
-  // nuking at the nuke's own real sustained rate (`dps_with_reuse`).
-  // Assuming the DoT is refreshed right as it expires (never early --
-  // "reapplying before duration runs out hurts DPS" is exactly the
-  // assumption already built into `duration_secs` cost of nothing else
-  // happening), its *own* full lifetime `total_damage` is what that
-  // commitment buys. So the DoT is worth it exactly when
-  // `total_damage / casting_time` (damage bought per second of that
-  // commitment) beats what nuking that same stretch of time would have
-  // earned (`bestNuke.dps_with_reuse`) -- the DoT's own recast timer
-  // doesn't enter into this at all, since duration (not recast) is what
-  // paces a "never refresh early" DoT.
-  function dotValuePerCastSecond(d: DamageSpellDto): number {
-    return d.total_damage / d.casting_time;
-  }
-
-  // why: the actual auto-suggest -- best nuke by the chosen metric, plus
-  // any DoT clearing the opportunity-cost bar above. Capped at 3 DoTs +
-  // 1 nuke so this stays a short rotation, not the whole spellbook.
-  const rotation = $derived.by(() => {
-    const nukes = deduped.filter((s) => !s.is_dot);
-    const dots = deduped.filter((s) => s.is_dot);
-    const bestNuke = nukes.length ? nukes.reduce((a, b) => (metricOf(b) > metricOf(a) ? b : a)) : null;
-    const threshold = bestNuke?.dps_with_reuse ?? 0;
-    const worthwhileDots = dots
-      .filter((d) => dotValuePerCastSecond(d) > threshold)
-      .sort((a, b) => dotValuePerCastSecond(b) - dotValuePerCastSecond(a))
-      .slice(0, 3);
-    return bestNuke ? [...worthwhileDots, bestNuke] : worthwhileDots;
-  });
-
-  // why: a single nuke's own "DPS (no reuse)" is a fiction -- something
-  // has to fill the gap while it's on cooldown. Weaving with a *second*
-  // real nuke is how that's actually achieved: cast A, then immediately
-  // B while A is on its own recast timer, then back to A -- as long as
-  // each spell's own recast finishes before its next turn comes back
-  // around, neither one is ever waited on. Cycle length is the larger of
-  // (total cast time for one full lap) and (the slowest single spell's
-  // own recast, which sets a hard floor no amount of weaving can beat).
-  // Checked against the exact case asked about: this character's own
-  // Conflagration + Ice Comet, recast 1.5s each vs. 5s cast times each
-  // -- recast is never the bottleneck here, so the pair's sustained DPS
-  // really does land close to summing their two "no reuse" rates.
-  function pairCycleDps(a: DamageSpellDto, b: DamageSpellDto): number {
-    const cycle = Math.max(a.casting_time + b.casting_time, a.recast_time, b.recast_time);
-    return (a.total_damage + b.total_damage) / cycle;
-  }
-
-  const bestWeavePair = $derived.by(() => {
-    const nukes = deduped.filter((s) => !s.is_dot);
-    if (nukes.length < 2) return null;
-    // why: capped to a small top-N pool by solo no-reuse rate -- an
-    // O(n^2) pair search over the full ~80-candidate list is wasted
-    // work when the best pair is always going to be drawn from the
-    // strongest individual spells anyway.
-    const pool = [...nukes].sort((a, b) => b.dps_ignoring_reuse - a.dps_ignoring_reuse).slice(0, 8);
-    let best: { a: DamageSpellDto; b: DamageSpellDto; dps: number } | null = null;
-    for (let i = 0; i < pool.length; i++) {
-      for (let j = i + 1; j < pool.length; j++) {
-        const dps = pairCycleDps(pool[i], pool[j]);
-        if (!best || dps > best.dps) best = { a: pool[i], b: pool[j], dps };
-      }
-    }
-    return best;
-  });
+  // why: real damage-over-a-window simulation, generalizing the old
+  // single best-nuke-vs-worthwhile-DoT and 2-nuke weave-pair heuristics
+  // into an actual N-spell timeline -- see simulateRotation's own doc
+  // in spellSuggest.ts for the algorithm.
+  let rotationWindow = $state<15 | 60>(60);
+  const rotationResult = $derived(simulateRotation(deduped, rotationWindow));
+  const rotationChips = $derived(collapseSequence(rotationResult.sequence));
 
   const ranked = $derived.by(() => [...deduped].sort((a, b) => metricOf(b) - metricOf(a)).slice(0, 30));
 
   function fmt(n: number): string {
     return n.toLocaleString(undefined, { maximumFractionDigits: 1 });
-  }
-
-  // why: the rotation chip's own displayed rate -- for a nuke, whatever
-  // metric the toggle above has selected, same as everywhere else. For
-  // a DoT specifically, always its `dps_with_reuse` regardless of that
-  // toggle: that's the number the "worth maintaining" decision itself
-  // was made on, and showing `dps_ignoring_reuse` here (0 for most real
-  // DoTs, since it excludes the tick stream on purpose) would make a
-  // DoT that's genuinely earning its slot in the rotation look like it
-  // contributes nothing.
-  function rotationMetric(s: DamageSpellDto): number {
-    return s.is_dot ? s.dps_with_reuse : metricOf(s);
-  }
-  function rotationMetricLabel(s: DamageSpellDto): string {
-    return s.is_dot ? 'DPS' : metricLabel();
   }
 </script>
 
@@ -290,6 +209,10 @@
           </button>
         {/each}
       </div>
+      <label class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Checkbox checked={assumeMaxRank} onCheckedChange={(v: boolean) => (assumeMaxRank = v)} />
+        assume rank 10
+      </label>
     </div>
     {#if invocation === 'arcane_mastery'}
       {@const n = countInSet(INTEL_CLASSES)}
@@ -309,49 +232,48 @@
       </p>
     {/if}
 
-    {#if loadError}
-      <p class="text-[12px] text-destructive">{loadError}</p>
+    {#if assumeMaxRank && assumeMaxRankError}
+      <p class="text-[12px] text-destructive">{assumeMaxRankError}</p>
     {:else if !spells}
       <p class="text-[12px] text-muted-foreground">Loading…</p>
-    {:else if !rotation.length}
+    {:else if !deduped.length}
       <p class="text-[11px] text-muted-foreground">No usable damage spells found for the selected class(es) yet.</p>
     {:else}
       <div class="mb-3">
-        <h3 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Suggested rotation</h3>
-        <div class="flex flex-wrap gap-1.5">
-          {#each rotation as s (s.name)}
-            <div class="flex items-center gap-1.5 rounded-sm border border-primary/40 bg-primary/10 px-2 py-1 text-[11px]" title={s.name}>
-              {#if s.icon}
-                <img src={ICON_BASE + encodeURIComponent(s.icon)} alt="" class="size-4 shrink-0 rounded-[2px] border border-border bg-muted/20" />
-              {/if}
-              <span class="text-foreground">{s.name}</span>
-              {#if s.is_dot}<span class="rounded-sm bg-muted px-1 text-[9px] text-muted-foreground">DoT</span>{/if}
-              <span class="tabular-nums text-muted-foreground">{fmt(rotationMetric(s))} {rotationMetricLabel(s)}</span>
-            </div>
-          {/each}
-        </div>
-      </div>
-
-      {#if bestWeavePair}
-        <div class="mb-3">
-          <h3 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Best 2-nuke weave (hides each other's recast)</h3>
-          <div class="flex flex-wrap items-center gap-1.5 text-[11px]">
-            <div class="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1" title={bestWeavePair.a.name}>
-              {#if bestWeavePair.a.icon}<img src={ICON_BASE + encodeURIComponent(bestWeavePair.a.icon)} alt="" class="size-4 shrink-0 rounded-[2px] border border-border bg-muted/20" />{/if}
-              <span>{bestWeavePair.a.name}</span>
-            </div>
-            <span class="text-muted-foreground">+</span>
-            <div class="flex items-center gap-1.5 rounded-sm border border-border px-2 py-1" title={bestWeavePair.b.name}>
-              {#if bestWeavePair.b.icon}<img src={ICON_BASE + encodeURIComponent(bestWeavePair.b.icon)} alt="" class="size-4 shrink-0 rounded-[2px] border border-border bg-muted/20" />{/if}
-              <span>{bestWeavePair.b.name}</span>
-            </div>
-            <span class="tabular-nums text-muted-foreground">
-              {fmt(bestWeavePair.dps)} DPS alternating -- vs {fmt(Math.max(bestWeavePair.a.dps_with_reuse, bestWeavePair.b.dps_with_reuse))} DPS spamming
-              either one alone
-            </span>
+        <div class="mb-1 flex items-center justify-between gap-2">
+          <h3 class="text-[10px] uppercase tracking-wide text-muted-foreground">Suggested rotation</h3>
+          <div class="flex overflow-hidden rounded-sm border border-border text-[10px]">
+            {#each [15, 60] as w (w)}
+              <button
+                type="button"
+                class="px-2 py-0.5 {rotationWindow === w ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-accent'}"
+                onclick={() => (rotationWindow = w as 15 | 60)}
+              >
+                {w}s
+              </button>
+            {/each}
           </div>
         </div>
-      {/if}
+        {#if rotationChips.length}
+          <div class="flex flex-wrap items-center gap-1 text-[11px]">
+            {#each rotationChips as chip, i (i)}
+              {#if i > 0}<span class="text-muted-foreground">→</span>{/if}
+              <div class="flex items-center gap-1.5 rounded-sm border border-primary/40 bg-primary/10 px-2 py-1" title={chip.spell.name}>
+                {#if chip.spell.icon}
+                  <img src={ICON_BASE + encodeURIComponent(chip.spell.icon)} alt="" class="size-4 shrink-0 rounded-[2px] border border-border bg-muted/20" />
+                {/if}
+                <span class="text-foreground">{chip.spell.name}{#if chip.count > 1}<span class="text-muted-foreground"> ×{chip.count}</span>{/if}</span>
+                {#if chip.spell.is_dot}<span class="rounded-sm bg-muted px-1 text-[9px] text-muted-foreground">DoT</span>{/if}
+              </div>
+            {/each}
+          </div>
+          <p class="mt-1.5 text-[11px] text-muted-foreground">
+            {fmt(rotationResult.totalDamage)} total damage over {rotationWindow}s -- {fmt(rotationResult.avgDps)} average DPS.
+          </p>
+        {:else}
+          <p class="text-[11px] text-muted-foreground">Nothing fits in this window.</p>
+        {/if}
+      </div>
 
       <h3 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">Ranked by {metricLabel()}</h3>
       <div class="max-h-72 overflow-y-auto rounded-sm border border-border">

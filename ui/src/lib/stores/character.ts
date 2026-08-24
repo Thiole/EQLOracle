@@ -10,6 +10,7 @@ import {
   type SlotRecommendationDto,
   type ScoredItemDto,
   type InventoryDumpDto,
+  type DamageSpellDto,
 } from '../tauri/api';
 import { ALL_CLASSES, MAX_ACTIVE_CLASSES, MAX_CHARACTER_LEVEL } from '../character/constants';
 import { effectiveEra } from './settings';
@@ -30,6 +31,10 @@ export const aaCatalog = writable<AaDto[]>([]);
 export const spellbook = writable<SpellbookEntryDto[]>([]);
 /** Highest live rank observed cast this session, by catalog base spell name -- e.g. `{ "Ice Comet": 10 }`. No entry = never cast this session, not rank 0. */
 export const spellRanks = writable<Record<string, number>>({});
+/** why: every damage-capable spell, rank-adjusted to this session's real
+ * observed ranks -- the shared source both DpsSuggest and the Spellbook
+ * builder's "Suggest Combat" button rank against, so the two never disagree. */
+export const damageSpells = writable<DamageSpellDto[]>([]);
 
 export const gearRecommendations = writable<SlotRecommendationDto[] | null>(null);
 export const gearWeights = writable<Record<string, number>>({});
@@ -138,7 +143,7 @@ async function checkForExistingInventoryDump() {
 
 /** why: loaded once on entering Character; input: none; output: void */
 export async function loadCharacterModule() {
-  const [cfgs, defaults, lvl, aa, catalog, book, ranks] = await Promise.all([
+  const [cfgs, defaults, lvl, aa, catalog, book, ranks, dmg] = await Promise.all([
     api.getClassConfigurations(),
     api.getDefaultGearClasses(),
     api.getCurrentLevel(),
@@ -146,6 +151,7 @@ export async function loadCharacterModule() {
     api.listAa(),
     api.getSpellbook(),
     api.getSpellRanks(),
+    api.getDamageSpells(false),
   ]);
   classConfigurations.set(cfgs);
   defaultClasses.set(defaults);
@@ -153,6 +159,7 @@ export async function loadCharacterModule() {
   aaLog.set(aa);
   aaCatalog.set(catalog);
   spellbook.set(book);
+  damageSpells.set(dmg ?? []);
   spellRanks.set(ranks);
 
   let dirty = false;

@@ -3,11 +3,15 @@
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import * as Select from '$lib/components/ui/select';
-  import { spells } from '$lib/stores/gamedata';
-  import { activeClasses, spellRanks } from '$lib/stores/character';
+  import { spells, spellEffects, spellStackingGroups } from '$lib/stores/gamedata';
+  import { activeClasses, spellRanks, damageSpells } from '$lib/stores/character';
   import { ICON_BASE, ALL_CLASSES, MAX_CHARACTER_LEVEL } from '$lib/character/constants';
+  import {
+    usableClasses, isUsable, isBuff, isSoloTarget, isTeamTarget,
+    pickBuffSuggestions, pickSupportSuggestions, simulateRotation,
+  } from '$lib/character/spellSuggest';
   import DpsSuggest from './DpsSuggest.svelte';
-  import { api, type UiFileInfoDto, type ParsedUiFileDto, type SpellDto } from '$lib/tauri/api';
+  import { api, type UiFileInfoDto, type ParsedUiFileDto, type SpellDto, type DamageSpellDto } from '$lib/tauri/api';
 
   // why: a spellbook holds up to 14 spells -- 8 base slots plus up to 6
   // more unlocked by the Mnemonic Retention AA (1 extra slot per AA
@@ -93,6 +97,70 @@
     books = books.map((b, idx) => (idx === bookIdx ? { ...b, slots: b.slots.map((s, si) => (si === slotIdx ? name : s)) } : b));
   }
 
+  function clearBook(bookIdx: number) {
+    books = books.map((b, idx) => (idx === bookIdx ? { ...b, slots: b.slots.map(() => null) } : b));
+  }
+
+  // why: fills only empty slots, in order -- never overwrites a manual
+  // pick; that's exactly why `clear` exists as its own separate button.
+  function fillEmptySlots(bookIdx: number, names: string[]) {
+    let i = 0;
+    books = books.map((b, idx) => {
+      if (idx !== bookIdx) return b;
+      return {
+        ...b,
+        slots: b.slots.map((s) => (s == null && i < names.length ? names[i++] : s)),
+      };
+    });
+  }
+
+  function emptySlotCount(bookIdx: number): number {
+    return books[bookIdx]?.slots.filter((s) => s == null).length ?? 0;
+  }
+
+  function bookNames(bookIdx: number): string[] {
+    return (books[bookIdx]?.slots ?? []).filter((s): s is string => s != null);
+  }
+
+  function suggestSoloBuff(bookIdx: number) {
+    const count = emptySlotCount(bookIdx);
+    if (count <= 0) return;
+    const pool = $spells.filter((s) => isUsable(s) && isBuff(s) && isSoloTarget(s));
+    const picks = pickBuffSuggestions(pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups);
+    fillEmptySlots(bookIdx, picks);
+  }
+
+  function suggestTeamBuff(bookIdx: number) {
+    const count = emptySlotCount(bookIdx);
+    if (count <= 0) return;
+    const pool = $spells.filter((s) => isUsable(s) && isBuff(s) && isTeamTarget(s));
+    const picks = pickBuffSuggestions(pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups);
+    fillEmptySlots(bookIdx, picks);
+  }
+
+  // why: leads with the actual DPS-optimal rotation (real damage math,
+  // real weaving), then tops up with best-guess supporting skills
+  // (debuffs/CC) since there's no real ranking system for those yet.
+  function suggestCombat(bookIdx: number) {
+    let count = emptySlotCount(bookIdx);
+    if (count <= 0) return;
+    const usableDamage = $damageSpells.filter((s) => isUsable(s));
+    const { sequence } = simulateRotation(usableDamage, 60);
+    const distinct: string[] = [];
+    for (const s of sequence) {
+      if (!distinct.includes(s.name)) distinct.push(s.name);
+    }
+    const rotationPicks = distinct.slice(0, count);
+    fillEmptySlots(bookIdx, rotationPicks);
+    count = emptySlotCount(bookIdx);
+    if (count <= 0) return;
+    const damageSpellNames = new Set($damageSpells.map((s) => s.name));
+    const supportPicks = pickSupportSuggestions(
+      $spells, $spellEffects, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, damageSpellNames,
+    );
+    fillEmptySlots(bookIdx, supportPicks);
+  }
+
   // why: which slot a click (not a drag) should land in -- drag/drop
   // targets its own drop point directly and never touches this; this is
   // only for the click-a-result fallback, for anyone/anywhere drag
@@ -103,50 +171,11 @@
 
   // ---------------------------------------------------------- suggestions
 
-  // why: a spell's own `spell_type` is the wiki's finest-grained real
-  // category (checked against actual data: 1,928 spells, ~20 distinct
-  // values) -- these are the beneficial-flavored ones. Everything else
-  // (Detrimental, Direct Damage, DoT, Slow, Curse, Pet, and anything
-  // unrecognised) falls into "combat" by exclusion, so every spell lands
-  // in exactly one of the two buckets, never neither.
-  const BENEFICIAL_TYPES = new Set([
-    'Beneficial', 'Statistic Buff', 'Resist Buff', 'Utility Beneficial', 'Heal', 'Heal Over Time',
-    'Pet Buff', 'Pet Heal', 'Haste', 'Cure', 'Movement Buff', 'Remove Curse',
-  ]);
-  function isBuff(s: SpellDto): boolean {
-    return !!s.spell_type && BENEFICIAL_TYPES.has(s.spell_type);
-  }
-
-  // why: "solo/target" = it lands on you or one other friendly, not a
-  // whole group -- exactly the set worth prioritizing for a spellbook
-  // that isn't assuming a full group is always up.
-  const SOLO_TARGET_TYPES = new Set(['Self', 'Single', 'Single Friendly (or Self)']);
-  function isSoloTarget(s: SpellDto): boolean {
-    return !!s.target_type && SOLO_TARGET_TYPES.has(s.target_type);
-  }
-
-  // why: real bug, reported directly -- the data has genuine level 51-60
-  // entries (later/raid-tier content), but this game's actual character
-  // level cap is `MAX_CHARACTER_LEVEL` (50, same number `setLevel`
-  // already clamps to), so nobody can learn those yet no matter how
-  // "high level" they look. A class entry over the cap doesn't make a
-  // spell usable for that class -- filtered out entirely below rather
-  // than just deprioritized, since a currently-unlearnable spell isn't
-  // a real suggestion.
-  function usableClasses(s: SpellDto) {
-    return s.classes.filter((c) => c.level == null || c.level <= MAX_CHARACTER_LEVEL);
-  }
-  function isUsable(s: SpellDto): boolean {
-    return usableClasses(s).length > 0;
-  }
-
-  // why: "rank10" is a third, orthogonal view, not a buff/combat split
-  // -- everything this character has actually maxed out live, across
-  // every spell type, so a player scanning for "what's left to upgrade"
-  // can see what's already done and rule it out at a glance.
+  // why: "rank10" used to be a raw filter to spells already maxed live;
+  // now a hypothetical-max-rank DPS preview instead ("what would be best
+  // once maxed", not "what's already maxed") -- see its own tab section below.
   type Mode = 'buffs' | 'combat' | 'rank10';
   let mode = $state<Mode>('buffs');
-  const MAX_RANK = 10;
 
   // why: defaults to the character's own confirmed 3-class trio, but
   // stays a light toggle -- any class can be added/removed, and an empty
@@ -167,6 +196,8 @@
     selectedClasses = selectedClasses.includes(c) ? selectedClasses.filter((x) => x !== c) : [...selectedClasses, c];
   }
 
+  const MAX_RANK = 10;
+
   // why: light default ranking so the picker is useful before typing --
   // in buffs mode, solo/target spells lead (the actual ask); then
   // whether it belongs to one of the player's 3 active classes (a real
@@ -181,7 +212,7 @@
   // entry (if any) drives its level/class here, since that's the one
   // this character would actually see in their own spellbook.
   function sortKey(s: SpellDto): [number, number, number, string, string] {
-    const usable = usableClasses(s);
+    const usable = usableClasses(s.classes);
     const known = usable.filter((c) => $activeClasses.includes(c.class));
     const pool = known.length ? known : usable;
     const level = pool.length ? Math.max(...pool.map((c) => c.level ?? 0)) : 0;
@@ -194,24 +225,55 @@
   const RESULTS_PER_ROW = 8;
   const RESULTS_LIMIT = ROWS_PER_PAGE * RESULTS_PER_ROW;
 
-  const searchResults = $derived.by(() => {
+  // why: one shape for the grid regardless of source DTO -- `badge` is a
+  // roman rank for Buffs/Combat, a projected DPS number for the "All
+  // rank 10" preview (fetched separately below, only while that tab is open).
+  interface DisplayItem {
+    name: string;
+    icon: string | null;
+    badge: string | null;
+  }
+
+  let rank10Spells = $state<DamageSpellDto[] | null>(null);
+  let rank10Error = $state<string | null>(null);
+  $effect(() => {
+    if (mode !== 'rank10' || rank10Spells !== null) return;
+    api
+      .getDamageSpells(true)
+      .then((s) => (rank10Spells = s))
+      .catch((e) => (rank10Error = e instanceof Error ? e.message : String(e)));
+  });
+
+  function fmtDps(n: number): string {
+    return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+
+  const searchResults = $derived.by((): DisplayItem[] => {
     const q = search.trim().toLowerCase();
-    let pool = $spells.filter((s) => {
-      if (!isUsable(s)) return false;
-      if (mode === 'rank10') return $spellRanks[s.name] === MAX_RANK;
-      return mode === 'buffs' ? isBuff(s) : !isBuff(s);
-    });
-    if (selectedClasses.length) pool = pool.filter((s) => usableClasses(s).some((c) => selectedClasses.includes(c.class)));
+    if (mode === 'rank10') {
+      let pool = (rank10Spells ?? []).filter((s) => isUsable(s));
+      if (selectedClasses.length) pool = pool.filter((s) => usableClasses(s.classes).some((c) => selectedClasses.includes(c.class)));
+      if (q) pool = pool.filter((s) => s.name.toLowerCase().includes(q));
+      return [...pool]
+        .sort((a, b) => b.dps_with_reuse - a.dps_with_reuse)
+        .slice(0, RESULTS_LIMIT)
+        .map((s) => ({ name: s.name, icon: s.icon, badge: `${fmtDps(s.dps_with_reuse)} dps` }));
+    }
+    let pool = $spells.filter((s) => isUsable(s) && (mode === 'buffs' ? isBuff(s) : !isBuff(s)));
+    if (selectedClasses.length) pool = pool.filter((s) => usableClasses(s.classes).some((c) => selectedClasses.includes(c.class)));
     if (q) pool = pool.filter((s) => s.name.toLowerCase().includes(q));
-    return [...pool].sort((a, b) => {
-      const ka = sortKey(a);
-      const kb = sortKey(b);
-      for (let i = 0; i < ka.length; i++) {
-        if (ka[i] < kb[i]) return -1;
-        if (ka[i] > kb[i]) return 1;
-      }
-      return 0;
-    }).slice(0, RESULTS_LIMIT);
+    return [...pool]
+      .sort((a, b) => {
+        const ka = sortKey(a);
+        const kb = sortKey(b);
+        for (let i = 0; i < ka.length; i++) {
+          if (ka[i] < kb[i]) return -1;
+          if (ka[i] > kb[i]) return 1;
+        }
+        return 0;
+      })
+      .slice(0, RESULTS_LIMIT)
+      .map((s) => ({ name: s.name, icon: s.icon, badge: $spellRanks[s.name] != null ? toRoman($spellRanks[s.name]) : null }));
   });
 
   function placeInArmedSlot(name: string) {
@@ -292,8 +354,12 @@
   {#each books as book, bookIdx (bookIdx)}
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
-        <div class="mb-2 flex items-center gap-2">
+        <div class="mb-2 flex flex-wrap items-center gap-2">
           <Input value={book.name} oninput={(e) => renameBook(bookIdx, e.currentTarget.value)} class="h-7 max-w-48 text-[12px]" />
+          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => clearBook(bookIdx)}>clear</Button>
+          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestSoloBuff(bookIdx)}>suggest solo buff</Button>
+          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestTeamBuff(bookIdx)}>suggest team buff</Button>
+          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestCombat(bookIdx)}>suggest combat</Button>
           {#if books.length > 1}
             <Button size="sm" variant="ghost" class="h-7 text-[11px] text-destructive" onclick={() => removeBook(bookIdx)}>remove spellbook</Button>
           {/if}
@@ -381,9 +447,8 @@
 
       <p class="mb-2 text-[11px] text-muted-foreground">
         {#if mode === 'rank10'}
-          Every spell (any type) you've already ranked to {MAX_RANK} this session, across your selected class(es) -- so it's
-          obvious what's already maxed and what's still worth spending motes on. Rank is only known once you've cast a spell
-          this session, so one you ranked up earlier but haven't cast yet won't show up here until you do.
+          What would be the best damage spells if every one of them were already rank {MAX_RANK} -- a "what's worth
+          ranking up" preview, not a filter on what's already maxed. Sorted by projected sustained DPS.
         {:else}
           {#if mode === 'buffs'}Solo/target buffs first, then{/if} your active classes first, highest usable level within (level
           {MAX_CHARACTER_LEVEL} cap -- anything above that isn't learnable yet, so it's left out).
@@ -391,9 +456,13 @@
         Drag a result onto any slot above{#if armed}, or click one to fill spellbook "{books[armed.book]?.name}", slot
         {armed.slot + 1}{/if}.
       </p>
-      {#if searchResults.length}
+      {#if mode === 'rank10' && rank10Error}
+        <p class="text-[12px] text-destructive">{rank10Error}</p>
+      {:else if mode === 'rank10' && rank10Spells === null}
+        <p class="text-[12px] text-muted-foreground">Loading…</p>
+      {:else if searchResults.length}
         <div class="grid grid-cols-8 gap-x-2 gap-y-0.5">
-          {#each searchResults as s (s.id)}
+          {#each searchResults as s (s.name)}
             <button
               type="button"
               draggable="true"
@@ -408,7 +477,7 @@
                 <span class="size-4 shrink-0 rounded-[2px] border border-dashed border-border"></span>
               {/if}
               <span class="truncate">{s.name}</span>
-              {#if $spellRanks[s.name] != null}<span class="shrink-0 text-muted-foreground">({toRoman($spellRanks[s.name])})</span>{/if}
+              {#if s.badge}<span class="shrink-0 text-muted-foreground">({s.badge})</span>{/if}
             </button>
           {/each}
         </div>

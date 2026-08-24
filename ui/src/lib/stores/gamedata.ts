@@ -29,6 +29,8 @@ export const items = writable<ItemDto[]>([]);
 export const gameDataLoaded = writable(false);
 /** why: log mob name -> wiki Npc name -- see mobalias.rs's own doc */
 export const mobAliases = writable<Map<string, string>>(new Map());
+/** why: spell name -> real stacking group id -- see stackingdata.rs's own doc */
+export const spellStackingGroups = writable<Record<string, number>>({});
 
 export type GdKind = 'zone' | 'item' | 'npc' | 'aa' | 'spell';
 
@@ -47,13 +49,14 @@ let loading: Promise<void> | null = null;
 export function loadGameDataModule(): Promise<void> {
   if (loading) return loading;
   loading = (async () => {
-    const [z, n, s, se, a, ma] = await Promise.all([
+    const [z, n, s, se, a, ma, sg] = await Promise.all([
       api.listZones(),
       api.listNpcs(),
       api.listSpells(),
       api.listSpellEffects(),
       api.listAa(),
       api.getMobAliases(),
+      api.getSpellStackingGroups(),
     ]);
     // defensive -- invoke<T>()'s type is an assertion, not a guarantee
     zones.set(z ?? []);
@@ -63,6 +66,7 @@ export function loadGameDataModule(): Promise<void> {
     aas.set(a ?? []);
     // why: case-insensitive lookup key, matching mobalias.rs's own eq_ignore_ascii_case
     mobAliases.set(new Map((ma ?? []).map(([from, to]) => [from.toLowerCase(), to])));
+    spellStackingGroups.set(sg ?? {});
     gameDataLoaded.set(true);
   })();
   return loading;

@@ -31,6 +31,7 @@ use crate::settings;
 use crate::skyquests;
 use crate::spelldata;
 use crate::spelleffect;
+use crate::stackingdata;
 use crate::state::AppState;
 use crate::tail_worker::{self, TailStatus};
 use crate::uifiles;
@@ -363,8 +364,8 @@ pub fn get_spell_ranks(state: State<AppState>) -> HashMap<String, u8> {
 /// why: every damage-capable spell, rank-adjusted, unfiltered -- caller applies its own filtering
 
 #[tauri::command]
-pub fn get_damage_spells(state: State<AppState>) -> Vec<DamageSpellDto> {
-    dpscalc::list_damage_spells(&state.ingest.lock().unwrap())
+pub fn get_damage_spells(state: State<AppState>, assume_max_rank: bool) -> Vec<DamageSpellDto> {
+    dpscalc::list_damage_spells(&state.ingest.lock().unwrap(), assume_max_rank)
 }
 
 /// why: Loot History module's one view -- mob types, kills, loot
@@ -410,6 +411,14 @@ pub fn list_spells() -> Vec<spelldata::Spell> {
 #[tauri::command]
 pub fn list_spell_effects() -> Vec<spelleffect::SpellEffectsEntry> {
     spelleffect::all_effects().to_vec()
+}
+
+/// why: spell -> stacking group id, for the spellbook suggester's
+/// "never suggest two mutually-exclusive spells" check -- see stackingdata.rs
+
+#[tauri::command]
+pub fn get_spell_stacking_groups() -> HashMap<String, u32> {
+    stackingdata::stacking_groups().clone()
 }
 
 /// why: Game Data's AAs tab, full 142-entry catalog -- distinct from `get_aa_log`'s own purchases

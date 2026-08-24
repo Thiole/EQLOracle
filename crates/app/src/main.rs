@@ -96,6 +96,7 @@ fn main() {
             commands::get_damage_spells,
             commands::list_spells,
             commands::list_spell_effects,
+            commands::get_spell_stacking_groups,
             commands::list_aa,
             commands::list_notification_kinds,
             commands::get_notification_settings,

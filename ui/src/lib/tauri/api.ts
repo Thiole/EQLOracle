@@ -933,7 +933,8 @@ export const api = {
   /** Highest live in-game rank observed cast this session, by catalog base spell name -- e.g. `{ "Ice Comet": 10 }`. */
   getSpellRanks: () => invoke<Record<string, number>>('get_spell_ranks'),
 
-  getDamageSpells: () => invoke<DamageSpellDto[]>('get_damage_spells'),
+  /** `assumeMaxRank`: substitutes a flat rank 10 for every spell instead of this session's observed rank. */
+  getDamageSpells: (assumeMaxRank: boolean) => invoke<DamageSpellDto[]>('get_damage_spells', { assumeMaxRank }),
 
   getCharacterEstimate: (race: string, classes: string[], classLevels: number[], gear: Record<string, number>) =>
     invoke<CharacterEstimateDto | null>('get_character_estimate', { race, classes, classLevels, gear }),
@@ -1021,6 +1022,9 @@ export const api = {
   listSpells: () => invoke<SpellDto[]>('list_spells'),
 
   listSpellEffects: () => invoke<SpellEffectsEntryDto[]>('list_spell_effects'),
+
+  /** why: spell name -> real stacking group id (only 48 entries -- see stackingdata.rs's own doc). */
+  getSpellStackingGroups: () => invoke<Record<string, number>>('get_spell_stacking_groups'),
 
   getItemLootHistory: (item: string) => invoke<LootEventDto[]>('get_item_loot_history', { item }),
 
