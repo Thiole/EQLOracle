@@ -195,12 +195,14 @@ function byDefaultLevelDesc(a: SpellDto, b: SpellDto): number {
   return lb - la;
 }
 
-function lineLabel(key: string, members: SpellDto[]): string {
-  // why: the line's own description (digits already stripped by
-  // spellLineKey) reads better as a label than a joined name list --
-  // "Causes your opponent to fall into an enchanted sleep…" identifies
-  // the line at a glance, member names show in the detail panel instead.
-  return members[0]?.description ? key : members.map((s) => s.name).join(' / ');
+/** why: real correction -- the line's own wiki description read like log
+ * text ("Causes your opponent to fall into an enchanted sleep…"), not a
+ * real name. `members` is already sorted highest-level first, so its own
+ * name is the natural label -- stable regardless of any priority
+ * override (a re-ranked line's label doesn't change just because its
+ * *suggested* pick did; those are two different questions). */
+function lineLabel(members: SpellDto[]): string {
+  return members[0]?.name ?? '';
 }
 
 /** why: every spell sharing `key`'s effective line, any size (including
@@ -226,7 +228,7 @@ export function allSpellLines(spells: SpellDto[], customMembership: Record<strin
   for (const [key, members] of groups) {
     if (members.length < 2) continue;
     const sorted = [...members].sort(byDefaultLevelDesc);
-    lines.push({ key, label: lineLabel(key, sorted), members: sorted });
+    lines.push({ key, label: lineLabel(sorted), members: sorted });
   }
   return lines.sort((a, b) => a.label.localeCompare(b.label));
 }

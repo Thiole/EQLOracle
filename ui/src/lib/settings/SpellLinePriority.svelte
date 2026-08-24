@@ -50,9 +50,9 @@
   // singleton, or a line that just gained/lost a manual member, must
   // reflect its real current membership immediately.
   const lineMembers = $derived(selectedKey ? membersOfLine($spells, selectedKey, $spellLineCustomMembership) : []);
-  const lineLabel = $derived(
-    selectedKey ? (lineMembers[0]?.description ? selectedKey : lineMembers.map((s) => s.name).join(' / ')) : '',
-  );
+  // why: real correction -- name it by the highest-level member, not the
+  // raw wiki description text (that read like log prose, not a name).
+  const lineLabel = $derived(lineMembers[0]?.name ?? '');
 
   const effectiveOrder = $derived.by(() => {
     if (!selectedKey) return [];
