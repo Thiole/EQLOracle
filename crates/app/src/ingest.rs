@@ -804,15 +804,12 @@ impl Ingest {
         self.unmatched_shapes.len()
     }
 
-    /// Unmatched *lines* dropped once `UNMATCHED_SHAPE_CAP` distinct
-    /// shapes were already being tracked -- not itself a distinct-shape
-    /// count, a line count, so it can be large even when the cap is only
-    /// a little too small.
+    /// why: a line count, not a shape count -- can be large even when the cap is only a little too small
     pub fn unmatched_shapes_overflow(&self) -> u64 {
         self.unmatched_shapes_overflow
     }
 
-    /// Call once per line, in order, with the already-computed classification.
+    /// why: called once per line, in order, with the already-computed classification
     pub fn route(&mut self, engine: &Engine, line: &[u8], outcome: &Outcome) {
         self.counts.total += 1;
         match outcome {
@@ -850,13 +847,8 @@ impl Ingest {
             }
             Outcome::Unmatched { ts, body } => {
                 self.counts.unmatched += 1;
-                // Checked against the buff-landing flavor dictionary
-                // first (unconditional -- not gated on an open Quick Buff
-                // window; see `flavor_evidence_for`'s doc) -- a hit means
-                // this line is *understood*, just not by a rule pattern,
-                // so it has no business in the Debug module's "Unparsed"
-                // shape list. Only a real miss on both checks still gets
-                // shape-clustered for that list.
+                // why: checked against the flavor dictionary first,
+                // unconditional -- a hit is understood, no business in "Unparsed"
                 let ts_ms = ts.secs() * 1000;
                 let text = String::from_utf8_lossy(body.slice(line));
                 if !self.flavor_evidence_for(ts_ms, &text) {
@@ -868,18 +860,10 @@ impl Ingest {
         }
     }
 
-    /// Call once per worker loop tick, live or not. Advances the log clock
-    /// during live idle stretches and closes fights that have gone quiet.
-    ///
-    /// Projects forward from `last_log_ms` (the log clock's value as of
-    /// `last_wall_ms`), not from `log_clock.now_ms()` read fresh here --
-    /// lines routed since the last tick may already have advanced the log
-    /// clock past that snapshot via their own timestamps, and adding
-    /// wall-elapsed on top of an already-advanced value would double-count
-    /// the same span of real time. During any continuously-active session
-    /// that double-count compounds every tick a line also arrived in,
-    /// racing the log clock far ahead of real time and idle-closing fights
-    /// that never actually went quiet.
+    /// why: called once per worker tick, advances the log clock during
+    /// idle stretches and closes quiet fights. Projects from last_log_ms,
+    /// not a fresh read -- else wall-elapsed would double-count time
+    /// lines already advanced the clock past, racing it ahead of real time.
     pub fn tick(&mut self, wall_now_ms: Millis) {
         if self.live {
             if let Some(last) = self.last_wall_ms {
@@ -897,11 +881,8 @@ impl Ingest {
         self.store.close_stale_encounters(now, STALE_ENCOUNTER_MS);
     }
 
-    /// Executes one already-extracted action against the store/graph/zone/
-    /// timeline. Never touches `line`/`Match`/`Engine` -- everything it
-    /// needed was pulled out by `extract_action`, which is what lets the
-    /// same logic run from a sequential merge after parallel classification
-    /// (`backfill_lines`) as well as inline on the live tail thread.
+    /// why: executes one extracted action; never touches line/Match/Engine
+    /// so the same logic runs from a sequential backfill merge or inline live
     fn apply(&mut self, ts: Millis, action: Action) {
         if self.first_ts.is_none() {
             self.first_ts = Some(ts);
@@ -916,12 +897,8 @@ impl Ingest {
                 flags,
             } => {
                 self.record_damage(ts, &src, &dst, &ability, tags, amount, flags);
-                // A resisted spell deals no damage, so a damage line is
-                // unambiguous proof of landing -- the one outcome this
-                // module can confirm without a dedicated result line. Tags
-                // outside SPELL (melee, procs, damage shields) never have a
-                // cast pending under this name, so `confirm_landed` is a
-                // harmless no-op for them.
+                // why: a resisted spell deals no damage, so damage is
+                // unambiguous proof of landing; a no-op outside SPELL tags
                 if tags & tag::SPELL != 0 {
                     let src_sym = self.sym(&src).0;
                     let spell_sym = self.store.sym(base_spell_name(&ability)).0;
@@ -973,11 +950,8 @@ impl Ingest {
                     .clone()
                     .filter(|(cast_ts, _)| ts - cast_ts <= TELEPORT_WINDOW_MS)
                     .map(|(_, landing)| (ts, landing));
-                // Origin's own real confirmation -- see `learned_origin`'s
-                // own doc. Same window, same "last one wins" shape as the
-                // wiki-fixed teleports above, just recording *which zone*
-                // instead of looking one up, since there's nothing to look
-                // up.
+                // why: Origin's own real confirmation -- same window/shape
+                // as the wiki-fixed teleports, recording which zone instead
                 if self
                     .last_origin_cast
                     .is_some_and(|cast_ts| ts - cast_ts <= TELEPORT_WINDOW_MS)
@@ -1005,42 +979,24 @@ impl Ingest {
                 self.exaltation_procs.observe(ts, item);
             }
             Action::Cast { who, spell } => {
-                // A pet's first action after being summoned is casting its
-                // own spawn buff, "Inner Fire" specifically -- measured
-                // against the real reference log (see PET_MATCH_WINDOW_MS),
-                // not any cast in general. That distinction matters: a
-                // version that treated *any* first-ever cast as a pet
-                // candidate mismatched a real, not-yet-proven-player
-                // character whose first cast happened to follow someone
-                // else's pet summon by a second, at exactly the moment
-                // that's most common -- session/zone-in, when everyone's
-                // first buff and everyone's pet summon land in the same
-                // few seconds. Checking only "Inner Fire" is what was
-                // actually validated to be safe.
+                // why: only "Inner Fire" specifically -- measured safe
+                // against the real log; "any first cast" mismatched real
+                // not-yet-proven players near a pet summon
                 if spell == "Inner Fire" {
                     self.note_actor(ts, &who);
                 }
-                // Recognized teleport casts are resolved against the
-                // wiki-confirmed landing pack, not a name-shape guess --
-                // see `teleportdata`'s own doc for why. "You" or a proven
-                // ally, since the group-shaped siblings land the whole
-                // group, not just the caster -- an unproven stranger's
-                // cast deliberately does not count (see `is_ally`'s own
-                // doc).
+                // why: "You" or a proven ally -- group-shaped teleports
+                // land the whole group, an unproven stranger's cast doesn't count
                 if who == "You" || self.is_ally(&who, ts) {
                     if let Some(landing) = teleportdata::landing_for(&spell) {
                         self.last_teleport_cast = Some((ts, landing));
                     }
                 }
-                // Origin: personal only (see `last_origin_cast`'s own doc
-                // for why this doesn't join the ally-aware check above).
+                // why: Origin is personal only, doesn't join the ally-aware check above
                 if who == "You" && spell == "Origin" {
                     self.last_origin_cast = Some(ts);
                 }
-                // Live spell rank: personal only, same reasoning as
-                // Origin above -- this is for the player's own spellbook
-                // display, not a general per-entity fact worth tracking
-                // for every ally/mob that happens to cast something.
+                // why: personal only -- for the player's own spellbook display
                 if who == "You" {
                     if let (base, Some(rank)) = split_cast_rank(&spell) {
                         self.spell_ranks.observe(ts, base, rank);
@@ -1062,10 +1018,8 @@ impl Ingest {
                 );
             }
             Action::CastResisted { spell } => {
-                // The pattern hardcodes "resisted your", so the caster is
-                // always the player -- the resister's name plays no role
-                // in resolving the player's own pending cast, so
-                // `extract_action` never even pulls it out of the match.
+                // why: pattern hardcodes "resisted your", caster is always
+                // the player, resister's name never extracted
                 let you = self.sym("You").0;
                 let spell_sym = self.store.sym(base_spell_name(&spell)).0;
                 self.casts
@@ -1087,13 +1041,9 @@ impl Ingest {
                 target,
                 blocker,
             } => {
-                // Deliberately doesn't call `self.casts.resolve(...)` --
-                // "blocked by a stacking conflict" isn't the same failure
-                // `CastOutcome::Resisted` means (a target's resist roll),
-                // and folding it in would quietly skew whatever reads that
-                // outcome as a resist-rate stat. No outcome variant fits
-                // today, so this stays out of cast resolution entirely
-                // rather than picking the least-wrong existing one.
+                // why: no resolve() call -- "blocked by stacking conflict"
+                // isn't the same failure as Resisted (a resist roll), would
+                // skew resist-rate stats; no outcome variant fits, stays out entirely
                 let you = self.sym("You").0;
                 self.classes.observe_cast(
                     you,
@@ -1178,16 +1128,10 @@ impl Ingest {
         self.flush_cast_resolutions();
     }
 
-    /// Pushes every cast the resolver has finished judging into the store as
-    /// an `EventKind::Cast` row, outcome encoded in `flags` (`flag::CAST_*`).
-    /// Called after every action (a resist/interrupt/fizzle/landed line can
-    /// close a cast the same tick it arrives) and once per `tick` to catch
-    /// expiry-driven `Unconfirmed` closures, which arrive with no line at
-    /// all.
-    ///
-    /// `target` is set equal to `actor`: `cast.begin` never names a target
-    /// in this log (see `eqlp_session::cast`'s doc comment), so there is no
-    /// real value to put there. Revisit if a target ever becomes available.
+    /// why: pushes every finished cast judgment into the store as a Cast
+    /// row; called after every action and once per tick to catch
+    /// expiry-driven Unconfirmed closures. target = actor since cast.begin
+    /// never names a real target in this log.
     fn flush_cast_resolutions(&mut self) {
         for r in self.casts.drain_resolved() {
             let actor = Sym(r.source);
