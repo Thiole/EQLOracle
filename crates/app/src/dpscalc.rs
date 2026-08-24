@@ -83,7 +83,13 @@ fn table_value(table: &[f64], rank: u8) -> f64 {
 /// (Critical Affliction's own wording, "at each 6 second interval") --
 /// expectation is linear either way, so the same formula covers both,
 /// just fed a different (chance, bonus) AA pair per caller.
-fn crit_multiplier(ing: &crate::ingest::Ingest, chance_aa: &str, chance_table: &[f64], bonus_aa: &str, bonus_table: &[f64]) -> f64 {
+fn crit_multiplier(
+    ing: &crate::ingest::Ingest,
+    chance_aa: &str,
+    chance_table: &[f64],
+    bonus_aa: &str,
+    bonus_table: &[f64],
+) -> f64 {
     let chance = table_value(chance_table, aa_rank_of(ing, chance_aa));
     let bonus = table_value(bonus_table, aa_rank_of(ing, bonus_aa));
     1.0 + chance * bonus
@@ -253,7 +259,12 @@ pub struct DamageSpellDto {
     pub dps_ignoring_reuse: f64,
 }
 
-fn build_dto(spell: &Spell, rank: u8, dd_crit_mult: f64, dot_crit_mult: f64) -> Option<DamageSpellDto> {
+fn build_dto(
+    spell: &Spell,
+    rank: u8,
+    dd_crit_mult: f64,
+    dot_crit_mult: f64,
+) -> Option<DamageSpellDto> {
     let (base_hit, is_dot, base_upfront) = parse_damage(spell)?;
     if base_hit <= 0.0 {
         return None;
@@ -608,7 +619,13 @@ mod tests {
     fn crit_multiplier_is_neutral_with_no_aa_purchased() {
         let ing = crate::ingest::Ingest::default();
         assert_eq!(
-            crit_multiplier(&ing, "Fury of Magic", &FURY_OF_MAGIC_CHANCE, "Destructive Fury", &DESTRUCTIVE_FURY_BONUS),
+            crit_multiplier(
+                &ing,
+                "Fury of Magic",
+                &FURY_OF_MAGIC_CHANCE,
+                "Destructive Fury",
+                &DESTRUCTIVE_FURY_BONUS
+            ),
             1.0
         );
     }
@@ -620,13 +637,25 @@ mod tests {
         let mut ing = crate::ingest::Ingest::default();
         ing.aa.observe(0, "Fury of Magic".into(), 4, 0);
         ing.aa.observe(0, "Destructive Fury".into(), 3, 0);
-        let mult = crit_multiplier(&ing, "Fury of Magic", &FURY_OF_MAGIC_CHANCE, "Destructive Fury", &DESTRUCTIVE_FURY_BONUS);
+        let mult = crit_multiplier(
+            &ing,
+            "Fury of Magic",
+            &FURY_OF_MAGIC_CHANCE,
+            "Destructive Fury",
+            &DESTRUCTIVE_FURY_BONUS,
+        );
         assert!((mult - 1.10).abs() < 1e-9);
 
         // why: Critical Affliction 2/3 (6%), Destructive Cascade 1/3 (+125%) -> 1 + .06*1.25 = 1.075
         ing.aa.observe(0, "Critical Affliction".into(), 2, 0);
         ing.aa.observe(0, "Destructive Cascade".into(), 1, 0);
-        let dot_mult = crit_multiplier(&ing, "Critical Affliction", &CRITICAL_AFFLICTION_CHANCE, "Destructive Cascade", &DESTRUCTIVE_CASCADE_BONUS);
+        let dot_mult = crit_multiplier(
+            &ing,
+            "Critical Affliction",
+            &CRITICAL_AFFLICTION_CHANCE,
+            "Destructive Cascade",
+            &DESTRUCTIVE_CASCADE_BONUS,
+        );
         assert!((dot_mult - 1.075).abs() < 1e-9);
     }
 
@@ -642,11 +671,21 @@ mod tests {
 
     #[test]
     fn build_dto_applies_the_crit_multiplier_to_nuke_and_dot_damage() {
-        let nuke = make_spell(&["Decrease Hitpoints by 100"], Some("Instant"), Some("Single"), None);
+        let nuke = make_spell(
+            &["Decrease Hitpoints by 100"],
+            Some("Instant"),
+            Some("Single"),
+            None,
+        );
         let dto = build_dto(&nuke, 0, 1.10, 1.0).unwrap();
         assert!((dto.total_damage - 110.0).abs() < 1e-9);
 
-        let dot = make_spell(&["Decrease Hitpoints by 50 per tick"], Some("36 Sec"), Some("Single"), None);
+        let dot = make_spell(
+            &["Decrease Hitpoints by 50 per tick"],
+            Some("36 Sec"),
+            Some("Single"),
+            None,
+        );
         let dto = build_dto(&dot, 0, 1.0, 1.075).unwrap();
         assert!((dto.total_damage - 322.5).abs() < 1e-9); // 6 ticks * 50 * 1.075
     }
