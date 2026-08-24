@@ -1669,11 +1669,8 @@ impl Ingest {
         // an unspoken ally reads as a real mob, same known ceiling as list_allies.
         let actor_ally = self.is_ally(actor, ts);
         let target_ally = self.is_ally(target, ts);
-        // `None` when both sides look like allies (self-inflicted damage --
-        // "Wubble hit Wubble... by Cannibalize" -- or ally-on-ally noise)
-        // or both look like mobs (rare: two unproven names fighting each
-        // other, neither of them "You"): this edge has no opinion on which
-        // side is the mob.
+        // why: None when both sides look like allies (self-inflicted
+        // damage, ally-on-ally noise) or both look like mobs -- no opinion on which side is the mob
         let mob_side = match (actor_ally, target_ally) {
             (false, true) => Some(actor),
             (true, false) => Some(target),
@@ -1681,19 +1678,10 @@ impl Ingest {
         };
 
         let store_id = if let Some(&id) = self.enc_map.get(&enc_id) {
-            // Already open, anchored on whatever the *first* edge of this
-            // fight had to guess from -- sometimes wrong: a boss's opening
-            // swing lands on a groupmate who hasn't spoken yet, anchoring
-            // the fight on them, before "You" or anyone else already proven
-            // lands a hit on the actual boss moments later (a raid tank
-            // silently eating hundreds of hits from a named boss for the
-            // fight's whole duration is exactly this, and common). If the
-            // current anchor reads as a proven ally and this edge names an
-            // unambiguous non-ally, that beats whatever opened the fight --
-            // retarget rather than leave a stale, wrong label for the rest
-            // of it. Never retargets *away* from an already-good anchor:
-            // `mob_side` is `None` for a merely-ambiguous later edge, so an
-            // early correct guess is never second-guessed.
+            // why: retargets a stale anchor -- a boss's opening swing can
+            // land on an unspoken groupmate first, before "You" hits the
+            // real boss moments later (common, a raid tank eating hundreds
+            // of hits). Never retargets away from an already-good anchor.
             if let Some(mob) = mob_side {
                 let anchor_is_stale = self
                     .store
@@ -1707,11 +1695,8 @@ impl Ingest {
             }
             id
         } else {
-            // First edge of a brand new fight: nothing else is known yet,
-            // so this edge's own guess is all there is. Falls back to
-            // `target` when both sides look ambiguous -- see `mob_side`'s
-            // doc -- and a later edge can still correct it above once
-            // better evidence arrives.
+            // why: first edge of a new fight, this guess is all there is;
+            // falls back to target when ambiguous, correctable later
             let anchor = mob_side.unwrap_or(target);
             let target_sym = self.sym(anchor);
             let idx_hint = self.store.len() as u32;
@@ -1728,25 +1713,16 @@ impl Ingest {
         store_id
     }
 
-    /// Ally as of `ts`, not ally forever -- `Allegiance::of(kind, state)`,
-    /// not raw `Kind`, so a proven player or pet who is *currently charmed*
-    /// reads as the enemy side for exactly as long as that lasts. "You" is
-    /// certain `Kind::Player` even before the log owner has ever proven it
-    /// by speaking (checked literally, same reasoning `link`'s doc comment
-    /// gives); everyone else's `Kind` comes from accumulated evidence, same
-    /// as ever. Shared by `link`'s new-fight and retarget paths so they can
-    /// never disagree about what "ally" means.
+    /// why: ally as of ts, not forever -- a currently-charmed player/pet
+    /// reads as enemy for as long as that lasts. Shared by link's new-fight and retarget paths.
     fn is_ally(&self, name: &str, ts: Millis) -> bool {
         let kind = if name.eq_ignore_ascii_case("you") {
             Kind::Player
         } else {
             self.encounters.entities.kind(name)
         };
-        // Read-only: resolved through the same canonical casing `sym()`
-        // interns under, without interning anything new here -- an ally
-        // check must never itself create identity. A name with no `Sym`
-        // yet (never seen before) has no recorded state either, which
-        // defaults correctly to `Engaged`: never seen means never charmed.
+        // why: read-only, never interns -- an ally check must never
+        // itself create identity; no Sym yet defaults correctly to Engaged
         let canonical = self.encounters.entities.display_name(name);
         let state = self
             .store
@@ -1763,19 +1739,14 @@ impl Ingest {
         self.enc_map.get(&enc_id).copied()
     }
 
-    /// Syncs newly-closed graph encounters into the store. `Builder::closed`
-    /// only grows, so this drains what's new since the last call.
+    /// why: drains newly-closed graph encounters into the store; Builder::closed only grows
     fn drain_closed(&mut self) {
         while self.closed_seen < self.encounters.closed.len() {
-            // Cloned rather than borrowed: everything below needs &mut self
-            // (sym() touches both the entity table and the store), which
-            // can't coexist with a borrow into `encounters.closed`.
+            // why: cloned not borrowed -- sym() below needs &mut self,
+            // can't coexist with a borrow into encounters.closed
             let c = self.encounters.closed[self.closed_seen].clone();
             if let Some(&store_id) = self.enc_map.get(&c.id) {
-                // why: `c.slain` mixes both sides -- an ally (or "You") dying
-                // closes the fight the same as a real target death, so a
-                // confirmed kill needs an actual enemy name in there, not
-                // just *any* name.
+                // why: c.slain mixes both sides -- a confirmed kill needs a real enemy name, not just any
                 let confirmed_kill = c.slain.iter().any(|n| !self.is_ally(n, c.end_ms));
                 let wiped = !confirmed_kill && c.slain.iter().any(|n| self.is_ally(n, c.end_ms));
                 self.store
@@ -1783,12 +1754,8 @@ impl Ingest {
                 self.record_history(store_id, &c, confirmed_kill);
             }
 
-            // Everything that leaves a closed fight alive and unaccounted
-            // for left for a reason the log didn't report -- memory blur,
-            // pacify, fleeing. Marked Lost/Inferred rather than left
-            // looking Engaged forever. Players are excluded: the player
-            // ending a fight is not "lost". See docs/design/timeline.md,
-            // "Observed vs inferred".
+            // why: alive-and-unaccounted-for left for an unreported reason
+            // (blur, pacify, fleeing) -- marked Lost/Inferred not stuck Engaged. Players excluded.
             for name in &c.entities {
                 if c.slain.iter().any(|s| s == name)
                     || self.encounters.entities.kind(name) == Kind::Player
@@ -1808,11 +1775,8 @@ impl Ingest {
         }
     }
 
-    /// Builds one `ParseRecord` for a just-closed encounter and queues it in
-    /// `pending_history`. Scoped to the player's own damage only -- see
-    /// `ParseRecord::player_damage`'s doc for why a team total would be the
-    /// wrong number here. No I/O: see `crate::history` for who actually
-    /// persists these.
+    /// why: builds one ParseRecord for a just-closed encounter, scoped to
+    /// player's own damage only; no I/O, see crate::history for who persists these
     fn record_history(
         &mut self,
         store_id: EncounterId,
@@ -1826,35 +1790,17 @@ impl Ingest {
         let you = self.sym("You");
         let actual = by_ability(&self.store, &Filter::encounter(store_id).damage().by(you));
         if actual.is_empty() {
-            // The player dealt no damage in this fight (a bystander to
-            // someone else's pull, a buff-only presence) -- nothing to
-            // record as "how did I do".
+            // why: player dealt no damage in this fight, nothing to record
             return;
         }
         let zone = self.zone.at(c.start_ms).unwrap_or("Unknown").to_string();
-        // Scoped to this same target at this same difficulty tier, not
-        // every fight ever: a nuke's expected damage depends on both the
-        // target's own resists and the zone's tier (see `crate::zone`), so
-        // scoring a Tier 4 kill against an all-tiers average for that mob
-        // made a perfectly normal parse look like it underperformed for a
-        // reason that had nothing to do with how well it was played.
-        // Self-diluted the same way as before -- this same encounter's own
-        // hits are part of the baseline it's scored against, since there is
-        // no cheap way to exclude just one encounter from the aggregate.
-        // See `ParseRecord::score_ratio`'s doc.
-        //
-        // Skipped entirely during backfill (`!self.live`): the baseline
-        // query has no `.encounter()` bound, so it scans the *whole* store
-        // -- fine once per live close, but a backfill can close thousands
-        // of encounters against a store that's still growing toward
-        // millions of rows, and computing an O(store length) baseline that
-        // many times over is exactly the quadratic-shaped cost that made a
-        // big log's initial replay crawl. A backfilled record just carries
-        // no score yet (`None`, the same value already shown whenever there
-        // wasn't a baseline to score against) instead of computing one no
-        // one can see until backfill finishes anyway; live closes -- one at
-        // a time, arriving no faster than the game writes them -- still
-        // score normally, since that per-close cost was never the problem.
+        // why: scoped to same target + same tier, not every fight ever --
+        // a nuke's expected damage depends on both. Self-diluted (this
+        // encounter's own hits are in the baseline, no cheap way to
+        // exclude). Skipped during backfill (!self.live) -- the baseline
+        // query scans the whole store, O(store length) many times over
+        // would be the same quadratic cost that made big-log replay crawl;
+        // a backfilled record just carries no score, live closes still score normally.
         let score_ratio = self
             .live
             .then(|| {
@@ -1873,16 +1819,9 @@ impl Ingest {
         let player_damage: u64 = actual.iter().map(|r| r.total).sum();
         let duration_ms = c.duration_ms().max(1);
 
-        // The player's confirmed classes for *this fight's own zone visit*,
-        // as of exactly this point in the sequential replay, right as this
-        // encounter closes: every cast that happened during this visit has
-        // already been applied to `self.classes`, so this is the honest
-        // "as of this fight, in this visit" answer -- see
-        // `classdetect::Detector::configuration_of_visit`'s doc. Already
-        // alphabetical (the detector groups by a sorted set internally),
-        // so two fights under the same configuration always produce the
-        // same key regardless of which order the classes were confirmed
-        // in, and group together in `crate::history::by_loadout`.
+        // why: confirmed classes as of exactly this point in the
+        // sequential replay -- honest "as of this fight" answer, already
+        // alphabetical so same-configuration fights group in by_loadout
         let zone_visit = self.zone.index_at(c.start_ms);
         let loadout: Vec<String> = self.classes.configuration_of_visit(you.0, zone_visit);
 
@@ -1901,9 +1840,9 @@ impl Ingest {
     }
 }
 
-/// One line's meaning, fully extracted to owned data -- independent of the
-/// `Match`/`line` it came from, so it can cross a thread boundary. Produced
-/// by `extract_action`, consumed by `Ingest::apply`.
+/// why: one line's meaning, fully extracted to owned data, independent
+/// of Match/line so it can cross a thread boundary. Produced by
+/// extract_action, consumed by Ingest::apply.
 enum Action {
     Damage {
         src: String,
@@ -1913,46 +1852,36 @@ enum Action {
         amount: u64,
         flags: Flags,
     },
-    /// `dst` may still be a reflexive pronoun ("himself") -- resolved in
-    /// `apply`, not here; extraction stays a pure read of what the line
-    /// literally says.
+    /// why: dst may still be a reflexive pronoun, resolved in apply not here
     Heal {
         src: String,
         dst: String,
         ability: String,
         amount: u64,
     },
-    /// `verb` is the swing's own attack-type ("punch", "slash", ...) --
-    /// carried through so a fully-avoided swing lands on the *same*
-    /// ability row a landed one of the same type would (`record_miss`),
-    /// not a separate synthetic bucket. `flags` is the same free-text
-    /// trailing flag `melee.hit` already carries, pre-parsed the same way
-    /// ("Riposte", "Rampage", "Flurry", ...) -- an avoided swing can
-    /// trigger a special attack type same as a landed one; see
-    /// `record_avoided`.
+    /// why: verb is the attack-type so an avoided swing lands on the same
+    /// row a landed one would; flags is the same pre-parsed trailing flag melee.hit carries
     Miss {
         src: String,
         dst: String,
         verb: String,
         flags: Flags,
     },
-    /// A swing the target actively blocked -- same shape as `Miss`, kept
-    /// distinct so per-source accuracy can say "blocked" instead of
-    /// folding it into a plain miss (see `record_block`).
+    /// why: same shape as Miss, kept distinct so accuracy can say "blocked"
     Block {
         src: String,
         dst: String,
         verb: String,
         flags: Flags,
     },
-    /// Same as `Block`, for a dodge instead (see `record_dodge`).
+    /// why: same as Block, for a dodge
     Dodge {
         src: String,
         dst: String,
         verb: String,
         flags: Flags,
     },
-    /// Same as `Block`, for a parry instead (see `record_parry`).
+    /// why: same as Block, for a parry
     Parry {
         src: String,
         dst: String,
@@ -1965,30 +1894,21 @@ enum Action {
     Zone {
         zone: String,
     },
-    /// `level.up`: "You have gained a level! Welcome to level N!" -- always
-    /// the player, first-person only, no third-person shape exists for
-    /// this line. This is the player's *effective* (account) level, not
-    /// any one class's own -- see `Ingest::levels`'s doc for how that
-    /// distinction matters once a loadout swap can drop it back down.
+    /// why: always the player, first-person only; the effective account level, not any one class's
     LevelUp {
         level: u8,
     },
-    /// `aa.gained` (rank always 1, the line itself never states a number)
-    /// or `aa.improved` (rank 2+, parsed from the line's own trailing
-    /// digit). See `AaGrant`'s doc for why rank 1 is synthesized rather
-    /// than read.
+    /// why: aa.gained is always rank 1 (never stated), aa.improved parses the trailing digit
     AaGained {
         name: String,
         rank: u8,
         cost: u32,
     },
-    /// `spell.scribe_start`/`spell.memorize_start` -- a "Beginning to..."
-    /// line, proof of a Possible-tier spell. See `SpellLog`'s own doc.
+    /// why: a "Beginning to..." line, proof of Possible-tier
     SpellBegan {
         name: String,
     },
-    /// `spell.scribe_done`/`spell.memorize_done` -- a "finished..." line,
-    /// proof of a Known-tier spell.
+    /// why: a "finished..." line, proof of Known-tier
     SpellFinished {
         name: String,
     },
@@ -1996,68 +1916,42 @@ enum Action {
         who: String,
         spell: String,
     },
-    /// `spell.resisted`. The pattern hardcodes "resisted your", so the
-    /// caster is always the player. The resister's name is in the pattern
-    /// (`who`) but plays no role in resolving the player's own pending
-    /// cast, so it's never extracted here -- see the matching comment on
-    /// `Ingest::apply`'s `CastResisted` arm.
+    /// why: pattern hardcodes "resisted your", caster always the player, resister never extracted
     CastResisted {
         spell: String,
     },
-    /// `cast.interrupted`. `source` is already resolved to a bare name --
-    /// "You" if the line's `Your` branch matched, otherwise the caster's
-    /// name with the possessive stripped by the pattern itself. See
-    /// `extract_action`'s "cast.interrupted" arm.
+    /// why: source already resolved to a bare name, possessive stripped by the pattern
     CastInterrupted {
         source: String,
         spell: String,
     },
-    /// `cast.fizzled`, same source shape as `CastInterrupted`.
+    /// why: same source shape as CastInterrupted
     CastFizzled {
         source: String,
         spell: String,
     },
-    /// `cast.blocked`: "Your <spell> spell did not take hold on <target>.
-    /// (Blocked by <blocker>.)" -- always the player's own cast (the game
-    /// only ever tells *you* this about your own spells), so `spell` is
-    /// real, high-confidence class evidence the same way a successful
-    /// "begins casting" line is. `blocker`, when present, names a buff
-    /// already active on `target` (a stacking conflict, not a resist) --
-    /// real state, fed to `Effects` the same as any other recognized
-    /// fact about an entity. `blocker` is `None` for the real lines that
-    /// have no trailing parenthetical at all.
+    /// why: always the player's own cast, real class evidence; blocker
+    /// names an already-active buff (stacking conflict, not a resist), None for no parenthetical
     CastBlocked {
         spell: String,
         target: String,
         blocker: Option<String>,
     },
-    /// `state.you_poisoned`/`state.poisoned`/`state.you_diseased`/`state.
-    /// diseased`: a named condition landing on `target`, fed to `Effects`
-    /// the same as any other recognized fact -- these lines were already
-    /// matched (kind "state") but produced no `Action` at all before this
-    /// existed to feed. `text` is a fixed label ("Poisoned"/"Diseased"),
-    /// not scraped flavor text -- there's no landing-message variety to
-    /// preserve here, just which condition it is.
+    /// why: a named condition landing on target, fed to Effects; text is
+    /// a fixed label not scraped flavor text
     StateEffect {
         target: String,
         text: String,
     },
-    /// `state.location`: "Your Location is X, Y, Z." -- the `/loc`
-    /// command's own output. Always the log owner (there's no
-    /// third-person form of this line). Does NOT share `mapsdata.rs`'s
-    /// parsed map files' own axis order -- see `Ingest::last_loc`'s own
-    /// doc for the real mapping (verified against real dual data, not
-    /// assumed) and MapViewer.svelte for where it's applied.
+    /// why: /loc's own output, always the log owner. Does NOT share
+    /// mapsdata.rs's axis order -- see Ingest::last_loc's real mapping.
     PlayerLoc {
         x: f64,
         y: f64,
         z: f64,
     },
-    /// `ability.activated`: "<who> activates <ability>." -- almost always
-    /// third-person (see the pack rule's own note), so `who` is real
-    /// class evidence for *that entity*, not necessarily "You". Also fed
-    /// to `Effects` as a self-directed state fact on `who` (what's now on
-    /// their weapon), independent of whether `ability` is one
+    /// why: almost always third-person, so who is class evidence for
+    /// that entity not necessarily "You"; also fed to Effects as a self-directed state fact
     /// `classdata` recognizes.
     AbilityActivated {
         who: String,
