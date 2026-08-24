@@ -1,8 +1,4 @@
-//! Rule compilation and line classification.
-//!
-//! Two stages: an Aho-Corasick pass over literal anchors selects candidate
-//! rules, then those candidates' regexes run. Anchors are an optimisation and
-//! never change results; `excludes` are literal vetoes and do.
+//! why: Aho-Corasick prefilter selects candidates, then regexes decide
 //!
 //! Design notes: `docs/design/parsing.md`
 
@@ -167,8 +163,7 @@ impl Engine {
         self.header.name()
     }
 
-    /// One matcher per thread. Holds the mutable scratch that keeps the hot
-    /// path allocation-free; `Engine` itself is immutable and shareable.
+    /// why: one per thread, holds the mutable hot-path scratch state
     pub fn matcher(&self) -> Matcher<'_> {
         let locs = self
             .rules
@@ -189,8 +184,7 @@ impl Engine {
     }
 }
 
-/// Intern a literal into the shared Aho-Corasick alphabet, keeping the anchor
-/// and exclude side-tables the same length as the literal list.
+/// why: interns a literal, keeps anchor/exclude side-tables in sync
 fn intern(
     lit: &str,
     index: &mut std::collections::HashMap<String, usize>,
@@ -262,8 +256,7 @@ impl<'e> Matcher<'e> {
             let rule = &self.eng.rules[ri as usize];
 
             if !self.capture[ri as usize] {
-                // Boolean match only. ~3x cheaper than capture extraction, and
-                // for a consumer that ignores this rule the captures are waste.
+                // why: boolean-only match, ~3x cheaper when captures are unused
                 if rule.re.is_match(body) {
                     return Outcome::Matched(Match {
                         rule: ri,
@@ -297,8 +290,7 @@ impl<'e> Matcher<'e> {
         }
     }
 
-    /// Which rules are worth running a regex for. Fills `self.cands` in
-    /// evaluation order (priority desc, then declaration order).
+    /// why: fills cands in priority-then-declaration eval order
     fn select_candidates(&mut self, body: &[u8]) {
         self.cands.clear();
 
@@ -309,7 +301,7 @@ impl<'e> Matcher<'e> {
         if let Some(ac) = &self.eng.ac {
             self.epoch = self.epoch.wrapping_add(1);
             if self.epoch == 0 {
-                // Wrapped: clear rather than risk a stale epoch collision.
+                // why: wrapped -- clear rather than risk a stale collision
                 self.seen_epoch.iter_mut().for_each(|e| *e = 0);
                 self.veto.iter_mut().for_each(|e| *e = 0);
                 self.epoch = 1;
@@ -361,13 +353,7 @@ impl<'e> Matcher<'e> {
         }
     }
 
-    /// Which rules get their capture groups pulled out. Everything else gets a
-    /// boolean match, which is roughly 3x cheaper.
-    ///
-    /// This is a runtime knob rather than a pack setting on purpose: which
-    /// fields matter depends on which consumers are attached right now. A DPS
-    /// meter alone wants damage captures and nothing else; open a loot panel
-    /// and the mask widens. Cost tracks what is actually being read.
+    /// why: runtime knob, not a pack setting -- mask tracks live consumers
     pub fn capture_only(&mut self, rules: &[RuleIdx]) {
         self.capture.iter_mut().for_each(|c| *c = false);
         for &r in rules {
@@ -402,8 +388,7 @@ impl<'e> Matcher<'e> {
         }
     }
 
-    /// Every rule that matches, not just the winner. Used by `lint` to detect
-    /// ambiguity, and by anyone who genuinely wants overlapping emission.
+    /// why: every match, not just the winner -- lint's ambiguity check
     pub fn classify_all(&mut self, line: &[u8], out: &mut Vec<RuleIdx>) {
         out.clear();
         let off = match self.eng.header.parse(line) {

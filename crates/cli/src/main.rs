@@ -1,8 +1,4 @@
-//! Headless harness.
-//!
-//! Everything you can do to a log, you can do without opening the app. That is
-//! what makes CI possible: `eqlp lint` and `eqlp coverage --min-rate` are the
-//! two commands a pre-commit hook needs, and neither one boots a webview.
+//! why: headless harness, everything a log needs works without the app
 //!
 //!   eqlp lint    --pack p.toml [--pack q.toml] [--against log.txt --min-rate 0.95]
 //!   eqlp parse   --pack p.toml LOG [--jsonl] [--only KIND]
@@ -168,8 +164,7 @@ fn cmd_lint(a: &Args) -> Result<(), String> {
     println!("header:       {}", eng.header_name());
     println!("rules:        {}", eng.rules().len());
 
-    // 1. Every example must be claimed by its own rule, running the whole
-    //    engine. Catches shadowing by a higher-priority rule immediately.
+    // why: catches a higher-priority rule shadowing this example
     let mut examples_run = 0usize;
     for (i, r) in eng.rules().iter().enumerate() {
         for ex in &r.def.examples {
@@ -207,8 +202,7 @@ fn cmd_lint(a: &Args) -> Result<(), String> {
         }
     }
 
-    // 2. Anchors must actually be substrings of every declared example,
-    //    otherwise the prefilter silently makes the rule unreachable.
+    // why: a missing anchor makes the prefilter unreachable
     for r in eng.rules() {
         for anc in &r.def.anchors {
             for ex in &r.def.examples {
@@ -394,8 +388,7 @@ fn cmd_coverage(a: &Args) -> Result<(), String> {
 
 // ---------------------------------------------------------------- shapes
 
-/// Runs with no pack at all. This is how you bootstrap: point it at a log you
-/// have never seen and it hands you the templates, ranked.
+/// why: no pack needed -- bootstraps ranked templates from a raw log
 fn cmd_shapes(a: &Args) -> Result<(), String> {
     let buf = a.log()?;
     let hdr = eqlp_core::header::BracketCtime;
@@ -456,7 +449,7 @@ fn cmd_bench(a: &Args) -> Result<(), String> {
     // warm
     let _ = run(&eng, &buf, a.mode, |_, _| {});
 
-    // A/B the capture mask, since it is the single biggest cost lever.
+    // why: capture mask is the single biggest cost lever
     let mut best_mo = f64::MAX;
     for _ in 0..a.iters.max(1) {
         let mut m = eng.matcher();

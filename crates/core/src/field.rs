@@ -72,8 +72,7 @@ pub fn coerce(raw: &[u8], ty: FieldType) -> Value<'_> {
     }
 }
 
-/// Digit-only, comma-tolerant, overflow-checked. Faster than going through
-/// `str::parse` and it does not care whether the bytes are valid UTF-8.
+/// why: digit-only, comma-tolerant, overflow-checked, no UTF-8 requirement
 #[inline]
 pub fn parse_u64(raw: &[u8]) -> Option<u64> {
     let mut v: u64 = 0;

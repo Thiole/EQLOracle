@@ -1,23 +1,12 @@
-//! Following a log file the game is actively writing. Polls rather than
-//! watching, and handles growth, truncation, replacement and absence.
+//! why: polls the log file for growth/truncation/replacement/absence
 //!
-//! Hard invariant: this crate never opens the log for anything but reading.
-//! `TailEvent::Truncated`/`Replaced` above are read-side reactions to the
-//! game (or the player) changing the file out from under us -- eqlp itself
-//! has no write access to it and must never gain any, in this module or
-//! anywhere else in the app. Purging *eqlp's own* derived state (parsed
-//! history, caches) is fine and expected -- see `eqlp-app::history`'s
-//! module doc for a real instance -- but that's data this app produced
-//! about the log, never the log itself.
-//!
-//! Design notes: `docs/design/sources.md`
+//! Hard invariant: never opens the log for anything but reading.
 
 use std::fs::{File, Metadata};
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
-/// Identity used to detect file replacement. Falls back through inode,
-/// creation time, then "assume same". See `docs/design/sources.md`.
+/// why: detects file replacement -- inode, then creation time, then unknown
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FileId {
     Index(u64),
@@ -37,8 +26,7 @@ fn file_id(m: &Metadata) -> FileId {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;
-        // Not exposed as file_index on stable for all versions; use the
-        // creation-time path, which Wine and NTFS both populate.
+        // why: file_index unstable pre-all-versions, fall through to creation time
         let _ = m;
     }
     m.created()
@@ -49,7 +37,7 @@ fn file_id(m: &Metadata) -> FileId {
 }
 
 impl FileId {
-    /// Conservative: only report a change when both sides are known and differ.
+    /// why: only reports a change when both sides are known and differ
     fn definitely_differs(self, other: FileId) -> bool {
         match (self, other) {
             (FileId::Unknown, _) | (_, FileId::Unknown) => false,
@@ -225,8 +213,7 @@ pub fn newest_log_in(dir: &Path) -> Option<PathBuf> {
 pub fn identity_from_filename(path: &Path) -> Option<(String, String)> {
     let stem = path.file_stem()?.to_str()?;
     let rest = stem.strip_prefix("eqlog_")?;
-    // Character names contain no underscore; server is whatever follows the
-    // first one, so a server like "test_server" survives.
+    // why: character names have no underscore, server keeps the rest
     let (chr, srv) = rest.split_once('_')?;
     if chr.is_empty() || srv.is_empty() {
         return None;

@@ -1,17 +1,8 @@
-//! Seeded generators for property tests.
-//!
-//! The seed comes from `EQLP_SEED` at run time and the verify harness sets it
-//! from `/dev/urandom` on every invocation. An implementation special-cased to
-//! inputs seen in one run fails in the next.
-//!
-//! The generators themselves are not secret. Knowing how a log line is built
-//! does not help you fake the answer, because the only way to satisfy a
-//! property across arbitrary seeds is to implement the behaviour.
+//! why: seeded generators for property tests, seed from EQLP_SEED
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// PCG-style LCG. Deterministic given a seed, and reproducible from the seed
-/// printed by the harness, so a failing run can always be replayed.
+/// why: deterministic, replayable from the printed seed
 pub struct Rng(u64);
 
 impl Rng {
@@ -19,16 +10,14 @@ impl Rng {
         Rng(seed.wrapping_mul(6364136223846793005).wrapping_add(1))
     }
 
-    /// Seed for this process, from `EQLP_SEED`, else a fixed fallback so a bare
-    /// `cargo test` is still deterministic and debuggable.
+    /// why: env seed, else a fixed fallback for bare `cargo test`
     pub fn from_env() -> Self {
         static N: AtomicU64 = AtomicU64::new(0);
         let base = std::env::var("EQLP_SEED")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(0xC0FFEE);
-        // Distinct stream per generator instance so parallel tests do not
-        // all draw the identical sequence.
+        // why: distinct stream per instance, parallel tests don't collide
         Rng::new(base ^ N.fetch_add(0x9E37_79B9_7F4A_7C15, Ordering::Relaxed))
     }
 
@@ -109,8 +98,7 @@ pub const SPELLS: &[&str] = &[
     "Elemental Maelstrom",
 ];
 
-/// A timestamped log line plus the facts it encodes, so a test can assert the
-/// parser recovered exactly what the generator put in.
+/// why: pairs a log line with the facts it encodes, for assertions
 pub struct GenLine {
     pub line: String,
     pub ts_secs: i64,
@@ -151,8 +139,7 @@ pub fn stamp(secs: i64) -> String {
     )
 }
 
-/// One random damage line. Mixes melee, spell, DoT and damage-shield forms,
-/// singular/plural amounts, and the trailing flag suffix.
+/// why: random damage line, mixes melee/spell/DoT/damage-shield forms
 pub fn damage_line(rng: &mut Rng, ts: i64) -> GenLine {
     let actor = rng.pick(ACTORS).to_string();
     let target = rng.pick(ACTORS).to_string();
@@ -210,8 +197,7 @@ pub fn damage_line(rng: &mut Rng, ts: i64) -> GenLine {
     }
 }
 
-/// A whole synthetic session: random encounters, random participants, random
-/// interleaving, plus noise lines no rule matches.
+/// why: synthetic session, random encounters + participants + noise lines
 pub fn session(rng: &mut Rng, encounters: usize) -> (String, Vec<GenLine>) {
     let mut out = String::new();
     let mut facts = Vec::new();

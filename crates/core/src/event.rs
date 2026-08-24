@@ -58,12 +58,10 @@ pub struct Match {
     pub ts: LocalTs,
     /// Message text after the timestamp header.
     pub body: Span,
-    /// Capture groups 1..=n, indexed from 0. `None` = group did not participate.
-    /// Populated only when the matcher's capture mask covers this rule.
+    /// why: unpopulated unless the capture mask covers this rule
     pub caps: [Option<Span>; MAX_CAPS],
     pub ncaps: u8,
-    /// False when the rule matched but captures were skipped. Call
-    /// `Matcher::extract` to fill them in on demand.
+    /// why: false if skipped -- call `Matcher::extract` on demand
     pub caps_extracted: bool,
 }
 

@@ -1,5 +1,4 @@
-//! Rule pack schema, layering, and errors. Rules are data; this crate does not
-//! know what any `kind` means.
+//! why: rule pack schema/layering/errors -- data only, kind is opaque
 //!
 //! Design notes: `docs/design/parsing.md`
 
@@ -26,56 +25,41 @@ pub struct Pack {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RuleDef {
-    /// Stable identity. Overrides and telemetry key off this, so renaming a
-    /// rule is a breaking change and reusing an id is a merge.
+    /// why: stable identity -- renaming is breaking, reuse is a merge
     pub id: String,
 
-    /// Byte regex applied to the message body. Anchor it with `^` unless you
-    /// mean not to.
+    /// why: anchor with `^` unless you mean not to
     #[serde(default)]
     pub pattern: String,
 
-    /// Literal substrings that must all be present for the rule to even be
-    /// considered. This is the whole performance story: one Aho-Corasick pass
-    /// over the line reduces hundreds of regexes to zero or one.
-    ///
-    /// Empty is legal and correct, just slow — `lint` will warn.
+    /// why: Aho-Corasick prefilter, reduces regexes to zero-or-one hit
     #[serde(default)]
     pub anchors: Vec<String>,
 
-    /// Literal substrings that must be ABSENT for the rule to be considered.
-    ///
-    /// Rust's regex engine has no lookaround (deliberately — it is what buys
-    /// the linear-time guarantee), so "match X but not when Y is present" has
-    /// no clean regex spelling. Expressing it as a literal veto is clearer than
-    /// a contorted pattern, and it is free: the exclusion literals ride along
-    /// in the same Aho-Corasick pass that finds the anchors.
+    /// why: literal veto -- no lookaround, so this stands in for it
     #[serde(default)]
     pub excludes: Vec<String>,
 
-    /// Higher wins when several rules match. Ties break on declaration order,
-    /// so matching is fully deterministic and diffable.
+    /// why: higher wins on conflict, ties break on declaration order
     #[serde(default)]
     pub priority: i32,
 
-    /// Opaque to this crate. Consumers switch on it.
+    /// why: opaque to this crate, consumers switch on it
     #[serde(default)]
     pub kind: String,
 
-    /// Optional typed reading of capture groups, for consumers that want it.
+    /// why: optional typed reading of capture groups
     #[serde(default)]
     pub fields: BTreeMap<String, FieldDef>,
 
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// Lines this rule must match. These are executable: `eqlp lint` runs every
-    /// example through the *whole* engine and fails if another rule wins, which
-    /// catches shadowing the moment it is introduced.
+    /// why: executable -- `eqlp lint` fails if another rule wins instead
     #[serde(default)]
     pub examples: Vec<String>,
 
-    /// Lines this rule must not match. Where near-miss regressions get pinned.
+    /// why: pins near-miss regressions
     #[serde(default)]
     pub counterexamples: Vec<String>,
 
@@ -109,13 +93,11 @@ impl Pack {
     }
 }
 
-/// The result of layering N packs. Order is stable: base declaration order,
-/// with rules introduced by later packs appended.
+/// why: layered packs, stable order, later-pack rules appended
 #[derive(Debug, Clone, Default)]
 pub struct ResolvedPack {
     pub rules: Vec<RuleDef>,
-    /// Rules disabled by a later layer, kept so tooling can explain "why is my
-    /// rule not firing".
+    /// why: kept so tooling can explain "why isn't my rule firing"
     pub disabled: Vec<RuleDef>,
     pub sources: Vec<String>,
     pub header: String,

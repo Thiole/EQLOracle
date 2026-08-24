@@ -32,8 +32,7 @@ impl Framer {
         }
     }
 
-    /// Feed a chunk. `f` is called once per complete line, with `\r\n` and `\n`
-    /// already stripped. The slice is only valid for the duration of the call.
+    /// why: f gets each complete line, CRLF stripped, call-scoped slice
     pub fn push(&mut self, mut chunk: &[u8], mut f: impl FnMut(&[u8])) {
         if self.resyncing {
             match memchr::memchr(b'\n', chunk) {
@@ -82,9 +81,7 @@ impl Framer {
         }
     }
 
-    /// Emit whatever is buffered. Call at EOF of a batch parse; do *not* call
-    /// while tailing a live file — the partial line is not partial by mistake,
-    /// the game just has not finished writing it.
+    /// why: batch-EOF only -- a live partial line just isn't done yet
     pub fn flush(&mut self, mut f: impl FnMut(&[u8])) {
         if !self.carry.is_empty() {
             let carry = std::mem::take(&mut self.carry);

@@ -1,28 +1,19 @@
-//! Collapses the variable parts of a line into a template, for clustering
-//! unmatched lines into a ranked rule backlog.
+//! why: templates a line's variable parts, clusters into a rule backlog
 //!
 //! Design notes: `docs/design/parsing.md`
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ShapeMode {
-    /// Collapse digit runs only. Conservative; keeps every proper noun.
+    /// why: digit runs only, keeps every proper noun
     Digits,
-    /// Also collapse capitalised words that are not sentence-initial.
-    ///
-    /// The position exception keeps the actor concrete, so `Kaeus slashes ...`
-    /// and `Bouncer Krik slashes ...` stay separate. Useful when you care who
-    /// is doing things.
+    /// why: also collapses names, but keeps the sentence-initial actor
     DigitsAndNames,
-    /// Collapse every capitalised word including the first. This is the mode
-    /// for discovery — it yields the line template regardless of actor.
+    /// why: collapses every capitalised word, actor-agnostic template
     #[default]
     Aggressive,
 }
 
-/// Capitalised words that are grammar, not names.
-///
-/// Pure English function words; no game knowledge encoded here. Without this,
-/// `You` and `Your` collapse to `@` and self-versus-other is destroyed.
+/// why: without this, "You"/"Your" collapse and self-vs-other is lost
 #[inline]
 fn is_function_word(w: &[u8]) -> bool {
     matches!(
@@ -55,8 +46,7 @@ fn is_function_word(w: &[u8]) -> bool {
     )
 }
 
-/// Lowercase words that routinely sit *inside* a proper noun. Bridging these
-/// merges ``Footman of V`Zher`` and `Blessing of the Squire` into one `@`.
+/// why: bridges "Footman of V`Zher" into one name, not three tokens
 #[inline]
 fn is_connective(w: &[u8]) -> bool {
     matches!(
@@ -81,8 +71,7 @@ struct Tok {
     class: Class,
 }
 
-/// Reusable shaping state. Holding the token buffer here keeps the per-line
-/// cost allocation-free when shaping a whole log.
+/// why: reused token buffer keeps per-line shaping allocation-free
 #[derive(Default)]
 pub struct Shaper {
     toks: Vec<Tok>,
@@ -171,9 +160,7 @@ impl Shaper {
             match cur.class {
                 Class::Name | Class::Num => {
                     let ph = if cur.class == Class::Name { b'@' } else { b'#' };
-                    // Absorb a run of the same class, optionally bridged by one
-                    // or more connectives. Trailing punctuation ends the run —
-                    // a comma is a real clause boundary, not part of the name.
+                    // why: absorbs a same-class run bridged by connectives
                     let mut end = i;
                     loop {
                         if !span_empty(t[end].trail) {
@@ -187,9 +174,7 @@ impl Shaper {
                         {
                             k += 1;
                         }
-                        // A leading bracket or quote is a boundary too: the
-                        // "(Exaltation)" in an item proc is not part of the
-                        // item name, and swallowing its "(" mangles the shape.
+                        // why: a leading bracket/quote is a boundary too
                         if k < n && t[k].class == cur.class && span_empty(t[k].lead) {
                             end = k;
                         } else {

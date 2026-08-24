@@ -88,8 +88,7 @@ impl<'a> Replay<'a> {
         while self.step(clock, &mut sink).is_some() {}
     }
 
-    /// Replay until virtual time reaches `until_ms`. Returns false at EOF.
-    /// This is the primitive a test uses: "advance to t, then assert".
+    /// why: "advance to t, then assert" primitive for tests
     pub fn run_until(
         &mut self,
         clock: &VirtualClock,
@@ -97,8 +96,7 @@ impl<'a> Replay<'a> {
         mut sink: impl FnMut(&[u8]),
     ) -> bool {
         while clock.now_ms() < until_ms {
-            // Peek: do not consume a line that belongs after the boundary, or
-            // the caller's assertion would see an event from the future.
+            // why: don't consume a line from past the boundary
             match self.peek_timestamp_ms() {
                 Some(next) if next > until_ms => {
                     clock.set_at_least(until_ms);

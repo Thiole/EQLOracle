@@ -26,8 +26,7 @@ impl Clock for SystemClock {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as i64)
-            // Pre-1970 system clock: absurd, but a panic here would take down
-            // a log parser over a BIOS battery.
+            // why: never panic a log parser over a dead BIOS battery
             .unwrap_or(0)
     }
 }

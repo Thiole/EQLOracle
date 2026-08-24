@@ -13,9 +13,7 @@ pub trait HeaderParser: Send + Sync {
 
 /// `[Wed Aug 06 21:14:33 2025] body...`
 ///
-/// Fixed-offset, branch-light, no allocation, no `chrono`. Accepts both
-/// zero-padded and space-padded day-of-month so we do not have to bet on which
-/// one the client's libc produces.
+/// why: fixed-offset, no chrono, accepts zero- or space-padded day
 #[derive(Default, Clone, Copy, Debug)]
 pub struct BracketCtime;
 
@@ -68,8 +66,7 @@ fn d4(b: &[u8]) -> Option<i64> {
     Some(v)
 }
 
-/// Howard Hinnant's civil-from-days, inverted. Valid for the whole i64 range we
-/// care about, no lookup tables, no leap-year branches at call time.
+/// why: Hinnant's civil-from-days, no lookup tables, no leap-year branches
 #[inline]
 fn days_from_civil(y: i64, m: u32, d: u32) -> i64 {
     let y = if m <= 2 { y - 1 } else { y };
@@ -100,7 +97,7 @@ impl HeaderParser for BracketCtime {
         let ss = d2(&line[18..20])?;
         let y = d4(&line[21..25])?;
 
-        // Leap second (60) tolerated; we reject only what cannot be a clock.
+        // why: leap second (60) tolerated, only reject impossible clocks
         if d == 0 || d > 31 || hh > 23 || mi > 59 || ss > 60 {
             return None;
         }
@@ -119,8 +116,7 @@ impl HeaderParser for BracketCtime {
     }
 }
 
-/// Escape hatch: treat the whole line as body with a zero timestamp. Useful for
-/// parsing pasted snippets, chat exports, or any source that lost its header.
+/// why: escape hatch for headerless sources -- whole line as body, ts=0
 #[derive(Default, Clone, Copy, Debug)]
 pub struct NoHeader;
 

@@ -98,9 +98,7 @@ impl Coverage {
         self.last_ts = Some(t);
     }
 
-    /// Fraction of timestamped, non-blank lines that a rule claimed. Headerless
-    /// and blank lines are excluded from the denominator because they are not
-    /// events and counting them just flatters the number.
+    /// why: excludes headerless/blank lines, they'd flatter the rate
     pub fn rate(&self) -> f64 {
         let d = self.matched + self.unmatched;
         if d == 0 {
@@ -121,8 +119,7 @@ impl Coverage {
         self.shapes.len()
     }
 
-    /// Rules that never fired. Either dead weight or a regression — either way
-    /// you want to know, and `lint --against <log>` fails on it in CI.
+    /// why: dead weight or a regression -- lint fails CI on it either way
     pub fn cold_rules(&self) -> Vec<RuleIdx> {
         self.per_rule
             .iter()
