@@ -1,11 +1,6 @@
-//! The IPC surface.
-//!
-//! Two shapes: `get_status` / `pick_log_directory` / `set_log_directory` for
-//! the toolbar and first-launch setup, and the Combat module's read-only
-//! queries (`list_zone_visits`, `list_encounters`, `get_combat_summary`),
-//! which run straight against the shared `Ingest` -- the parsed db -- with
-//! no reparsing. Everything live-updating besides that goes over the
-//! `parse-tick` / `parse-error` events emitted from `tail_worker`.
+//! why: the IPC surface -- toolbar/setup commands plus read-only queries
+//! against the shared `Ingest`, no reparsing. Live updates go over
+//! `parse-tick`/`parse-error` events from `tail_worker` instead.
 
 use crate::aadata;
 use crate::character::{self, CharacterEstimateDto};
@@ -61,16 +56,9 @@ pub fn get_status(state: State<AppState>) -> StatusDto {
     }
 }
 
-/// Opens the native folder picker. Returns `None` if the user cancels --
-/// that is not an error, it just means nothing changes.
-///
-/// Uses the plugin's async callback API, not `blocking_pick_folder`.
-/// Blocking a command thread on the dialog result ties this to whatever
-/// thread that command happened to run on, and on Linux the dialog goes
-/// through GTK's main loop / xdg-desktop-portal -- a context blocking
-/// doesn't reliably mesh with. The callback form is the one path the
-/// plugin runs through the right thread on every platform; we just await
-/// it instead of blocking for it.
+/// why: native folder picker, None on cancel (not an error). Async
+/// callback API, not blocking_pick_folder -- Linux's GTK/portal dialog
+/// doesn't reliably mesh with a blocked command thread.
 #[tauri::command]
 pub async fn pick_log_directory(app: AppHandle) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
@@ -84,14 +72,9 @@ pub async fn pick_log_directory(app: AppHandle) -> Option<String> {
     rx.await.ok().flatten().map(|p| p.to_string())
 }
 
-/// Commits to a directory: persists it, then (re)starts the tail worker.
-/// Called both from first-launch setup and from "change folder" later, so
-/// switching a running app to a new directory is not a special case.
-///
-/// `path` is the game's *base* install folder (see `AppConfig`'s doc) --
-/// validated here as a directory in its own right, but the tail worker
-/// still gets pointed at `cfg.log_dir()` (its `Logs` subfolder), not
-/// `path` directly.
+/// why: persists the base install folder, (re)starts the tail worker;
+/// same path for first-launch and "change folder" later. Worker points
+/// at `cfg.log_dir()`, not `path` directly.
 #[tauri::command]
 pub fn set_log_directory(
     app: AppHandle,
@@ -126,22 +109,16 @@ pub fn set_log_directory(
     })
 }
 
-/// Every zone visit seen so far, newest first, with how many fights each
-/// holds. The Combat module's first dropdown.
+/// why: Combat module's first dropdown -- zone visits, newest first, fight counts
+
 #[tauri::command]
 pub fn list_zone_visits(state: State<AppState>) -> Vec<ZoneVisitDto> {
     combat::list_zone_visits(&state.ingest.lock().unwrap())
 }
 
-/// A newest-first list of encounters, optionally narrowed to one zone
-/// visit. The Combat module's second dropdown can run into the thousands
-/// for a long-lived character's "All zones" view -- that turned out to be
-/// a rendering cost (the frontend virtualizes what it mounts; see
-/// Combat.svelte), not a fetch one, so this defaults to the whole list.
-/// `offset`/`limit` still exist (see `combat::list_encounters`'s own doc)
-/// for whatever future caller actually wants a bounded page. `zone_visit`
-/// is `None` for no filter, `-1` for the "Unknown" (pre-first-zone-line)
-/// bucket, otherwise a visit index -- see `combat::matches_visit`.
+/// why: Combat module's second dropdown, defaults to the whole list --
+/// a rendering cost the frontend virtualizes, not a fetch one.
+/// `zone_visit`: None = no filter, -1 = "Unknown" bucket, else a visit index.
 #[tauri::command]
 pub fn list_encounters(
     state: State<AppState>,
@@ -157,12 +134,8 @@ pub fn list_encounters(
     )
 }
 
-/// A zone page's "Your parsed encounters here" section -- the most recent
-/// `limit` (default 30) fights from any visit to the wiki zone identified
-/// by `zone_id` (`zonedata::Zone::id`, not its display name -- see
-/// `combat::list_zone_encounters`'s doc for why an id). Cheap on its own:
-/// no damage totals, no drops -- see `EncounterPreviewDto`'s doc for why,
-/// and `get_encounter_detail` for where that work moved to.
+/// why: zone page's recent fights, keyed by `zone_id` not display name;
+/// cheap on its own, no damage/drops -- see `get_encounter_detail`
 #[tauri::command]
 pub fn list_zone_encounters(
     state: State<AppState>,
@@ -172,10 +145,8 @@ pub fn list_zone_encounters(
     combat::list_zone_encounters(&state.ingest.lock().unwrap(), &zone_id, limit.unwrap_or(30))
 }
 
-/// One encounter's damage totals and drop list, fetched separately from
-/// `list_zone_encounters` (which no longer computes either eagerly -- see
-/// its doc) so a zone page's initial list never waits on them; called
-/// once a row is actually expanded. `None` for an unknown `encounter_id`.
+/// why: damage/drops fetched separately so the initial list never waits on them
+
 #[tauri::command]
 pub fn get_encounter_detail(
     state: State<AppState>,
@@ -184,9 +155,8 @@ pub fn get_encounter_detail(
     combat::encounter_detail(&state.ingest.lock().unwrap(), encounter_id)
 }
 
-/// An NPC page's "Your history with this mob" section -- kills/pulls
-/// totals plus the most recent `limit` (default 30) fights against
-/// `mob_name`, mirroring what a zone page's own encounter list shows.
+/// why: NPC page's kills/pulls totals plus recent fights
+
 #[tauri::command]
 pub fn get_mob_stats(state: State<AppState>, mob_name: String) -> MobStatsDto {
     monsters::mob_stats(&state.ingest.lock().unwrap(), &mob_name)
@@ -205,9 +175,8 @@ pub fn list_mob_encounters(
     )
 }
 
-/// The Debug module's one table: the most recent `limit` (default 100)
-/// encounters with exactly what zone they're tagged with, raw and
-/// resolved -- see `debugview::list_debug_encounters`'s doc.
+/// why: Debug module's table -- recent encounters with raw and resolved zone tags
+
 #[tauri::command]
 pub fn list_debug_encounters(
     state: State<AppState>,
@@ -216,17 +185,15 @@ pub fn list_debug_encounters(
     debugview::list_debug_encounters(&state.ingest.lock().unwrap(), limit.unwrap_or(100))
 }
 
-/// The Debug module's "Unparsed" tab: every unmatched-line shape seen
-/// this session, ranked by count -- see `debugview::unmatched_coverage`'s
-/// doc.
+/// why: Debug module's "Unparsed" tab -- unmatched shapes ranked by count
+
 #[tauri::command]
 pub fn get_unmatched_coverage(state: State<AppState>, top: Option<usize>) -> UnmatchedCoverageDto {
     debugview::unmatched_coverage(&state.ingest.lock().unwrap(), top.unwrap_or(100))
 }
 
-/// Damage dealers in the current selection, sorted by total descending --
-/// the Combat module's primary view (a "menu of allies", not a flat
-/// ability table).
+/// why: Combat module's primary view -- allies sorted by total damage descending
+
 #[tauri::command]
 pub fn list_allies(
     state: State<AppState>,
@@ -236,8 +203,8 @@ pub fn list_allies(
     combat::list_allies(&state.ingest.lock().unwrap(), zone_visit, encounter_id)
 }
 
-/// The Combat module's drill-down: one ally's own ability breakdown if
-/// `actor` is given, else the whole selection's combined breakdown.
+/// why: Combat module's drill-down -- one ally's breakdown, or the whole selection's
+
 #[tauri::command]
 pub fn get_combat_summary(
     state: State<AppState>,
@@ -270,28 +237,22 @@ pub fn get_fight_state_at(
     combat::fight_state_at(&state.ingest.lock().unwrap(), encounter_id, ts_ms)
 }
 
-/// Every class configuration seen for one entity, across every zone visit
-/// they've been played in, most zone visits first. Empty if `name` hasn't
-/// been seen casting anything the spell/class lookup recognises yet -- see
-/// `eqlp_session::classdetect`'s doc for what this can and can't promise.
+/// why: every configuration for one entity, most zone visits first; empty if nothing confirmed yet
+
 #[tauri::command]
 pub fn get_class_configurations(state: State<AppState>, name: String) -> ClassConfigurationsDto {
     combat::class_configurations(&state.ingest.lock().unwrap(), &name)
 }
 
-/// The Endgame module's Raiding tab: the curated row/raid/boss/miniboss
-/// list, with this character's own confirmed kills/tiers/loot folded in
-/// -- see `raiding::list_raid_rows`'s own doc.
+/// why: Endgame's Raiding tab, curated list with confirmed kills/tiers/loot
+
 #[tauri::command]
 pub fn get_raids(state: State<AppState>) -> Vec<RaidRowDto> {
     raiding::list_raid_rows(&state.ingest.lock().unwrap())
 }
 
-/// The Endgame module's "Sky - Primary Class Unlocks" tab: just the
-/// final reward items each class's quests earn, cross-referenced
-/// against this character's own loot/inventory/achievements -- see
-/// `skyquests::list_class_unlocks`'s own doc for why this is scoped to
-/// rewards only, never the raw materials (that's `get_sky_quests`).
+/// why: "Sky - Primary Class Unlocks" tab -- final reward items only, not raw materials
+
 #[tauri::command]
 pub fn get_sky_class_unlocks(state: State<AppState>) -> Vec<skyquests::SkyClassUnlockDto> {
     let base_dir = state
@@ -303,9 +264,8 @@ pub fn get_sky_class_unlocks(state: State<AppState>) -> Vec<skyquests::SkyClassU
     skyquests::list_class_unlocks(&state.ingest.lock().unwrap(), base_dir.as_deref())
 }
 
-/// The Endgame module's "Sky - Quests" tab: every individual material
-/// turn-in (rune + drop items -> one gear reward), full detail -- see
-/// `skyquests::list_quests`'s own doc.
+/// why: "Sky - Quests" tab -- every material turn-in, full detail
+
 #[tauri::command]
 pub fn get_sky_quests(state: State<AppState>) -> Vec<skyquests::SkyClassDto> {
     let base_dir = state
@@ -317,9 +277,8 @@ pub fn get_sky_quests(state: State<AppState>) -> Vec<skyquests::SkyClassDto> {
     skyquests::list_quests(&state.ingest.lock().unwrap(), base_dir.as_deref())
 }
 
-/// One configuration's own zone visits, for drilling from a configuration
-/// row down to the specific visits (and from there, via
-/// `list_encounters(zoneVisit)`, the fights) that make it up.
+/// why: drills from a configuration row down to its own zone visits
+
 #[tauri::command]
 pub fn get_configuration_zone_visits(
     state: State<AppState>,
@@ -329,25 +288,13 @@ pub fn get_configuration_zone_visits(
     combat::zone_visits_for_configuration(&state.ingest.lock().unwrap(), &name, &classes)
 }
 
-/// `configuration_of_visit` needs "You"'s own interned symbol, read-only
-/// (`Interner::get`, not `sym`, which would need `&mut`) -- `None` only
-/// before a single line has ever been processed, in which case there is
-/// no history to refresh loadouts *against* either, so an empty/unchanged
-/// `loadout` on every record is already the right answer.
+/// why: read-only symbol lookup; None only before anything's been parsed
 fn you_sym(ing: &crate::ingest::Ingest) -> Option<u32> {
     ing.store.names.get("You").map(|s| s.0)
 }
 
-/// Past parses against `target`, newest first. `confirmed_only` narrows to
-/// encounters that actually ended in a death line -- see
-/// `ParseRecord::confirmed_kill`'s doc for why an unfiltered comparison
-/// mixes a full kill with a truncated reset as if they measured the same
-/// thing. Reads the persisted records from `parse_history.jsonl` (this is
-/// the record meant to outlive the live store's own eviction), but
-/// re-resolves each one's `loadout` against `Ingest`'s *live* class
-/// evidence before returning -- see `history::refresh_loadouts`'s own doc
-/// for why a record's own "as of close" snapshot can go stale within the
-/// very same zone visit.
+/// why: past parses against `target`, newest first; re-resolves loadout
+/// against live class evidence before returning, not the as-of-close snapshot
 #[tauri::command]
 pub fn get_mob_history(
     app: AppHandle,
@@ -364,12 +311,8 @@ pub fn get_mob_history(
     history::mob_history_view(records, &target, confirmed_only)
 }
 
-/// Past parses against `target`, bundled by which class combination was
-/// active -- "my average as Wizard/Enchanter/Magician vs. this mob" as its
-/// own row, separate from "my average as Necromancer/Shadow Knight",
-/// instead of one number blending playstyles that don't otherwise compare.
-/// Same `confirmed_only` meaning, and the same live-loadout-refresh
-/// treatment, as `get_mob_history`.
+/// why: past parses bundled by class combination -- avoids blending
+/// playstyles into one number; same treatment as `get_mob_history`
 #[tauri::command]
 pub fn get_loadout_summary(
     app: AppHandle,
@@ -389,81 +332,64 @@ pub fn get_loadout_summary(
     history::by_loadout(&records)
 }
 
-/// The Overview module's session stats: plat/hour, xp%/hour, and an
-/// estimated time to the next level, all scoped to "this session" -- see
-/// `overview`'s own module doc for exactly what that means and why it
-/// isn't just "since the log started".
+/// why: Overview module's session stats, scoped to "this session" not the whole log
+
 #[tauri::command]
 pub fn get_session(state: State<AppState>) -> SessionDto {
     overview::session(&state.ingest.lock().unwrap())
 }
 
-/// Every AA rank purchase seen this session, oldest first, plus the total
-/// ability points spent -- see `progression`'s own module doc; no UI
-/// consumes this yet.
+/// why: every AA purchase this session plus total spent; no UI consumes this yet
+
 #[tauri::command]
 pub fn get_aa_log(state: State<AppState>) -> AaLogDto {
     progression::aa_log(&state.ingest.lock().unwrap())
 }
 
-/// Every spell confirmed known this session, enriched with the wiki
-/// catalog's own stats -- see `progression`'s own module doc; the
-/// Character module's Spellbook subpage.
+/// why: Character module's Spellbook subpage -- known spells enriched with catalog stats
+
 #[tauri::command]
 pub fn get_spellbook(state: State<AppState>) -> Vec<SpellbookEntryDto> {
     progression::spellbook(&state.ingest.lock().unwrap())
 }
 
-/// Highest live in-game rank observed cast this session, "You" only, by
-/// catalog base spell name -- see `progression::spell_ranks`' own doc.
-/// The Spellbook builder's suggestion picker, so a spell already ranked
-/// up shows that instead of implying it's freshly unranked.
+/// why: Spellbook builder's picker -- shows an already-ranked spell's real rank
+
 #[tauri::command]
 pub fn get_spell_ranks(state: State<AppState>) -> HashMap<String, u8> {
     progression::spell_ranks(&state.ingest.lock().unwrap())
 }
 
-/// Every catalog spell with a parseable damage effect, rank-adjusted --
-/// see `dpscalc`'s own module doc for the (stated, not hidden) model
-/// this uses. Unfiltered by class/level; the Spellbook builder's DPS
-/// auto-suggest applies the same class/level-cap filtering it already
-/// uses for its spell picker.
+/// why: every damage-capable spell, rank-adjusted, unfiltered -- caller applies its own filtering
+
 #[tauri::command]
 pub fn get_damage_spells(state: State<AppState>) -> Vec<DamageSpellDto> {
     dpscalc::list_damage_spells(&state.ingest.lock().unwrap())
 }
 
-/// Every mob type fought so far, kill counts and loot -- the Loot History
-/// module's one view.
+/// why: Loot History module's one view -- mob types, kills, loot
+
 #[tauri::command]
 pub fn list_mobs(state: State<AppState>) -> Vec<MobDto> {
     monsters::list_mobs(&state.ingest.lock().unwrap())
 }
 
-/// Every zone the wiki scrape carries -- the Game Data module's Zones tab,
-/// and what a drop-source zone name matches against to link in-app.
-/// Small and static enough (117 zones) to ship whole in one call rather
-/// than a separate per-zone fetch.
+/// why: Game Data's Zones tab, 117 zones small enough to ship whole
+
 #[tauri::command]
 pub fn list_zones() -> Vec<zonedata::Zone> {
     zonedata::zones().to_vec()
 }
 
-/// Every NPC the wiki scrape carries -- the Game Data module's NPCs tab.
-/// 6,532 entries; still one call, not paginated -- see `list_zones` for
-/// the same reasoning at a tenth the size, still comfortably local-IPC
-/// cheap at this one (`itemdata::items` already ships a similarly sized
-/// list, unfiltered, via `list_gear_items`).
+/// why: Game Data's NPCs tab, 6,532 entries, still one call not paginated
+
 #[tauri::command]
 pub fn list_npcs() -> Vec<npcdata::Npc> {
     npcdata::npcs().to_vec()
 }
 
-/// Log mob name -> wiki `Npc::name`, for Game Data's own cross-links
-/// (`gdFind`'s npc case) to resolve the same real mismatches
-/// `mobalias::mob_matches` already closes for backend lookups like
-/// `combat::drop_chance` -- one table, not a second copy hand-kept in
-/// sync on the frontend. `(from, to)` pairs, small enough to ship whole.
+/// why: one table, ships whole -- no second copy hand-kept in sync on the frontend
+
 #[tauri::command]
 pub fn get_mob_aliases() -> Vec<(String, String)> {
     mobalias::all()
@@ -472,53 +398,37 @@ pub fn get_mob_aliases() -> Vec<(String, String)> {
         .collect()
 }
 
-/// Every spell the wiki scrape carries -- the Game Data module's Spells
-/// tab, and what `get_spellbook` joins the log's own confirmed-known
-/// names against. 1928 entries, same "one call, unfiltered" stance as
-/// `list_zones`/`list_npcs`.
+/// why: Game Data's Spells tab, 1928 entries, one call unfiltered like `list_zones`
+
 #[tauri::command]
 pub fn list_spells() -> Vec<spelldata::Spell> {
     spelldata::spells().to_vec()
 }
 
-/// Derived spell mechanics for the whole catalog -- duration (seconds),
-/// damage/heal/buff/debuff/control-effect components, and category tags
-/// -- keyed by spell id. See `spelleffect`'s own module doc for exactly
-/// what's real vs. best-effort here. Computed once, cached; see `spelleffect::all_effects`.
+/// why: derived spell mechanics for the whole catalog, keyed by spell id, computed once and cached
+
 #[tauri::command]
 pub fn list_spell_effects() -> Vec<spelleffect::SpellEffectsEntry> {
     spelleffect::all_effects().to_vec()
 }
 
-/// Every AA the wiki scrape carries -- the full 142-entry reference
-/// catalog for the Game Data module's AAs tab. Distinct from `get_aa_log`
-/// (this character's own confirmed purchases): this is the whole book
-/// anyone could buy from, not what you actually own.
+/// why: Game Data's AAs tab, full 142-entry catalog -- distinct from `get_aa_log`'s own purchases
+
 #[tauri::command]
 pub fn list_aa() -> Vec<aadata::Aa> {
     aadata::aas().to_vec()
 }
 
-/// Every time you've actually looted `item`, oldest first -- an item
-/// page's "your history with this item" section. See
-/// `monsters::item_loot_history`'s doc for exactly what each event does
-/// and doesn't carry.
+/// why: item page's "your history with this item" section
+
 #[tauri::command]
 pub fn get_item_loot_history(state: State<AppState>, item: String) -> Vec<LootEventDto> {
     monsters::item_loot_history(&state.ingest.lock().unwrap(), &item)
 }
 
-/// The Character Planner's one call: a full attribute sheet (race, each
-/// active class's own add, naked, gear, total) and a gear-inclusive
-/// mana-pool estimate for `race` + up to 3 `classes`, each at its own
-/// `class_levels` entry -- see `character`'s module doc for the trio
-/// mechanic this is modeled on and exactly how much to trust the numbers.
-/// `gear` is attribute name -> total across whatever's currently resolved
-/// on the Gear Planner's own doll (the frontend sums it there -- this
-/// command's own Rust side never touches an item); omitted or empty reads
-/// as no gear, same as `character::estimate`'s own default. Stateless on
-/// purpose: nothing here is persisted, so a fresh app launch always starts
-/// blank rather than restoring a previous session's picks.
+/// why: Character Planner's one call -- full attribute sheet + mana
+/// estimate; `gear` summed by the frontend, this side never touches an
+/// item. Stateless on purpose -- nothing persisted, fresh launch starts blank.
 #[tauri::command]
 pub fn get_character_estimate(
     race: String,
@@ -529,21 +439,15 @@ pub fn get_character_estimate(
     character::estimate(&race, &classes, &class_levels, &gear.unwrap_or_default())
 }
 
-/// `name`'s confirmed classes, as full class names -- what the Gear
-/// Planner module pre-selects on open instead of asking you to re-tell it
-/// what you're playing. Empty if nothing's confirmed yet.
+/// why: Gear Planner pre-selects this instead of asking again; empty if nothing confirmed
+
 #[tauri::command]
 pub fn get_default_gear_classes(state: State<AppState>, name: String) -> Vec<String> {
     gearplanner::default_classes(&state.ingest.lock().unwrap(), &name)
 }
 
-/// The item browser: every item usable by `classes` (full class names),
-/// optionally narrowed to one slot key and/or to an era at or before
-/// `max_era` (an `eqlp_app::gearplanner::ERA_ORDER` name). `owned`/`owned_
-/// tier` are the frontend's already-loaded `InventoryDumpDto` fields,
-/// passed back in so browsed items can show real ownership (and be shown
-/// at the tier actually owned) -- this command has no dump of its own to
-/// read.
+/// why: item browser; `owned`/`owned_tier` are the frontend's already-
+/// loaded dump fields passed back in -- this command has no dump of its own
 #[tauri::command]
 pub fn list_gear_items(
     classes: Vec<String>,
@@ -561,18 +465,15 @@ pub fn list_gear_items(
     )
 }
 
-/// The doll/preview panel's tier picker: re-derives `id`'s stats/exalts
-/// as if it were sitting at `tier` (0-10, clamped), independent of
-/// whatever it's actually shown at elsewhere -- a "what if I upgrade
-/// this" preview, not a write to any real ownership state.
+/// why: "what if I upgrade this" preview, not a write to real ownership state
+
 #[tauri::command]
 pub fn get_item_at_tier(id: String, tier: u8) -> Option<ItemDto> {
     gearplanner::item_at_tier(&id, tier)
 }
 
-/// The doll/preview panel's exaltation display, re-derived with `exalts`
-/// (socket key -> source item id) socketed in instead of `id`'s own
-/// native effects -- see `gearplanner::item_with_exalts`'s own doc.
+/// why: exaltation display re-derived with `exalts` socketed in
+
 #[tauri::command]
 pub fn get_item_with_exalts(
     id: String,
@@ -582,10 +483,8 @@ pub fn get_item_with_exalts(
     gearplanner::item_with_exalts(&id, tier, &exalts)
 }
 
-/// The exaltation picker's own candidate list -- see
-/// `gearplanner::exalt_candidates`'s own doc for exactly what "legal"
-/// means here. `other_assignments` is every socket on `id` already
-/// filled *except* `socket_key` itself (its own not-yet-committed pick).
+/// why: exaltation candidate list; `other_assignments` is every socket except this one
+
 #[tauri::command]
 pub fn get_exalt_candidates(
     id: String,
@@ -603,17 +502,10 @@ pub fn get_exalt_candidates(
     )
 }
 
-/// Top candidates for every slot, scored against `classes`/`race` -- see
-/// `gearplanner::recommend`'s doc for exactly what this does and doesn't
-/// account for. `level` (from `get_current_level`) is what lets INT/WIS
-/// score as actual mana-pool value instead of `derived_weights`' flat
-/// max-based fallback -- see that function's doc. `equipped`/`owned`/
-/// `owned_tier` are the frontend's already-loaded `InventoryDumpDto`
-/// fields (slot -> item name, base name -> copies owned, base name ->
-/// highest tier owned) -- all `None` for a plain browsing call with no
-/// dump loaded yet.
+/// why: top candidates per slot, scored against classes/race; `level`
+/// lets INT/WIS score as actual mana value not a flat fallback
 #[tauri::command]
-#[allow(clippy::too_many_arguments)] // each param is its own real, independently-optional filter -- see doc above
+#[allow(clippy::too_many_arguments)] // why: each param is its own real, independently-optional filter
 pub fn get_gear_recommendations(
     classes: Vec<String>,
     race: Option<String>,
@@ -638,9 +530,8 @@ pub fn get_gear_recommendations(
     )
 }
 
-/// The scoring vector currently in force for `classes` -- what the
-/// planner's "weights" panel shows, so a ranking is explainable instead of
-/// opaque.
+/// why: planner's "weights" panel -- makes the ranking explainable, not opaque
+
 #[tauri::command]
 pub fn get_gear_weights(
     classes: Vec<String>,
@@ -651,16 +542,13 @@ pub fn get_gear_weights(
 
 #[derive(Debug, Clone, Serialize)]
 pub struct EraOptionsDto {
-    /// `ERA_ORDER`, oldest first -- the Settings module's era dropdown,
-    /// alongside a synthetic "All" this app adds on the frontend side
-    /// (not itself an era the wiki scrape ever produced).
+    /// why: ERA_ORDER oldest first; frontend adds a synthetic "All" on top
     pub eras: Vec<String>,
     pub current: String,
 }
 
-/// What the Settings module's era picker needs to build itself --
-/// `gearplanner::ERA_ORDER`/`CURRENT_ERA` aren't otherwise reachable over
-/// IPC (Rust `const`s, not data this app stores or computes per-request).
+/// why: ERA_ORDER/CURRENT_ERA are Rust consts, not otherwise reachable over IPC
+
 #[tauri::command]
 pub fn get_era_options() -> EraOptionsDto {
     EraOptionsDto {
@@ -672,9 +560,8 @@ pub fn get_era_options() -> EraOptionsDto {
     }
 }
 
-/// The Settings module's own volume/era preferences -- see
-/// `preferences::Preferences`'s doc for what each field means and why
-/// this is a separate file from `settings::NotificationSettings`.
+/// why: Settings module's volume/era preferences, separate file from `settings::NotificationSettings`
+
 #[tauri::command]
 pub fn get_preferences(app: AppHandle) -> Preferences {
     preferences::load(&app)
@@ -686,25 +573,15 @@ pub fn set_preferences(app: AppHandle, prefs: Preferences) -> Result<Preferences
     Ok(prefs)
 }
 
-/// Your most recently observed level (`Ingest::levels`) -- what
-/// `get_gear_recommendations`/`get_gear_weights` need `level` to be, so
-/// the Gear Planner's mana weighting can turn INT/WIS into an actual
-/// pool estimate instead of falling back to a flat per-class number. See
-/// `Levels::latest`'s doc for the (common) case this returns `None`: no
-/// `level.up` line anywhere in this session's log history, which mostly
-/// means you've been this level for the whole file, not that your level
-/// is unknown in any deeper sense.
+/// why: feeds the Gear Planner's mana weighting; None mostly means "same
+/// level the whole file", not "unknown"
 #[tauri::command]
 pub fn get_current_level(state: State<AppState>) -> Option<u8> {
     state.ingest.lock().unwrap().levels.latest()
 }
 
-/// The inv-toast's "Load into Gear Planner" action: reads `file` (an
-/// `/outputfile inventory` dump named by an `outputfile.complete` line,
-/// see `inventory-dump`'s emit in tail_worker.rs) out of the game's base
-/// folder, parses its equipped-item rows, and matches each against this
-/// app's own item catalog so the doll can show real icons/stats for
-/// what's actually equipped instead of just a bare name.
+/// why: reads and parses an inventory dump, matches equipped rows against the item catalog
+
 #[tauri::command]
 pub fn get_inventory_dump(
     state: State<AppState>,
@@ -732,11 +609,8 @@ pub struct ExistingInventoryDumpDto {
     pub character: Option<String>,
 }
 
-/// The Character module's own init check: is there already a real
-/// inventory dump sitting in the game folder from a past session, not
-/// just a brand new one this run happens to catch live -- see
-/// `inventory::find_existing_dump`'s doc. `None` if the folder has no
-/// dump at all, not just none written yet this session.
+/// why: init check for an existing dump from a past session, not just this run's live one
+
 #[tauri::command]
 pub fn find_existing_inventory_dump(state: State<AppState>) -> Option<ExistingInventoryDumpDto> {
     let base_dir = state.config.lock().unwrap().as_ref()?.base_dir.clone();
@@ -744,9 +618,8 @@ pub fn find_existing_inventory_dump(state: State<AppState>) -> Option<ExistingIn
     Some(ExistingInventoryDumpDto { file, character })
 }
 
-/// The Maps module's pack picker -- subfolders of `maps/` under the
-/// game's base install (e.g. `Brewall`). Empty is valid: base game maps
-/// only, no community pack installed. See `mapsdata::list_map_packs`.
+/// why: Maps module's pack picker; empty is valid, base game only
+
 #[tauri::command]
 pub fn list_map_packs(state: State<AppState>) -> Vec<String> {
     let Some(base_dir) = state
@@ -761,9 +634,8 @@ pub fn list_map_packs(state: State<AppState>) -> Vec<String> {
     mapsdata::list_map_packs(&base_dir)
 }
 
-/// The Maps module's zone picker -- every zone with at least one map file
-/// under `maps/` (or `maps/<pack>` when `pack` is given). See
-/// `mapsdata::list_zone_names`.
+/// why: Maps module's zone picker -- every zone with a map file
+
 #[tauri::command]
 pub fn list_map_zones(state: State<AppState>, pack: Option<String>) -> Vec<String> {
     let Some(base_dir) = state
@@ -778,10 +650,8 @@ pub fn list_map_zones(state: State<AppState>, pack: Option<String>) -> Vec<Strin
     mapsdata::list_zone_names(&base_dir, pack.as_deref())
 }
 
-/// The Maps module's zone-first picker: every zone with at least one map
-/// file anywhere under `maps/`, whichever source (base game or any pack)
-/// it comes from -- replaces making the user pick a pack before they can
-/// even see whether their zone has a map. See `mapsdata::list_all_zone_names`.
+/// why: zone-first picker across every source -- avoids picking a pack before seeing if a map exists
+
 #[tauri::command]
 pub fn list_all_map_zones(state: State<AppState>) -> Vec<String> {
     let Some(base_dir) = state
@@ -797,9 +667,8 @@ pub fn list_all_map_zones(state: State<AppState>) -> Vec<String> {
 }
 
 /// Which source(s) have a map for `zone` -- `null` for the base game, a
-/// pack name for each community pack that also covers it (e.g. Befallen:
-/// base game + Brewall). Drives the "available versions" picker once a
-/// zone is chosen. See `mapsdata::list_zone_versions`.
+/// why: drives the "available versions" picker once a zone is chosen
+
 #[tauri::command]
 pub fn list_zone_versions(state: State<AppState>, zone: String) -> Vec<Option<String>> {
     let Some(base_dir) = state
@@ -814,10 +683,8 @@ pub fn list_zone_versions(state: State<AppState>, zone: String) -> Vec<Option<St
     mapsdata::list_zone_versions(&base_dir, &zone)
 }
 
-/// The Maps module's own render data: every wall segment and labeled
-/// marker for `zone`, merged from its base map file and every numbered
-/// sibling -- see `mapsdata::load_zone_map`'s own doc for why merging,
-/// not picking one file, is correct here.
+/// why: Maps module's render data, merged from base file and every numbered sibling
+
 #[tauri::command]
 pub fn get_map_file(
     state: State<AppState>,
@@ -836,19 +703,15 @@ pub fn get_map_file(
     Ok(parsed.into())
 }
 
-/// A real walking route within one zone's map, waypoint by waypoint --
-/// see `pathfind::find_path`'s own doc for what "real" means here (grid
-/// A* over the zone's own wall geometry, Z-banded to the *starting*
-/// point's own floor) and its stated limits (a route needing a floor
-/// change within the zone isn't found).
+/// why: real walking route waypoints -- grid A* over wall geometry, Z-banded to the start floor
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PathDto {
     pub waypoints: Vec<[f32; 3]>,
 }
 
-/// Same `base_dir`-required shape as `get_map_file` -- a missing route is
-/// a real, retryable outcome (no path exists on this floor, or an install
-/// isn't configured yet), not folded into a generic "empty result".
+/// why: missing route is a real retryable outcome, not folded into an empty result
+
 #[tauri::command]
 pub fn find_walk_path(
     state: State<AppState>,
@@ -873,10 +736,8 @@ pub fn find_walk_path(
     })
 }
 
-/// One leg of a `ZoneRouteDto` -- see `routing::HopKind`'s own doc for
-/// why a teleport hop is never folded into a generic "shortcut": it names
-/// its own spell so the frontend (and the player) can judge whether they
-/// actually have access to it, rather than the backend assuming they do.
+/// why: names its own spell so the player judges real access, not the backend assuming it
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RouteHopDto {
     pub zone: String,
@@ -916,52 +777,19 @@ impl From<routing::ZoneRoute> for ZoneRouteDto {
     }
 }
 
-/// A route from `from_zone` to `to_zone` across zone lines and/or
-/// teleport shortcuts, weighted by real in-zone walking distance -- see
-/// `routing::find_zone_route`'s own doc for the two-stage (cheap
-/// candidates, then real-distance scoring) design. Which teleport
-/// shortcuts even get considered is gated by the log owner's own *assumed*
-/// class/level -- the dominant (most zone-visits) confirmed configuration
-/// from `combat::class_configurations`, and that configuration's own
-/// `level_range` upper bound as the assumed level, the same "assumed"
-/// framing the user asked for rather than chasing an exact per-class
-/// level this app has no way to derive (`Ingest::levels` only ever tracks
-/// one *effective* level across the whole loadout, not one per class --
-/// see that struct's own doc). No confirmed configuration yet (a fresh
-/// session, or a character below the level-10 fixed-3-classes rule) means
-/// no teleport shortcuts are offered at all -- walk-only, not a guess.
-/// The player's real, confirmed position in `from_zone` right now, in
-/// map-file space -- a real `/loc` reading or a confirmed teleport
-/// landing, whichever is more specific, or `None` if neither is available
-/// *for that zone specifically*. Per the user's own direct point: a zone
-/// entered via a recognized teleport cast, or a real `/loc` reading, is
-/// 100% known -- exactly the "confirmed" tier docs/design/maps.md's "You
-/// are here" ladder already uses for the map marker, now also feeding
-/// `routing::find_zone_route`'s own first-hop distance rather than only
-/// the visual overlay. Both sources need the same real, verified
-/// transform a raw reading needs before it means anything in map-file
-/// space -- see `Ingest::last_loc`'s own doc for the `(-y, -x, z)` mapping
-/// this reapplies, and `entered_via_teleport`'s own callers (`MapViewer.
-/// svelte`) for why that field shares the same raw coordinate space.
-/// Zone-matched against `from_zone` independently for each source (a
-/// `/loc` reading and the current teleport landing can each be stale in
-/// different ways -- a `/loc` typed in a zone visited hours ago is not
-/// "now", and neither is a landing from a zone visit that's already over).
+/// why: real distance-weighted route; teleports gated by the player's
+/// assumed class/level (dominant confirmed configuration), walk-only
+/// with no confirmed configuration yet. `known_start` is a real /loc
+/// reading or teleport landing, zone-matched independently per source
+/// since either can go stale in a different way -- returns the fresher.
 fn live_start_position(
     ing: &crate::ingest::Ingest,
     base_dir: &std::path::Path,
     from_zone: &str,
 ) -> Option<(f32, f32, f32)> {
-    // Real, reported bug this fixes: a real `/loc` reading used to win
-    // unconditionally whenever its own zone matched, even when a *later*
-    // teleport/Origin confirmation existed for the same zone -- an old
-    // `/loc` typed before teleporting/Origin-ing back to a zone kept
-    // outranking a fresher, equally-real confirmation just because `/loc`
-    // was checked first, not because it was actually more recent. All
-    // three real sources now compete on timestamp alone -- whichever one
-    // is genuinely the newest *for this zone* wins, full stop. No
-    // separate "prefer /loc, fall back to teleport" tiering left to get
-    // this backwards again.
+    // why: real reported bug -- /loc used to win unconditionally over a
+    // later teleport/Origin confirmation for the same zone; now all
+    // three sources compete on timestamp alone, freshest wins
     let mut best: Option<(eqlp_source::Millis, (f32, f32, f32))> = None;
     let mut consider = |ts: eqlp_source::Millis, pos: (f32, f32, f32)| {
         if best.is_none_or(|(best_ts, _)| ts > best_ts) {
@@ -990,11 +818,8 @@ fn live_start_position(
             );
         }
     }
-    // Origin's own learned landing (see `Ingest::learned_origin`'s own
-    // doc) -- a real zone, confirmed by direct observation, but no
-    // wiki-quoted coordinate the way the two sources above have; `routing::
-    // best_start_position`'s own succor-point lookup stands in once the
-    // zone itself is known.
+    // why: Origin's landing has no wiki-quoted coordinate, only a
+    // confirmed zone -- `best_start_position`'s succor lookup stands in
     if let Some((ts, raw)) = &ing.learned_origin {
         if crate::zone::zone_matches(raw, from_zone) {
             consider(*ts, routing::best_start_position(base_dir, from_zone));
@@ -1077,27 +902,16 @@ pub struct LastLocationDto {
     pub x: f64,
     pub y: f64,
     pub z: f64,
-    /// The raw `zone.enter` label current at `ts_ms` -- the frontend
-    /// matches this (loosely, case-insensitive) against whichever map is
-    /// currently open before showing the marker, so a stale `/loc` from a
-    /// zone visited hours ago never gets plotted on an unrelated map.
-    /// `None` if no zone was known yet at that instant.
+    /// why: raw zone label at ts_ms, frontend matches loosely to avoid
+    /// plotting a stale /loc on an unrelated map
     pub zone: Option<String>,
-    /// `map_zones_for_raw_label(zone)` -- real map-file shortname(s) for
-    /// `zone`, resolved independently of `ZoneContextDto::current_map_
-    /// zones` (not just reused) since a `/loc` reading's own zone can lag
-    /// behind "right now" by however long ago it was actually typed --
-    /// see MapViewer.svelte for why matching on this instead of
-    /// `zone_context`'s own resolution matters.
+    /// why: resolved independently, not reused from current_map_zones --
+    /// a /loc reading's zone can lag behind "right now"
     pub map_zones: Vec<String>,
 }
 
-/// The Maps module's "you are here" marker -- the most recent `/loc`
-/// reading, if the player has typed one this session. Rare (only fires
-/// on the manual `/loc` command) -- `None` most of the time, and even
-/// when present it's a timestamped snapshot, not a live position; the
-/// frontend shows the timestamp alongside it rather than implying
-/// continuous tracking. See `Ingest::last_loc`'s own doc.
+/// why: "you are here" marker, rare -- a timestamped snapshot, not live tracking
+
 #[tauri::command]
 pub fn get_last_location(state: State<AppState>) -> Option<LastLocationDto> {
     let ing = state.ingest.lock().unwrap();
@@ -1116,58 +930,24 @@ pub fn get_last_location(state: State<AppState>) -> Option<LastLocationDto> {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ZoneContextDto {
-    /// Raw `zone.enter` label current right now, if any.
+    /// why: raw zone label current right now
     pub current: Option<String>,
-    /// Raw `zone.enter` label of the visit immediately before this one --
-    /// where the player almost certainly walked in *from*.
+    /// why: label of the visit before this one, where the player likely walked in from
     pub previous: Option<String>,
-    /// The exact, wiki-confirmed landing (if any) the *current* visit was
-    /// entered via, rather than an ordinary zone-line walk -- see
-    /// `Ingest::entered_via_teleport`'s own doc and `teleportdata`'s own
-    /// doc for the coordinate-space caveat. When `Some`, the frontend
-    /// plots this coordinate directly instead of the weaker `previous`-
-    /// zone entrance guess.
+    /// why: exact wiki-confirmed landing for this visit, if entered via
+    /// teleport not an ordinary walk; frontend plots this over the weaker guess
     pub teleport_landing: Option<crate::teleportdata::TeleportLanding>,
-    /// The confirming `zone.enter`'s own timestamp -- whichever source
-    /// `teleport_landing` actually reflects, a real Gate/Translocate/
-    /// Circle/Ring landing or an Origin-derived one, both count equally
-    /// here. `None` exactly when `teleport_landing` is `None`. Real,
-    /// reported bug this exists to fix: the frontend used to prefer a
-    /// real `/loc` reading unconditionally whenever its own zone matched,
-    /// even when a *later* teleport/Origin confirmation existed for that
-    /// same zone -- an old `/loc` outranking fresher, equally-real
-    /// evidence just because `/loc` was checked first, not because it was
-    /// actually more recent. The frontend now compares this against its
-    /// own `/loc` reading's timestamp and uses whichever is genuinely
-    /// newer, the same "freshest wins" rule `commands::live_start_position`
-    /// already applies backend-side for routing.
+    /// why: confirming timestamp; frontend compares against its own /loc
+    /// timestamp, freshest wins -- same rule as `live_start_position`
     pub teleport_landing_ts: Option<eqlp_source::Millis>,
-    /// Real map-file shortname(s) for `current` (e.g. `["gukbottom"]` for
-    /// "The Ruins of Old Guk 4 (Refined)"), via the wiki's own scraped
-    /// `who_name` field -- see `zonedata::map_shortnames`'s own doc for
-    /// why this replaces guessing a match from the raw label's text
-    /// (which fails for most real zones: their internal map shortname
-    /// bears no textual resemblance to the display name at all). The
-    /// frontend's "is the map I have open actually my current zone" check
-    /// is membership in this list, not a substring heuristic -- see
-    /// MapViewer.svelte. Empty when `current` never resolved to a wiki
-    /// zone, or that zone's own `who_name` is empty -- both real, stated
-    /// gaps, not silently papered over with the old guess.
+    /// why: real map-file shortnames, since internal shortnames bear no
+    /// resemblance to display names; membership check, not a substring heuristic
     pub current_map_zones: Vec<String>,
 }
 
-/// `map_shortnames` for whichever zone `raw` names. Matches directly
-/// against `zonedata::zones()` via `zone::zone_matches` -- the same check
-/// `Ingest::resolved_wiki_zone` does internally -- rather than reusing
-/// `Ingest`'s own cache of it (`cached_wiki_zone`): that cache is only
-/// ever primed as a side effect of `current_zone`, called when an
-/// encounter needs stamping, which a zone with no combat yet (freshly
-/// walked into, nothing fought) may never trigger -- confirmed by a real
-/// test that hit exactly this gap. A fresh 117-entry linear scan, run at
-/// most a few times a second (`get_zone_context` is a per-tick query, not
-/// a hot per-line one), costs nothing worth caching for. Empty if `raw` is
-/// `None`, never resolved to a wiki zone, or that zone carries no
-/// `who_name` -- every one a real, honest "don't know", not a guess.
+/// why: fresh linear scan, not `Ingest`'s cache -- that cache is only
+/// primed by combat, which a freshly-walked-into zone may never trigger.
+/// Cheap enough at per-tick query rate. Empty is a real "don't know", not a guess.
 fn map_zones_for_raw_label(raw: Option<&str>) -> Vec<String> {
     let Some(raw) = raw else { return Vec::new() };
     zonedata::zones()
@@ -1178,32 +958,17 @@ fn map_zones_for_raw_label(raw: Option<&str>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The Maps module's zone-identity + entrance-guess input. `current_map_
-/// zones` (real map-file shortnames -- see its own doc) is what the
-/// frontend now uses to confirm the currently-open map really is the
-/// player's real current zone, for both the confirmed `/loc` dot and the
-/// entrance guess -- `previous`/`teleport_landing` then decide *which*
-/// entrance guess: a `to_<previous zone>` marker, or, if `teleport_landing`
-/// is `Some`, that exact wiki-confirmed coordinate, used only when no real
-/// `/loc` snapshot exists yet (the marker-matching fallback only applies
-/// to the `previous`-zone path -- a known teleport landing is plotted
-/// directly, with no marker-matching ambiguity at all).
+/// why: Maps module's zone-identity + entrance-guess input; `current_map_zones`
+/// confirms the open map is really current, `previous`/`teleport_landing` decide the guess
 #[tauri::command]
 pub fn get_zone_context(state: State<AppState>) -> ZoneContextDto {
     let ing = state.ingest.lock().unwrap();
     let ts = ing.now_ms();
     let current = ing.zone.at(ts).map(str::to_string);
     let current_map_zones = map_zones_for_raw_label(current.as_deref());
-    // Two real, independent confirmation sources -- a wiki-fixed teleport
-    // (`entered_via_teleport`) and Origin's own learned landing (see
-    // `Ingest::learned_origin`'s own doc) -- compete on timestamp, same
-    // "freshest wins" rule `commands::live_start_position` applies for
-    // routing. In practice they're almost never both set for the same
-    // zone visit (each only fires from its own recent cast), but when
-    // they are, recency decides it honestly rather than one kind always
-    // beating the other. No `base_dir` configured yet is a real, honest
-    // "can't compute a position" for the Origin side specifically, not an
-    // error -- falls through to whichever other source is available.
+    // why: two independent confirmation sources compete on timestamp, same
+    // "freshest wins" rule applies for routing. No base_dir yet is a
+    // real "can't compute" for the Origin side specifically, falls through.
     let wiki_landing = ing.entered_via_teleport.clone();
     let origin_landing = (|| {
         let (origin_ts, raw) = ing.learned_origin.as_ref()?;
@@ -1239,12 +1004,8 @@ pub fn get_zone_context(state: State<AppState>) -> ZoneContextDto {
     }
 }
 
-/// The Maps module's NPC-overlay candidate list -- every distinct real
-/// `Npc::zone` value that loosely resembles the currently-open map's own
-/// display name. Shown as toggle-able options, not auto-applied -- see
-/// `npcdata::candidate_zones`'s own doc for why this app can't reliably
-/// resolve the wiki's zone names against the map format's internal EQ
-/// shortcodes on its own.
+/// why: NPC-overlay candidate list, toggle-able not auto-applied -- can't
+/// reliably resolve wiki names against internal EQ shortcodes
 #[tauri::command]
 pub fn list_npc_zone_candidates(map_zone_name: String) -> Vec<String> {
     npcdata::candidate_zones(&map_zone_name)
@@ -1255,15 +1016,12 @@ pub struct NpcMarkerDto {
     pub name: String,
     pub x: f32,
     pub y: f32,
-    /// `None` when the wiki scrape only gave a 2D spot -- most real
-    /// entries. The frontend has to pick *some* height to render these
-    /// at either way; see MapViewer.svelte for how it handles that.
+    /// why: None for a 2D-only wiki spot, most real entries
     pub z: Option<f32>,
 }
 
-/// Real NPC spawn points for `zone` (an exact `Npc::zone` value, already
-/// resolved from `list_npc_zone_candidates`'s own output -- not a name to
-/// fuzzy-match again here). See `npcdata::markers_for_zone`.
+/// why: real spawn points for an exact `Npc::zone` value, not a name to fuzzy-match again
+
 #[tauri::command]
 pub fn get_npc_markers_for_zone(zone: String) -> Vec<NpcMarkerDto> {
     npcdata::markers_for_zone(&zone)
@@ -1272,10 +1030,8 @@ pub fn get_npc_markers_for_zone(zone: String) -> Vec<NpcMarkerDto> {
         .collect()
 }
 
-/// The Settings module's own list: `notifications::ALL_KINDS` paired with
-/// its human label, so the frontend never needs to hardcode that mapping
-/// itself and a fifth kind shows up here automatically once it's added to
-/// `notifications.rs`.
+/// why: kind + label pairs, so a new kind shows up automatically once added
+
 #[derive(Debug, Clone, Serialize)]
 pub struct NotificationKindDto {
     pub kind: String,
@@ -1293,9 +1049,8 @@ pub fn list_notification_kinds() -> Vec<NotificationKindDto> {
         .collect()
 }
 
-/// Current enabled/custom-sound state for every kind -- `settings::
-/// NotificationSettings` derives `Serialize` itself, so this is a direct
-/// pass-through, not a separate DTO.
+/// why: direct pass-through, NotificationSettings already derives Serialize
+
 #[tauri::command]
 pub fn get_notification_settings(app: AppHandle) -> settings::NotificationSettings {
     settings::load(&app)
@@ -1313,12 +1068,8 @@ pub fn set_notification_enabled(
     Ok(s)
 }
 
-/// Opens the OS file picker scoped to common audio extensions, copies
-/// whatever the user chose into this app's own sounds directory (see
-/// `settings::store_custom_sound`'s doc for why copied, not referenced by
-/// its original path), and saves it as `kind`'s custom sound. `Ok(None)`
-/// (not an error) if the user cancels the dialog -- same "cancel is a
-/// real, unremarkable outcome" stance `pick_log_directory` already takes.
+/// why: picks and copies a sound file in, saves as `kind`'s custom sound;
+/// Ok(None) on cancel, not an error, same stance as `pick_log_directory`
 #[tauri::command]
 pub async fn pick_notification_sound(
     app: AppHandle,
@@ -1344,8 +1095,8 @@ pub async fn pick_notification_sound(
     Ok(Some(s))
 }
 
-/// Reverts `kind` to the frontend's own synthesized default sound --
-/// deletes the stored custom file (if any) and clears the setting.
+/// why: reverts to the frontend's synthesized default -- deletes the stored file and clears
+
 #[tauri::command]
 pub fn clear_notification_sound(
     app: AppHandle,
@@ -1360,19 +1111,16 @@ pub fn clear_notification_sound(
     Ok(s)
 }
 
-/// `kind`'s custom sound, ready to hand straight to `new Audio(url)` --
-/// `None` when there isn't one (the frontend falls back to its own
-/// synthesized default in that case, not an error).
+/// why: ready for `new Audio(url)`; None falls back to the synthesized default, not an error
+
 #[tauri::command]
 pub fn get_notification_sound_data(app: AppHandle, kind: String) -> Option<String> {
     let s = settings::load(&app);
     settings::custom_sound_data_url(&app, &kind, &s)
 }
 
-/// The Spellbook builder's own file picker: every real `<Character>_
-/// <Zone>_LO1.ini`/`UI_<Character>_<Zone>_LO1.ini` sitting in the game's
-/// base folder -- see `uifiles::list_ui_files`'s own doc for what each
-/// kind actually holds.
+/// why: Spellbook builder's file picker -- every real UI config file in the base folder
+
 #[tauri::command]
 pub fn list_ui_files(state: State<AppState>) -> Result<Vec<uifiles::UiFileInfoDto>, String> {
     let base_dir = state
@@ -1386,8 +1134,8 @@ pub fn list_ui_files(state: State<AppState>) -> Result<Vec<uifiles::UiFileInfoDt
     Ok(uifiles::list_ui_files(&base_dir))
 }
 
-/// One UI file's real content, read-only -- see `uifiles::parse_ini`'s
-/// own doc for why this doesn't write anything back yet.
+/// why: one UI file's real content, read-only
+
 #[tauri::command]
 pub fn get_ui_file(
     state: State<AppState>,
@@ -1410,18 +1158,13 @@ mod live_start_position_tests {
     use super::*;
     use std::path::Path;
 
-    /// Real, reported bug this fixes: a real `/loc` reading used to win
-    /// unconditionally whenever its own zone matched, even when a *later*
-    /// teleport confirmation existed for that same zone -- an old `/loc`
-    /// outranking fresher, equally-real evidence just because `/loc` was
-    /// checked first, not because it was actually more recent. Recency
-    /// alone must decide it now.
+    /// why: real reported bug -- /loc used to win unconditionally over a later teleport confirmation
     #[test]
     fn a_later_teleport_confirmation_wins_over_an_earlier_loc_reading() {
         let mut ing = crate::ingest::Ingest::default();
         ing.zone.enter(1_000, "Oggok".to_string());
         ing.last_loc = Some((1_000, 100.0, 200.0, 5.0));
-        // A later, fresher confirmation for the same zone.
+        // why: a later, fresher confirmation for the same zone
         ing.zone.enter(2_000, "Oggok".to_string());
         ing.entered_via_teleport = Some((
             2_000,
@@ -1443,9 +1186,7 @@ mod live_start_position_tests {
         );
     }
 
-    /// The reverse must also hold: a genuinely *fresher* `/loc` reading
-    /// (typed after teleporting somewhere and then walking around) beats
-    /// a now-stale teleport confirmation from earlier in the same visit.
+    /// why: reverse must hold -- a genuinely fresher /loc beats a stale teleport confirmation
     #[test]
     fn a_later_loc_reading_wins_over_an_earlier_teleport_confirmation() {
         let mut ing = crate::ingest::Ingest::default();
