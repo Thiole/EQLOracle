@@ -4654,9 +4654,8 @@ mod effect_ping_tests {
         assert!(ing.entered_via_teleport.is_none());
     }
 
-    /// A `<Zone> Gate` cast, unlike the bare "Gate" above, names a real
-    /// zone landmark with a wiki-confirmed landing and does count as a
-    /// Wizard teleport (same as its higher-level Portal sibling).
+    /// why: `<Zone> Gate` names a real landmark with a wiki-confirmed
+    /// landing and does count as a Wizard teleport
     #[test]
     fn a_named_gate_cast_marks_the_visit_wizard_teleported() {
         let engine = build_engine().expect("pack builds");
@@ -4672,10 +4671,8 @@ mod effect_ping_tests {
         assert_eq!(landing.class, teleportdata::TeleportClass::Wizard);
     }
 
-    /// A "Circle of X"-shaped name that is *not* actually a teleport (a
-    /// damage-shield/resist buff sharing the naming convention -- see
-    /// `teleportdata`'s own doc) must not mark the visit teleported. Real,
-    /// confirmed false positive the old name-shape-only heuristic had.
+    /// why: "Circle of X" that's actually a resist buff, not a teleport
+    /// -- real false positive the old name-shape-only heuristic had
     #[test]
     fn a_name_shape_false_positive_does_not_mark_the_visit_teleported() {
         let engine = build_engine().expect("pack builds");
@@ -4688,9 +4685,7 @@ mod effect_ping_tests {
         assert!(ing.entered_via_teleport.is_none());
     }
 
-    /// An unproven stranger's teleport cast must never mark "You" as
-    /// having landed via spire/circle -- only "You" or a *proven* ally
-    /// (see `is_ally`) counts.
+    /// why: an unproven stranger's teleport cast must never mark "You" -- only You or a proven ally counts
     #[test]
     fn another_players_translocate_does_not_mark_your_visit_teleported() {
         let engine = build_engine().expect("pack builds");
@@ -4703,16 +4698,8 @@ mod effect_ping_tests {
         assert!(ing.entered_via_teleport.is_none());
     }
 
-    /// Real, reported gap: `Origin` (a class-agnostic AA -- "transports
-    /// you back to your starting city", confirmed against `~/eql/aa.json`)
-    /// has no fixed, wiki-quotable destination the way every other
-    /// teleport here does, so it never went through `last_teleport_cast`/
-    /// `entered_via_teleport` at all. Confirmed directly against the real
-    /// reference log that a successful "You begin casting Origin." really
-    /// is followed by a real `zone.enter` on the same real cast-time +
-    /// loading-screen cadence the other teleports already use this same
-    /// window for. `learned_origin` is the parallel, *learned* mechanism
-    /// this needs instead of a table lookup.
+    /// why: Origin has no fixed wiki destination (starting-city AA) so
+    /// it can't use the teleport table -- learned_origin learns it from a real cast+zone.enter pair
     #[test]
     fn an_origin_cast_followed_by_zoning_learns_the_landing_zone() {
         let engine = build_engine().expect("pack builds");
@@ -4726,19 +4713,12 @@ mod effect_ping_tests {
             .learned_origin
             .expect("should have learned an origin zone");
         assert_eq!(zone, "Oggok");
-        // Origin has no fixed coordinate -- unlike Gate/Translocate, this
-        // must stay `None` (the confirmed zone is enough on its own;
-        // `commands::live_start_position`/`get_zone_context` compute a
-        // real position from it lazily, once `base_dir` is available).
+        // why: Origin has no fixed coordinate, unlike Gate/Translocate -- stays None
         assert!(ing.entered_via_teleport.is_none());
     }
 
-    /// Real, confirmed pattern from the actual reference log: this
-    /// character's own Origin landing genuinely changed over time (Oggok,
-    /// then Neriak - Commons, then New Sebilis Expedition) -- `learned_origin`
-    /// must track the *most recent* real confirmation, the same "last one
-    /// wins" shape `last_teleport_cast`/`entered_via_teleport` already use,
-    /// not the first one ever seen.
+    /// why: real Origin landing changed over time -- learned_origin must
+    /// track the most recent confirmation, "last one wins" like the other fields
     #[test]
     fn a_later_origin_confirmation_overwrites_an_earlier_one() {
         let engine = build_engine().expect("pack builds");
@@ -4756,17 +4736,8 @@ mod effect_ping_tests {
         assert_eq!(zone, "Neriak - Commons");
     }
 
-    /// An interrupted cast with no retry and no subsequent zone change at
-    /// all must not fabricate a learned landing -- there's genuinely
-    /// nothing to learn from here (no `zone.enter` line exists in this
-    /// log at all, so there's nothing *to* wrongly attribute). Real,
-    /// stated limitation carried over unchanged from `last_teleport_cast`/
-    /// `entered_via_teleport`, not solved here either: an interrupted cast
-    /// followed by an *unrelated* zone-line walk within `TELEPORT_WINDOW_MS`
-    /// (with no retry) would still be wrongly learned, since nothing
-    /// cross-checks "interrupted" against the window -- no real case of
-    /// that shape was found in the reference log for the Wizard-teleport
-    /// side either, so this stays a known, honest gap, not a new promise.
+    /// why: interrupted cast with no retry and no zone change learns
+    /// nothing; known gap -- an unrelated zone walk within the window would still be wrongly learned
     #[test]
     fn an_interrupted_cast_alone_learns_nothing() {
         let engine = build_engine().expect("pack builds");
@@ -4779,11 +4750,8 @@ mod effect_ping_tests {
         assert!(ing.learned_origin.is_none());
     }
 
-    /// The real, documented "last one wins" self-heal: an interrupted cast
-    /// immediately retried, where the retry actually lands, must learn the
-    /// retry's own real zone -- confirmed real shape in the reference log
-    /// (line 8841-9003, a fizzle then a successful retry a few minutes
-    /// later).
+    /// why: "last one wins" self-heal -- an interrupted cast retried and
+    /// landing learns the retry's own zone; real shape in the reference log
     #[test]
     fn a_fizzled_cast_immediately_retried_learns_the_retrys_own_zone() {
         let engine = build_engine().expect("pack builds");
@@ -4801,20 +4769,9 @@ mod effect_ping_tests {
         assert_eq!(zone, "Oggok");
     }
 
-    /// The real bug report this exists to fix: "The Ruins of Old Guk"
-    /// (the raw log label) and "gukbottom" (the real map file's own
-    /// shortname) share no text in common at all -- a plain substring
-    /// guess against the map file name can never confirm this zone, which
-    /// is exactly why the Maps module's "you are here" dot silently never
-    /// appeared there. `zone::zone_matches` (already used to resolve a raw
-    /// label to a wiki zone elsewhere in this app) must resolve this raw
-    /// label to "Lower Guk", from which `who_name` and
-    /// `zonedata::map_shortnames` get to "gukbottom" itself -- the full
-    /// chain `commands::map_zones_for_raw_label` runs, exercised directly
-    /// here (no `Ingest`/interning involved -- that dependency is exactly
-    /// what the *other* real bug this test caught was about, see the doc
-    /// on `map_zones_for_raw_label` itself for why it no longer goes
-    /// through `Ingest`'s cache).
+    /// why: real bug -- "Ruins of Old Guk" and "gukbottom" share no
+    /// text, so a substring guess can't confirm it; zone_matches must
+    /// resolve to "Lower Guk" so who_name -> map_shortnames reaches "gukbottom"
     #[test]
     fn a_real_zone_with_no_textual_resemblance_to_its_map_shortname_still_resolves() {
         let raw = "The Ruins of Old Guk 4 (Refined)";
