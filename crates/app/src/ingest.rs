@@ -1997,80 +1997,46 @@ enum Action {
     Charm {
         who: String,
     },
-    /// Charm wearing off, or the player's own mez ending -- both a return
-    /// to `State::Engaged`.
+    /// why: charm wearing off, or the player's own mez ending
     Recovered {
         who: String,
     },
-    /// `loot.self`: "You have looted <item> from <corpse>." Always the
-    /// player -- the log has no third-person loot line for anyone else.
-    /// `corpse` is the raw capture, still carrying its `'s corpse` suffix;
-    /// stripped in `record_loot`, not here, for the same reason `apply`
-    /// (not `extract_action`) resolves `Heal`'s reflexive pronoun -- keep
-    /// extraction a pure read of what the line literally says. `qty` is `1`
-    /// for the singular "a"/"an" phrasing (the pattern's `qty` group never
-    /// participates), or the stack size for "You have looted 2 X from...".
-    /// `sold_for` is `loot.self.direct`'s own optional capture -- present
-    /// only when the trailing clause was an auto-sell ("...and sold it for
-    /// <denominations>."), raw and unparsed for the same reason `corpse`
-    /// keeps its suffix here (see `record_currency`/`parse_currency_
-    /// copper` for where the actual parsing happens).
+    /// why: always the player, no third-person loot line exists. corpse
+    /// keeps its raw suffix (stripped in record_loot, not here); sold_for
+    /// present only for an auto-sell, raw and unparsed
     Loot {
         item: String,
         corpse: String,
         qty: u64,
         sold_for: Option<String>,
     },
-    /// `xp.gain`: "You gain (party |group |raid |)experience! (X.XXX%)".
-    /// Always the player -- the log never reports anyone else's XP.
-    /// `scope` is the raw capture, empty string for solo (the pattern's
-    /// first alternative) rather than the literal word "solo" -- normalized
-    /// in `record_xp`, not here, same "extraction stays a pure read" reason
-    /// `Loot`'s own doc gives for not stripping `corpse`'s suffix here
-    /// either.
+    /// why: always the player; scope is the raw capture, empty for solo,
+    /// normalized in record_xp not here
     Xp {
         scope: String,
         pct: f64,
     },
-    /// Platinum/gold/silver/copper actually received, from either
-    /// `money.corpse` ("You receive <amount> from the corpse.", `source`
-    /// = `"corpse"`) or `money.vendor_sell` ("You receive <amount> from
-    /// <vendor> for <item>(s).", `source` = `"vendor"`) -- `loot.self.
-    /// direct`'s own auto-sell case goes through `Loot`'s `sold_for`
-    /// instead (`apply` synthesizes `source = "autosell"` for that one),
-    /// since it's one line producing two real facts (an item looted *and*
-    /// currency earned), not two separate lines. `text` is the raw
-    /// denomination list, unparsed -- see `Ingest::parse_currency_copper`.
+    /// why: from money.corpse or money.vendor_sell; loot.self.direct's
+    /// auto-sell case goes through Loot's sold_for instead -- one line, two real facts
     Currency {
         source: String,
         text: String,
     },
-    /// `afk.on`/`afk.off` -- "You are now/no longer A.F.K. (Away From
-    /// Keyboard)." No fields: the line carries nothing but the fact and
-    /// its own timestamp, both of which `apply` already has.
+    /// why: no fields, the line carries only the fact + timestamp, both apply already has
     AfkOn,
     AfkOff,
-    /// "Outputfile Complete: <file>" -- the client's own confirmation that
-    /// a `/outputfile` command finished writing. See `Ingest::pending_
-    /// inventory_files`'s doc for why this only records the filename and
-    /// doesn't itself touch disk.
+    /// why: client's confirmation an /outputfile command finished; only records the filename
     OutputfileComplete {
         file: String,
     },
-    /// `proc.item`'s `effect == "Exaltation"` case: "Your <item>
-    /// (Exaltation) <flavor text>." -- proof that `item`'s Proc
-    /// exaltation socket is genuinely live. See `ExaltationProcs`' own
-    /// doc for why this is the only per-item exaltation fact this app
-    /// can ever confirm.
+    /// why: proc.item's Exaltation case, proof the Proc socket is genuinely live
     ExaltationProc {
         item: String,
     },
 }
 
-/// Classifies what one matched line means, without mutating anything. A
-/// pure function of the rule pack and the match, which is what lets it run
-/// on a worker thread during parallel backfill just as well as inline on
-/// the live tail thread -- see `backfill_lines`.
+/// why: classifies what one matched line means without mutating
+/// anything -- a pure function, runs on a backfill worker thread or inline live
 fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Option<Action> {
     let str_field = |name: &str| -> Option<String> {
         match field::field(engine, m, line, name) {
@@ -2144,9 +2110,8 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             })
         }
         "dot.damage_uncredited" => {
-            // No caster named -- the log gives us nothing to link this to.
-            // Attributed to a placeholder rather than dropped, so the
-            // damage still counts against the target's total.
+            // why: no caster named, attributed to a placeholder rather
+            // than dropped so damage still counts against the target's total
             let (dst, amount, spell) = (
                 str_field("target")?,
                 u64_field("amount")?,
@@ -2162,10 +2127,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             })
         }
         "dot.damage_from_you" => {
-            // The caster is named via the possessive "your" in the line
-            // itself, not a separate field -- always "You" (this shape
-            // never occurs for anyone else's own damage; see the pack
-            // rule's own note).
+            // why: caster named via possessive "your" in the line itself, always "You"
             let (dst, amount, spell) = (
                 str_field("target")?,
                 u64_field("amount")?,
@@ -2182,13 +2144,8 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             })
         }
         "ds.damage" => {
-            // `source` names the effect, not the entity: "Tranixx Darkpaw's
-            // flames", "YOUR thorns" -- always the shield wearer's name (or
-            // "YOUR" for the player) plus a possessive and the shield's
-            // flavour word. Split it so the wearer is the actor, like every
-            // other damage line, instead of "Tranixx Darkpaw's flames"
-            // silently interning as its own entity separate from Tranixx
-            // Darkpaw.
+            // why: source names the effect not the entity ("X's flames") --
+            // split so the wearer is the actor, not a separate entity
             let (raw_src, dst, amount) = (
                 str_field("source")?,
                 str_field("target")?,
@@ -2326,9 +2283,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             z: f64_field("z")?,
         }),
         "cast.interrupted" => Some(Action::CastInterrupted {
-            // `source` doesn't participate when the `Your` branch of the
-            // pattern matched -- that's the only way it can be absent, so
-            // defaulting to "You" is exact, not a guess.
+            // why: source is absent only when the "Your" branch matched -- exact, not a guess
             source: str_field("source").unwrap_or_else(|| "You".to_string()),
             spell: str_field("spell")?,
         }),
@@ -2340,8 +2295,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             victim: str_field("victim")?,
         }),
         "death.you_died" => {
-            // Synthesised, not read from the log -- fold_key makes it match
-            // whatever casing "you"/"You" was seen under.
+            // why: synthesized, not read -- fold_key matches whatever casing "you" was seen under
             Some(Action::Death {
                 victim: "You".to_string(),
             })
