@@ -4,7 +4,7 @@ name: verify
 
 on:
   push:
-    branches: [main, beta, "feature/**"]
+    branches: [main, testing, beta, "feature/**"]
     paths-ignore: ["**.md"]
   pull_request:
     paths-ignore: ["**.md"]
