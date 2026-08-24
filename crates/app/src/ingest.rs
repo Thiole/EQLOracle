@@ -1,16 +1,10 @@
-//! Parses each line once and routes it into the store and the encounter
-//! graph. This is the "parsed db": `Store` holds every event ever
-//! classified, and nothing here ever reclassifies a line -- the caller
-//! (`tail_worker`) is responsible for only handing `process_line` bytes it
-//! has not already processed.
+//! why: parses each line once and routes it into the store and the
+//! encounter graph -- the "parsed db", nothing here ever reclassifies a line.
 //!
 //! Bridges two encounter models that intentionally differ:
-//! `eqlp_store::Encounter` is a range into the event log with a single
-//! target label; `eqlp_session::graph::Builder` is a connected-component
-//! fight over possibly many entities (see `docs/design/encounters.md` for
-//! why name-keyed encounters are wrong). Something has to translate between
-//! them, and that translation is ingestion glue, not parser logic -- it
-//! lives here, not in either crate.
+//! `eqlp_store::Encounter` (a range with a single target label) and
+//! `eqlp_session::graph::Builder` (a connected-component fight over many
+//! entities). The translation is ingestion glue, lives here not either crate.
 
 use crate::history::ParseRecord;
 use crate::teleportdata;
@@ -31,8 +25,7 @@ use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::OnceLock;
 
-/// Running counters for the currently tailed file. Reset whenever the tail
-/// target changes (new file, truncation, replacement).
+/// why: reset whenever the tail target changes (new file, truncation, replacement)
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct LineCounts {
     pub total: u64,
@@ -43,14 +36,8 @@ pub struct LineCounts {
     pub by_kind: BTreeMap<String, u64>,
 }
 
-/// How many distinct unmatched-line "shapes" (`eqlp_core::shape` --
-/// variable text collapsed into a stable template) the Debug module's
-/// coverage tab keeps before new ones stop being tracked. Reuses the same
-/// bound the `eqlp coverage` CLI command tunes for the identical purpose
-/// -- this is the same clustering, just accumulated live instead of run
-/// offline after the fact. A shape already being tracked keeps counting
-/// past the cap; only a brand-new one gets dropped, folded into
-/// `Ingest::unmatched_shapes_overflow` instead.
+/// why: same cap the `eqlp coverage` CLI tunes -- same clustering, live not offline.
+/// An already-tracked shape keeps counting past the cap; only new ones drop, into `unmatched_shapes_overflow`.
 const UNMATCHED_SHAPE_CAP: usize = DEFAULT_SHAPE_CAP;
 
 impl LineCounts {
@@ -74,96 +61,44 @@ pub struct RecentLine {
     pub text: String,
 }
 
-/// Feed rows kept between drains -- bounds memory if the UI is slow to
-/// drain a burst. The frontend keeps its own smaller rolling window on top.
+/// why: bounds memory if the UI is slow to drain; frontend keeps its own smaller window on top
 const MAX_PENDING_RECENT: usize = 500;
 
-/// How long a "<Owner> summons a <flavour>." line stays a candidate for
-/// matching against the next new "Inner Fire" caster. The log never names
-/// the pet, only the owner and flavour -- attribution comes from a pet's
-/// spawn behaviour (several pet flavours reliably self-buff with Inner
-/// Fire within a couple of seconds of being summoned) rather than from any
-/// direct textual link, and only that specific spell counts as a
-/// candidate signal -- see `Ingest::note_actor` for why "any first cast"
-/// was tried and found unsafe against real data. 8s was chosen by
-/// measuring against the 2M-line reference log: matching each summon
-/// against the closest new Inner-Fire caster within the window resolved
-/// dozens of real pets with no implausible pairing in a manual spot check.
+/// why: 8s window matching a summon to its Inner-Fire self-buff caster --
+/// measured against the 2M-line reference log, resolved dozens of real
+/// pets with no implausible pairing on manual spot check
 const PET_MATCH_WINDOW_MS: Millis = 8_000;
 
-/// How long after "<Name> activates Quick Buff." an unmatched line still
-/// counts as one of that activation's own buffs landing -- see
-/// `Ingest::flavor_evidence_for`. Chosen generously against real examples
-/// in the reference log, where a full quickbuff burst's landing lines all
-/// resolve within the same or the next couple of log-seconds after the
-/// activation line.
+/// why: 5s, generous against real quickbuff bursts -- landing lines resolve
+/// within the same or next couple log-seconds after activation
 const QUICKBUFF_WINDOW_MS: Millis = 5_000;
 
-/// How close together two entities' landings of the *same* recognized
-/// text have to be before that's treated as proof of a group cast rather
-/// than coincidence -- see `Ingest::attribute_flavor_hit`'s doc for why
-/// this exists at all. Confirmed directly against a real false positive
-/// in the reference log: a group-wide buff landed on the player and three
-/// named allies within the same log-second, 3 seconds after the player's
-/// own Quick Buff activation -- well inside `QUICKBUFF_WINDOW_MS`, so it
-/// would otherwise have been credited as the player's own buff.
+/// why: 3s cross-entity window proving a group cast, not coincidence --
+/// confirmed against a real false positive (a group buff landed on 4
+/// people 3s after the player's own Quick Buff activation)
 const GROUP_CAST_WINDOW_MS: Millis = 3_000;
 
-/// How long after a recognized teleport cast (`teleportdata::landing_for`)
-/// a subsequent `zone.enter` still counts as that cast's own landing, for
-/// the Maps module's entrance guess. Generous on purpose: cast time plus
-/// the "LOADING, PLEASE WAIT..." screen: confirmed in the reference log at
-/// ~15s total (13:19:46 cast start -> 13:20:01 zone.enter) for
-/// Translocate specifically, and interrupted/cancelled Gate casts
-/// (confirmed real: 39 in the reference log) never produce a zone.enter
-/// at all, so a short-ish window costs nothing there -- this gives
-/// headroom without risking crediting an unrelated later zone change.
+/// why: 30s, cast time + loading screen -- confirmed ~15s real Translocate
+/// total; interrupted Gate casts never produce a zone.enter at all
 const TELEPORT_WINDOW_MS: Millis = 30_000;
 
-/// How recently the *same* text has to have already landed on the *same*
-/// entity before a fresh landing is treated as an externally-maintained
-/// buff pulsing, rather than a one-shot Quick Buff proc -- the other real
-/// false-positive shape found in the reference log, and the dominant one:
-/// a single-target ally song re-cast repeatedly on the player, which
-/// never lands on anyone else at all (so `GROUP_CAST_WINDOW_MS`'s
-/// cross-entity check can't see it), but has a real, distinct temporal
-/// signature Quick Buff doesn't -- Quick Buff applies once at activation
-/// time and does not recur; a maintained song does, on a short, regular
-/// cadence. Measured directly against real repeats in the log ("You feel
-/// an aura of mystic protection surrounding you." pulsing at 17:07:23,
-/// :29, :35, :41, :47, :53 -- a steady ~6s cadence sustained for minutes),
-/// this window only needs to span one or two pulses to catch it.
+/// why: 15s, catches a maintained-buff pulse (measured real ~6s cadence)
+/// vs a one-shot Quick Buff proc -- the dominant real false-positive shape
 const PULSE_WINDOW_MS: Millis = 15_000;
 
-/// Safety-net threshold for `Store::close_stale_encounters` -- far looser
-/// than the graph layer's own 10s idle close, on purpose: this only exists
-/// to catch what slips past that normal path, not to replace it.
+/// why: safety net, far looser than the graph layer's own 10s idle close --
+/// only catches what slips past that normal path
 const STALE_ENCOUNTER_MS: Millis = 5 * 60 * 1000;
 
-/// The player's own effective (account) level over time, from `level.up`
-/// lines ("You have gained a level! Welcome to level N!") -- first-person
-/// only, so this only ever tracks "You", never an ally.
-///
-/// This is the *effective* level, not any one class's own -- and the two
-/// genuinely diverge in this game. Swapping one class in a 3-class loadout
-/// for a lower-level one drops the effective level to match the new
-/// lowest class, with no log line marking the drop itself (only the climb
-/// back up re-fires `level.up` lines, for levels already passed once
-/// before) -- confirmed directly against a real log: level climbs 2->50
-/// over five real days, then a swap visibly drops it (`level.up` lines
-/// resume from 14, not 51, immediately after a config change), climbs
-/// back to 36, drops again to 11. A single "current level" number would
-/// misrepresent this -- see `Millis`-keyed `at` below, which answers "what
-/// was the effective level as of this specific instant" so a caller can
-/// build a level range for a whole configuration out of its own member
-/// visits/fights rather than one point-in-time snapshot standing in for
-/// all of them.
+/// why: effective (account) level over time, from level.up lines,
+/// first-person only. The effective level, not any one class's own --
+/// swapping a class drops it silently with no line marking the drop
+/// (confirmed real: 2->50 over 5 days, swap drops to 14, climbs to 36,
+/// drops to 11). A single "current level" number would misrepresent this
+/// -- `at` answers "as of this instant" so callers build a real range.
 #[derive(Debug, Clone, Default)]
 pub struct Levels {
-    /// Every `level.up` line, in log-time order (the order they arrive in
-    /// a forward tail/backfill replay) -- `observe` trusts this and does
-    /// not re-sort, matching every other timestamped structure in this
-    /// file.
+    /// why: log-time order, `observe` trusts this and doesn't re-sort
     at_ts: Vec<(Millis, u8)>,
 }
 
@@ -171,22 +106,14 @@ pub struct Levels {
 #[derive(Debug, Clone)]
 pub struct AaGrant {
     pub name: String,
-    /// 1 for `aa.gained` (first purchase -- the log's own "gained the
-    /// ability" line never states a rank number, that line *is* rank 1),
-    /// the parsed rank for `aa.improved` (rank 2+).
+    /// why: 1 for aa.gained (that line is rank 1), parsed rank for aa.improved
     pub rank: u8,
-    /// Ability points spent on this one rank -- 0 for a free first rank,
-    /// which several real AAs have.
+    /// why: points spent this rank; 0 for a free first rank, which several real AAs have
     pub cost: u32,
 }
 
-/// Every AA rank purchase seen this session ("You have gained the ability
-/// ...\"/"You have improved ..." lines), in log-time order -- an
-/// append-only log with no interpretation, the same shape `Levels` above
-/// uses for `level.up`. Catalog enrichment (category/description) is a
-/// separate lookup, `crate::aadata::aa_by_name`, kept apart from this raw
-/// record the same way `zone.rs`'s raw label and `zonedata`'s wiki match
-/// stay separate.
+/// why: append-only log, no interpretation, same shape `Levels` uses.
+/// Catalog enrichment is a separate lookup, kept apart from this raw record.
 #[derive(Debug, Clone, Default)]
 pub struct AaLog {
     at_ts: Vec<(Millis, AaGrant)>,
@@ -197,41 +124,28 @@ impl AaLog {
         self.at_ts.push((ts, AaGrant { name, rank, cost }));
     }
 
-    /// Every grant, in log-time order.
+    /// why: every grant, in log-time order
     pub fn all(&self) -> impl Iterator<Item = &(Millis, AaGrant)> {
         self.at_ts.iter()
     }
 
-    /// Total ability points spent across every rank purchase seen this
-    /// session -- a free rank contributes 0, same as the log itself says.
+    /// why: total spent; a free rank contributes 0, same as the log itself
     pub fn total_spent(&self) -> u32 {
         self.at_ts.iter().map(|(_, g)| g.cost).sum()
     }
 }
 
-/// Highest live in-game rank observed cast this session, for "You"
-/// specifically, keyed by catalog base spell name -- e.g. "You begin
-/// casting Ice Comet X." confirms rank 10 of `Ice Comet`. Real, and
-/// common: 2,131 "You begin casting Ice Comet X." lines alone in the
-/// reference log, rank visibly climbing over real time (IV early, X
-/// later) -- confirmed directly, not assumed. This is a *third* thing,
-/// distinct from `packs/spells.json`'s own name (which never carries
-/// this -- see `split_cast_rank`'s own doc) and distinct from
-/// `base_spell_name`'s cast-line rank-stripping (which discards the
-/// number entirely, only caring whether two cast/damage lines name the
-/// same spell). Session-only like every other `Ingest`-owned log here --
-/// there's no server-side or log-side record of "current rank" to
-/// recover on restart beyond replaying casts.
+/// why: highest live rank observed cast this session, "You" only, keyed
+/// by base spell name -- confirmed real (2,131 "Ice Comet X" lines
+/// alone, rank climbing over time). Distinct from the catalog name and
+/// from base_spell_name's rank-stripping. Session-only, no persistence.
 #[derive(Debug, Clone, Default)]
 pub struct SpellRanks {
     best: HashMap<String, (u8, Millis)>,
 }
 
 impl SpellRanks {
-    /// Only keeps a rank if it's the highest seen so far for that spell --
-    /// a real rank is never supposed to regress, but treating a same-or-
-    /// lower re-observation as a no-op is simpler than asserting that and
-    /// just as correct in practice.
+    /// why: only keeps the highest rank seen; a lower re-observation is a no-op
     pub fn observe(&mut self, ts: Millis, base: &str, rank: u8) {
         match self.best.get_mut(base) {
             Some(e) if rank >= e.0 => *e = (rank, ts),
@@ -246,31 +160,18 @@ impl SpellRanks {
         self.best.get(base).map(|(r, _)| *r)
     }
 
-    /// Every spell with an observed rank this session, unordered.
+    /// why: every observed spell this session, unordered
     pub fn all(&self) -> impl Iterator<Item = (&str, u8)> {
         self.best.iter().map(|(k, (r, _))| (k.as_str(), *r))
     }
 }
 
-/// Every "Your <item> (Exaltation) <flavor text>." line seen this session
-/// (`proc.item`'s rule in `packs/eql.toml`, filtered to the `Exaltation`
-/// effect label -- see `extract_action`'s own `"proc.item"` arm), keyed
-/// by item name.
-///
-/// This exists because of a real, hard data gap: neither the `/outputfile
-/// inventory` dump (confirmed against a real one: `Location`, `Name`,
-/// `ID`, `Count`, `Slots` -- an augment-socket *count*, nothing about
-/// exaltation) nor any other log line ever reveals what's actually
-/// socketed into a given item's exaltation slots. A combat proc firing is
-/// the *only* thing this app can ever confirm about them -- that the
-/// item's own Proc socket is genuinely live, not what spell effect
-/// resulted (an earlier attempt at inferring that from adjacent log
-/// lines turned out to be statistically meaningless: 85% of *all* casts
-/// in a real log are immediately preceded by *some* Exaltation shimmer
-/// line, since gear procs constantly during combat -- see git history/
-/// session notes on the Harm Touch investigation for the full story).
-/// So this only ever answers "has this item's proc fired, and how many
-/// times", never "with what effect".
+/// why: every exaltation-proc combat line this session, keyed by item
+/// name. Exists because neither the inventory dump nor any log line
+/// reveals what's socketed -- a proc firing is the only confirmable fact
+/// (an earlier attempt inferring the effect from adjacent lines was
+/// statistically meaningless, 85% of casts precede some shimmer line).
+/// Only ever answers "has it fired, how many times", never "with what effect".
 #[derive(Debug, Clone, Default)]
 pub struct ExaltationProcs {
     counts: HashMap<String, u32>,
@@ -283,9 +184,7 @@ impl ExaltationProcs {
         self.first_seen_ms.entry(item).or_insert(ts);
     }
 
-    /// `0` for an item that's never fired its proc this session -- same
-    /// as genuinely not having one, which is the honest reading: this app
-    /// has no way to tell "no proc" from "a proc that hasn't fired yet".
+    /// why: 0 for never-fired, indistinguishable from genuinely no proc
     pub fn count(&self, item: &str) -> u32 {
         self.counts.get(item).copied().unwrap_or(0)
     }
@@ -295,29 +194,12 @@ impl ExaltationProcs {
     }
 }
 
-/// Two-tier confidence for a spell's spellbook membership, from EQL's own
-/// begin/finish line pairs -- real for *both* scribing a new scroll
-/// ("Beginning to scribe X..." / "You have finished scribing X.", 596/593
-/// occurrences in the reference log -- the actual "added to spellbook"
-/// event, superseding an earlier version of this module that assumed no
-/// such line existed) and memorizing a gem ("Beginning to memorize X..."
-/// / "You have finished memorizing X.", which a spell can only complete
-/// if it's already known, so it's equally good proof).
-///
-/// **Known**: a "finished" line landed at least once, scribe or
-/// memorize, either is definitive. **Possible**: a "Beginning to..." line
-/// landed but no matching "finished" ever followed for that spell,
-/// either direction -- real reasons this happens: an interrupted/failed
-/// attempt (593 of 596 real scribes completed, so a few genuinely don't),
-/// or the log simply ends mid-action. Once a spell reaches Known it stays
-/// there permanently -- a later interrupted re-memorize of an
-/// already-confirmed spell doesn't downgrade it back to Possible.
-///
-/// Deduped to first-seen rather than a full history (unlike `AaLog`)
-/// because a single spell can complete memorization hundreds of times in
-/// one session as gems get swapped between fights -- the interesting
-/// fact is "is this known, or just possible" and "when did we first see
-/// evidence", not every individual re-memorize.
+/// why: two-tier confidence from EQL's begin/finish line pairs -- real
+/// for both scribing (596/593 in the reference log) and memorizing.
+/// Known: a finish landed at least once, definitive. Possible: a begin
+/// with no finish (interrupted, or log ends mid-action). Known is sticky,
+/// never downgrades. Deduped to first-seen, not full history -- memorize
+/// can repeat hundreds of times as gems swap, only "known vs possible" matters.
 #[derive(Debug, Clone, Default)]
 pub struct SpellLog {
     entries: HashMap<String, SpellEvidence>,
@@ -325,12 +207,9 @@ pub struct SpellLog {
 
 #[derive(Debug, Clone, Copy)]
 struct SpellEvidence {
-    /// First "Beginning to..." (scribe or memorize) ever seen for this
-    /// spell -- kept even after `finished` is set, so `first_seen`
-    /// doesn't jump forward once a spell graduates to Known.
+    /// why: kept even after finished is set, so first_seen doesn't jump forward
     first_began: Millis,
-    /// First "finished" (scribe or memorize) ever seen, if any --
-    /// `Some` is what makes a spell Known rather than merely Possible.
+    /// why: Some is what makes a spell Known rather than merely Possible
     finished: Option<Millis>,
 }
 
@@ -352,17 +231,14 @@ impl SpellLog {
         }
     }
 
-    /// Every spell that reached Known -- name, and when it was first
-    /// confirmed -- arbitrary order (caller sorts as needed).
+    /// why: every Known spell, name + first confirmed time, arbitrary order
     pub fn known(&self) -> impl Iterator<Item = (&str, Millis)> {
         self.entries
             .iter()
             .filter_map(|(k, e)| e.finished.map(|ts| (k.as_str(), ts)))
     }
 
-    /// Every spell that's only reached Possible -- a "Beginning to..."
-    /// line with no matching "finished" ever seen for it. Name, and when
-    /// the attempt began.
+    /// why: every Possible-only spell, name + when the attempt began
     pub fn possible(&self) -> impl Iterator<Item = (&str, Millis)> {
         self.entries
             .iter()
@@ -376,15 +252,9 @@ impl Levels {
         self.at_ts.push((ts, level));
     }
 
-    /// Every `level.up` value whose own line's timestamp falls in
-    /// `[start, end)` -- `end: None` means unbounded above (the visit is
-    /// still open). Deliberately does *not* reach outside the window for
-    /// a stale value carried over from whatever configuration was active
-    /// right before `start`, the way `at(start)` would -- see this
-    /// struct's own doc for why that distinction is the whole point here:
-    /// a config-swap drop is real and silent, so treating "whatever the
-    /// tracker last said" as this configuration's own evidence mixes in
-    /// a different configuration's level entirely.
+    /// why: every level.up strictly inside [start, end), never a stale
+    /// carried-over value -- a config-swap drop is real and silent, so
+    /// `at(start)` would mix in a different configuration's level
     pub fn between(&self, start: Millis, end: Option<Millis>) -> impl Iterator<Item = u8> + '_ {
         let from = self.at_ts.partition_point(|&(t, _)| t < start);
         let to = match end {
@@ -394,9 +264,7 @@ impl Levels {
         self.at_ts[from..to].iter().map(|&(_, l)| l)
     }
 
-    /// The effective level as of `ts` -- the most recent `level.up` at or
-    /// before it, or `None` before the first one ever seen (level 1, which
-    /// never gets its own line since nobody starts below it).
+    /// why: most recent level.up at or before ts; None before the first ever seen
     pub fn at(&self, ts: Millis) -> Option<u8> {
         let i = self.at_ts.partition_point(|&(t, _)| t <= ts);
         if i == 0 {
@@ -406,71 +274,42 @@ impl Levels {
         }
     }
 
-    /// The most recently observed level, full stop -- `at` needs a
-    /// timestamp to answer "as of when", this is just "as of now". `None`
-    /// under the same condition `at` is: no `level.up` line has been seen
-    /// in this file's history at all, which in practice mostly means
-    /// "you've been this level for the whole time this log file covers" --
-    /// a ding fires the line, sitting at a level doesn't. Callers that want
-    /// a level for something (`gearplanner`'s mana weighting) need to
-    /// treat that as "unknown", not "level 1".
+    /// why: "as of now", not "as of when"; None mostly means "same level the whole file"
     pub fn latest(&self) -> Option<u8> {
         self.at_ts.last().map(|&(_, l)| l)
     }
 
-    /// The timestamp of that same most-recently-observed `level.up` line --
-    /// `latest`'s own "as of when", for a caller (`overview::session`)
-    /// that needs to know how long the *current* level has been active,
-    /// not just what it is, to measure XP progress within it rather than
-    /// across however much of the file happens to be in view.
+    /// why: latest's own timestamp, for measuring XP progress within the current level
     pub fn latest_ts(&self) -> Option<Millis> {
         self.at_ts.last().map(|&(t, _)| t)
     }
 }
 
-/// One recognized buff/effect landing on "You", captured verbatim from its
-/// own landing-message text (`crate::flavordata`) -- there is no companion
-/// "wears off" line for these in this game's log (checked directly against
-/// the reference log: only poison logs its own end), so this is a *ping*,
-/// not an interval. It says an effect landed at `ts`; it says nothing about
-/// how long it lasted.
+/// why: a ping not an interval -- no companion "wears off" line exists
+/// (checked directly, only poison logs its own end)
 #[derive(Debug, Clone)]
 pub struct EffectPing {
     pub ts: Millis,
     pub text: String,
 }
 
-/// Append-only per-entity log of recognized effect landings -- deliberately
-/// separate from `eqlp_session::timeline::Timeline`, whose `State` is a
-/// single exclusive value (engaged/mezzed/...). Buffs stack: several can be
-/// live on the same entity at once, so there's no one "current state" to
-/// query, only "what landed recently" -- see `recent`. In practice this is
-/// only ever populated for "You": `flavordata`'s dictionary keys are the
-/// scraped landing text verbatim, which is always written in first-person
-/// ("Your ...", "You feel ..."), so a third-person line naming some other
-/// entity never matches it at all -- no separate filtering needed to keep
-/// this scoped to the player.
+/// why: separate from Timeline's single exclusive State -- buffs stack,
+/// no one "current state" to query, only "what landed recently". Only
+/// ever populated for "You" -- the dictionary is first-person text only.
 #[derive(Debug, Clone, Default)]
 pub struct Effects {
     by_entity: HashMap<u32, Vec<EffectPing>>,
 }
 
 impl Effects {
-    /// Inserted in timestamp order rather than blind-pushed, same safety
-    /// `Timeline::push` uses -- a late-arriving line (out-of-order chunk
-    /// merge) must not corrupt the ordering `recent`'s binary search
-    /// depends on.
+    /// why: inserted in timestamp order, same safety Timeline::push uses
     fn push(&mut self, entity: u32, ts: Millis, text: String) {
         let v = self.by_entity.entry(entity).or_default();
         let at = v.partition_point(|p| p.ts <= ts);
         v.insert(at, EffectPing { ts, text });
     }
 
-    /// Effect text that landed on `entity` within `window_ms` up to and
-    /// including `ts` -- the same trailing-window snapshot idea
-    /// `dps_window` uses for "what's happening right now", not a claim
-    /// about whether the effect is still active (this data can't say that
-    /// -- see `EffectPing`'s doc).
+    /// why: trailing-window snapshot like dps_window, not a claim the effect is still active
     pub fn recent(&self, entity: u32, ts: Millis, window_ms: Millis) -> Vec<&str> {
         let Some(v) = self.by_entity.get(&entity) else {
             return Vec::new();
@@ -481,10 +320,7 @@ impl Effects {
         v[a..b].iter().map(|p| p.text.as_str()).collect()
     }
 
-    /// Every ping ever recorded for `entity`, oldest first -- mirrors
-    /// `eqlp_session::timeline::Timeline::transitions_of`. For a caller
-    /// that wants the whole history rather than one instant's trailing
-    /// window (e.g. a future full buff log view).
+    /// why: whole history not one instant's window, mirrors Timeline::transitions_of
     pub fn all(&self, entity: u32) -> &[EffectPing] {
         self.by_entity
             .get(&entity)
@@ -493,28 +329,12 @@ impl Effects {
     }
 }
 
-/// Recovers a third-person buff/effect landing's first-person dictionary
-/// key, if `text` is shaped like one and the recovery actually lands on a
-/// known key -- `"<Name>'s <tail>."` becomes `"Your <tail>."`, the same
-/// text `flavordata`'s scraper always records (first/second-person only,
-/// see its module doc). Returns `(who, canonical_text)`.
-///
-/// A single mechanical transform, not per-spell rules -- and it's the
-/// dictionary lookup that keeps it safe: checked directly against the
-/// reference log's own unmatched backlog (76,986 real possessive-shaped
-/// lines), this recovers 35 distinct real spell families (buffs and DoT
-/// ticks alike -- "Deathklokk's voice booms." -> Bard's Amplification
-/// landing on someone else's target; "a willowisp's skin blisters and
-/// burns." -> a caster's DoT ticking on a mob) with no false positives
-/// possible -- a possessive sentence that isn't really one of these (an
-/// item name, "granted spell" line, "capturing X's attention") just fails
-/// to reconstruct a real key and is correctly ignored.
-///
-/// Only the *first* `"'s "` in the line is treated as the possessive
-/// boundary. This game's own stylized names use a backtick (`` O`Keil ``),
-/// not an apostrophe, for exactly this reason -- confirmed against real
-/// misses in the same audit (`"O\`Keil's Radiation"` splits cleanly on the
-/// straight apostrophe, landing on the *spell* name, not the player's).
+/// why: recovers a third-person landing's first-person key --
+/// "<Name>'s <tail>." -> "Your <tail>.". A single mechanical transform,
+/// safe because the dictionary lookup gates it: checked against 76,986
+/// real possessive-shaped lines, recovers 35 real spell families with no
+/// false positives -- a non-match just fails to reconstruct a real key.
+/// Only the first "'s " is the boundary -- stylized names use a backtick, not apostrophe.
 fn third_person_flavor(text: &str) -> Option<(String, String)> {
     let idx = text.find("'s ")?;
     if !text.ends_with('.') {
@@ -532,16 +352,9 @@ fn third_person_flavor(text: &str) -> Option<(String, String)> {
     Some((who.to_string(), candidate))
 }
 
-/// English 3rd-person-singular-present conjugation of `verb`, for
-/// reconstructing a third-person landing line's own first-person
-/// dictionary key -- e.g. "feels" is this game's own third-person text
-/// for "you feel"; see `verb_suffix_table`. Only the two truly irregular
-/// verbs actually seen in `spell_flavor.json` ("are"/"have") are
-/// special-cased; everything else is the regular English rule. Deliberately
-/// not a general-purpose conjugator -- a bad guess here just fails a
-/// dictionary lookup downstream (see `verb_conjugated_flavor`), so
-/// correctness only matters for the finite, already-scraped verb set this
-/// runs against, not arbitrary English.
+/// why: 3rd-person conjugation for verb_suffix_table; only the two real
+/// irregulars ("are"/"have") special-cased, else the regular rule. Not a
+/// general conjugator -- a bad guess just fails the dictionary lookup downstream.
 fn conjugate_third_person(verb: &str) -> Option<String> {
     if !verb.bytes().all(|b| b.is_ascii_lowercase()) {
         return None;
@@ -566,66 +379,28 @@ fn conjugate_third_person(verb: &str) -> Option<String> {
     })
 }
 
-/// A handful of third-person landings whose relationship to their
-/// first-person dictionary key genuinely isn't a grammatical transform --
-/// the game shortens the sentence itself, not just its conjugation --
-/// confirmed individually rather than derived. `"combusts."` is the
-/// concrete case: `"You feel your skin combust."` is the full first-person
-/// flavor, but the third-person announcement drops "feel your skin"
-/// entirely (`"Orc slaver combusts."`, not `"...'s skin combusts."`,
-/// unlike `ignite`/`freeze`/`pulse`'s siblings below, which *do* keep the
-/// noun -- there's no single rule covering both, so this one stays a
-/// named exception rather than forcing a rule to fit one data point).
+/// why: a few third-person landings that aren't a grammatical transform,
+/// the game shortens the sentence itself -- confirmed individually, named
+/// exceptions rather than forced rules
 const THIRD_PERSON_VERB_ALIASES: &[(&str, &str)] = &[
     ("combusts.", "You feel your skin combust."),
-    // "lets loose a mighty yaulp." (517 real occurrences) -- same Yaulp
-    // effect as "You feel a surge of strength as you let forth a mighty
-    // yaulp.", just reworded ("let forth" -> "lets loose") rather than
-    // conjugated.
+    // why: 517 real occurrences, reworded ("let forth" -> "lets loose") not conjugated
     (
         "lets loose a mighty yaulp.",
         "You feel a surge of strength as you let forth a mighty yaulp.",
     ),
 ];
 
-/// Third-person-suffix -> canonical first-person `spell_flavor.json` key,
-/// built once from the dictionary itself. Every rule here started as a
-/// hypothesis checked against the reference log's real unmatched backlog
-/// before being trusted -- see each rule's own note for the real numbers.
-///
-/// - `"You <verb> <tail>."` -> `"<verb+s> <tail>."` (`"You feel much
-///   faster."` -> `"feels much faster."`, matching real lines like
-///   `"Draxiz N\`Ryt feels much faster."`; 79 distinct real hits).
-/// - `"Your <noun> <verb> <tail>."` -> `"<verb+s> <tail>."` (only one real
-///   spell uses this shape -- `"Your feet adhere to the ground."` ->
-///   `"adheres to the ground."`).
-/// - `"You feel your <noun> <verb>[ <tail>]."` -> `"'s <noun> <verb+s>[
-///   <tail>]."` -- the third person keeps the possessed noun instead of
-///   dropping it (contrast `THIRD_PERSON_VERB_ALIASES`'s `combust`, which
-///   doesn't): `"You feel your body pulse with energy."` ->
-///   `"'s body pulses with energy."`, matching `"orc legionnaire's body
-///   pulses with energy."` (4 distinct real hits, thousands of lines --
-///   `ignite`/`freeze`/`freeze over`/`pulse with energy`).
-/// - A trailing `" you."` in an already-built suffix also gets a `"
-///   them."` sibling -- when the effect lands on someone else, the
-///   sentence's own trailing pronoun swaps too, not just the subject
-///   (`"You convulse as the lightning arcs through you."` ->
-///   `"convulses as the lightning arcs through them."`, matching real
-///   lines; 3 distinct real hits).
-/// - `"You feel <word>."` (a single-word adjective, nothing else) also
-///   gets a `"looks <word>."` sibling, alongside the regular `"feels
-///   <word>."` one -- this game renders a whole family of single-
-///   adjective buffs as how the *target* visibly looks to onlookers, not
-///   just how they feel (`"You feel dexterous."` -> `"looks dexterous."`,
-///   matching `"Draxiz N\`Ryt looks dexterous."`; 14 distinct real hits
-///   across agile/charismatic/daring/dexterous/frail/healthy/nimble/
-///   protected/resolute/robust/strong/stronger/valorous/weaker).
-/// - `"You feel <tail>."` (any length this time, not just one word) also
-///   gets an `"is <tail>."` sibling -- a second, separate substitute-verb
-///   family off the same source (`"You feel protected from magic."` ->
-///   `"is protected from magic."`, matching `"Bravesirrobin is protected
-///   from magic."`; 8 distinct real hits, dominated by the
-///   protected-from-{magic,disease,poison,cold,fire} family).
+/// why: third-person suffix -> first-person key, built once. Every rule
+/// checked against the reference log's real unmatched backlog before
+/// being trusted:
+/// - "You <verb> <tail>." -> "<verb+s> <tail>." (79 real hits)
+/// - "Your <noun> <verb> <tail>." -> "<verb+s> <tail>." (1 real spell)
+/// - "You feel your <noun> <verb>..." -> "'s <noun> <verb+s>..." --
+///   keeps the possessed noun, unlike THIRD_PERSON_VERB_ALIASES' combust (4 real hits)
+/// - trailing " you." also gets a " them." sibling (3 real hits)
+/// - "You feel <word>." (single adjective) also gets "looks <word>." (14 real hits)
+/// - "You feel <tail>." (any length) also gets "is <tail>." (8 real hits)
 fn verb_suffix_table() -> &'static HashMap<String, &'static str> {
     static TABLE: OnceLock<HashMap<String, &'static str>> = OnceLock::new();
     TABLE.get_or_init(|| {
@@ -638,11 +413,7 @@ fn verb_suffix_table() -> &'static HashMap<String, &'static str> {
             if let Some((verb, tail)) = rest.split_once(' ') {
                 if let Some(conj) = conjugate_third_person(verb) {
                     table.insert(format!("{conj} {tail}"), key);
-                    // "You feel <tail>." -> also try "looks <tail>."
-                    // (single-word adjectives only) and "is <tail>." (any
-                    // length) -- two separate real substitute-verb
-                    // families off the same "feel" source, not one rule --
-                    // see this fn's own doc.
+                    // why: two separate substitute-verb families off "feel", see fn doc
                     if verb == "feel" {
                         if !tail.contains(' ') {
                             table.insert(format!("looks {tail}"), key);
@@ -651,9 +422,7 @@ fn verb_suffix_table() -> &'static HashMap<String, &'static str> {
                     }
                 }
             }
-            // "You feel your <noun> <verb>[ <tail>]." -> "'s <noun>
-            // <verb+s>[ <tail>]." -- the noun-keeping sibling of the
-            // plain "You <verb> <tail>." rule above.
+            // why: noun-keeping sibling of the plain "You <verb> <tail>." rule above
             if let Some(rest) = key.strip_prefix("You feel your ") {
                 if let Some((noun, verb_tail)) = rest.split_once(' ') {
                     let (verb, tail) = match verb_tail.split_once(' ') {
@@ -684,9 +453,7 @@ fn verb_suffix_table() -> &'static HashMap<String, &'static str> {
                 table.insert(format!("{conj} {tail}"), key);
             }
         }
-        // Trailing " you." -> " them." sibling for every suffix built so
-        // far -- collected separately and inserted after, so this pass
-        // can't see (and re-derive from) its own output.
+        // why: collected separately and inserted after, can't see its own output
         let them_variants: Vec<(String, &'static str)> = table
             .iter()
             .filter_map(|(suffix, &key)| {
@@ -703,36 +470,12 @@ fn verb_suffix_table() -> &'static HashMap<String, &'static str> {
     })
 }
 
-/// Recovers a third-person buff/effect landing's first-person dictionary
-/// key when the two forms differ only by ordinary verb conjugation, not a
-/// bare possessive (`third_person_flavor` already covers `"<Name>'s
-/// <first-person-text-verbatim>"`). Two kinds of split point, both tried
-/// at every occurrence rather than just the first (an entity name can be
-/// multiple words -- `"Baron Telyx V\`Zher combusts."` -- so the split
-/// point isn't knowable in advance):
-///
-/// - Plain space: `"<Name> <verb> ..."` against `verb_suffix_table`'s
-///   `"You <verb> ..."`-derived entries (`"Draxiz N\`Ryt feels much
-///   faster."`).
-/// - `"'s "` (glued to the name, not space-delimited, so it needs its own
-///   scan): `"<Name>'s <noun> <verb> ..."` against the table's
-///   noun-keeping entries, which are stored *with* their leading `"'s "`
-///   -- see `verb_suffix_table`'s own doc (`"orc legionnaire's body
-///   pulses with energy."`).
-///
-/// Safe for the same reason `third_person_flavor` is: a wrong split just
-/// fails the table lookup, so this can't manufacture a match out of an
-/// unrelated sentence.
-///
-/// Checked directly against the reference log before being trusted:
-/// reconstructing every dictionary entry's own conjugated suffix and
-/// searching for it for real recovers 79 distinct spell families, tens of
-/// thousands of real lines (`"feels much better."` alone: 6,080) --
-/// broader than `third_person_flavor`'s own 35. Also confirms the
-/// negative: `"adheres to the ground."`'s sibling candidates that *don't*
-/// recover a real key (most of the 361+102 candidates tried) correctly
-/// find nothing, rather than a false positive -- the dictionary gate is
-/// what makes trying every split point safe.
+/// why: recovers a landing that differs by ordinary verb conjugation, not
+/// a bare possessive. Two split points tried at every occurrence (an
+/// entity name can be multi-word): plain space against verb_suffix_table's
+/// verb entries, and "'s " against its noun-keeping entries. Safe like
+/// `third_person_flavor` -- a wrong split just fails the lookup. Checked
+/// against the real log: recovers 79 spell families, tens of thousands of lines.
 fn verb_conjugated_flavor(text: &str) -> Option<(String, String)> {
     if !text.ends_with('.') {
         return None;
@@ -761,8 +504,7 @@ fn verb_conjugated_flavor(text: &str) -> Option<(String, String)> {
     None
 }
 
-/// Quick Buff class evidence waiting out its cancellation window -- see
-/// `Ingest::attribute_flavor_hit`'s doc.
+/// why: Quick Buff class evidence waiting out its cancellation window
 struct PendingQuickbuffEvidence {
     ts: Millis,
     who: u32,
@@ -770,297 +512,127 @@ struct PendingQuickbuffEvidence {
     text: String,
 }
 
-/// One not-yet-attributed `EventKind::Xp` row -- see `Ingest::pending_xp`'s
-/// doc for why this needs to exist at all instead of a search like loot's.
+/// why: one not-yet-attributed Xp row -- exists instead of a loot-style search
 struct PendingXp {
-    /// Index into every `Store` column -- `self.store.enc[row]` is what
-    /// gets backfilled once (if) a matching death resolves this.
+    /// why: index into Store columns; enc[row] gets backfilled once a matching death resolves this
     row: u32,
     ts: Millis,
 }
 
-/// Everything parsed from one tailed file, and the machinery that turns raw
-/// matches into store rows and encounters. One instance per tailed file:
-/// switching files means a fresh `Ingest`, since row indices and encounter
-/// ids are meaningless across a different file.
-///
-/// Deliberately does not own the `Engine`/`Matcher` used to classify lines.
-/// A `Matcher` borrows its `Engine` for its lifetime, and the caller already
-/// keeps one alive across the whole tail; threading that borrow through
-/// here would make this struct self-referential for no benefit. The caller
+/// why: everything parsed from one tailed file, plus the machinery
+/// turning raw matches into store rows and encounters. One per tailed
+/// file -- row indices and encounter ids are meaningless across a
+/// different file. Doesn't own the Engine/Matcher -- the caller
 /// classifies, this just routes the result.
 pub struct Ingest {
     pub store: Store,
     pub encounters: Builder,
     pub zone: Spans,
-    /// Raw zone label (interned `Sym`) -> the wiki zone it resolves to,
-    /// if any -- resolved once per *distinct* label ever seen this
-    /// session (`resolved_wiki_zone`, called from `current_zone` the
-    /// moment a fresh one is stamped onto an `Encounter`), not re-run
-    /// per encounter or per query. A session might see a couple hundred
-    /// distinct zone labels at most; a fight count in the thousands all
-    /// sharing a handful of those labels is the case this actually saves
-    /// work on -- see `resolved_wiki_zone`'s own doc.
+    /// why: raw label -> wiki zone, resolved once per distinct label not per query
     wiki_zone_cache: HashMap<Sym, Option<&'static str>>,
-    /// Per-mob-name (lowercased, so casing differences between two lines
-    /// naming the same mob don't split them into separate buckets) --
-    /// "which encounter am I currently looting". No timestamp alongside
-    /// it (an earlier version paired this with "when was the last loot
-    /// line" instead) -- see `recent_encounter_for`'s doc for exactly how
-    /// this and `loot_claimed` combine to match loot lines to kill order
-    /// rather than just picking whichever same-named encounter is most
-    /// recent, and why validity is judged off the *encounter's own*
-    /// activity instead.
+    /// why: lowercased mob name -> "which encounter am I currently
+    /// looting"; see `recent_encounter_for` for how this + loot_claimed match kill order
     loot_cursor: HashMap<String, EncounterId>,
-    /// Every encounter that's already had at least one loot line
-    /// attributed to it -- lets `recent_encounter_for` skip a corpse
-    /// that's already claimed and correctly advance to the *next*
-    /// same-named one instead of reusing the first one forever.
+    /// why: encounters already claimed by loot -- lets recent_encounter_for advance, not reuse
     loot_claimed: HashSet<EncounterId>,
-    /// The most recently pushed, not-yet-attributed `EventKind::Xp` row --
-    /// its store index plus its own timestamp. See `record_xp`'s doc for
-    /// why "You gain experience!" needs this instead of a `recent_
-    /// encounter_for`-style search: unlike loot, it's *emitted before* the
-    /// death line it belongs to, not after, so there's nothing to search
-    /// for yet at the moment it's parsed. `record_death` is what resolves
-    /// this, checking it against the death's own `ts`. Holds at most one
-    /// entry: a fresh gain always overwrites whatever was here, since only
-    /// the newest can still be waiting on its own matching death.
+    /// why: most recent not-yet-attributed Xp row -- Xp is emitted before
+    /// its death line, nothing to search for yet; record_death resolves this
     pending_xp: Option<PendingXp>,
-    /// The very first timestamp `apply` has ever processed -- "freshly
-    /// logged on" for `session_start`'s purposes, the fallback for a
-    /// player who's never gone AFK anywhere in this file. Set once, on the
-    /// first line, and never touched again.
+    /// why: very first timestamp processed, session_start's fallback; set once
     first_ts: Option<Millis>,
-    /// Whether the player is AFK as of the most recently processed line --
-    /// `afk.on`/`afk.off`. Not itself used by `session_start` (going AFK
-    /// doesn't retroactively shrink the *current* session, only *ending*
-    /// one does), but surfaced by `currently_afk` for the Overview tab's
-    /// own status display.
+    /// why: AFK as of the most recent line; surfaced by currently_afk for Overview
     afk_state: bool,
-    /// Timestamp of the most recent `afk.off` line -- `session_start`'s
-    /// preferred answer over `first_ts` when present. See that method's
-    /// own doc for why a return from AFK reads as a fresh session rather
-    /// than picking back up an old one.
+    /// why: most recent afk.off timestamp, session_start's preferred answer over first_ts
     last_afk_off: Option<Millis>,
-    /// Entity states (mez/charm/dead) keyed by the same `Sym` the store
-    /// uses -- see `docs/design/timeline.md`. Session-wide rather than one
-    /// per encounter: `state_at`/`between` already take an explicit time
-    /// range, so scoping to one fight is a query, not a second table.
+    /// why: session-wide entity states, keyed by the same Sym the store uses
     pub timeline: Timeline,
-    /// Per-cast outcome: landed, resisted, interrupted, fizzled, or
-    /// unconfirmed. Keyed on interned name `Sym`s reused from `store.names`
-    /// -- see `eqlp_session::cast` for why, and for the rank-recovery
-    /// caveat on `confirm_landed`.
+    /// why: per-cast outcome, keyed on interned Syms reused from store.names
     casts: CastResolver,
-    /// Per-entity class evidence, grouped by zone visit and never reset --
-    /// see `eqlp_session::classdetect`'s module doc for why grouping by
-    /// visit (rather than one rolling combination) is what keeps an
-    /// occasional loadout from being crowded out of the picture entirely.
-    /// `pub` for the same reason `timeline` is: `combat.rs` reads it
-    /// directly rather than through a wrapper method.
+    /// why: per-entity class evidence grouped by zone visit, never reset;
+    /// pub so combat.rs reads it directly, not through a wrapper
     pub classes: ClassDetector,
-    /// The player's own effective (account) level over time, from
-    /// `level.up` lines only -- see `Levels`'s doc for what this can and
-    /// can't say about any one class's own level.
+    /// why: effective account level over time, from level.up only
     pub levels: Levels,
-    /// Recognized buff/effect landings on "You" over time -- see
-    /// `Effects`' own doc for why this is a separate log from `timeline`
-    /// rather than folded into `State`.
+    /// why: recognized buff landings on "You", separate log from timeline/State
     pub effects: Effects,
-    /// The most recent `/loc` reading (`state.location`), if any --
-    /// `(ts, x, y, z)`, in the coordinate order the line itself printed
-    /// them. Frontend note, kept here since this field is the only real
-    /// source of that data: `mapsdata.rs`'s map files do NOT use this same
-    /// order -- confirmed (by brute-forcing every sign/order combination
-    /// against 9 real readings in Lower Guk, scored by distance to that
-    /// zone's own real wall geometry) that a map file's own (x, y) is
-    /// this reading's `(-y, -x)`, z untouched. Two earlier guesses were
-    /// each wrong in a different way and each looked plausible against a
-    /// single sample: a supposed swap carried over from other EQ tooling
-    /// conventions (never actually verified), and then "no swap at all"
-    /// (which fit one sample by chance but averaged 80+ units off, with a
-    /// 294-unit outlier, once checked against more). The real mapping
-    /// averages 9.3 units off across all 9, max 16.1 -- see
-    /// MapViewer.svelte, the only place this gets plotted, for the
-    /// up-to-date working. Rare -- only set when the player types `/loc`
-    /// -- so this is a "last known position" snapshot, not continuous
-    /// tracking; a caller showing it should always display the timestamp
-    /// alongside it.
+    /// why: most recent /loc reading, raw coordinate order the line
+    /// printed. Map files use a different order: confirmed (x,y) =
+    /// (-y,-x) of this reading via brute-force against 9 real Lower Guk
+    /// readings, avg 9.3 units off. Rare, a snapshot not continuous tracking.
     pub last_loc: Option<(Millis, f64, f64, f64)>,
-    /// Timestamp and confirmed landing of "You" or a proven ally most
-    /// recently beginning a recognized teleport cast
-    /// (`teleportdata::landing_for`) -- e.g. a Wizard's `Translocate:
-    /// <Zone>` (per the reference log's own confirmation line, "Do you
-    /// wish to be translocated ... to <Zone>?"), which teleports the
-    /// caster (and, for the group-shaped siblings, the whole group)
-    /// straight to a fixed spot in the named zone, no travel. An ally's
-    /// cast counts too, not just "You": a group-shaped Translocate/
-    /// Portal/Circle/Ring is cast by one Wizard or Druid and lands
-    /// everyone in the group, so gating on "You" alone would miss it
-    /// whenever someone else in the group is the caster -- see `is_ally`
-    /// for what "proven ally" means here (an unproven stranger's cast
-    /// deliberately does not count, see
-    /// `another_players_translocate_does_not_mark_your_visit_teleported`).
-    /// Not scoped to a zone visit; only ever read within
-    /// `TELEPORT_WINDOW_MS` of itself by `entered_via_teleport`.
+    /// why: timestamp + landing of "You" or a proven ally's most recent
+    /// teleport cast -- an ally's cast counts too, group-shaped
+    /// Translocate/Circle lands the whole group. Not scoped to a visit,
+    /// only read within TELEPORT_WINDOW_MS by entered_via_teleport.
     last_teleport_cast: Option<(Millis, teleportdata::TeleportLanding)>,
-    /// The exact landing (if any) the *current* zone visit was entered
-    /// via, rather than an ordinary zone-line walk -- set on every
-    /// `Action::Zone`. The Maps module's entrance guess plots this exact
-    /// coordinate directly (see `teleportdata`'s own doc for the
-    /// coordinate-space caveat) instead of the weaker previous-zone-
-    /// entrance guess. See `get_zone_context`.
-    ///
-    /// Timestamped (the confirming `zone.enter`'s own `ts`) -- a real,
-    /// reported bug this fixes: `commands::live_start_position` used to
-    /// pick a real `/loc` reading over this unconditionally, whenever its
-    /// own zone matched, even when that `/loc` was typed *before* this
-    /// teleport and is now stale -- a fresher, more certain landing
-    /// losing to an older one just because `/loc` outranked it by kind,
-    /// not by recency. Every consumer now compares this timestamp against
-    /// `last_loc`'s own and takes whichever is actually newer.
+    /// why: exact landing the current visit was entered via, set on every
+    /// Action::Zone; timestamped so consumers compare against last_loc
+    /// and take whichever is fresher -- fixes a real bug where /loc used
+    /// to win unconditionally even when stale
     pub entered_via_teleport: Option<(Millis, teleportdata::TeleportLanding)>,
-    /// Timestamp of "You" most recently beginning an `Origin` cast --
-    /// personal only, unlike `last_teleport_cast`: the AA's own real
-    /// description ("transports *you* back to your starting city",
-    /// confirmed against `~/eql/aa.json`) is singular, not group-shaped
-    /// like Translocate/Circle, so an ally's cast never counts here. See
-    /// `learned_origin`'s own doc for why this exists as a second,
-    /// parallel mechanism rather than folding into `last_teleport_cast`.
+    /// why: "You" only, unlike last_teleport_cast -- Origin's own
+    /// description is personal not group-shaped
     last_origin_cast: Option<Millis>,
-    /// Timestamp and raw zone label of the most recent real-world
-    /// confirmation of where `Origin` actually sends this character.
-    /// Origin, per the user's own direct point, is a genuinely *dynamic*
-    /// teleport: unlike every spell `teleportdata::landing_for` covers,
-    /// it has no single wiki-quotable destination at all (confirmed
-    /// directly against the real reference log: this character's own
-    /// Origin casts landed in four different real zones over three
-    /// weeks -- Oggok, Neriak - Commons, New Sebilis Expedition, and The
-    /// Feerrott -- settling into New Sebilis Expedition as the
-    /// overwhelmingly dominant, current answer). So instead of a static
-    /// lookup, this is *learned* empirically, the same "last one wins"
-    /// shape `last_teleport_cast`/`entered_via_teleport` already use for
-    /// a fizzle-then-retry: set on `Action::Zone` whenever it lands
-    /// within `TELEPORT_WINDOW_MS` of `last_origin_cast`, overwritten by
-    /// every later confirmation, self-correcting if the player ever
-    /// changes their actual starting city again. Not itself a coordinate
-    /// -- once a zone is known, "where in that zone" is exactly
-    /// `routing::best_start_position`'s own question (the real,
-    /// game-accurate succor point), computed lazily by whichever command
-    /// needs it (`base_dir` isn't available at ingest time) rather than
-    /// stored here.
+    /// why: timestamp + raw zone of the most recent real confirmation of
+    /// where Origin sends this character -- genuinely dynamic, no
+    /// wiki-quotable destination (confirmed: 4 different real zones over
+    /// 3 weeks). Learned empirically, last-one-wins, self-correcting.
     pub learned_origin: Option<(Millis, String)>,
-    /// Every AA rank purchase seen this session -- `aa.gained`/`aa.
-    /// improved` lines only. See `AaLog`'s own doc.
+    /// why: every AA rank purchase this session, see AaLog
     pub aa: AaLog,
-    /// Every spell confirmed known this session. See `SpellLog`'s own doc.
+    /// why: every spell confirmed known this session, see SpellLog
     pub spellbook: SpellLog,
-    /// Highest live rank observed cast this session, "You" only. See
-    /// `SpellRanks`' own doc.
+    /// why: highest live rank observed cast this session, "You" only, see SpellRanks
     pub spell_ranks: SpellRanks,
-    /// Every "Your <item> (Exaltation) ..." combat-proc line seen this
-    /// session. See `ExaltationProcs`' own doc.
+    /// why: every exaltation-proc line this session, see ExaltationProcs
     pub exaltation_procs: ExaltationProcs,
     enc_map: HashMap<EncId, EncounterId>,
-    /// Every entity seen in each store encounter so far, kept current as a
-    /// fight grows (a multi-mob pull adds to it) rather than frozen at
-    /// whichever mob was hit first -- `store::Encounter` only carries one
-    /// label, but a fight can hold several entities. See `link`.
+    /// why: every entity per encounter, kept current as a fight grows --
+    /// Store::Encounter only carries one label but a fight can hold several
     pub entities_by_enc: HashMap<EncounterId, Vec<String>>,
-    /// How far into `encounters.closed` we've synced to the store.
-    /// `Builder` only ever appends to that vec, never drains it.
+    /// why: how far into encounters.closed we've synced; Builder only appends, never drains
     closed_seen: usize,
-    /// Unresolved "<Owner> summons a <flavour>." sightings, newest last,
-    /// waiting to be matched against the next brand-new actor. Pruned to
-    /// `PET_MATCH_WINDOW_MS` in `note_actor`.
+    /// why: unresolved summon sightings waiting to match a new actor, pruned to PET_MATCH_WINDOW_MS
     pending_summons: Vec<(Millis, String)>,
-    /// Names ever seen acting (dealing damage, healing, missing, casting)
-    /// -- an entity only gets checked against `pending_summons` the first
-    /// time it acts, not on every subsequent action.
+    /// why: names ever seen acting, so pending_summons is only checked on an entity's first action
     seen_actors: HashSet<String>,
-    /// Resolved pet -> owner, both already `display_name`-canonicalised.
-    /// Checked by `sym` before interning, so a matched pet's every action
-    /// -- including the one that triggered the match -- merges into the
-    /// owner's identity rather than becoming its own entity. See
-    /// `note_actor` for how a match is made, and `Ingest::link`'s doc
-    /// comment for why the encounter graph is untouched by this: fight
-    /// membership and store identity are separate concerns.
+    /// why: resolved pet -> owner; checked by sym before interning so a
+    /// matched pet's actions merge into the owner's identity
     pet_owner: HashMap<String, String>,
-    /// Encounters where "You" has landed a confirmed hit on the fight's own
-    /// anchor mob -- see `note_shared_target`. Once an id is in here, every
-    /// future actor hitting that same anchor gets promoted inline; the
-    /// retroactive sweep over everyone who hit it *before* "You" did only
-    /// runs the moment an id is first inserted.
+    /// why: encounters where "You" landed a confirmed hit on the anchor
+    /// mob -- once inserted, future actors on that anchor promote inline
     you_confirmed_target_encs: HashSet<EncounterId>,
-    /// Open "Quick Buff was just activated" windows, keyed by resolved
-    /// activator name -> activation timestamp. See `note_quickbuff` and
-    /// `flavor_evidence_for` for how these get consumed and pruned.
+    /// why: open Quick Buff activation windows, resolved name -> activation timestamp
     pending_quickbuff: HashMap<String, Millis>,
-    /// Quick Buff class evidence not yet committed, held for
-    /// `GROUP_CAST_WINDOW_MS` in case it turns out to be a group cast
-    /// coincidentally landing during the activator's own window -- see
-    /// `attribute_flavor_hit`'s doc.
+    /// why: Quick Buff evidence held for GROUP_CAST_WINDOW_MS in case it's really a group cast
     pending_quickbuff_evidence: Vec<PendingQuickbuffEvidence>,
-    /// Every recognized flavor landing (self and third-person alike),
-    /// across every entity, from the trailing `GROUP_CAST_WINDOW_MS` --
-    /// exists purely to answer "did this same text also land on someone
-    /// else just now", the signal a group cast leaves. Deliberately
-    /// separate from `effects` (which keeps full history, per-entity,
-    /// never pruned): this only ever needs a few seconds of cross-entity
-    /// lookback, so it's pruned on every touch instead.
+    /// why: every recognized flavor landing across entities, trailing
+    /// GROUP_CAST_WINDOW_MS -- answers "did this land on someone else
+    /// just now"; separate from effects (full history), pruned on every touch
     recent_flavor_landings: Vec<(Millis, u32, String)>,
-    /// Log-time clock: set from the log's own timestamps while replaying
-    /// history, then (once `mark_live` is called) also advanced by real
-    /// elapsed time between ticks, so a fight that goes quiet during live
-    /// tailing closes in near-real-time rather than only when the next
-    /// line happens to arrive.
+    /// why: log-time clock, set from timestamps during replay, also
+    /// advanced by real elapsed time once mark_live is called
     log_clock: VirtualClock,
     last_wall_ms: Option<Millis>,
-    /// `log_clock`'s value as of `last_wall_ms`. Snapshotting the two
-    /// together, and only ever projecting forward from this pair rather
-    /// than from a freshly-read `log_clock.now_ms()`, is what keeps a
-    /// tick's wall-elapsed delta from being counted twice: a line arriving
-    /// between two ticks already advances `log_clock` past this snapshot
-    /// on its own (via `route`'s `set_at_least`), so the next tick's
-    /// projection lands exactly on the already-advanced value instead of
-    /// adding wall-elapsed on top of it. See `tick`.
+    /// why: log_clock's value as of last_wall_ms; projecting from this
+    /// pair (not a fresh read) avoids double-counting wall-elapsed time
     last_log_ms: Millis,
     live: bool,
     pub counts: LineCounts,
-    /// Every unmatched-line shape seen this session, ranked by count --
-    /// the Debug module's own "Unparsed" tab. Accumulated from both the
-    /// live tail path (`route`) and backfill (`classify_chunk`'s
-    /// per-thread copies, merged sequentially in `backfill_lines`), so a
-    /// freshly-launched app replaying days of history sees the same
-    /// picture the `eqlp coverage` CLI command would print for that file
-    /// -- not just whatever arrives after this particular launch. See
-    /// `crate::debugview`'s own doc for what the frontend does with this.
+    /// why: unmatched-line shapes ranked by count, Debug's "Unparsed" tab;
+    /// accumulated from both live tail and backfill so a fresh launch sees the whole picture
     unmatched_shapes: HashMap<Vec<u8>, ShapeStat>,
     unmatched_shapes_overflow: u64,
     shaper: Shaper,
     shape_scratch: Vec<u8>,
     pub recent: Vec<RecentLine>,
-    /// Sound-notification-worthy events since the caller last drained
-    /// this -- pure data, no I/O, same split `pending_history`/`pending_
-    /// inventory_files` already use: `Ingest` only ever records that one
-    /// happened, `tail_worker.rs` is what actually emits the Tauri event.
-    /// Live-only, same gate `recent` uses -- see `crate::notifications`'s
-    /// own doc for why a historical backfill replaying days of log
-    /// shouldn't fire a burst of sounds for things that already happened.
+    /// why: notification-worthy events pending drain; pure data, no I/O,
+    /// live-only so backfill doesn't fire a burst of sounds
     pub pending_notifications: Vec<crate::notifications::NotificationEvent>,
-    /// One record per encounter closed since the caller last drained this.
-    /// Pure data, no I/O -- built in `drain_closed`, persisted by whatever
-    /// holds an `AppHandle` (`tail_worker.rs`), same split `recent` already
-    /// uses for the live feed. See `crate::history`.
+    /// why: one record per closed encounter pending drain, pure data, see crate::history
     pub pending_history: Vec<ParseRecord>,
-    /// Filenames named by an "Outputfile Complete" line since the caller
-    /// last drained this -- pure data, no I/O, same split `pending_history`
-    /// already uses: `Ingest` only ever records *that* a dump exists and
-    /// *what it's called*, never reads it (it doesn't know the base
-    /// install folder the file actually lives in -- that's
-    /// `AppConfig::base_dir`, a layer up). `tail_worker.rs` is what
-    /// actually reads the file and acts on it.
+    /// why: filenames from Outputfile Complete lines pending drain; only
+    /// records that a dump exists, tail_worker.rs reads and acts on it
     pub pending_inventory_files: Vec<String>,
 }
 
@@ -1119,61 +691,33 @@ impl Default for Ingest {
 }
 
 impl Ingest {
-    /// Current position on the log's own clock -- milliseconds, no
-    /// timezone, same basis as every `LocalTs` in `eqlp-core`.
+    /// why: log's own clock, ms, no timezone, same basis as every LocalTs in eqlp-core
     pub fn now_ms(&self) -> Millis {
         self.log_clock.now_ms()
     }
 
-    /// When the *current* session began, for `overview::session`'s rate
-    /// averaging -- the most recent `afk.off` line if there's been one,
-    /// else `first_ts` (the start of this parse, "freshly logged on").
-    /// `None` only before a single line has been processed.
-    ///
-    /// A return from AFK reads as a fresh session on purpose, not a
-    /// continuation of whatever was running before: minutes (or hours) of
-    /// AFK time sitting inside an unbroken "since log start" window would
-    /// silently drag down every rate average computed over it -- plat/hour
-    /// and xp/hour both go quietly wrong the moment idle time outweighs
-    /// active time, which for a long real play session is common, not an
-    /// edge case. Going AFK itself doesn't end anything here -- only
-    /// coming *back* does, at the moment there's again real play to
-    /// average -- so a still-AFK player's session start stays wherever it
-    /// last was, not the moment they stepped away.
+    /// why: most recent afk.off, else first_ts; a return from AFK reads
+    /// as a fresh session on purpose -- AFK time inside an unbroken
+    /// window would silently drag down plat/hour and xp/hour. Going AFK
+    /// itself doesn't end anything, only coming back does.
     pub fn session_start(&self) -> Option<Millis> {
         self.last_afk_off.or(self.first_ts)
     }
 
-    /// Whether AFK as of the most recently processed line.
+    /// why: AFK as of the most recently processed line
     pub fn currently_afk(&self) -> bool {
         self.afk_state
     }
 
-    /// Zone difficulty tier (0-4) as of `ts`, parsed from whatever zone
-    /// label was current at that instant. Stamped onto every pushed row
-    /// (`Store::tier`) so a score baseline can later be scoped to "this
-    /// target, this difficulty" with a plain `Filter`, not a query-time
-    /// union over every past same-tier zone visit. See `crate::zone`'s doc
-    /// for the naming convention this parses.
+    /// why: tier as of ts, stamped onto every row so a baseline can scope
+    /// to "this target, this difficulty" with a plain Filter
     fn current_tier(&self, ts: Millis) -> u8 {
         crate::zone::zone_tier(self.zone.at(ts).unwrap_or("")).1
     }
 
-    /// `current_tier`'s sibling: the zone itself, interned, not just its
-    /// difficulty digit. Stamped once onto an `Encounter` at open time
-    /// (`Store::open_encounter`) rather than re-derived from `start_ms` on
-    /// every later query that wants "what zone was this fight in" --
-    /// `combat::list_zone_encounters` reads the stamped field, not this.
-    /// Takes `&mut self` (unlike `current_tier`) because interning a new
-    /// string needs it; the short-lived borrow from `self.zone.at(ts)` is
-    /// released before that happens, via the owned `to_string()`, so the
-    /// two don't conflict.
-    ///
-    /// Also primes `wiki_zone_cache` for this raw label right away
-    /// (`resolved_wiki_zone`) -- eager, not lazy-on-first-query, so the
-    /// resolution work for a zone visit happens once, here, while parsing,
-    /// rather than needing every query against it to check "have we
-    /// resolved this one yet" and possibly do it themselves.
+    /// why: current_tier's sibling, the zone itself interned; stamped
+    /// once at encounter-open rather than re-derived per query. Also
+    /// primes wiki_zone_cache eagerly, not lazy-on-first-query.
     fn current_zone(&mut self, ts: Millis) -> Option<Sym> {
         let z = self.zone.at(ts)?.to_string();
         let sym = self.sym(&z);
@@ -1181,27 +725,9 @@ impl Ingest {
         Some(sym)
     }
 
-    /// The wiki zone `raw_zone` (an interned raw `zone.enter` label)
-    /// resolves to, if any -- returns its stable `zonedata::Zone::id`
-    /// (the wiki's own URL-slug identifier, e.g. `"Plane_of_Hate"`), not
-    /// the display `name`. Deliberately an id, not a name: a name still
-    /// needs a case-insensitive compare at every call site (spelling is
-    /// spelling, casing drifts), while two ids either are the same zone or
-    /// they aren't -- an exact `==` -- which also makes this directly
-    /// checkable by eye: `debugview::list_debug_encounters` shows exactly
-    /// this value next to each encounter, and a zone page's own id is
-    /// right there in `zonedata::Zone::id` too, so "is this encounter
-    /// really tagged with the zone I'm looking at" is a plain string
-    /// comparison a person can do, not something to just trust.
-    ///
-    /// Checked against `wiki_zone_cache` first, computed via `zone::
-    /// zone_matches` over `zonedata::zones()` only on a cache miss --
-    /// runs at most once per *distinct* raw zone label a session ever
-    /// sees (typically a couple hundred at most), no matter how many
-    /// thousands of fights or queries share that label afterward.
-    /// `cached_wiki_zone` is the read-only sibling query code should
-    /// reach for instead -- this one can populate the cache, `&Ingest`-
-    /// only query functions can't.
+    /// why: wiki zone id (not display name -- an exact == vs a
+    /// case-insensitive compare, directly eyeball-checkable). Cached,
+    /// runs at most once per distinct raw label a session ever sees.
     fn resolved_wiki_zone(&mut self, raw_zone: Sym) -> Option<&'static str> {
         if let Some(&cached) = self.wiki_zone_cache.get(&raw_zone) {
             return cached;
@@ -1217,30 +743,20 @@ impl Ingest {
         resolved
     }
 
-    /// Read-only lookup into `wiki_zone_cache` -- a `zonedata::Zone::id`,
-    /// not a name, see `resolved_wiki_zone`'s doc for why. `None` here is
-    /// ambiguous between "this raw zone matched nothing in the wiki
-    /// guide" and "this raw zone was never resolved at all", but in
-    /// practice the second case can't happen for any `Sym` reachable from
-    /// an `Encounter`: `current_zone` calls `resolved_wiki_zone` on every
-    /// one it ever stamps, before the encounter exists to be queried.
+    /// why: read-only cache lookup; None ambiguous in theory but not in
+    /// practice -- current_zone always resolves before an encounter can exist
     pub fn cached_wiki_zone(&self, raw_zone: Sym) -> Option<&'static str> {
         self.wiki_zone_cache.get(&raw_zone).copied().flatten()
     }
 
-    /// Switches from "replaying history as fast as possible" to "live":
-    /// from here on, `tick` also advances the log clock by real elapsed
-    /// time between calls, not only by timestamps found in new lines.
-    /// Backfill must not do this -- parsing twelve days of history in two
-    /// seconds must not appear to close every fight in those two seconds.
+    /// why: switches from replaying-fast to live -- tick starts advancing
+    /// the clock by real elapsed time too, not just new-line timestamps
     pub fn mark_live(&mut self) {
         self.live = true;
-        self.last_wall_ms = None; // next tick sets the baseline, not a jump
+        self.last_wall_ms = None; // why: next tick sets the baseline, not a jump
     }
 
-    /// One unmatched line, from the live tail path -- shapes it and folds
-    /// it into `unmatched_shapes` directly (no per-thread copy to merge,
-    /// unlike backfill's `classify_chunk`/`merge_unmatched_shape`).
+    /// why: live-path unmatched line, folded directly -- no per-thread copy to merge
     fn note_unmatched_shape(&mut self, text: &[u8]) {
         self.shaper
             .shape_into(text, ShapeMode::Aggressive, &mut self.shape_scratch);
@@ -1260,13 +776,8 @@ impl Ingest {
         }
     }
 
-    /// One already-shaped chunk result, from backfill's parallel classify
-    /// step -- see `classify_chunk`'s own local accumulator and
-    /// `backfill_lines`' sequential merge loop. `stat.count` folds in
-    /// whole (that chunk may have seen this shape many times), and the
-    /// *existing* example is kept on a hit -- first-seen, not
-    /// last-merged, matching `note_unmatched_shape`'s own single-line
-    /// behavior of never overwriting an example once set.
+    /// why: one already-shaped chunk result from backfill's parallel
+    /// classify step; existing example kept on a hit, first-seen not last-merged
     fn merge_unmatched_shape(&mut self, shape: Vec<u8>, stat: ShapeStat) {
         if let Some(existing) = self.unmatched_shapes.get_mut(&shape) {
             existing.count += stat.count;
@@ -1277,9 +788,7 @@ impl Ingest {
         }
     }
 
-    /// Every unmatched-line shape seen this session, highest count first
-    /// -- the Debug module's "Unparsed" tab, and the same ranking the
-    /// `eqlp coverage` CLI command prints for the identical clustering.
+    /// why: highest count first, same ranking as `eqlp coverage`
     pub fn unmatched_shapes_top(&self, n: usize) -> Vec<(&[u8], &ShapeStat)> {
         let mut v: Vec<_> = self
             .unmatched_shapes
