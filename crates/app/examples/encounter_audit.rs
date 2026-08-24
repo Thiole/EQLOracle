@@ -19,7 +19,7 @@ fn main() {
     backfill_lines(&mut ing, &engine, &lines, 8);
 
     let mut encounters = combat::list_encounters(&ing, None, 0, usize::MAX);
-    encounters.sort_by(|a, b| b.duration_ms.cmp(&a.duration_ms));
+    encounters.sort_by_key(|b| std::cmp::Reverse(b.duration_ms));
 
     println!(
         "{} real encounters, longest 10 by duration:",

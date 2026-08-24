@@ -651,8 +651,8 @@ mod tests {
 
     #[test]
     fn duration_handles_the_real_format_variety() {
-        assert_eq!(parse_duration(Some("Instant")).is_instant, true);
-        assert_eq!(parse_duration(Some("Permanent")).is_permanent, true);
+        assert!(parse_duration(Some("Instant")).is_instant);
+        assert!(parse_duration(Some("Permanent")).is_permanent);
         assert_eq!(parse_duration(Some("48 Sec")).max_secs, Some(48.0));
         assert_eq!(parse_duration(Some("4 ticks")).max_secs, Some(24.0));
         assert_eq!(

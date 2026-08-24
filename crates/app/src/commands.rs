@@ -613,6 +613,7 @@ pub fn get_exalt_candidates(
 /// highest tier owned) -- all `None` for a plain browsing call with no
 /// dump loaded yet.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // each param is its own real, independently-optional filter -- see doc above
 pub fn get_gear_recommendations(
     classes: Vec<String>,
     race: Option<String>,

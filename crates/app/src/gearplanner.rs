@@ -1328,6 +1328,7 @@ pub const SLOTS: &[(&str, &str)] = &[
 /// browsing/what-if call with no dump loaded.
 ///
 /// why: nets 2H Primary score against best forfeited Secondary (melee only)
+#[allow(clippy::too_many_arguments)] // each param is its own real, independently-optional filter -- see doc above
 pub fn recommend(
     classes: &[String],
     race: Option<&str>,

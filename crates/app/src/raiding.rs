@@ -128,12 +128,17 @@ pub struct RaidRowDto {
     pub raids: Vec<RaidDto>,
 }
 
-/// `(row label, &[(zone, main boss, [minibosses])])`, given directly by
-/// the player -- see this module's own doc for why this is curated, not
-/// wiki-derived. Ordered exactly as given; `list_raid_rows` preserves
-/// this order rather than re-sorting, since row order is itself part of
-/// the curation (e.g. "Early Game Raids" first on purpose).
-const CURATED_ROWS: &[(&str, &[(&str, &str, &[&str])])] = &[
+/// `(zone, main boss, [minibosses])`.
+type CuratedRaid = (&'static str, &'static str, &'static [&'static str]);
+/// `(row label, its raids)`.
+type CuratedRow = (&'static str, &'static [CuratedRaid]);
+
+/// Given directly by the player -- see this module's own doc for why
+/// this is curated, not wiki-derived. Ordered exactly as given;
+/// `list_raid_rows` preserves this order rather than re-sorting, since
+/// row order is itself part of the curation (e.g. "Early Game Raids"
+/// first on purpose).
+const CURATED_ROWS: &[CuratedRow] = &[
     (
         "Early Game Raids",
         &[

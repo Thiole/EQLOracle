@@ -213,9 +213,9 @@ fn intern(
 fn collect(locs: &CaptureLocations, off: usize) -> ([Option<Span>; MAX_CAPS], usize) {
     let mut caps = [None; MAX_CAPS];
     let n = locs.len().saturating_sub(1).min(MAX_CAPS);
-    for g in 0..n {
+    for (g, slot) in caps.iter_mut().enumerate().take(n) {
         if let Some((s, e)) = locs.get(g + 1) {
-            caps[g] = Some(Span::new(off + s, off + e));
+            *slot = Some(Span::new(off + s, off + e));
         }
     }
     (caps, n)

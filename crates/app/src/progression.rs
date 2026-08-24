@@ -156,14 +156,14 @@ pub fn spellbook(ing: &Ingest) -> Vec<SpellbookEntryDto> {
         .known()
         .map(|(name, ts)| spellbook_entry(name, "known", ts))
         .collect();
-    known.sort_by(|a, b| b.first_seen_ms.cmp(&a.first_seen_ms));
+    known.sort_by_key(|b| std::cmp::Reverse(b.first_seen_ms));
 
     let mut possible: Vec<SpellbookEntryDto> = ing
         .spellbook
         .possible()
         .map(|(name, ts)| spellbook_entry(name, "possible", ts))
         .collect();
-    possible.sort_by(|a, b| b.first_seen_ms.cmp(&a.first_seen_ms));
+    possible.sort_by_key(|b| std::cmp::Reverse(b.first_seen_ms));
 
     known.extend(possible);
     known

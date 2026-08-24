@@ -535,7 +535,7 @@ fn hop_distance(
             Some(best.map_or(d, |b: f64| b.min(d)))
         });
 
-    let outcome = choose_walk_outcome(direct, succor_relay, || euclid(from, exit) as f64);
+    let outcome = choose_walk_outcome(direct, succor_relay, || euclid(from, exit));
     (exit, outcome, truncated)
 }
 
@@ -557,7 +557,8 @@ fn cached_hop_distance(
     deadline: std::time::Instant,
 ) -> ((f32, f32, f32), WalkOutcome) {
     type Key = (String, (i64, i64, i64), String);
-    static CACHE: OnceLock<Mutex<HashMap<Key, ((f32, f32, f32), WalkOutcome)>>> = OnceLock::new();
+    type CacheValue = ((f32, f32, f32), WalkOutcome);
+    static CACHE: OnceLock<Mutex<HashMap<Key, CacheValue>>> = OnceLock::new();
     fn quantize(v: f32) -> i64 {
         (v as f64 * 100.0).round() as i64
     }

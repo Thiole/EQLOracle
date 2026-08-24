@@ -263,7 +263,7 @@ pub fn list_encounters(
         .iter()
         .filter(|e| matches_visit(ing, e.start_ms, zone_visit))
         .collect();
-    matched.sort_by(|a, b| b.start_ms.cmp(&a.start_ms));
+    matched.sort_by_key(|b| std::cmp::Reverse(b.start_ms));
     matched
         .into_iter()
         .skip(offset)
@@ -853,7 +853,7 @@ pub fn summarize(
             r.min = 0;
         }
     }
-    rows.sort_by(|a, b| b.total.cmp(&a.total));
+    rows.sort_by_key(|b| std::cmp::Reverse(b.total));
 
     let total_damage: u64 = rows.iter().map(|r| r.total).sum();
 
@@ -1009,7 +1009,7 @@ pub fn list_allies(
             }
         })
         .collect();
-    out.sort_by(|a, b| b.total.cmp(&a.total));
+    out.sort_by_key(|b| std::cmp::Reverse(b.total));
     out
 }
 
@@ -1160,7 +1160,7 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
             values: buckets.iter().map(|b| b.total).collect(),
         });
     }
-    series.sort_by(|a, b| b.total.cmp(&a.total));
+    series.sort_by_key(|b| std::cmp::Reverse(b.total));
 
     let buckets: Vec<Millis> = (0..buckets_len as Millis)
         .map(|i| start + i * bucket_ms)

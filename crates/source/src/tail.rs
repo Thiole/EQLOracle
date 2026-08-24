@@ -214,7 +214,7 @@ pub fn newest_log_in(dir: &Path) -> Option<PathBuf> {
             Ok(t) => t,
             Err(_) => continue,
         };
-        if best.as_ref().map_or(true, |(bt, _)| mt > *bt) {
+        if best.as_ref().is_none_or(|(bt, _)| mt > *bt) {
             best = Some((mt, p));
         }
     }

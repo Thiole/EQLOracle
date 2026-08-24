@@ -222,7 +222,12 @@ pub fn session(rng: &mut Rng, encounters: usize) -> (String, Vec<GenLine>) {
             t += rng.range(0, 3) as i64;
             let mut g = damage_line(rng, t);
             g.target = target.clone();
-            let body = g.line.splitn(2, "] ").nth(1).unwrap_or("").to_string();
+            let body = g
+                .line
+                .split_once("] ")
+                .map(|(_, rest)| rest)
+                .unwrap_or("")
+                .to_string();
             let _ = body;
             out.push_str(&g.line);
             out.push_str("\r\n");

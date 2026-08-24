@@ -315,7 +315,7 @@ fn cmd_parse(a: &Args) -> Result<(), String> {
                 obj.insert("ts".into(), m.ts.0.into());
                 obj.insert("rule".into(), r.id.clone().into());
                 obj.insert("kind".into(), r.kind.clone().into());
-                for (name, _) in &r.def.fields {
+                for name in r.def.fields.keys() {
                     let v = match field::field(&eng, m, line, name) {
                         field::Value::Str(s) => serde_json::Value::String(lossy(s)),
                         field::Value::U64(n) => n.into(),
@@ -364,7 +364,7 @@ fn cmd_coverage(a: &Args) -> Result<(), String> {
 
     println!("\ntop rules");
     let mut per: Vec<(usize, u64)> = cov.per_rule.iter().copied().enumerate().collect();
-    per.sort_unstable_by(|x, y| y.1.cmp(&x.1));
+    per.sort_unstable_by_key(|y| std::cmp::Reverse(y.1));
     for (i, c) in per.iter().take(a.top).filter(|(_, c)| *c > 0) {
         println!("{c:>10}  {}", eng.rule(*i as u32).id);
     }
@@ -428,7 +428,7 @@ fn cmd_shapes(a: &Args) -> Result<(), String> {
     }
 
     let mut v: Vec<_> = counts.into_iter().collect();
-    v.sort_unstable_by(|x, y| y.1 .0.cmp(&x.1 .0));
+    v.sort_unstable_by_key(|y| std::cmp::Reverse(y.1 .0));
     println!(
         "{total} lines, {headerless} headerless, {} distinct shapes\n",
         v.len()

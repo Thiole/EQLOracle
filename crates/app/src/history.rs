@@ -291,7 +291,7 @@ pub fn by_loadout(records: &[ParseRecord]) -> Vec<LoadoutSummary> {
             }
         })
         .collect();
-    out.sort_by(|a, b| b.fights.cmp(&a.fights));
+    out.sort_by_key(|b| std::cmp::Reverse(b.fights));
     out
 }
 

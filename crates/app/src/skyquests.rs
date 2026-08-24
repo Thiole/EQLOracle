@@ -305,7 +305,7 @@ struct Context {
 fn build_context(ing: &Ingest, base_dir: Option<&Path>) -> Context {
     let looted = build_item_loot_index(ing);
     let owned_ci: Option<HashMap<String, u32>> = base_dir
-        .and_then(|dir| inventory::find_existing_dump(dir))
+        .and_then(inventory::find_existing_dump)
         .and_then(|(file, _character)| inventory::dump_path(base_dir.unwrap(), &file).ok())
         .and_then(|path| inventory::parse(&path).ok())
         .map(|parsed| {

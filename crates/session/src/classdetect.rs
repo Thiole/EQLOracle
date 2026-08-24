@@ -128,6 +128,12 @@ pub const CLASS_COUNT: usize = 3;
 /// here beyond using it as a grouping key.
 pub type ZoneVisit = Option<usize>;
 
+/// One resolved configuration (its class list) paired with every zone
+/// visit that resolved to it -- `visits_by_resolved_configuration`'s own
+/// return shape, named so that signature reads as intended instead of
+/// tripping clippy's `type_complexity` on the bare nested tuple/Vec.
+pub type ConfiguredVisits = Vec<(Vec<String>, Vec<ZoneVisit>)>;
+
 #[derive(Debug, Default)]
 struct VisitState {
     /// Classes confirmed for this visit, by either path in this module's
@@ -344,7 +350,7 @@ impl Detector {
     pub fn visits_by_resolved_configuration(
         &self,
         entity: u32,
-    ) -> (Vec<(Vec<String>, Vec<ZoneVisit>)>, Vec<ZoneVisit>) {
+    ) -> (ConfiguredVisits, Vec<ZoneVisit>) {
         let Some(state) = self.by_entity.get(&entity) else {
             return (Vec::new(), Vec::new());
         };

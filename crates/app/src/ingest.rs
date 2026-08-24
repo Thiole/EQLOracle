@@ -1710,6 +1710,7 @@ impl Ingest {
     /// "each damage line is an edge"), so this is the only event kind that
     /// opens a new fight. Everything else attaches to whatever fight is
     /// already open, if any.
+    #[allow(clippy::too_many_arguments)] // each param is a distinct field straight off a real damage log line
     fn record_damage(
         &mut self,
         ts: Millis,
@@ -4234,7 +4235,10 @@ mod aa_tests {
         assert_eq!(grants[3].rank, 2);
         assert_eq!(grants[3].cost, 1); // singular "1 ability point." still parses
 
-        assert_eq!(ing.aa.total_spent(), 2 + 0 + 4 + 1);
+        #[allow(clippy::identity_op)] // +0 kept -- lines up 1:1 with grants[0..3]'s own costs above
+        {
+            assert_eq!(ing.aa.total_spent(), 2 + 0 + 4 + 1);
+        }
     }
 }
 

@@ -116,7 +116,7 @@ fn main() {
     let usable_level = |s: &eqlp_app::dpscalc::DamageSpellDto| -> Option<u32> {
         s.classes
             .iter()
-            .filter(|c| my_classes.contains(&c.class.as_str()) && c.level.map_or(true, |l| l <= 50))
+            .filter(|c| my_classes.contains(&c.class.as_str()) && c.level.is_none_or(|l| l <= 50))
             .filter_map(|c| c.level)
             .max()
     };

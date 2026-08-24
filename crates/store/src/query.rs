@@ -279,7 +279,7 @@ pub fn by_ability(store: &Store, f: &Filter) -> Vec<AbilityRow> {
             r.min = 0;
         }
     }
-    v.sort_by(|a, b| b.total.cmp(&a.total));
+    v.sort_by_key(|b| std::cmp::Reverse(b.total));
     v
 }
 
@@ -356,7 +356,7 @@ pub fn roll_up_by_tag(rows: &[AbilityRow]) -> Vec<(&'static str, u64, u64)> {
             out.push((*name, total, hits));
         }
     }
-    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out.sort_by_key(|b| std::cmp::Reverse(b.1));
     out
 }
 
@@ -379,7 +379,7 @@ pub fn by_actor(store: &Store, f: &Filter) -> Vec<(Sym, u64, u64, u64)> {
         }
     }
     let mut v: Vec<_> = acc.into_iter().map(|(k, (t, n, c))| (k, t, n, c)).collect();
-    v.sort_by(|a, b| b.1.cmp(&a.1));
+    v.sort_by_key(|b| std::cmp::Reverse(b.1));
     v
 }
 

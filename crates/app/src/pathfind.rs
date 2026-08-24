@@ -234,6 +234,7 @@ impl Grid {
 
 /// Standard orientation-based segment-segment intersection test (proper
 /// crossing or an endpoint landing exactly on the other segment).
+#[allow(clippy::too_many_arguments)] // two raw (x,y) endpoint pairs, not a natural struct
 fn segments_intersect(
     ax1: f32,
     ay1: f32,

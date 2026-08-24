@@ -1,5 +1,9 @@
 /target
 /crates/app/gen
+# why: fuzz/ is its own separate cargo workspace (see fuzz/Cargo.toml's
+# own [workspace]), so the root-anchored /target above doesn't reach its
+# build output.
+/fuzz/target
 
 # Real personal combat logs dropped at the repo root for local testing
 # convenience -- 185MB+, never meant to ship in git history. The small,

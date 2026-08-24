@@ -132,7 +132,7 @@ pub fn score_parse(
             per_ability.push(s);
         }
     }
-    per_ability.sort_by(|a, b| b.observed_total.cmp(&a.observed_total));
+    per_ability.sort_by_key(|b| std::cmp::Reverse(b.observed_total));
     let ratio = if expected_total > 0.0 {
         observed_total as f64 / expected_total
     } else {
