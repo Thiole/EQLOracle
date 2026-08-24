@@ -4,8 +4,7 @@
 
 use std::collections::HashMap;
 
-/// Interned string handle. Names repeat constantly in a combat log, so every
-/// actor, target and ability becomes a `u32` and grouping is integer work.
+/// why: names repeat constantly, so grouping stays integer work
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Sym(pub u32);
 
@@ -43,12 +42,7 @@ impl Interner {
     }
 }
 
-/// How an ability delivers its effect. A facet, not an identity: several
-/// unrelated abilities share a tag, and one ability may carry more than one.
-///
-/// Rows are keyed by ability. Tags exist so a breakdown can be rolled up,
-/// filtered or coloured by mechanism without collapsing distinct abilities
-/// into one bucket.
+/// why: a facet not an identity -- rolls up/filters by mechanism
 pub type Tags = u32;
 
 pub mod tag {
@@ -84,9 +78,7 @@ pub mod tag {
     }
 }
 
-/// Per-ability metadata. Tags accumulate as evidence arrives — an ability first
-/// seen as a landing with no cast is tagged `PROC`, and if a cast line for it
-/// later appears the tag is corrected.
+/// why: tags accumulate as evidence arrives, PROC corrected on a cast
 #[derive(Debug, Clone)]
 pub struct Ability {
     pub name: Sym,

@@ -21,18 +21,8 @@ pub use graph::{Builder, Closed, EncId, Entities, Kind, Live, Policy};
 pub use rolling::Rolling;
 pub use timeline::{series, Bucket, Cause, State, Timeline, Transition};
 
-/// Entity-name key: first character case-folded, rest preserved.
-///
-/// The log capitalises a name at sentence start and not mid-sentence -- the
-/// same mob is `an armadillo` in "You hit an armadillo..." and
-/// `An armadillo` in "An armadillo has been slain by...". Comparing names
-/// raw silently fails to link the two, which is exactly the bug this crate's
-/// design notes describe (`docs/design/session.md`, "Case folding"): 511
-/// deaths closing only 114 fights before the fold, 450 after.
-///
-/// Only the first character folds. Lowercasing the whole name would merge
-/// genuinely distinct targets -- proper nouns carry meaning (`a gnoll` and
-/// `Gnoll Commander` are different mobs).
+/// why: first char case-folded only -- fixes "an armadillo"/"An armadillo"
+/// without merging distinct proper nouns like other mobs would need
 pub(crate) fn fold_key(name: &str) -> String {
     let mut c = name.chars();
     match c.next() {

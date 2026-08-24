@@ -12,23 +12,17 @@ pub enum State {
     /// Fighting, or able to.
     #[default]
     Engaged,
-    /// Mesmerized. Still in the fight and still on the aggro list — this delays
-    /// actions, it does not end combat. A mezzed mob must not close an
-    /// encounter and must not count as removed from the field.
+    /// why: still on the aggro list -- delays action, never closes the fight
     Mezzed,
-    /// Charmed. Changes side; damage it deals now counts for the charmer's
-    /// team, though the log names no owner.
+    /// why: switches side, log never names the charmer
     Charmed,
     Dead,
-    /// Left the fight for a reason the log does not report: memory blur,
-    /// pacify, lull, fleeing, out of range. Inferred from silence, never
-    /// observed, and named so that is obvious.
+    /// why: left for an unreported reason, inferred never observed
     Lost,
 }
 
 impl State {
-    /// Whether this state keeps an encounter alive. Mezzed does — the mob is
-    /// still there and will wake up.
+    /// why: Mezzed keeps a fight alive -- the mob is still there
     pub fn in_combat(self) -> bool {
         matches!(self, State::Engaged | State::Mezzed | State::Charmed)
     }
@@ -44,8 +38,7 @@ impl State {
     }
 }
 
-/// Why a transition happened. Kept because an inferred transition is worth
-/// less than an observed one and the UI should be able to say so.
+/// why: an inferred transition is worth less, UI can say so
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cause {
     /// A log line stated it.
@@ -62,12 +55,7 @@ pub struct Transition {
     pub cause: Cause,
 }
 
-/// Append-only transition log, queryable at any instant.
-///
-/// Deliberately not a `HashMap<Entity, State>`. Current state is a special case
-/// of state-at-time, and keeping a mutable copy would be a second source of
-/// truth that drifts from the timeline the moment anything is replayed or
-/// re-derived.
+/// why: append-only, no mutable-copy shortcut that could drift on replay
 #[derive(Debug, Default)]
 pub struct Timeline {
     /// Per entity, transitions in ascending timestamp order.
@@ -76,8 +64,7 @@ pub struct Timeline {
 }
 
 impl Timeline {
-    /// Record a transition. Out-of-order arrivals are inserted in position, so
-    /// a late line cannot corrupt the ordering queries depend on.
+    /// why: inserts in position, a late line can't corrupt ordering
     pub fn push(&mut self, t: Transition) {
         let v = self.by_entity.entry(t.entity).or_default();
         let at = v.partition_point(|x| x.ts <= t.ts);
@@ -104,10 +91,7 @@ impl Timeline {
         });
     }
 
-    /// State of `entity` at `ts` — the last transition at or before it.
-    ///
-    /// This is the scrub primitive: drag to any instant and every entity's
-    /// state falls out of the same timeline that produced the damage numbers.
+    /// why: the scrub primitive -- last transition at or before `ts`
     pub fn state_at(&self, entity: u32, ts: Millis) -> Option<(State, Cause)> {
         let v = self.by_entity.get(&entity)?;
         let i = v.partition_point(|x| x.ts <= ts);
@@ -118,8 +102,7 @@ impl Timeline {
         }
     }
 
-    /// State of every listed entity at `ts`. Entities with no transition yet
-    /// are reported `Engaged`: they were seen fighting, nothing has changed.
+    /// why: no-transition entities default to Engaged -- nothing changed yet
     pub fn snapshot(&self, entities: &[u32], ts: Millis) -> Vec<(u32, State, Cause)> {
         entities
             .iter()
@@ -179,11 +162,7 @@ impl Bucket {
     }
 }
 
-/// Bucket damage into a fixed-width series for a graph.
-///
-/// `ts` and `amount` must be the same length and `ts` ascending. Empty buckets
-/// are emitted rather than skipped: a gap in a fight is information, and a
-/// series with holes cannot be plotted against a linear axis.
+/// why: empty buckets emitted not skipped -- a gap is real information
 pub fn series(
     ts: &[Millis],
     amount: &[u64],

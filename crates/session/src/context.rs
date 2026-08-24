@@ -4,15 +4,7 @@
 
 use crate::timeline::Millis;
 
-/// A labelled interval on the timeline. One `Spans` per dimension.
-///
-/// Zone and session need no columns on the encounter and no new tables. Both
-/// are the same query as `state_at`: what was true at this instant. Storing a
-/// `zone` field on each encounter would be a second copy that drifts the moment
-/// a zone line arrives late or a pack is re-derived.
-///
-/// The same type serves any future dimension — raid target, group composition,
-/// invocation, time of day — without a schema change.
+/// why: a labelled interval, queried not stored -- avoids a drifting copy
 #[derive(Debug, Clone, Default)]
 pub struct Spans {
     starts: Vec<Millis>,
@@ -20,14 +12,11 @@ pub struct Spans {
 }
 
 impl Spans {
-    /// Mark that `label` became current at `ts`. Out-of-order insertion is
-    /// handled, so a late line cannot corrupt lookups.
+    /// why: handles out-of-order insertion, a late line can't corrupt lookups
     pub fn enter(&mut self, ts: Millis, label: impl Into<String>) {
         let label = label.into();
         let at = self.starts.partition_point(|&x| x <= ts);
-        // Collapse a repeat of the same label: re-entering a zone you are
-        // already in is not a new span, and treating it as one would fragment
-        // every grouping built on top.
+        // why: re-entering the same zone isn't a new span
         if at > 0 && self.labels[at - 1] == label {
             return;
         }
@@ -45,9 +34,7 @@ impl Spans {
         }
     }
 
-    /// Index of the span covering `ts`. Useful as a grouping key when the label
-    /// itself repeats — you visit Nektulos Forest many times, and those are
-    /// different visits.
+    /// why: grouping key when the label repeats -- each visit stays distinct
     pub fn index_at(&self, ts: Millis) -> Option<usize> {
         let i = self.starts.partition_point(|&x| x <= ts);
         if i == 0 {
@@ -57,12 +44,7 @@ impl Spans {
         }
     }
 
-    /// The label of the span immediately before the one covering `ts` --
-    /// what was current just before the most recent transition. Used to
-    /// guess where on a freshly-entered zone's map the player probably is
-    /// before any `/loc` has been typed there (the Maps module's entrance
-    /// guess: match this against a `to_<zone>` marker). `None` if `ts`
-    /// falls in the first span, or before the first mark entirely.
+    /// why: prior span's label, feeds the Maps module's entrance guess
     pub fn label_before(&self, ts: Millis) -> Option<&str> {
         let i = self.index_at(ts)?;
         i.checked_sub(1).map(|j| self.labels[j].as_str())
@@ -89,12 +71,7 @@ impl Spans {
     }
 }
 
-/// Derives session boundaries from silence in the log.
-///
-/// A session is a stretch of play. The log states no such thing, so it is
-/// inferred from gaps — and because it is inferred, the threshold is a
-/// parameter rather than a constant. On the reference log: 25 sessions at 5
-/// minutes, 21 at 10, 16 at 60.
+/// why: session boundaries inferred from silence, threshold stays a param
 #[derive(Debug, Clone)]
 pub struct Sessions {
     gap_ms: Millis,
@@ -143,8 +120,7 @@ impl Sessions {
     }
 }
 
-/// Everything an encounter sits inside. Adding a dimension is adding a field
-/// here, not migrating stored data.
+/// why: adding a dimension is a new field here, never a data migration
 #[derive(Debug, Default)]
 pub struct Context {
     pub zone: Spans,
@@ -159,10 +135,7 @@ impl Context {
         }
     }
 
-    /// Group encounter ids by the zone visit they started in.
-    ///
-    /// Keyed on the span index, not the zone name: you visit Nektulos Forest 35
-    /// times and those are separate visits, not one bucket.
+    /// why: keyed on span index not zone name -- each visit stays distinct
     pub fn group_by_zone_visit<T: Copy>(
         &self,
         items: &[(T, Millis)],

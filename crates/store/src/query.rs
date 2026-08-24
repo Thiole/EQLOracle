@@ -20,9 +20,7 @@ pub struct Filter {
     pub tags_any: Tags,
     pub since_ms: Option<Millis>,
     pub until_ms: Option<Millis>,
-    /// Zone difficulty tier (0-4) a row was recorded at -- see
-    /// `Store::tier`'s doc for why this is an opaque app-supplied byte
-    /// rather than anything `eqlp-store` interprets.
+    /// why: opaque app-supplied byte, see `Store::tier`'s own doc
     pub tier: Option<u8>,
 }
 
@@ -76,17 +74,9 @@ pub struct AbilityRow {
     /// Hits at or within 1.5% of the ability's observed ceiling.
     pub full_power: u64,
     pub crits: u64,
-    /// Sum of just the crit hits' own damage -- `total - crit_total` is
-    /// the non-crit sum, `crit_total / crits` the average crit. Kept
-    /// separate from `total` rather than derived from `max`/`crits` alone
-    /// because a row can have several distinct crit values, not one.
+    /// why: kept separate -- a row can have several distinct crit values
     pub crit_total: u64,
-    /// Swings of this same ability (`Punch`, `Slash`, ...) that dealt zero
-    /// damage because the target fully avoided them -- broken out by how,
-    /// not folded into `hits`/`total`/`min`/`max`, which stay exactly
-    /// "landed swings only" the same way they always have. See
-    /// `flag::MITIGATED`'s own doc for why this lives on the *same*
-    /// ability row rather than a separate synthetic one.
+    /// why: fully-avoided swings, broken out by how, same ability row
     pub missed: u64,
     pub blocked: u64,
     pub dodged: u64,
@@ -95,9 +85,7 @@ pub struct AbilityRow {
 }
 
 impl AbilityRow {
-    /// Every swing attempted against/by this ability, landed or not --
-    /// the honest denominator for a real hit rate (`hits as f64 /
-    /// attempts as f64`), not `hits` alone.
+    /// why: the honest denominator for hit rate, not `hits` alone
     pub fn attempts(&self) -> u64 {
         self.hits + self.missed + self.blocked + self.dodged + self.parried
     }
@@ -108,9 +96,7 @@ impl AbilityRow {
             self.total as f64 / self.hits as f64
         }
     }
-    /// Average of just the non-crit hits. Falls back to the overall mean
-    /// when every hit crit (or there's no crit tracking for this row --
-    /// see `by_target_and_ability`'s doc) so callers never divide by zero.
+    /// why: non-crit avg, falls back to mean so callers never divide by zero
     pub fn avg_normal(&self) -> f64 {
         let normal_hits = self.hits.saturating_sub(self.crits);
         if normal_hits == 0 {
@@ -119,7 +105,7 @@ impl AbilityRow {
             (self.total - self.crit_total) as f64 / normal_hits as f64
         }
     }
-    /// Average of just the crit hits. Zero when this ability never crit.
+    /// why: crit-only average, zero if this ability never crit
     pub fn avg_crit(&self) -> f64 {
         if self.crits == 0 {
             0.0
@@ -146,13 +132,7 @@ fn range_of(store: &Store, f: &Filter) -> std::ops::Range<usize> {
 #[inline]
 fn keep(store: &Store, i: usize, f: &Filter) -> bool {
     if let Some(enc) = f.encounter {
-        // `range_of` narrows the scan to this encounter's index range, but
-        // a range is not a membership test: when two fights' events
-        // interleave in append order (routine once several encounters
-        // overlap in time -- other combat nearby, a pet's own actions),
-        // a row that falls inside the range can still belong to a
-        // different encounter. The `enc` column is what actually says
-        // whose row this is; check it, not just the range that got us here.
+        // why: a range isn't a membership test, overlapping fights interleave
         if store.enc[i] != enc.0 {
             return false;
         }
@@ -199,11 +179,7 @@ fn keep(store: &Store, i: usize, f: &Filter) -> bool {
     true
 }
 
-/// Breakdown by ability — the primary view.
-///
-/// Rows are abilities, not mechanisms, so `Backstab` sits beside a burn proc and
-/// the two can be compared directly. Mechanism travels along as `tags` for
-/// grouping, filtering and colour.
+/// why: rows are abilities not mechanisms, tags carry mechanism separately
 pub fn by_ability(store: &Store, f: &Filter) -> Vec<AbilityRow> {
     let mut acc: HashMap<AbilityId, AbilityRow> = HashMap::new();
     for i in range_of(store, f) {
@@ -230,9 +206,7 @@ pub fn by_ability(store: &Store, f: &Filter) -> Vec<AbilityRow> {
             flags: 0,
         });
         r.flags |= fl;
-        // A fully-mitigated swing (see `flag::MITIGATED`'s own doc) never
-        // landed -- counted by how, kept out of hits/total/min/max, which
-        // stay "landed swings only" exactly as before this existed.
+        // why: a fully-mitigated swing never landed, kept out of hits/total
         if fl & crate::store::flag::MISSED != 0 {
             r.missed += 1;
         } else if fl & crate::store::flag::BLOCKED != 0 {
@@ -252,9 +226,7 @@ pub fn by_ability(store: &Store, f: &Filter) -> Vec<AbilityRow> {
             }
         }
     }
-    // Second pass, once over the range rather than once per row. Doing this
-    // inside the loop above is not possible (the ceiling is only known after
-    // the first pass) and doing it per row is quadratic in ability count.
+    // why: ceiling only known after the first pass, per-row would be quadratic
     let mut cut: HashMap<AbilityId, u64> = HashMap::with_capacity(acc.len());
     for a in acc.keys() {
         let c = store.abilities.ceiling(*a);
@@ -283,22 +255,7 @@ pub fn by_ability(store: &Store, f: &Filter) -> Vec<AbilityRow> {
     v
 }
 
-/// Every row of one `kind`, grouped by `target` and then by `ability`, in a
-/// single O(store length) pass -- regardless of how many distinct targets
-/// exist. Exists for callers that need a breakdown "per target" over the
-/// *whole* store (every mob type's loot, say): calling `by_ability` once
-/// per target with a `.target(sym)` filter would cost one full store scan
-/// *per target*, turning an O(n) question into O(targets * n) -- fine for
-/// one target, a real cost once there are hundreds (`crate` doesn't gate
-/// this behind `Filter` the way `by_ability` does, since "every target at
-/// once" is a different access pattern, not another predicate to combine).
-///
-/// `full_power`/`crits`/`crit_total`/`missed`/`blocked`/`dodged`/`parried`
-/// are left at their zero defaults: nothing that calls this needs them
-/// (they exist so `AbilityRow` doesn't need two shapes), and computing
-/// `full_power` needs the ceiling-based second pass `by_ability` does,
-/// which would reintroduce the same per-target cost this function exists
-/// to avoid.
+/// why: one O(n) pass per-target, avoids O(targets*n) via repeated by_ability
 pub fn by_target_and_ability(store: &Store, kind: EventKind) -> HashMap<Sym, Vec<AbilityRow>> {
     let mut acc: HashMap<(Sym, AbilityId), AbilityRow> = HashMap::new();
     for i in 0..store.len() {
@@ -340,8 +297,7 @@ pub fn by_target_and_ability(store: &Store, kind: EventKind) -> HashMap<Sym, Vec
     by_target
 }
 
-/// Roll an ability breakdown up by mechanism. Derived from the same rows, so it
-/// can never disagree with the ability view.
+/// why: derived from the same rows, can't disagree with the ability view
 pub fn roll_up_by_tag(rows: &[AbilityRow]) -> Vec<(&'static str, u64, u64)> {
     let mut out = Vec::new();
     for (bit, name) in crate::ability::tag::ALL {
@@ -360,11 +316,7 @@ pub fn roll_up_by_tag(rows: &[AbilityRow]) -> Vec<(&'static str, u64, u64)> {
     out
 }
 
-/// Damage by actor. Same scan, different key.
-/// `(actor, total damage, hits, crits)` per actor. `crits` is a subset of
-/// `hits`, same convention as `AbilityRow` -- a caller wanting crit chance
-/// divides the two rather than being handed a pre-computed percentage, so
-/// it stays comparable across selections without re-deriving the count.
+/// why: (actor, total, hits, crits) -- caller divides for crit chance
 pub fn by_actor(store: &Store, f: &Filter) -> Vec<(Sym, u64, u64, u64)> {
     let mut acc: HashMap<Sym, (u64, u64, u64)> = HashMap::new();
     for i in range_of(store, f) {
@@ -390,8 +342,7 @@ pub fn total(store: &Store, f: &Filter) -> u64 {
         .sum()
 }
 
-/// DPS over a trailing window. No ring buffer, no eviction, no second copy of
-/// the events — it is a filtered sum over a time range.
+/// why: no ring buffer/eviction -- just a filtered sum over a time range
 pub fn dps_window(store: &Store, f: &Filter, now: Millis, window_ms: Millis) -> f64 {
     let mut g = f.clone();
     g.since_ms = Some(now - window_ms + 1);
