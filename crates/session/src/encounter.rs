@@ -80,8 +80,7 @@ impl Encounter {
     }
 }
 
-/// Observed kill damage per mob name, used as an HP estimate for TTK.
-/// `Timeout` fights are excluded. See `docs/design/session.md`.
+/// why: observed kill damage per mob, HP estimate for TTK, no timeouts
 #[derive(Debug, Default)]
 pub struct HpModel {
     kills: HashMap<String, Vec<u64>>,

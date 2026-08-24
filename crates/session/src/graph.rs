@@ -7,29 +7,19 @@ use std::collections::HashMap;
 
 pub type Millis = i64;
 
-/// Tunables. Defaults are grounded in game behaviour, not fitted to one log —
-/// but every one of them is a judgement call, so every one is settable.
+/// why: game-grounded defaults, but every judgement call stays settable
 #[derive(Debug, Clone, Copy)]
 pub struct Policy {
-    /// Silence after which an entity leaves combat. Default 10s: the point at
-    /// which out-of-combat recovery begins, so it tracks a real game-state
-    /// boundary rather than a number tuned to make encounter counts look tidy.
+    /// why: matches the real out-of-combat recovery boundary, default 10s
     pub idle_ms: Millis,
 
-    /// Two encounters on a target that never died, resuming within this window,
-    /// are treated as one interrupted fight. Keeps `idle_ms` honest without
-    /// forcing it wider: a mob that fled and was re-engaged is one kill, but
-    /// the DPS windows either side stay separate.
+    /// why: a re-engaged fled mob within this window is one kill, not two
     pub link_ms: Millis,
 
-    /// Merge components when a shared entity appears in both. Off means a fight
-    /// is only ever split, never joined — useful when a zone is crowded enough
-    /// that transitive links are more noise than signal.
+    /// why: off means split-only, useful when a crowded zone adds noise
     pub transitive: bool,
 
-    /// Above this many entities, stop merging. A raid legitimately reaches
-    /// dozens; a runaway chain in a crowded zone does too. `None` disables the
-    /// guard.
+    /// why: caps merging -- a raid is dozens, a runaway chain looks the same
     pub max_entities: Option<usize>,
 }
 
@@ -63,23 +53,18 @@ impl Policy {
     }
 }
 
-/// What an entity is. Certainty descends down the list.
+/// why: certainty descends down the list
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
-    /// Confirmed human: used a player-only channel.
+    /// why: confirmed via a player-only channel
     Player,
-    /// `<Owner> pet` — the log names the owner, so damage attributes cleanly.
+    /// why: owner named in "<Owner> pet", damage attributes cleanly
     Pet,
-    /// Not yet proven to be a player. Most are NPCs; some are players who have
-    /// not spoken. Deliberately not called `Npc`.
+    /// why: most are NPCs, some are unspoken players -- not called Npc
     Unproven,
 }
 
-/// A player-pet owner's name, if `name` is shaped like `` <Owner>'s pet ``
-/// (possessive apostrophe or this log's backtick-as-apostrophe stand-in,
-/// e.g. `` Di`Zok ``). `None` for a bare `` <name> pet `` with no
-/// possessive -- see `Entities::observe`'s doc comment for why that's a
-/// mob's own pet, not a player's.
+/// why: owner name from a possessive "<Owner>'s pet" suffix, else None
 fn pet_owner(name: &str) -> Option<&str> {
     let base = name.strip_suffix(" pet")?;
     let owner = base
@@ -88,13 +73,7 @@ fn pet_owner(name: &str) -> Option<&str> {
     (!owner.is_empty()).then_some(owner)
 }
 
-/// Entity registry. Classification is monotonic: evidence promotes, nothing
-/// demotes, so a player who speaks once stays a player.
-///
-/// Identity maps are keyed by `fold_key`, not the raw name -- see
-/// `fold_key` for why. `display` keeps the first-cased spelling seen per
-/// key, so lookups are case-insensitive but anything handed back out (e.g.
-/// `players()`) still reads the way the log actually wrote it.
+/// why: classification is monotonic -- evidence promotes, never demotes
 #[derive(Debug, Default)]
 pub struct Entities {
     kind: HashMap<String, Kind>,
@@ -109,22 +88,12 @@ impl Entities {
             .or_insert_with(|| name.to_string());
     }
 
-    /// Called when a name uses a player-only channel (group/guild/raid/General).
-    /// NPCs use `says`, never these, so this is one reliable player proof.
+    /// why: NPCs never use player-only channels -- reliable player proof
     pub fn note_player_channel(&mut self, name: &str) {
         self.promote_to_player(name);
     }
 
-    /// Called when a name deals damage to the same target "You" also damage
-    /// within the same fight. The log gives no explicit party-roster line,
-    /// but landing damage on the very same mob in the very same fight is,
-    /// for all practical purposes, proof of being partied together --
-    /// stronger and far more common evidence than chat, which many real
-    /// players never use. See `Ingest::note_shared_target` (crate `eqlp-app`)
-    /// for how this gets applied, including retroactively to anyone who hit
-    /// the mob before "You" landed the hit that confirmed it, and for the
-    /// currently-charmed guard that keeps this from permanently promoting a
-    /// mob that's only temporarily fighting on your side.
+    /// why: damaging the same mob as "You" is stronger proof than chat
     pub fn note_shared_target(&mut self, name: &str) {
         self.promote_to_player(name);
     }
@@ -135,22 +104,7 @@ impl Entities {
         self.kind.insert(key, Kind::Player);
     }
 
-    /// Classify on first sight. A *player's* pet is detected by a
-    /// possessive ` X's pet` / `` X`s pet `` suffix, which carries the
-    /// owner's name — the only ownership marker the log provides. Charmed
-    /// mobs never get it and stay `Unproven`.
-    ///
-    /// A bare `` <name> pet `` with no possessive is a *mob's own*
-    /// summoned pet -- `a gnoll pet`, `Priest Amiaz pet`, a raid boss's own
-    /// add (`Terror pet`, `Fright pet`) -- not a player's ally. Confirmed
-    /// against the reference log: 208 distinct bare `<name> pet`
-    /// combatants, every one of them a mob or NPC name, never a proven
-    /// player; the one possessive `<name>'s pet` seen was the log owner's
-    /// own pet. An earlier version treated any ` pet` suffix as proof of a
-    /// player's pet, which put every enemy-summoned pet on the ally side of
-    /// `Allegiance::of` -- undercounting incoming damage in the Combat
-    /// module and leaking straight into the Monsters module's mob list the
-    /// same way an unproven player could.
+    /// why: possessive "X's pet" is a player's; bare "X pet" is a mob's own
     pub fn observe(&mut self, name: &str) -> Kind {
         let key = fold_key(name);
         self.note_seen(&key, name);
@@ -179,11 +133,7 @@ impl Entities {
         self.owner.get(&fold_key(name)).map(|s| s.as_str())
     }
 
-    /// The casing this identity was first observed under, regardless of how
-    /// `name` happens to be cased. Callers that intern a name elsewhere
-    /// (e.g. a store's own symbol table) should resolve through this first,
-    /// so "You" and "you" -- or "an armadillo" and "An armadillo" -- always
-    /// intern to the same identity there too, not just here.
+    /// why: first-seen casing, so callers intern to one identity elsewhere too
     pub fn display_name<'a>(&'a self, name: &'a str) -> &'a str {
         self.display
             .get(&fold_key(name))
@@ -219,12 +169,10 @@ pub struct Live {
     pub start_ms: Millis,
     pub last_ms: Millis,
     pub entities: Vec<String>,
-    /// Targets confirmed dead. An encounter can outlive one death: a multi-mob
-    /// pull is one fight.
+    /// why: a multi-mob pull outlives one death, still one fight
     pub slain: Vec<String>,
     pub events: u32,
-    /// Absorbed another component. Flags aggregates for the UI, since a merged
-    /// encounter's per-source split is less trustworthy.
+    /// why: flags a merged encounter's per-source split as less trustworthy
     pub merged: bool,
 }
 
@@ -237,9 +185,7 @@ pub struct Closed {
     pub slain: Vec<String>,
     pub events: u32,
     pub merged: bool,
-    /// Set when this continues an earlier encounter on a target that never
-    /// died. The UI can present linked encounters as one kill while keeping
-    /// their DPS windows separate.
+    /// why: links a re-engage -- UI shows one kill, DPS windows stay separate
     pub links_to: Option<EncId>,
 }
 
@@ -249,21 +195,16 @@ impl Closed {
     }
 }
 
-/// Builds encounters from damage edges by connected component.
-///
-/// An edge `(actor, target)` joins both into one component. Components expire
-/// after `idle_ms` of silence.
+/// why: connected-component encounter detection, expires after idle_ms
 pub struct Builder {
     pub policy: Policy,
-    /// Entity classification. Owned here because linking and credit both need
-    /// it: a fight may only be linked through a non-player, since the player is
-    /// present in every encounter and would chain them all together.
+    /// why: linking only through a non-player, or every fight would chain
     pub entities: Entities,
     next: u32,
     of: HashMap<String, EncId>,
     live: HashMap<EncId, Live>,
     pub closed: Vec<Closed>,
-    /// Recently closed, unslain targets -> the encounter they belonged to.
+    /// why: recently closed unslain targets, for the re-engage link
     recent: HashMap<String, (EncId, Millis)>,
 }
 
@@ -310,8 +251,7 @@ impl Builder {
                 if self.policy.transitive && self.may_merge(x, y) {
                     self.merge(x, y)
                 } else {
-                    // Not merging: the actor joins the target's fight, which
-                    // keeps the target's identity as the anchor of the fight.
+                    // why: actor joins, target stays the fight's anchor
                     self.attach(y, actor, ts);
                     y
                 }
@@ -382,9 +322,7 @@ impl Builder {
             for n in &src.entities {
                 self.of.insert(fold_key(n), keep);
             }
-            // why: `gone` never reaches close() -- push its own Closed record
-            // here so its store-side twin still gets an end_ms, instead of
-            // sitting open forever with a duration that grows every query.
+            // why: `gone` never reaches close(), so push its own Closed here
             self.closed.push(Closed {
                 id: src.id,
                 start_ms: src.start_ms,
@@ -399,8 +337,7 @@ impl Builder {
         keep
     }
 
-    /// A death line. The target leaves combat immediately; the encounter
-    /// continues if anything else in it is still fighting.
+    /// why: target leaves combat, fight continues if anything else is up
     pub fn death(&mut self, ts: Millis, target: &str) {
         if let Some(id) = self.of.remove(&fold_key(target)) {
             if let Some(e) = self.live.get_mut(&id) {
@@ -410,14 +347,10 @@ impl Builder {
                 }
             }
         }
-        // Deliberately not cleared from `recent`: a target slain in *this*
-        // encounter is already excluded from carrying a link forward by the
-        // `slain` filter in `close`, and clearing here would destroy the
-        // backward link an interrupted fight depends on.
+        // why: not cleared from `recent` -- would break the backward link
     }
 
-    /// Close components idle longer than `idle_ms`. Call on every event and on
-    /// the UI tick, or a fight that ends quietly never closes.
+    /// why: call every event/tick, or a quiet fight never closes
     pub fn expire(&mut self, now: Millis) {
         let stale: Vec<EncId> = self
             .live
@@ -443,21 +376,9 @@ impl Builder {
             }
         }
 
-        // Link to an earlier encounter through a mob that survived: the same
-        // mob, re-engaged, is one kill.
-        //
-        // Players are excluded. You are in every encounter you fight, so
-        // linking through a player would chain an entire evening of unrelated
-        // fights into one. Only a non-player that left combat alive can carry
-        // the link.
-        // Two different conditions, and conflating them is a bug worth naming:
-        //
-        //   lookup  -- any non-player in this fight may carry a link BACK to an
-        //              earlier one. Whether it died here is irrelevant; a mob
-        //              that fled and was finally killed is the case the link
-        //              exists for.
-        //   carry   -- only a non-player that left this fight ALIVE can be
-        //              re-engaged later. A corpse cannot.
+        // why: links via a surviving non-player -- players would chain everything
+        // lookup: any non-player may carry a link back, dead or not
+        // carry: only one that left this fight ALIVE can be re-engaged
         let is_player = |n: &String| self.entities.kind(n) == Kind::Player;
 
         let mut links_to = None;
@@ -501,8 +422,7 @@ impl Builder {
         self.live.values()
     }
 
-    /// One live encounter by id, for a caller that already has it (e.g.
-    /// from the return value of `damage`) rather than needing to scan.
+    /// why: direct lookup for a caller that already has the id
     pub fn live(&self, id: EncId) -> Option<&Live> {
         self.live.get(&id)
     }
