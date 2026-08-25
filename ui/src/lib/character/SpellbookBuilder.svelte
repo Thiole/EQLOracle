@@ -474,11 +474,10 @@
 
 <div class="flex flex-col gap-3">
   <Card class="rounded-sm">
-    <CardContent class="px-3 py-2.5 text-[11px] text-muted-foreground">
-      Reads, edits, and writes your game's own named spellbook-loadout presets -- a real, client-side quick-swap feature saved in your
-      <code class="rounded bg-muted px-1 py-0.5">&lt;Character&gt;_&lt;Zone&gt;_LO1.ini</code> file, up to 14 slots each (8 base, plus 6
-      more as Mnemonic Retention is leveled). Your live gem-slot assignment is separate, server-tracked character state this can't read
-      or write.
+    <CardContent class="px-3 py-2.5 text-[11px] font-medium text-destructive">
+      AUTO suggests are work in progress, please triple check. The auto rules are currently: Optimal DPS Loop + best cc or shot term
+      buff spells for remaining available combat lines it tries its best to not have multiple from same spell line. I am working on
+      specific overrides like Mez which is level 16 for example as "outliers"
     </CardContent>
   </Card>
 
@@ -489,10 +488,11 @@
         <h2 class="panel-title">Found spellbooks</h2>
       </button>
       {#if foundOpen}
-      <p class="mb-2 mt-1.5 text-[11px] font-medium text-destructive">
-        AUTO suggests are work in progress, please triple check. The auto rules are currently: Optimal DPS Loop + best cc or shot term
-        buff spells for remaining available combat lines it tries its best to not have multiple from same spell line. I am working on
-        specific overrides like Mez which is level 16 for example as "outliers"
+      <p class="mb-2 mt-1.5 text-[11px] text-muted-foreground">
+        Reads, edits, and writes your game's own named spellbook-loadout presets -- a real, client-side quick-swap feature saved in your
+        <code class="rounded bg-muted px-1 py-0.5">&lt;Character&gt;_&lt;Zone&gt;_LO1.ini</code> file, up to 14 slots each (8 base, plus 6
+        more as Mnemonic Retention is leveled). Your live gem-slot assignment is separate, server-tracked character state this can't read
+        or write.
       </p>
       <p class="mb-2 text-[11px] text-muted-foreground">
         Loads the real, saved spell loadouts from your own <code class="rounded bg-muted px-1 py-0.5">&lt;Character&gt;_&lt;Zone&gt;_LO1.ini</code>
