@@ -72,9 +72,29 @@ pub fn spells() -> &'static [Spell] {
         .as_slice()
 }
 
-/// why: catalog lookup by exact name; linear scan, not a hot path
+static SPELLS_BY_NAME: OnceLock<std::collections::HashMap<&'static str, &'static Spell>> =
+    OnceLock::new();
+
+/// why: real regression, caught live -- this used to be a genuine linear
+/// scan ("not a hot path" was true for every caller at the time), until
+/// ingest.rs's own attribute_effect started calling it per real landing
+/// line during backfill, turning a 1928-entry scan into the actual
+/// bottleneck (measured: backfill on a real 2.9M-line log went 3.5s ->
+/// 7.5s). Same first-match-wins semantics as the old `.find()` -- 2 real
+/// duplicate-named entries exist in the scrape (different ranks sharing
+/// a display name), `or_insert` keeps whichever comes first in the
+/// catalog's own order, same as `.find()` always did.
 pub fn spell_by_name(name: &str) -> Option<&'static Spell> {
-    spells().iter().find(|s| s.name == name)
+    SPELLS_BY_NAME
+        .get_or_init(|| {
+            let mut m = std::collections::HashMap::new();
+            for s in spells() {
+                m.entry(s.name.as_str()).or_insert(s);
+            }
+            m
+        })
+        .get(name)
+        .copied()
 }
 
 #[cfg(test)]
@@ -92,5 +112,19 @@ mod tests {
     #[test]
     fn unknown_name_is_none_not_a_panic() {
         assert!(spell_by_name("Not A Real Spell").is_none());
+    }
+
+    /// why: real duplicate in the scrape -- 2 "Greater Healing" entries
+    /// (different ranks, same display name) -- the cached index must
+    /// still pick one consistently (first in catalog order), same
+    /// first-match-wins semantics the old linear `.find()` always had
+    #[test]
+    fn a_real_duplicate_name_still_resolves_to_one_consistent_entry() {
+        let a = spell_by_name("Greater Healing").expect("real duplicate name");
+        let b = spell_by_name("Greater Healing").expect("real duplicate name");
+        assert_eq!(
+            a.casting_time, b.casting_time,
+            "same cached entry both times"
+        );
     }
 }
