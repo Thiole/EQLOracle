@@ -964,6 +964,16 @@ impl Ingest {
                 self.levels.observe(ts, level);
             }
             Action::AaGained { name, rank, cost } => {
+                // why: AA grants are always first-person (the log never
+                // shows another player's own AA gain) -- real, curated
+                // class data from the wiki scrape (aadata.rs's own
+                // `category` field), never wired into classdetect before
+                let you = self.sym("You");
+                self.classes.observe_cast(
+                    you.0,
+                    self.zone.index_at(ts),
+                    &crate::aadata::classes_for(&name),
+                );
                 self.aa.observe(ts, name, rank, cost);
             }
             Action::SpellBegan { name } => {
@@ -4149,6 +4159,47 @@ mod invocation_evidence_tests {
             ],
             "{configured:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod aa_evidence_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    /// why: real, curated class data (aadata.rs's own `category` field)
+    /// was never wired into classdetect before -- Monk/Rogue have no
+    /// exclusive spell/skill evidence anywhere else in the app, so a
+    /// real AA grant is genuine new signal for them specifically
+    #[test]
+    fn a_known_class_aa_feeds_classdetect_like_an_unambiguous_spell() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Fri Aug 07 00:25:51 2026] You have gained the ability \"Innate Sneakiness\" at a cost of 0 ability points.",
+            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Fri Aug 07 00:25:51 2026] You have gained the ability \"Innate Sneakiness\" at a cost of 0 ability points.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+
+        let you = ing.store.names.get("You").expect("You should be interned");
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        assert!(configured.contains(&"Rogue".to_string()), "{configured:?}");
+    }
+
+    /// why: an unrecognized AA name must contribute nothing, same as any other unmapped spell
+    #[test]
+    fn an_unrecognized_aa_contributes_no_class_evidence() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![b"[Fri Aug 07 00:25:51 2026] You have gained the ability \"Not A Real Ability\" at a cost of 0 ability points."];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+
+        let you = ing.store.names.get("You").expect("You should be interned");
+        assert!(ing.classes.configurations_of(you.0).is_empty());
     }
 }
 

@@ -63,6 +63,27 @@ pub fn aa_by_name(name: &str) -> Option<&'static Aa> {
     index().get(name).map(|&i| &aas()[i])
 }
 
+/// why: classdetect evidence, same shape every other class-evidence
+/// source uses (`classdata::classes_for`, `stancedata::classes_for`,
+/// ...) -- one real class name means unambiguous, several means an
+/// elimination pool. Unlike `aa_by_name`'s single-entry lookup (fine for
+/// display, where showing *a* real category beats showing none), this
+/// collects every real category a name is filed under, so a genuinely
+/// dual-class AA ("Quick Evacuation": Druid, Wizard) is passed on as
+/// ambiguous evidence rather than a false-unambiguous pick of just one.
+/// "general"/"archetype" (every-class AAs) contribute nothing, same as
+/// `classdata.rs`'s own exclusion of Origin.
+pub fn classes_for(name: &str) -> Vec<String> {
+    let mut classes: Vec<String> = aas()
+        .iter()
+        .filter(|a| a.name == name && a.category != "general" && a.category != "archetype")
+        .map(|a| a.category.clone())
+        .collect();
+    classes.sort();
+    classes.dedup();
+    classes
+}
+
 /// why: heuristic keyword match, eqlwiki AA table has no structured
 /// "affects X" field, only prose. Every phrase checked against a real
 /// sample first. Shown as "may affect", never folded into a computed total.
@@ -210,6 +231,36 @@ mod tests {
     #[test]
     fn unknown_name_is_none_not_a_panic() {
         assert!(aa_by_name("Not A Real Ability").is_none());
+    }
+
+    /// why: a real, single-class Rogue AA -- Monk/Rogue have no exclusive
+    /// spell/skill evidence anywhere else in the app, this is real signal
+    #[test]
+    fn a_real_single_class_aa_resolves_unambiguously() {
+        assert_eq!(classes_for("Innate Sneakiness"), vec!["Rogue".to_string()]);
+    }
+
+    /// why: real dual-class AA -- must come back as ambiguous evidence
+    /// (both candidates), never `aa_by_name`'s own arbitrary single pick
+    #[test]
+    fn a_genuinely_dual_class_aa_returns_both_candidates() {
+        assert_eq!(
+            classes_for("Quick Evacuation"),
+            vec!["Druid".to_string(), "Wizard".to_string()]
+        );
+    }
+
+    /// why: every-class AAs are not real evidence, same as classdata's own Origin exclusion
+    #[test]
+    fn a_general_aa_contributes_no_class_evidence() {
+        let a = aa_by_name("Adamant Will").expect("real AA, used by loads_and_indexes' own test");
+        assert_eq!(a.category, "general");
+        assert!(classes_for("Adamant Will").is_empty());
+    }
+
+    #[test]
+    fn unknown_aa_name_contributes_no_class_evidence() {
+        assert!(classes_for("Not A Real Ability").is_empty());
     }
 
     /// why: cross-checked against real "gained the ability" names, most
