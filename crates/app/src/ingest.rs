@@ -1014,7 +1014,7 @@ impl Ingest {
                 self.classes.observe_cast(
                     caster.0,
                     self.zone.index_at(ts),
-                    crate::classdata::classes_for(base),
+                    class_evidence_for(base),
                 );
             }
             Action::CastResisted { source, spell } => {
@@ -1049,7 +1049,7 @@ impl Ingest {
                 self.classes.observe_cast(
                     you,
                     self.zone.index_at(ts),
-                    crate::classdata::classes_for(base_spell_name(&spell)),
+                    class_evidence_for(base_spell_name(&spell)),
                 );
                 if let Some(blocker) = blocker {
                     self.record_effect_ping(ts, &target, &blocker);
@@ -2527,6 +2527,26 @@ fn base_spell_name(name: &str) -> &str {
     }
 }
 
+/// why: real bug, caught live against a real 2nd player's log -- a
+/// group-shaped teleport ("Ring of Butcherblock", Druid-only per its own
+/// class data) showed up cast inside a visit already rock-solid confirmed
+/// as Cleric/Paladin/Shaman (dozens of each class's own exclusive spells),
+/// mathematically impossible under the fixed-CLASS_COUNT rule if the
+/// caster genuinely needed Druid active to cast it. Group teleports in
+/// this game can be triggered as a party ritual, not gated to the
+/// classes usually shown in `spell_classes.json` -- so a cast alone
+/// doesn't prove the caster currently has that class active, only that
+/// *someone* in the group does (or did, to have learned it). Landing
+/// coordinates (this file's own `teleportdata::landing_for`) are exact,
+/// hand-verified data for the map feature; reused here as the same
+/// "is this a real teleport" signal rather than re-deriving one.
+fn class_evidence_for(base_spell: &str) -> &'static [String] {
+    if teleportdata::landing_for(base_spell).is_some() {
+        return &[];
+    }
+    crate::classdata::classes_for(base_spell)
+}
+
 fn is_roman_numeral(s: &str) -> bool {
     !s.is_empty()
         && s.bytes()
@@ -3888,6 +3908,61 @@ mod stance_evidence_tests {
             !configured.contains(&"Berserker".to_string()),
             "{configured:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod teleport_evidence_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    /// why: real bug, caught live -- "Ring of Butcherblock" (Druid-only per
+    /// spell_classes.json) showed up cast inside a visit already rock-solid
+    /// confirmed as Cleric/Paladin/Shaman, mathematically impossible under
+    /// the fixed-CLASS_COUNT rule if the cast genuinely required Druid
+    /// active. Group teleports in this game can be triggered as a party
+    /// ritual, not gated to the caster's own active classes -- so a
+    /// teleport cast must feed classdetect nothing at all, unlike a
+    /// regular spell of the same class.
+    #[test]
+    fn a_known_teleport_spell_contributes_no_class_evidence() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:01 2026] You begin casting Ring of Lavastorm.",
+            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:01 2026] You begin casting Ring of Lavastorm.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+
+        let you = ing.store.names.get("You").expect("You should be interned");
+        assert!(
+            ing.classes.configurations_of(you.0).is_empty(),
+            "a known teleport, cast twice, must still confirm nothing"
+        );
+    }
+
+    /// why: control case -- an ordinary Druid-only spell (not a teleport)
+    /// still confirms Druid exactly as before; this fix must not have
+    /// silenced class evidence generally, only the teleport family
+    #[test]
+    fn an_ordinary_spell_of_the_same_class_still_confirms_it() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:01 2026] You begin casting Cascade of Hail.",
+            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:01 2026] You begin casting Cascade of Hail.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+
+        let you = ing.store.names.get("You").expect("You should be interned");
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        assert!(configured.contains(&"Druid".to_string()), "{configured:?}");
     }
 }
 
