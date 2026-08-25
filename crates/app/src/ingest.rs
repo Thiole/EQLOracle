@@ -1569,6 +1569,13 @@ impl Ingest {
             self.confirm_spell_effect(ts, m);
             return true;
         }
+        // why: fallback for text match_spell_text had to drop as
+        // ambiguous -- still real, still worth a ping, just under the
+        // line's own raw text since there's no one name to attach it to.
+        if let Some(m) = crate::spelltext::match_effect_polarity(text) {
+            self.record_effect_ping(ts, &m.target, text);
+            return true;
+        }
         false
     }
 
@@ -2743,6 +2750,13 @@ enum Classified {
         target: String,
         is_wearsoff: bool,
     },
+    /// why: match_spell_text's own fallback for text it had to drop as
+    /// ambiguous -- polarity only (no name to confirm a cast against),
+    /// same ping mechanism as the two FlavorHit variants above
+    EffectPolarityHit {
+        who: String,
+        text: String,
+    },
 }
 
 /// why: one chunk's classification, replayed sequentially; keeps every
@@ -2820,6 +2834,16 @@ fn classify_chunk(engine: &Engine, lines: &[&[u8]]) -> ChunkResult {
                             spell: m.spell,
                             target: m.target,
                             is_wearsoff: m.is_wearsoff,
+                        }),
+                    ));
+                    true
+                } else if let Some(m) = crate::spelltext::match_effect_polarity(&text) {
+                    let ts_ms = ts.secs() * 1000;
+                    matched.push((
+                        ts_ms,
+                        Some(Classified::EffectPolarityHit {
+                            who: m.target,
+                            text: text.to_string(),
                         }),
                     ));
                     true
@@ -2913,6 +2937,9 @@ pub fn backfill_lines(ing: &mut Ingest, engine: &Engine, lines: &[&[u8]], thread
                     ing.attribute_flavor_hit(ts_ms, &text, classes);
                 }
                 Some(Classified::ThirdPersonFlavorHit { who, text }) => {
+                    ing.record_effect_ping(ts_ms, &who, &text);
+                }
+                Some(Classified::EffectPolarityHit { who, text }) => {
                     ing.record_effect_ping(ts_ms, &who, &text);
                 }
                 Some(Classified::SpellEffectHit {
@@ -4222,17 +4249,26 @@ mod effect_ping_tests {
         );
     }
 
-    /// why: a genuine gap -- no first-person text exists for this at all, pings nothing rather than guessing
+    /// why: used to be a genuine gap ("no first-person text exists for
+    /// this at all, pings nothing rather than guessing") -- closed by
+    /// spelltext::match_effect_polarity: the tail is shared by 4 real
+    /// SoW-family spells (Pack Spirit/Spirit of Bih`Li/Spirit of Scale/
+    /// Spirit of Wolf), all buffs, so it's a confident polarity ping
+    /// even with no single confident spell name to attach.
     #[test]
-    fn a_line_with_no_source_text_at_all_pings_nothing() {
+    fn ambiguous_third_person_landing_text_still_pings_a_polarity() {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> =
             vec![b"[Fri Aug 07 16:30:31 2026] Lenekab is surrounded by a brief lupine aura."];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let lenekab = ing.store.names.get("Lenekab");
-        assert!(lenekab.is_none_or(|s| ing.effects.recent(s.0, ing.now_ms(), 60_000).is_empty()));
+        let lenekab = ing.store.names.get("Lenekab").expect("Lenekab interned");
+        let recent = ing.effects.recent(lenekab.0, ing.now_ms(), 60_000);
+        assert_eq!(
+            recent,
+            vec!["Lenekab is surrounded by a brief lupine aura."]
+        );
     }
 
     /// why: noun-keeping sibling of plain verb-conjugation -- same shape

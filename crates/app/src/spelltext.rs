@@ -30,6 +30,96 @@ pub struct SpellTextMatch {
     pub is_wearsoff: bool,
 }
 
+/// why: coarse fallback for text shared by multiple spells (so exact
+/// naming has to drop it) -- "beneficial or detrimental to the target"
+/// is still real, useful information even when "which exact spell"
+/// isn't answerable. See `spell_type_polarity`'s own doc for the source data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectPolarity {
+    Buff,
+    Debuff,
+}
+
+/// why: every distinct `spell_type` value in packs/spells.json (30
+/// total, confirmed via a full scan) sorted into beneficial/detrimental
+/// to the target, or neither. A few real judgment calls: Damage Shield/
+/// Block/Vision are beneficial (a shield, a block chance, and detect-
+/// invis/ultravision are all things cast *for* the target, not against
+/// it); Pet/Summon Item aren't a target-polarity effect at all (you're
+/// not buffing or debuffing anyone by summoning something) and are
+/// deliberately left unclassified rather than guessed either way.
+fn spell_type_polarity(spell_type: &str) -> Option<EffectPolarity> {
+    match spell_type {
+        "Beneficial"
+        | "Beneficial (Group only)"
+        | "Statistic Buff"
+        | "Resist Buff"
+        | "Utility Beneficial"
+        | "Heal"
+        | "Heal Over Time"
+        | "Pet Buff"
+        | "Pet Heal"
+        | "Haste"
+        | "Cure"
+        | "Movement Buff"
+        | "Remove Curse"
+        | "Invisibility"
+        | "Buff"
+        | "Proc Buff"
+        | "Regen"
+        | "Block"
+        | "Vision"
+        | "Damage Shield" => Some(EffectPolarity::Buff),
+        "Detrimental"
+        | "Utility Detrimental"
+        | "Curse"
+        | "Slow"
+        | "Stun"
+        | "Root"
+        | "Statistic Debuff"
+        | "Direct Damage"
+        | "Damage Over Time"
+        | "DD" => Some(EffectPolarity::Debuff),
+        _ => None,
+    }
+}
+
+/// why: accumulates every candidate spell's polarity for one text key --
+/// `One` only survives if every real candidate agrees; a single
+/// disagreement (or no candidate with a classifiable spell_type at all)
+/// drops the key entirely, same "no confident answer, no guess" stance
+/// `insert_unique` already takes for exact names.
+enum PolarityAgg {
+    Unknown,
+    One(EffectPolarity),
+    Mixed,
+}
+
+impl PolarityAgg {
+    fn add(self, p: EffectPolarity) -> Self {
+        match self {
+            PolarityAgg::Unknown => PolarityAgg::One(p),
+            PolarityAgg::One(existing) if existing == p => PolarityAgg::One(existing),
+            _ => PolarityAgg::Mixed,
+        }
+    }
+}
+
+fn finalize_polarity(agg: HashMap<&str, PolarityAgg>) -> HashMap<&str, EffectPolarity> {
+    agg.into_iter()
+        .filter_map(|(k, v)| match v {
+            PolarityAgg::One(p) => Some((k, p)),
+            _ => None,
+        })
+        .collect()
+}
+
+pub struct EffectPolarityMatch {
+    pub polarity: EffectPolarity,
+    pub target: String,
+    pub is_wearsoff: bool,
+}
+
 struct Dict {
     /// exact full-line text (msg_cast_on_you, msg_wears_off) -> (spell, is_wearsoff)
     self_text: HashMap<&'static str, (&'static str, bool)>,
@@ -40,6 +130,12 @@ struct Dict {
     /// alone (matched by trying every space split) -- placeholder-less
     /// entries are a real, confirmed scrape shape, not a bug.
     other_tail: HashMap<&'static str, &'static str>,
+    /// why: fallback for self_text keys `match_spell_text` had to drop
+    /// as ambiguous -- same text, same is_wearsoff split, coarser answer.
+    self_landing_polarity: HashMap<&'static str, EffectPolarity>,
+    self_wearsoff_polarity: HashMap<&'static str, EffectPolarity>,
+    /// why: same fallback for other_tail keys
+    other_landing_polarity: HashMap<&'static str, EffectPolarity>,
 }
 
 /// why: `None` for text with no name to strip at all (rare, confirmed
@@ -103,9 +199,13 @@ fn build_dict() -> Dict {
     let mut self_ambiguous: HashSet<&str> = HashSet::new();
     let mut other_tail: HashMap<&str, &str> = HashMap::new();
     let mut other_ambiguous: HashSet<&str> = HashSet::new();
+    let mut self_landing_agg: HashMap<&str, PolarityAgg> = HashMap::new();
+    let mut self_wearsoff_agg: HashMap<&str, PolarityAgg> = HashMap::new();
+    let mut other_landing_agg: HashMap<&str, PolarityAgg> = HashMap::new();
 
     for s in spelldata::spells() {
         let name = s.name.as_str();
+        let polarity = s.spell_type.as_deref().and_then(spell_type_polarity);
         for (msg, is_wearsoff) in [
             (s.msg_cast_on_you.as_deref(), false),
             (s.msg_wears_off.as_deref(), true),
@@ -120,6 +220,15 @@ fn build_dict() -> Dict {
                 msg,
                 (name, is_wearsoff),
             );
+            if let Some(p) = polarity {
+                let agg = if is_wearsoff {
+                    &mut self_wearsoff_agg
+                } else {
+                    &mut self_landing_agg
+                };
+                let entry = agg.entry(msg).or_insert(PolarityAgg::Unknown);
+                *entry = std::mem::replace(entry, PolarityAgg::Unknown).add(p);
+            }
         }
         if let Some(msg) = s.msg_cast_on_other.as_deref() {
             if msg.is_empty() || msg == "N/A" {
@@ -127,12 +236,21 @@ fn build_dict() -> Dict {
             }
             if let Some(tail) = other_tail_of(msg) {
                 insert_unique(&mut other_tail, &mut other_ambiguous, tail, name);
+                if let Some(p) = polarity {
+                    let entry = other_landing_agg
+                        .entry(tail)
+                        .or_insert(PolarityAgg::Unknown);
+                    *entry = std::mem::replace(entry, PolarityAgg::Unknown).add(p);
+                }
             }
         }
     }
     Dict {
         self_text,
         other_tail,
+        self_landing_polarity: finalize_polarity(self_landing_agg),
+        self_wearsoff_polarity: finalize_polarity(self_wearsoff_agg),
+        other_landing_polarity: finalize_polarity(other_landing_agg),
     }
 }
 
@@ -175,6 +293,55 @@ pub fn match_spell_text(text: &str) -> Option<SpellTextMatch> {
         if let Some(&spell) = d.other_tail.get(tail) {
             return Some(SpellTextMatch {
                 spell,
+                target: text[..i].to_string(),
+                is_wearsoff: false,
+            });
+        }
+    }
+    None
+}
+
+/// why: fallback for text `match_spell_text` had to drop as ambiguous --
+/// call this only after `match_spell_text` returns `None`, same
+/// self-text / possessive / space-split traversal, coarser answer
+/// (polarity, not a spell name) when every real candidate agrees on one.
+pub fn match_effect_polarity(text: &str) -> Option<EffectPolarityMatch> {
+    let d = dict();
+    if let Some(&polarity) = d.self_landing_polarity.get(text) {
+        return Some(EffectPolarityMatch {
+            polarity,
+            target: "You".to_string(),
+            is_wearsoff: false,
+        });
+    }
+    if let Some(&polarity) = d.self_wearsoff_polarity.get(text) {
+        return Some(EffectPolarityMatch {
+            polarity,
+            target: "You".to_string(),
+            is_wearsoff: true,
+        });
+    }
+    for (idx, _) in text.match_indices("'s ") {
+        if idx == 0 {
+            continue;
+        }
+        let tail = &text[idx + 3..];
+        if let Some(&polarity) = d.other_landing_polarity.get(tail) {
+            return Some(EffectPolarityMatch {
+                polarity,
+                target: text[..idx].to_string(),
+                is_wearsoff: false,
+            });
+        }
+    }
+    for (i, b) in text.bytes().enumerate() {
+        if b != b' ' || i == 0 {
+            continue;
+        }
+        let tail = &text[i + 1..];
+        if let Some(&polarity) = d.other_landing_polarity.get(tail) {
+            return Some(EffectPolarityMatch {
+                polarity,
                 target: text[..i].to_string(),
                 is_wearsoff: false,
             });
@@ -270,5 +437,61 @@ mod tests {
             .expect("known landing text despite the scrape's stray space");
         assert_eq!(m.spell, "Vampiric Embrace");
         assert_eq!(m.target, "Dippinsauce");
+    }
+
+    /// why: real, confirmed live -- "Your feet come free." is shared by
+    /// 9 real spells (Root/Fetter/Immobilize/Paralyzing Poison/etc, real
+    /// distinct lines, not rank siblings), so match_spell_text drops it,
+    /// but every one of those 9 is spell_type Detrimental -- a real,
+    /// confident debuff even with no confident name.
+    #[test]
+    fn ambiguous_wearsoff_text_still_resolves_a_polarity_every_candidate_agrees_on() {
+        assert!(match_spell_text("Your feet come free.").is_none());
+        let m = match_effect_polarity("Your feet come free.").expect("known polarity fallback");
+        assert_eq!(m.polarity, EffectPolarity::Debuff);
+        assert_eq!(m.target, "You");
+        assert!(m.is_wearsoff);
+    }
+
+    /// why: real, confirmed live against the reference log -- "Lenekab
+    /// is surrounded by a brief lupine aura." shares its tail with 4
+    /// real SoW-family spells (Pack Spirit/Spirit of Bih`Li/Spirit of
+    /// Scale/Spirit of Wolf), all Movement Buff/Buff/Beneficial -- a
+    /// confident buff, third-person, name stripped same as match_spell_text.
+    #[test]
+    fn ambiguous_third_person_landing_text_resolves_a_polarity_with_the_name_stripped() {
+        assert!(match_spell_text("Lenekab is surrounded by a brief lupine aura.").is_none());
+        let m = match_effect_polarity("Lenekab is surrounded by a brief lupine aura.")
+            .expect("known polarity fallback");
+        assert_eq!(m.polarity, EffectPolarity::Buff);
+        assert_eq!(m.target, "Lenekab");
+        assert!(!m.is_wearsoff);
+    }
+
+    /// why: real, confirmed live -- "You feel much better." is shared by
+    /// 8 real Heal-line spells (Greater/Regular Healing, Word of
+    /// Healing/Health, Invigorate, Knight's Blessing, Nature's Touch,
+    /// Superior Healing), every one Heal/Beneficial -- self, non-wearsoff.
+    #[test]
+    fn ambiguous_self_landing_text_resolves_a_polarity_too() {
+        let m = match_effect_polarity("You feel much better.").expect("known polarity fallback");
+        assert_eq!(m.polarity, EffectPolarity::Buff);
+        assert_eq!(m.target, "You");
+        assert!(!m.is_wearsoff);
+    }
+
+    /// why: real catalog case -- "Kaeus sinks into the ground." is
+    /// shared by Earth Elemental Attack/EarthElementalAttack (Root, i.e.
+    /// detrimental) and Egress (a beneficial escape teleport) -- a real
+    /// disagreement, not just an unclassified spell_type, so this must
+    /// stay dropped rather than pick a side.
+    #[test]
+    fn a_genuine_polarity_disagreement_is_dropped_not_guessed() {
+        assert!(match_effect_polarity("Kaeus sinks into the ground.").is_none());
+    }
+
+    #[test]
+    fn unrecognized_text_has_no_polarity_either() {
+        assert!(match_effect_polarity("You hit a gnoll for 5 points of damage.").is_none());
     }
 }

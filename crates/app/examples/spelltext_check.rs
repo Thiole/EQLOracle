@@ -6,7 +6,7 @@
 
 use eqlp_app::ingest::framed_lines;
 use eqlp_app::parser::build_engine;
-use eqlp_app::spelltext::match_spell_text;
+use eqlp_app::spelltext::{match_effect_polarity, match_spell_text};
 use eqlp_core::Outcome;
 
 fn main() {
@@ -22,6 +22,7 @@ fn main() {
     let mut unmatched = 0u64;
     let mut dict_hits = 0u64;
     let mut wearsoff_hits = 0u64;
+    let mut polarity_hits = 0u64;
 
     for line in &lines {
         total += 1;
@@ -33,6 +34,11 @@ fn main() {
                 if m.is_wearsoff {
                     wearsoff_hits += 1;
                 }
+            } else if match_effect_polarity(&text).is_some() {
+                // why: only a fallback for what match_spell_text couldn't
+                // name -- counted separately so its own real contribution
+                // is visible, not folded into dict_hits above
+                polarity_hits += 1;
             }
         }
     }
@@ -47,8 +53,12 @@ fn main() {
         100.0 * dict_hits as f64 / unmatched as f64
     );
     println!(
-        "still unmatched after:   {} ({:.2}%)",
-        unmatched - dict_hits,
-        100.0 * (unmatched - dict_hits) as f64 / total as f64
+        "of the rest, polarity hit: {polarity_hits} ({:.2}% of unmatched)",
+        100.0 * polarity_hits as f64 / unmatched as f64
+    );
+    let still = unmatched - dict_hits - polarity_hits;
+    println!(
+        "still unmatched after:   {still} ({:.2}%)",
+        100.0 * still as f64 / total as f64
     );
 }
