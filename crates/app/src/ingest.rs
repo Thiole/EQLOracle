@@ -1021,11 +1021,13 @@ impl Ingest {
                 let base = base_spell_name(&spell);
                 let spell_sym = self.store.sym(base).0;
                 self.casts.begin(ts, caster.0, spell_sym);
-                self.classes.observe_cast(
-                    caster.0,
-                    self.zone.index_at(ts),
-                    class_evidence_for(base),
-                );
+                if !self.is_pet(&who) {
+                    self.classes.observe_cast(
+                        caster.0,
+                        self.zone.index_at(ts),
+                        class_evidence_for(base),
+                    );
+                }
             }
             Action::CastResisted { source, spell } => {
                 let src = self.sym(&source).0;
@@ -1071,11 +1073,13 @@ impl Ingest {
             }
             Action::AbilityActivated { who, ability } => {
                 let sym = self.sym(&who);
-                self.classes.observe_cast(
-                    sym.0,
-                    self.zone.index_at(ts),
-                    crate::classdata::classes_for(&ability),
-                );
+                if !self.is_pet(&who) {
+                    self.classes.observe_cast(
+                        sym.0,
+                        self.zone.index_at(ts),
+                        crate::classdata::classes_for(&ability),
+                    );
+                }
                 self.record_effect_ping(ts, &who, &ability);
             }
             Action::PetSummon { owner } => self.note_pet_summon(ts, &owner),
@@ -1496,6 +1500,24 @@ impl Ingest {
         let resolved = self.resolve_name(name);
         let effective = self.pet_owner.get(&resolved).cloned().unwrap_or(resolved);
         self.store.sym(&effective)
+    }
+
+    /// why: real bug, caught live -- a pet's own cast was feeding
+    /// classdetect as if it were the owner's, on the strength of the
+    /// merge `sym()` already does for DPS attribution. Wrong even when
+    /// the merge itself is correct: a pet's ability kit doesn't match
+    /// its owner's class the way a player's own cast does (a real
+    /// Beastlord/Necromancer/Magician/Shaman pet has its own separate
+    /// spell list) -- so a pet casting doesn't prove anything about
+    /// which class the *owner* currently has active. Confirmed live:
+    /// the specific incident that surfaced this was actually a 2nd,
+    /// deeper bug (the merge itself was wrong -- an unrelated real
+    /// player's spawn-buff cast collided with a real pet-summon sighting
+    /// within the same PET_MATCH_WINDOW_MS and got merged in), but this
+    /// check is right regardless of whether the merge is accurate.
+    fn is_pet(&mut self, name: &str) -> bool {
+        let resolved = self.resolve_name(name);
+        self.pet_owner.contains_key(&resolved)
     }
 
     /// why: only from Cast, not damage/heal/miss -- a pet's first logged
@@ -4025,6 +4047,36 @@ mod unreliable_class_evidence_tests {
         assert!(
             ing.classes.configurations_of(you.0).is_empty(),
             "a spell with a known item source, cast twice, must still confirm nothing"
+        );
+    }
+
+    /// why: real bug, caught live -- a pet's own cast (merged onto the
+    /// owner's Sym for DPS-attribution purposes, correctly) still fed
+    /// classdetect as if the owner had cast it themselves. Wrong even
+    /// when the merge itself is accurate: a pet's ability kit doesn't
+    /// prove which class its owner currently has active.
+    #[test]
+    fn a_pets_own_cast_contributes_no_class_evidence_for_the_owner() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:01 2026] You summon forth a lesser familiar.",
+            // why: a pet's first logged cast is its own spawn self-buff --
+            // pairs it to the pending summon above (see note_actor's own doc)
+            b"[Tue Jul 28 15:01:02 2026] Nifty begins casting Inner Fire.",
+            b"[Tue Jul 28 15:01:03 2026] Nifty begins casting Cascade of Hail.",
+            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:01 2026] You summon forth a lesser familiar.",
+            b"[Tue Jul 28 15:02:02 2026] Nifty begins casting Inner Fire.",
+            b"[Tue Jul 28 15:02:03 2026] Nifty begins casting Cascade of Hail.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+
+        let you = ing.store.names.get("You").expect("You should be interned");
+        assert!(
+            ing.classes.configurations_of(you.0).is_empty(),
+            "the pet's own Druid-exclusive cast, twice, must still confirm nothing for the owner"
         );
     }
 }
