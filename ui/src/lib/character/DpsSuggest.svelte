@@ -159,12 +159,20 @@
   function fmt(n: number): string {
     return n.toLocaleString(undefined, { maximumFractionDigits: 1 });
   }
+
+  // why: collapsed by default -- a decent-sized window should show every
+  // section's header without scrolling; the calculator itself opens on request.
+  let open = $state(false);
 </script>
 
 <Card class="rounded-sm">
   <CardContent class="px-3 py-2.5">
-    <h2 class="panel-title mb-1.5">DPS auto-suggest</h2>
-    <p class="mb-2 text-[11px] text-muted-foreground">
+    <button type="button" class="flex w-full items-center gap-1.5 text-left" onclick={() => (open = !open)}>
+      <span class="w-3 text-[9px] text-muted-foreground">{open ? '▾' : '▸'}</span>
+      <h2 class="panel-title">DPS auto-suggest</h2>
+    </button>
+    {#if open}
+    <p class="mb-2 mt-1.5 text-[11px] text-muted-foreground">
       Damage/mana math for every damage spell you can currently cast (level {MAX_CHARACTER_LEVEL} cap, same as the picker above).
       Nuke damage is rank-adjusted at +10% of base per live rank tier -- measured against your own log, not the wiki's guide page.
       A DoT's own <i>per-tick</i> damage doesn't scale with rank; only its one-time "on cast" hit (if any) does, though its cast
@@ -306,6 +314,7 @@
           </tbody>
         </table>
       </div>
+    {/if}
     {/if}
   </CardContent>
 </Card>

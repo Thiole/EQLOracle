@@ -252,6 +252,12 @@
   let saving = $state(false);
   let savedAt = $state<Date | null>(null);
 
+  // why: collapsible sections -- open by default (the two live-editing
+  // panels), so a decent-sized window still shows every section's
+  // header even when one's expanded, rather than one long unbroken page.
+  let foundOpen = $state(true);
+  let suggestedOpen = $state(true);
+
   // why: "save as" forks the current file pair under a new name instead
   // of overwriting it -- a small inline box (not a full dialog, nothing
   // else here needs one) for the one field it actually needs.
@@ -479,8 +485,12 @@
 
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
-      <h2 class="panel-title mb-1.5">Found spellbooks</h2>
-      <p class="mb-2 text-[11px] font-medium text-destructive">
+      <button type="button" class="flex w-full items-center gap-1.5 text-left" onclick={() => (foundOpen = !foundOpen)}>
+        <span class="w-3 text-[9px] text-muted-foreground">{foundOpen ? '▾' : '▸'}</span>
+        <h2 class="panel-title">Found spellbooks</h2>
+      </button>
+      {#if foundOpen}
+      <p class="mb-2 mt-1.5 text-[11px] font-medium text-destructive">
         AUTO suggests are work in progress, please triple check. The auto rules are currently: Optimal DPS Loop + best cc or shot term
         buff spells for remaining available combat lines it tries its best to not have multiple from same spell line. I am working on
         specific overrides like Mez which is level 16 for example as "outliers"
@@ -635,6 +645,7 @@
           </div>
         {/if}
       {/if}
+      {/if}
     </CardContent>
   </Card>
 
@@ -648,19 +659,25 @@
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
       <div class="mb-1.5 flex items-center justify-between gap-2">
-        <h2 class="panel-title">Suggested spells</h2>
-        <div class="flex items-center gap-2">
-          <button
-            type="button"
-            class="text-[11px] text-muted-foreground underline-offset-2 hover:text-primary hover:underline"
-            onclick={() => openSpellLinePriority(null)}
-          >
-            customize spell line priority →
-          </button>
-          <Input bind:value={search} placeholder="search spells…" class="h-7 w-56 text-[12px]" />
-        </div>
+        <button type="button" class="flex items-center gap-1.5 text-left" onclick={() => (suggestedOpen = !suggestedOpen)}>
+          <span class="w-3 text-[9px] text-muted-foreground">{suggestedOpen ? '▾' : '▸'}</span>
+          <h2 class="panel-title">Suggested spells</h2>
+        </button>
+        {#if suggestedOpen}
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="text-[11px] text-muted-foreground underline-offset-2 hover:text-primary hover:underline"
+              onclick={() => openSpellLinePriority(null)}
+            >
+              customize spell line priority →
+            </button>
+            <Input bind:value={search} placeholder="search spells…" class="h-7 w-56 text-[12px]" />
+          </div>
+        {/if}
       </div>
 
+      {#if suggestedOpen}
       <!-- why: kept tiny/compact on purpose -- these are filters glanced
            at once and left alone, not a form worth taking up real
            vertical space from the grid below. -->
@@ -735,6 +752,7 @@
         </div>
       {:else}
         <p class="text-[11px] text-muted-foreground">no matches</p>
+      {/if}
       {/if}
     </CardContent>
   </Card>
