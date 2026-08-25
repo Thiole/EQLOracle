@@ -2527,6 +2527,33 @@ fn base_spell_name(name: &str) -> &str {
     }
 }
 
+/// why: 2nd real bug in the same family, spotted by the user -- "Illusion:
+/// Dark Elf" (treated as rock-solid Enchanter-exclusive evidence, dozens
+/// of real casts) is also a click effect on 2 real items (`Guise of the
+/// Deceiver`, `Mask of Deception`, per `spells.json`'s own
+/// `items_with_effect`), so a cast of it proves nothing about the
+/// caster's own class -- only that they're holding the item. The log
+/// line is identical either way ("You begin casting X"), so there's no
+/// way to tell a real class cast from an item click after the fact; per
+/// the same logic as a group teleport, unsure evidence is no evidence.
+/// 669 of 1928 real spells in the catalog have at least one item source
+/// -- broad enough that this needed its own cached lookup, not a
+/// per-call linear scan over the whole catalog (`spell_by_name`'s own
+/// doc: "not a hot path" -- this one is, called on every real cast line
+/// in a multi-million-line backfill).
+fn has_item_click_source(base_spell: &str) -> bool {
+    static ITEM_SOURCED: OnceLock<std::collections::HashSet<&'static str>> = OnceLock::new();
+    ITEM_SOURCED
+        .get_or_init(|| {
+            crate::spelldata::spells()
+                .iter()
+                .filter(|s| !s.items_with_effect.is_empty())
+                .map(|s| s.name.as_str())
+                .collect()
+        })
+        .contains(base_spell)
+}
+
 /// why: real bug, caught live against a real 2nd player's log -- a
 /// group-shaped teleport ("Ring of Butcherblock", Druid-only per its own
 /// class data) showed up cast inside a visit already rock-solid confirmed
@@ -2540,8 +2567,10 @@ fn base_spell_name(name: &str) -> &str {
 /// coordinates (this file's own `teleportdata::landing_for`) are exact,
 /// hand-verified data for the map feature; reused here as the same
 /// "is this a real teleport" signal rather than re-deriving one.
+/// A spell obtainable from an item's click effect (see
+/// `has_item_click_source`'s own doc) gets the same treatment.
 fn class_evidence_for(base_spell: &str) -> &'static [String] {
-    if teleportdata::landing_for(base_spell).is_some() {
+    if teleportdata::landing_for(base_spell).is_some() || has_item_click_source(base_spell) {
         return &[];
     }
     crate::classdata::classes_for(base_spell)
@@ -3912,7 +3941,7 @@ mod stance_evidence_tests {
 }
 
 #[cfg(test)]
-mod teleport_evidence_tests {
+mod unreliable_class_evidence_tests {
     use super::*;
     use crate::parser::build_engine;
 
@@ -3964,6 +3993,30 @@ mod teleport_evidence_tests {
             .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
         assert!(configured.contains(&"Druid".to_string()), "{configured:?}");
     }
+
+    /// why: real bug, caught live (user's own domain knowledge) --
+    /// "Illusion: Dark Elf" (treated as rock-solid Enchanter-exclusive
+    /// evidence) is also a click effect on "Guise of the Deceiver"/"Mask
+    /// of Deception" -- the log line is identical whether it's a real
+    /// class cast or an item click, so it must feed classdetect nothing.
+    #[test]
+    fn a_spell_with_a_known_item_click_source_contributes_no_class_evidence() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:01 2026] You begin casting Illusion: Dark Elf.",
+            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:01 2026] You begin casting Illusion: Dark Elf.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+
+        let you = ing.store.names.get("You").expect("You should be interned");
+        assert!(
+            ing.classes.configurations_of(you.0).is_empty(),
+            "a spell with a known item source, cast twice, must still confirm nothing"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -3997,9 +4050,10 @@ mod skill_evidence_tests {
             b"[Tue Jul 28 15:03:00 2026] You have entered Blackburrow.",
             b"[Tue Jul 28 15:03:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:03:02 2026] You begin casting Shock of Lightning.",
-            // why: Cure Poison pool {Beastlord,Cleric,Druid,Paladin,Ranger,Shaman}
-            b"[Tue Jul 28 15:03:03 2026] You begin casting Cure Poison.",
-            // why: evasive stance narrows with Cure Poison to {Beastlord, Ranger}
+            // why: Endure Fire pool {Beastlord,Cleric,Druid,Ranger,Shaman} --
+            // no item click source to muddy it, unlike Cure Poison
+            b"[Tue Jul 28 15:03:03 2026] You begin casting Endure Fire.",
+            // why: evasive stance narrows with Endure Fire to {Beastlord, Ranger}
             b"[Tue Jul 28 15:03:04 2026] You assume an evasive stance.",
             // why: Tracking {Bard,Druid,Ranger} -- only Ranger survives all
             // three pools, but only on this one visit so far -- not proof yet
@@ -4007,13 +4061,13 @@ mod skill_evidence_tests {
             b"[Tue Jul 28 15:04:00 2026] You have entered Highkeep.",
             b"[Tue Jul 28 15:04:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:04:02 2026] You begin casting Shock of Lightning.",
-            b"[Tue Jul 28 15:04:03 2026] You begin casting Cure Poison.",
+            b"[Tue Jul 28 15:04:03 2026] You begin casting Endure Fire.",
             b"[Tue Jul 28 15:04:04 2026] You assume an evasive stance.",
             b"[Tue Jul 28 15:04:05 2026] You have become better at Tracking! (2)",
             b"[Tue Jul 28 15:05:00 2026] You have entered Runnyeye.",
             b"[Tue Jul 28 15:05:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:05:02 2026] You begin casting Shock of Lightning.",
-            b"[Tue Jul 28 15:05:03 2026] You begin casting Cure Poison.",
+            b"[Tue Jul 28 15:05:03 2026] You begin casting Endure Fire.",
             b"[Tue Jul 28 15:05:04 2026] You assume an evasive stance.",
             b"[Tue Jul 28 15:05:05 2026] You have become better at Tracking! (3)",
         ];
@@ -4452,13 +4506,13 @@ mod effect_ping_tests {
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
             b"[Tue Jul 28 15:01:00 2026] You have entered Befallen.",
-            b"[Fri Aug 14 21:11:25 2026] Your Berserker Strength spell did not take hold on Hakujin. (Blocked by Berserker Spirit.)",
+            b"[Fri Aug 14 21:11:25 2026] Your Color Flux spell did not take hold on Hakujin. (Blocked by Berserker Spirit.)",
             b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
-            b"[Fri Aug 14 21:11:25 2026] Your Berserker Strength spell did not take hold on Joneker. (Blocked by Berserker Spirit.)",
+            b"[Fri Aug 14 21:11:25 2026] Your Color Flux spell did not take hold on Joneker. (Blocked by Berserker Spirit.)",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        // why: an Enchanter spell in this data despite its name -- confirmed against spell_classes.json
+        // why: Color Flux -- Enchanter-exclusive, confirmed against spell_classes.json, no item click source to muddy the evidence
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
