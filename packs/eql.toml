@@ -131,6 +131,18 @@ who = { from = "who", as = "str" }
 name = { from = "name", as = "str" }
 
 [[rule]]
+id = "achievement.you_completed"
+kind = "achievement"
+priority = 50
+anchors = ["You have completed achievement: "]
+# why: same shape as achievement.self, but "You have" not "X has" --
+# a real verb-conjugation split, not a substitutable case.
+pattern = '''^You have completed achievement: (?P<name>.+)$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have completed achievement: Oggok Traveler"]
+[rule.fields]
+name = { from = "name", as = "str" }
+
+[[rule]]
 id = "task.updated"
 kind = "quest"
 priority = 50
@@ -175,6 +187,24 @@ priority = 50
 anchors = ["You have been removed from the group"]
 pattern = '''^You have been removed from the group\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You have been removed from the group."]
+
+[[rule]]
+id = "group.left"
+kind = "group"
+priority = 50
+anchors = [" has left the group"]
+pattern = '''^(?P<who>.+?) has left the group\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Bravesirrobin has left the group."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "group.you_leader"
+kind = "group"
+priority = 50
+anchors = ["now the leader of your group"]
+pattern = '''^You are now the leader of your group\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You are now the leader of your group."]
 
 [[rule]]
 id = "noise.channel_full"
@@ -294,13 +324,19 @@ flag = { from = "flag", as = "str" }
 id = "melee.parried"
 kind = "block"
 priority = 30
-anchors = ["parries!"]
+anchors = ["parr"]
 # Same shape as melee.blocked/melee.dodged, the 4th real avoidance type.
-# Trailing flag same as melee.miss's own note.
-pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<parrier>.+?) parries!(?: \((?P<flag>[^()]+)\))?$'''
+# Trailing flag same as melee.miss's own note. `parries|parry` -- the
+# 2nd-person form is "YOU parry!" not "YOU parries!" (157 real
+# occurrences of the YOU form missed entirely before this), same
+# distinction melee.dodged's own `dodges?` already made; anchor
+# loosened from the literal "parries!" to "parr" since "parry!" alone
+# doesn't contain that substring.
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<parrier>.+?) (?:parries|parry)!(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] a rattlesnake tries to bite Kabn, but Kabn parries!",
   "[Tue Jul 28 15:02:15 2026] a rattlesnake tries to slash Vonektik, but Vonektik parries!",
+  "[Fri Aug 07 22:11:54 2026] Orc centurion tries to cleave YOU, but YOU parry!",
 ]
 [rule.fields]
 source = { from = "src", as = "str" }
@@ -312,11 +348,16 @@ verb = { from = "verb", as = "str" }
 id = "melee.riposted"
 kind = "block"
 priority = 30
-anchors = ["ripostes!"]
+anchors = ["riposte"]
 # Same shape as melee.blocked/melee.dodged/melee.parried -- the real 5th
 # avoidance type (melee.parried's own "4th" note was written before this
-# one was found; 231 real occurrences in the reference log).
-pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<riposter>.+?) ripostes!(?: \((?P<flag>[^()]+)\))?$'''
+# one was found; 231 real occurrences in the reference log). `ripostes|
+# riposte` for the same 2nd-person-verb reason melee.parried's own doc
+# gives ("YOU riposte!" not "YOU ripostes!") -- unconfirmed in this
+# specific log (0 real occurrences of the YOU form found), kept anyway
+# since it's the same real grammatical rule the other 3 avoidance types
+# already need, not a guess at new content.
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<riposter>.+?) (?:ripostes|riposte)!(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
   "[Wed Jul 29 20:19:55 2026] A Teir`Dal ranger tries to slash Kaeus, but Kaeus ripostes!",
   "[Wed Jul 29 20:29:09 2026] A Teir`Dal rogue tries to pierce Bravesirrobin, but Bravesirrobin ripostes!",
@@ -524,18 +565,26 @@ id = "heal.by_spell"
 kind = "heal"
 priority = 40
 anchors = ["hit points by "]
-pattern = '''^(?P<src>.+?) healed (?P<dst>.+?) for (?P<amt>[0-9,]+)(?: \((?P<uncapped>[0-9,]+)\))? hit points by (?P<spell>.+?)\.$'''
+# why: two real additions -- an optional " over time" clause (a HoT
+# tick, same shape otherwise) and an optional trailing "(Flag)" clause
+# (real: "(Critical)"), same trailing-flag treatment melee.hit's own
+# `flag` field already gets. Neither was here before, so every HoT tick
+# and every critical direct heal both fell through to unmatched.
+pattern = '''^(?P<src>.+?) healed (?P<dst>.+?)(?: over time)? for (?P<amt>[0-9,]+)(?: \((?P<uncapped>[0-9,]+)\))? hit points by (?P<spell>.+?)\.(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Mairin healed himself for 5 hit points by Lifetap.",
   "[Tue Jul 28 15:02:15 2026] Rammu healed himself for 2 hit points by Blessing of the Squire.",
   "[Tue Jul 28 15:02:15 2026] Vhenwheel healed himself for 0 (4) hit points by Lifetap.",
   "[Tue Jul 28 15:02:15 2026] Geloe healed herself for 14 hit points by Minor Healing.",
   "[Tue Jul 28 15:02:15 2026] Lebtik healed itself for 4 hit points by Lifetap.",
+  "[Tue Jul 28 15:02:15 2026] Bravesirrobin healed you over time for 31 hit points by Sprouting Heal.",
+  "[Tue Jul 28 15:02:15 2026] Bravesirrobin healed Zibektik over time for 122 hit points by Flowering Heal. (Critical)",
 ]
 [rule.fields]
 source = { from = "src", as = "str" }
 target = { from = "dst", as = "str" }
 amount = { from = "amt", as = "u64" }
+flag = { from = "flag", as = "str" }
 uncapped = { from = "uncapped", as = "u64" }
 spell = { from = "spell", as = "str" }
 
@@ -1003,6 +1052,20 @@ examples = ["[Tue Jul 28 15:02:15 2026] You receive 3 silver and 4 copper from t
 amount = { from = "amount", as = "str" }
 
 [[rule]]
+id = "money.item_currency"
+kind = "money"
+priority = 40
+anchors = ["from that item"]
+# why: a real 3rd currency-receipt shape, distinct from both
+# money.vendor_sell ("You receive X from Y for Z") and money.corpse
+# ("...from the corpse.") -- a tradeskill/salvage byproduct, no vendor
+# or corpse named at all.
+pattern = '''^You received (?P<amount>.+?) from that item\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You received 1 platinum, 1 gold, 2 silver and 8 copper from that item."]
+[rule.fields]
+amount = { from = "amount", as = "str" }
+
+[[rule]]
 id = "money.purchase"
 kind = "money"
 priority = 50
@@ -1270,6 +1333,38 @@ who = { from = "who", as = "str" }
 drink = { from = "drink", as = "str" }
 
 [[rule]]
+id = "noise.bind_return"
+kind = "noise"
+priority = 60
+anchors = ["Please wait..."]
+pattern = '''^Returning to (?P<destination>.+?)\. Please wait\.\.\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Returning to Bind Location. Please wait...",
+  "[Tue Jul 28 15:02:15 2026] Returning to Zone Safe Point. Please wait...",
+]
+[rule.fields]
+destination = { from = "destination", as = "str" }
+
+[[rule]]
+id = "noise.recipes_requested"
+kind = "noise"
+priority = 60
+anchors = ["Requesting ", " recipes..."]
+pattern = '''^Requesting (?:matching|favorite) recipes\.\.\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Requesting matching recipes...",
+  "[Tue Jul 28 15:02:15 2026] Requesting favorite recipes...",
+]
+
+[[rule]]
+id = "noise.separator"
+kind = "noise"
+priority = 60
+anchors = ["---------------------------"]
+pattern = '''^---------------------------$'''
+examples = ["[Tue Jul 28 15:02:15 2026] ---------------------------"]
+
+[[rule]]
 id = "noise.self_messages"
 kind = "noise"
 priority = 60
@@ -1280,9 +1375,15 @@ anchors = [" "]
 # don't share enough with any existing rule to justify their own -- same
 # "one alternation, not one rule per phrase" call noise.stunned already
 # makes.
-pattern = '''^(?:Your spellbook has been updated!|You feel your strength return\.|You can't reach that, get closer\.|You cannot loot while dead\.|You are not high enough level to memorize that spell\.|You begin to change your stance\.|You are not currently assigned to an adventure\.|This creature would take considerable effort to defeat!|The flames die down\.|The foreign thoughts leave\.|You feel as if you are about to fall\.|You are enveloped by lava\.|You can only cast this spell in the outdoors\.|You cannot change invocations yet\.)$'''
+pattern = '''^(?:Your spellbook has been updated!|You feel your strength return\.|You can't reach that, get closer\.|You cannot loot while dead\.|You are not high enough level to memorize that spell\.|You begin to change your stance\.|You are not currently assigned to an adventure\.|This creature would take considerable effort to defeat!|The flames die down\.|The foreign thoughts leave\.|You feel as if you are about to fall\.|You are enveloped by lava\.|You can only cast this spell in the outdoors\.|You cannot change invocations yet\.|You begin to hide\.\.\.|You begin to sneak\.\.\.|You are out of drink\.|You are thirsty\.|You are low on food\.|Aborting memorization of spell\.)$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Your spellbook has been updated!",
+  "[Tue Jul 28 15:02:15 2026] You begin to hide...",
+  "[Tue Jul 28 15:02:15 2026] You begin to sneak...",
+  "[Tue Jul 28 15:02:15 2026] You are out of drink.",
+  "[Tue Jul 28 15:02:15 2026] You are thirsty.",
+  "[Tue Jul 28 15:02:15 2026] You are low on food.",
+  "[Tue Jul 28 15:02:15 2026] Aborting memorization of spell.",
   "[Tue Jul 28 15:02:15 2026] You feel your strength return.",
   "[Tue Jul 28 15:02:15 2026] You can't reach that, get closer.",
   "[Tue Jul 28 15:02:15 2026] You cannot loot while dead.",
@@ -1484,7 +1585,7 @@ anchors = [" "]
 # kept (self "You writhe..." vs third-person "X writhes...", same
 # grammatical shape, different conjugation) rather than trying to fold
 # person into the pattern itself.
-pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better|winces|writhes in the grip of agony|writhe in the grip of agony|is surrounded by a traveling spirit|is healed from within|begins to sway|has fallen to the ground|sinks into the ground|is engulfed by a swarm|regains concentration and continues casting|feels a healing touch|is protected by a vortex of shadows|creates a mystic portal|is entwined by roots|is burning|is stung by a dozen flashes of the blade|is torn between life and death|stumbles, clutching their head|looks glamorous)[.!]$'''
+pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better|winces|writhes in the grip of agony|writhe in the grip of agony|is surrounded by a traveling spirit|is healed from within|begins to sway|has fallen to the ground|sinks into the ground|is engulfed by a swarm|regains concentration and continues casting|feels a healing touch|is protected by a vortex of shadows|creates a mystic portal|is entwined by roots|is burning|is stung by a dozen flashes of the blade|is torn between life and death|stumbles, clutching their head|looks glamorous|blinks, looking confused|starts limping|is bound by chords of music|is bound by strands of force|begins to move faster|floats into the air|rises on a gust of hot wind|enters an accelerated frenzy|suffers a blow to the head|looks dazed|channels pure magic into the form of an improved familiar)[.!]$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Splitpaw Sentry staggers.",
   "[Tue Jul 28 15:02:15 2026] Rallo rages.",
@@ -1497,6 +1598,17 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] Taddy is healed from within.",
   "[Tue Jul 28 15:02:15 2026] Myana begins to sway!",
   "[Tue Jul 28 15:02:15 2026] Kaeus has fallen to the ground.",
+  "[Tue Jul 28 15:02:15 2026] Tranixx Darkpaw blinks, looking confused!",
+  "[Tue Jul 28 15:02:15 2026] Battlelord Paluk starts limping!",
+  "[Tue Jul 28 15:02:15 2026] Master of Spite is bound by chords of music.",
+  "[Tue Jul 28 15:02:15 2026] Kenobtik is bound by strands of force.",
+  "[Tue Jul 28 15:02:15 2026] Drelzna begins to move faster.",
+  "[Tue Jul 28 15:02:15 2026] Yves floats into the air.",
+  "[Tue Jul 28 15:02:15 2026] Haken rises on a gust of hot wind.",
+  "[Tue Jul 28 15:02:15 2026] Jonarn enters an accelerated frenzy.",
+  "[Tue Jul 28 15:02:15 2026] Lord Pickclaw suffers a blow to the head.",
+  "[Tue Jul 28 15:02:15 2026] Ihop looks dazed.",
+  "[Tue Jul 28 15:02:15 2026] Gregg channels pure magic into the form of an improved familiar.",
   "[Tue Jul 28 15:02:15 2026] Kaeus sinks into the ground.",
   "[Tue Jul 28 15:02:15 2026] Knight V`Tal is engulfed by a swarm.",
   "[Tue Jul 28 15:02:15 2026] Splitpaw Sentry regains concentration and continues casting.",
@@ -1514,6 +1626,53 @@ examples = [
 [rule.fields]
 who = { from = "who", as = "str" }
 state = { from = "state", as = "str" }
+
+[[rule]]
+id = "mobstate.possessive_misc"
+kind = "mobstate"
+priority = 20
+anchors = ["'s "]
+# why: possessive third-person, same family as mobstate.skin_rent --
+# unrelated real state lines bundled the same way state.misc/
+# noise.self_messages bundle their own unrelated fixed phrases.
+pattern = '''^(?P<who>.+?)'s (?P<state>eyes are covered by dark shadows|hands gain a subdued gold glow|concentration is disrupted|feet won't budge)[.!]$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Kaeus's eyes are covered by dark shadows.",
+  "[Tue Jul 28 15:02:15 2026] Zimm's hands gain a subdued gold glow.",
+  "[Tue Jul 28 15:02:15 2026] Coercer T`vala's concentration is disrupted.",
+  "[Tue Jul 28 15:02:15 2026] Kaeus's feet won't budge!",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+state = { from = "state", as = "str" }
+
+[[rule]]
+id = "noise.coats_blades"
+kind = "noise"
+priority = 20
+anchors = ["coats their blades in poison"]
+# why: real client quirk -- no space at all between the name and the
+# verb (confirmed via a raw byte check, not a grep artifact: "Kaeuscoats
+# their blades in poison." is the literal real line). Same
+# placeholder-less landing-text family spelltext.rs's own doc already
+# describes for "Asp Venom" ("coats their blades in asp venom!"), but
+# that dictionary only handles the exact spell-msg text on its own
+# (no-name) line, not this glued-on-name variant of it.
+pattern = '''^(?P<who>.+?)coats their blades in poison\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Kaeuscoats their blades in poison."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "cast.cannot_cast_on"
+kind = "cast"
+priority = 40
+anchors = ["You cannot cast "]
+pattern = '''^You cannot cast (?P<spell>.+?) on (?P<target>.+?)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You cannot cast Burst of Flame on Varrok Neckchopper."]
+[rule.fields]
+spell = { from = "spell", as = "str" }
+target = { from = "target", as = "str" }
 
 [[rule]]
 id = "mobstate.skin_rent"
@@ -1663,11 +1822,17 @@ anchors = [" "]
 # that don't share enough with any single existing rule to justify
 # their own -- same "one alternation, not one rule per phrase" call
 # noise.stunned already makes.
-pattern = '''^(?:You have been knocked unconscious!|You lose control of yourself!|You have control of yourself again\.|Your target cannot be mesmerized\.|Your target has been stunned too recently for your stun to have full effect\.)$'''
+pattern = '''^(?:You have been knocked unconscious!|You lose control of yourself!|You have control of yourself again\.|Your target cannot be mesmerized\.|Your target has been stunned too recently for your stun to have full effect\.|You are encumbered!|You are no longer encumbered\.|You cannot have more than one pet at a time\.|You cannot remove this effect\.|Your target is immune to the stun portion of this effect\.|This NPC cannot be charmed\.)$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] You have been knocked unconscious!",
   "[Tue Jul 28 15:02:15 2026] You lose control of yourself!",
   "[Tue Jul 28 15:02:15 2026] You have control of yourself again.",
+  "[Tue Jul 28 15:02:15 2026] You are encumbered!",
+  "[Tue Jul 28 15:02:15 2026] You are no longer encumbered.",
+  "[Tue Jul 28 15:02:15 2026] You cannot have more than one pet at a time.",
+  "[Tue Jul 28 15:02:15 2026] You cannot remove this effect.",
+  "[Tue Jul 28 15:02:15 2026] Your target is immune to the stun portion of this effect.",
+  "[Tue Jul 28 15:02:15 2026] This NPC cannot be charmed.",
   "[Tue Jul 28 15:02:15 2026] Your target cannot be mesmerized.",
   "[Tue Jul 28 15:02:15 2026] Your target has been stunned too recently for your stun to have full effect.",
 ]
@@ -1889,6 +2054,71 @@ pattern = '''^Your pet's (?P<spell>.+?) spell has worn off\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] Your pet's Clinging Darkness spell has worn off."]
 [rule.fields]
 spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "pet.will_insufficient"
+kind = "pet"
+priority = 40
+anchors = ["will is not sufficient to command"]
+pattern = '''^Your pet's will is not sufficient to command its weapon\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your pet's will is not sufficient to command its weapon."]
+
+[[rule]]
+id = "pet.declined_item"
+kind = "pet"
+priority = 40
+anchors = ["prefers what it already has equipped"]
+pattern = '''^Your pet prefers what it already has equipped and declined (?P<item>.+)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your pet prefers what it already has equipped and declined Runed Sabertooth Girdle +1."]
+[rule.fields]
+item = { from = "item", as = "str" }
+
+[[rule]]
+id = "spell.granted"
+kind = "spell"
+priority = 40
+anchors = ["have been granted the following spell"]
+pattern = '''^You have been granted the following spell: (?P<spell>.+)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have been granted the following spell: Chords of Dissonance."]
+[rule.fields]
+spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "ability.reuse_timer"
+kind = "ability"
+priority = 40
+anchors = ["You can use the ability "]
+pattern = '''^You can use the ability (?P<name>.+?) again in (?P<minutes>[0-9]+) minute\(s\) (?P<seconds>[0-9]+) seconds\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You can use the ability Quick Buff again in 9 minute(s) 59 seconds."]
+[rule.fields]
+name = { from = "name", as = "str" }
+minutes = { from = "minutes", as = "u64" }
+seconds = { from = "seconds", as = "u64" }
+
+[[rule]]
+id = "aa.rune_absorption"
+kind = "aa"
+priority = 40
+anchors = ["You gain a rune for "]
+pattern = '''^You gain a rune for (?P<amt>[0-9,]+) points of absorption\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You gain a rune for 31 points of absorption."]
+[rule.fields]
+amount = { from = "amt", as = "u64" }
+
+[[rule]]
+id = "expedition.cooldown"
+kind = "noise"
+priority = 40
+anchors = ["cannot be added to this expedition"]
+# why: the single biggest still-unmatched shape at the time this was
+# added (592 real occurrences) -- verbose client text, captured for
+# real (who/event/instance name) even though nothing downstream reads
+# it yet, same stance pet.summoned's own doc takes on this.
+pattern = '''^(?P<who>.+?) cannot be added to this expedition since they have recently experienced (?P<event>.+?)\.\s+They must wait another [0-9dhms:]+ until they can experience it again\.\s+They may be added to the expedition later, once (?P<event2>.+?) has been completed\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Dima cannot be added to this expedition since they have recently experienced Unknown Event.  They must wait another 0d:0h:0m:0s until they can experience it again.  They may be added to the expedition later, once Unknown Event has been completed."]
+[rule.fields]
+who = { from = "who", as = "str" }
+event = { from = "event", as = "str" }
 
 [[rule]]
 id = "pet.summoned"
