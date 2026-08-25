@@ -958,8 +958,12 @@ export const api = {
   // their character's real name. See dump_fixtures.rs's own note.
   getClassConfigurations: () => invoke<ClassConfigurationsDto>('get_class_configurations', { name: 'You' }),
 
-  getConfigurationZoneVisits: (classes: string[]) =>
-    invoke<ZoneVisitDto[]>('get_configuration_zone_visits', { name: 'You', classes }),
+  // why: levelRange disambiguates which row -- more than one row can now
+  // share the same classes (separate real sessions of the same trio,
+  // see combat.rs's SESSION_GAP_MS), so classes alone no longer picks
+  // a unique row.
+  getConfigurationZoneVisits: (classes: string[], levelRange: [number, number] | null) =>
+    invoke<ZoneVisitDto[]>('get_configuration_zone_visits', { name: 'You', classes, levelRange }),
 
   getCurrentLevel: () => invoke<number | null>('get_current_level'),
 

@@ -993,9 +993,67 @@ pub struct ClassConfigurationsDto {
     pub unresolved_visits: usize,
 }
 
+/// why: real bug, caught live -- every visit sharing the same 3-class
+/// set used to fold into one bucket regardless of how far apart in
+/// real time they were, so the frontend's own max-per-class level
+/// display (character.ts's applyEstimatedLevels) attributed a much
+/// later, much higher-level revisit's own level_range to every class in
+/// an early, brief try of the same trio. Confirmed live on a real
+/// class-tourism character: gaps within one real play session (3.3h,
+/// 6.5h) vs. a later revisit of the same trio (25h/74h/95h -- always a
+/// different calendar day) split cleanly with real data, not a guess --
+/// see the split it actually produces in this file's own tests.
+const SESSION_GAP_MS: Millis = 24 * 60 * 60 * 1000;
+
+/// why: splits one configuration's visits into real, time-contiguous
+/// sessions -- a visit with no real timestamp (`None`, before the
+/// first zone.enter) has nothing to compare against, so it's just
+/// attached to the earliest real session (or its own, if there isn't
+/// one); it never affects level_range_for's own output either way.
+fn split_into_sessions(
+    ing: &Ingest,
+    visits: &[eqlp_session::classdetect::ZoneVisit],
+    gap_ms: Millis,
+) -> Vec<Vec<eqlp_session::classdetect::ZoneVisit>> {
+    type ZoneVisit = eqlp_session::classdetect::ZoneVisit;
+    let has_untimed = visits.contains(&None);
+    let mut timed: Vec<(Millis, Millis, ZoneVisit)> = visits
+        .iter()
+        .filter_map(|&v| {
+            let i = v?;
+            let (start, next) = ing.zone.bounds(i)?;
+            Some((start, next.unwrap_or(start), v))
+        })
+        .collect();
+    timed.sort_by_key(|&(start, ..)| start);
+
+    let mut sessions: Vec<Vec<ZoneVisit>> = Vec::new();
+    let mut last_end: Option<Millis> = None;
+    for (start, end, v) in timed {
+        let starts_new_session = match last_end {
+            Some(prev_end) => start - prev_end > gap_ms,
+            None => true,
+        };
+        if starts_new_session {
+            sessions.push(Vec::new());
+        }
+        sessions.last_mut().expect("just pushed if new").push(v);
+        last_end = Some(end);
+    }
+    if has_untimed {
+        match sessions.first_mut() {
+            Some(first) => first.insert(0, None),
+            None => sessions.push(vec![None]),
+        }
+    }
+    sessions
+}
+
 /// why: a list of configurations, not one rolling combination -- a
 /// rarely-used loadout is just as real as the most-played one; empty
-/// only if never landed a single unambiguous recognized cast
+/// only if never landed a single unambiguous recognized cast. Each
+/// real, time-separate session of the same 3-class set is its own row
+/// -- see SESSION_GAP_MS's own doc.
 pub fn class_configurations(ing: &Ingest, name: &str) -> ClassConfigurationsDto {
     let Some(sym) = ing.store.names.get(name) else {
         return ClassConfigurationsDto {
@@ -1004,18 +1062,25 @@ pub fn class_configurations(ing: &Ingest, name: &str) -> ClassConfigurationsDto 
         };
     };
     let (resolved, unresolved) = ing.classes.visits_by_resolved_configuration(sym.0);
-    let configurations = resolved
-        .into_iter()
-        .map(|(classes, visits)| {
-            let level_range = level_range_for(ing, &visits);
-            let zone_visits = visits.len();
-            ClassConfigurationDto {
-                classes,
-                zone_visits,
+    let mut configurations: Vec<ClassConfigurationDto> = Vec::new();
+    for (classes, visits) in resolved {
+        for session_visits in split_into_sessions(ing, &visits, SESSION_GAP_MS) {
+            let level_range = level_range_for(ing, &session_visits);
+            configurations.push(ClassConfigurationDto {
+                classes: classes.clone(),
+                zone_visits: session_visits.len(),
                 level_range,
-            }
-        })
-        .collect();
+            });
+        }
+    }
+    // why: same "most-played first" ordering visits_by_resolved_configuration
+    // itself used before splitting -- otherwise a class-set's several
+    // session-rows would land wherever they happened to be pushed
+    configurations.sort_by(|a, b| {
+        b.zone_visits
+            .cmp(&a.zone_visits)
+            .then_with(|| a.classes.cmp(&b.classes))
+    });
     ClassConfigurationsDto {
         configurations,
         unresolved_visits: unresolved.len(),
@@ -1043,24 +1108,140 @@ fn level_range_for(
 }
 
 /// why: drills from one configuration row down to its specific visits; empty if no match
+/// why: `level_range` disambiguates which session-row -- since
+/// SESSION_GAP_MS's own split, more than one row can share the same
+/// `classes` (separate real sessions of the same trio), so `classes`
+/// alone no longer picks a unique row the way it used to.
 pub fn zone_visits_for_configuration(
     ing: &Ingest,
     name: &str,
     classes: &[String],
+    level_range: Option<(u8, u8)>,
 ) -> Vec<ZoneVisitDto> {
     let Some(sym) = ing.store.names.get(name) else {
         return Vec::new();
     };
     let (resolved, _) = ing.classes.visits_by_resolved_configuration(sym.0);
-    let Some((_, wanted)) = resolved.into_iter().find(|(c, _)| c.as_slice() == classes) else {
+    let Some((_, visits)) = resolved.into_iter().find(|(c, _)| c.as_slice() == classes) else {
         return Vec::new();
     };
+    let wanted = split_into_sessions(ing, &visits, SESSION_GAP_MS)
+        .into_iter()
+        .find(|session| level_range_for(ing, session) == level_range)
+        .unwrap_or_default();
     let mut out: Vec<ZoneVisitDto> = zone_visit_dtos(ing)
         .into_iter()
         .filter(|dto| wanted.contains(&dto.index))
         .collect();
     sort_zone_visits(&mut out);
     out
+}
+
+#[cfg(test)]
+mod session_split_tests {
+    use super::*;
+    use crate::ingest::backfill_lines;
+    use crate::parser::build_engine;
+    use eqlp_session::classdetect::ZoneVisit;
+
+    fn run(text: &str) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = text.lines().map(str::as_bytes).collect();
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing
+    }
+
+    /// why: visits close together in real time stay one session
+    #[test]
+    fn visits_within_the_gap_stay_one_session() {
+        let text = "\
+[Tue Jul 28 15:00:00 2026] You have entered The Estate of Unrest.
+[Tue Jul 28 15:10:00 2026] You have entered North Qeynos.
+[Tue Jul 28 15:20:00 2026] You have entered West Karana.
+";
+        let ing = run(text);
+        let visits: Vec<ZoneVisit> = vec![Some(0), Some(1), Some(2)];
+        let gap_ms = 15 * 60 * 1000; // 15 min -- wider than any real gap here
+        let sessions = split_into_sessions(&ing, &visits, gap_ms);
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].len(), 3);
+    }
+
+    /// why: real bug fix's whole point -- a gap bigger than the threshold splits
+    /// one class-set's visits into separate rows instead of one continuous arc.
+    /// why the Freeport visit: a visit's own "end" (bounds().1) is defined as
+    /// the *next raw zone.enter's* start, whatever it is -- so this subset's
+    /// own visit 1 needs some other, unlisted zone right after it to close
+    /// off its real bound before the big gap; without it, visit 1's end would
+    /// be defined as visit 3's own start, making the gap disappear by
+    /// construction rather than ever being compared against the threshold.
+    #[test]
+    fn a_gap_bigger_than_the_threshold_starts_a_new_session() {
+        let text = "\
+[Tue Jul 28 15:00:00 2026] You have entered The Estate of Unrest.
+[Tue Jul 28 15:10:00 2026] You have entered North Qeynos.
+[Tue Jul 28 15:20:00 2026] You have entered Freeport.
+[Wed Jul 29 20:00:00 2026] You have entered West Karana.
+";
+        let ing = run(text);
+        let visits: Vec<ZoneVisit> = vec![Some(0), Some(1), Some(3)]; // visit 2 (Freeport) not part of this configuration
+        let gap_ms = 15 * 60 * 1000; // 15 min
+        let sessions = split_into_sessions(&ing, &visits, gap_ms);
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(
+            sessions[0],
+            vec![Some(0), Some(1)],
+            "first two visits, 10 min apart, stay together"
+        );
+        assert_eq!(
+            sessions[1],
+            vec![Some(3)],
+            "the next-day visit starts its own session"
+        );
+    }
+
+    /// why: sessions come out ordered by real time, not by input order
+    #[test]
+    fn sessions_are_ordered_by_real_time_not_input_order() {
+        let text = "\
+[Tue Jul 28 15:00:00 2026] You have entered The Estate of Unrest.
+[Tue Jul 28 15:10:00 2026] You have entered North Qeynos.
+";
+        let ing = run(text);
+        let visits: Vec<ZoneVisit> = vec![Some(1), Some(0)]; // reversed on purpose
+        let gap_ms = 15 * 60 * 1000;
+        let sessions = split_into_sessions(&ing, &visits, gap_ms);
+        assert_eq!(sessions, vec![vec![Some(0), Some(1)]]);
+    }
+
+    /// why: a visit with no real timestamp of its own (e.g. the log starts
+    /// mid-visit) has nothing to compare against -- it attaches to the
+    /// earliest real session rather than getting lost or forming its own
+    #[test]
+    fn an_untimed_visit_attaches_to_the_earliest_session() {
+        let text = "\
+[Tue Jul 28 15:00:00 2026] You have entered The Estate of Unrest.
+[Tue Jul 28 15:05:00 2026] You have entered Freeport.
+[Wed Jul 29 20:00:00 2026] You have entered North Qeynos.
+";
+        let ing = run(text);
+        let visits: Vec<ZoneVisit> = vec![Some(0), Some(2), None]; // visit 1 (Freeport) not part of this configuration
+        let gap_ms = 15 * 60 * 1000;
+        let sessions = split_into_sessions(&ing, &visits, gap_ms);
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(sessions[0], vec![None, Some(0)]);
+        assert_eq!(sessions[1], vec![Some(2)]);
+    }
+
+    /// why: an untimed-only visit list is still one real session, not zero
+    #[test]
+    fn an_untimed_only_visit_list_is_still_one_session() {
+        let ing = Ingest::default();
+        let visits: Vec<ZoneVisit> = vec![None];
+        let sessions = split_into_sessions(&ing, &visits, 1000);
+        assert_eq!(sessions, vec![vec![None]]);
+    }
 }
 
 #[cfg(test)]

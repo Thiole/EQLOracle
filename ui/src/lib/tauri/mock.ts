@@ -104,7 +104,7 @@ function keyFor(cmd: string, args: Record<string, unknown> | undefined): string 
     case 'get_unmatched_coverage':
       return `top=${norm(a.top)}`;
     case 'get_configuration_zone_visits':
-      return `name=${norm(a.name)}&classes=${norm(a.classes)}`;
+      return `name=${norm(a.name)}&classes=${norm(a.classes)}&levelRange=${norm(a.levelRange)}`;
     case 'list_zones':
     case 'list_npcs':
     case 'list_spells':

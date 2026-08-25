@@ -21,17 +21,25 @@
     });
   });
 
+  // why: classes alone no longer identifies one row -- a class-set can
+  // now split into several real, time-separate sessions (see combat.rs's
+  // SESSION_GAP_MS), each its own row sharing the same classes -- so the
+  // row key and the drill-down both fold in level_range too.
+  function rowKey(classes: string[], levelRange: [number, number] | null): string {
+    return `${classes.join(',')}|${levelRange ? levelRange.join('-') : 'none'}`;
+  }
+
   let expanded = $state<string | null>(null);
   let drillVisits = $state<ZoneVisitDto[] | null>(null);
-  async function toggleRow(classes: string[]) {
-    const key = classes.join(',');
+  async function toggleRow(classes: string[], levelRange: [number, number] | null) {
+    const key = rowKey(classes, levelRange);
     if (expanded === key) {
       expanded = null;
       return;
     }
     expanded = key;
     drillVisits = null;
-    drillVisits = await api.getConfigurationZoneVisits(classes);
+    drillVisits = await api.getConfigurationZoneVisits(classes, levelRange);
   }
 </script>
 
@@ -39,9 +47,11 @@
   <CardContent class="px-3 py-2.5">
     <h2 class="panel-title mb-1">character · detected class configurations</h2>
     <p class="mb-2 text-[11px] text-muted-foreground">
-      Every 3-class loadout ever confirmed for "You", with the zone visits and level range that back it -- level estimates
-      (Character tab's "Estimate levels") take the highest level seen in any configuration that includes a class, so a
-      single stray visit here is exactly what makes one look wrong. Click a row for the visits themselves.
+      Every 3-class loadout ever confirmed for "You", with the zone visits and level range that back it -- a class-set that
+      recurs across real, widely time-separated sessions (a respec, then coming back to it later) gets its own row per
+      session rather than one row spanning the whole gap. Level estimates (Character tab's "Estimate levels") take the
+      highest level seen in any row that includes a class, so a single stray row here is exactly what makes one look wrong.
+      Click a row for the visits themselves.
     </p>
     {#if !$debugConfigurations}
       <p class="text-[12px] text-muted-foreground">Loading…</p>
@@ -76,12 +86,12 @@
             </tr>
           </thead>
           <tbody>
-            {#each sorted as c (c.classes.join(','))}
-              {@const key = c.classes.join(',')}
+            {#each sorted as c (rowKey(c.classes, c.level_range))}
+              {@const key = rowKey(c.classes, c.level_range)}
               {@const thin = c.zone_visits <= 2}
               <tr
                 class="cursor-pointer border-b border-border/50 hover:bg-muted/40 {thin ? 'bg-caution/5' : ''}"
-                onclick={() => toggleRow(c.classes)}
+                onclick={() => toggleRow(c.classes, c.level_range)}
               >
                 <td class="px-2 py-1">
                   {expanded === key ? '▾' : '▸'}

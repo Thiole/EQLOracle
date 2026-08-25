@@ -43,6 +43,43 @@ fn main() {
     }
     println!("  unresolved_visits: {}", report.unresolved_visits);
 
+    // why: real start timestamps (epoch secs) for one class-set's own
+    // visits, split per session row -- lets a session-gap threshold (or a
+    // fix to it) be checked against actual data rather than a guess. One
+    // class-set can now back several rows (see combat.rs's
+    // split_into_sessions), so this dumps every row for the class-set,
+    // each under its own level_range.
+    if let Some(classes) = args.next() {
+        let classes: Vec<String> = classes.split(',').map(|s| s.to_string()).collect();
+        for row in report
+            .configurations
+            .iter()
+            .filter(|c| c.classes == classes)
+        {
+            let visits =
+                combat::zone_visits_for_configuration(&ing, "You", &classes, row.level_range);
+            println!(
+                "\n=== real visit timestamps for {classes:?} level_range={:?} ===",
+                row.level_range
+            );
+            let mut starts: Vec<(i64, String)> = visits
+                .iter()
+                .filter_map(|v| {
+                    let i = v.index?;
+                    let (start, _) = ing.zone.bounds(i)?;
+                    Some((start / 1000, v.label.clone()))
+                })
+                .collect();
+            starts.sort();
+            for (secs, label) in &starts {
+                println!("  {secs}  {label}");
+            }
+            for w in starts.windows(2) {
+                println!("    gap: {}s", w[1].0 - w[0].0);
+            }
+        }
+    }
+
     // why: independent scan against the exact same real-line shapes
     // ingest.rs's own Action dispatch feeds classdetect for "You":
     // cast.begin (spell), sing.begin (song), state.stance, state.

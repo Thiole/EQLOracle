@@ -287,8 +287,14 @@ pub fn get_configuration_zone_visits(
     state: State<AppState>,
     name: String,
     classes: Vec<String>,
+    level_range: Option<(u8, u8)>,
 ) -> Vec<ZoneVisitDto> {
-    combat::zone_visits_for_configuration(&state.ingest.lock().unwrap(), &name, &classes)
+    combat::zone_visits_for_configuration(
+        &state.ingest.lock().unwrap(),
+        &name,
+        &classes,
+        level_range,
+    )
 }
 
 /// why: read-only symbol lookup; None only before anything's been parsed

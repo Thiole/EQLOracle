@@ -159,8 +159,18 @@ fn main() {
     // why: one fixture entry per real configuration, for the Debug > Character drill-down
     let mut visits_by_cfg = serde_json::Map::new();
     for cfg in &cfgs.configurations {
-        let key = format!("name=You&classes={}", cfg.classes.join(","));
-        let visits = combat::zone_visits_for_configuration(&ing, "You", &cfg.classes);
+        // why: mirrors mock.ts's own norm() -- an array joins with ",",
+        // an absent level_range (untimed-only row) prints as "null".
+        let level_range_str = match cfg.level_range {
+            Some((lo, hi)) => format!("{lo},{hi}"),
+            None => "null".to_string(),
+        };
+        let key = format!(
+            "name=You&classes={}&levelRange={level_range_str}",
+            cfg.classes.join(",")
+        );
+        let visits =
+            combat::zone_visits_for_configuration(&ing, "You", &cfg.classes, cfg.level_range);
         visits_by_cfg.insert(key, json!(visits));
     }
     out.insert(
