@@ -90,6 +90,102 @@ examples = [
 who = { from = "who", as = "str" }
 text = { from = "text", as = "str" }
 
+[[rule]]
+id = "con.consider"
+kind = "con"
+priority = 50
+anchors = [" regards you indifferently -- "]
+# why: the classic "consider" con-color result -- 16 distinct real
+# flavor phrases confirmed, all sharing this exact frame with a level in
+# parens at the end (no trailing period on the line itself).
+pattern = '''^(?P<who>.+?) regards you indifferently -- (?P<flavor>.+?) \(Lvl: (?P<level>[0-9]+)\)$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Doug regards you indifferently -- looks like quite a gamble. (Lvl: 5)",
+  "[Tue Jul 28 15:02:15 2026] Guard Swang regards you indifferently -- what would you like your tombstone to say? (Lvl: 35)",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+flavor = { from = "flavor", as = "str" }
+level = { from = "level", as = "u64" }
+
+[[rule]]
+id = "achievement.guildmate"
+kind = "achievement"
+priority = 50
+anchors = ["Your guildmate "]
+pattern = '''^Your guildmate (?P<who>.+?) has completed (?P<name>.+?) achievement\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your guildmate Kaeus has completed The Commonlands Traveler achievement."]
+[rule.fields]
+who = { from = "who", as = "str" }
+name = { from = "name", as = "str" }
+
+[[rule]]
+id = "achievement.self"
+kind = "achievement"
+priority = 50
+anchors = [" has completed achievement: "]
+pattern = '''^(?P<who>.+?) has completed achievement: (?P<name>.+)$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Train has completed achievement: Oggok Traveler"]
+[rule.fields]
+who = { from = "who", as = "str" }
+name = { from = "name", as = "str" }
+
+[[rule]]
+id = "task.updated"
+kind = "quest"
+priority = 50
+anchors = ["Your task '"]
+pattern = '''^Your task '(?P<task>.*)' has been updated\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your task 'Something is Wrrrong' has been updated."]
+[rule.fields]
+task = { from = "task", as = "str" }
+
+[[rule]]
+id = "group.invited"
+kind = "group"
+priority = 50
+anchors = ["to join your group"]
+pattern = '''^You invite (?P<who>.+?) to join your group\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You invite Dippinsauce to join your group."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "group.member_joined"
+kind = "group"
+priority = 50
+anchors = [" has joined the group"]
+pattern = '''^(?P<who>.+?) has joined the group\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Dippinsauce has joined the group."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "group.you_joined"
+kind = "group"
+priority = 50
+anchors = ["You have joined the group"]
+pattern = '''^You have joined the group\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have joined the group."]
+
+[[rule]]
+id = "group.you_removed"
+kind = "group"
+priority = 50
+anchors = ["You have been removed from the group"]
+pattern = '''^You have been removed from the group\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have been removed from the group."]
+
+[[rule]]
+id = "noise.channel_full"
+kind = "noise"
+priority = 50
+anchors = ["was too full to join"]
+pattern = '''^Channel (?P<channel>.+?) was too full to join$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Channel NewPlayers was too full to join"]
+[rule.fields]
+channel = { from = "channel", as = "str" }
+
 # ============================================================ combat
 
 [[rule]]
@@ -100,10 +196,11 @@ priority = 30
 # in the reference log use the singular "1 point of damage" -- anchoring on
 # the plural silently dropped every one of them.
 anchors = [" of damage."]
-pattern = '''^(?P<src>.+?) (?P<verb>slashes|slash|bashes|bash|kicks|kick|hits|hit|cleaves|cleave|punches|punch|crushes|crush|pierces|pierce|strikes|strike|bites|bite|frenzies|frenzy|backstabs|backstab|reaves|reave|smites|smite|shoots|shoot|slices|slice|claws|claw|smashes|smash|mauls|maul|gores|gore) (?P<dst>.+?) for (?P<amt>[0-9,]+) points? of damage\.(?: \((?P<flag>[^()]+)\))?$'''
+pattern = '''^(?P<src>.+?) (?P<verb>slashes|slash|bashes|bash|kicks|kick|hits|hit|cleaves|cleave|punches|punch|crushes|crush|pierces|pierce|strikes|strike|bites|bite|frenzies|frenzy|backstabs|backstab|reaves|reave|smites|smite|shoots|shoot|slices|slice|claws|claw|smashes|smash|mauls|maul|gores|gore|stings|sting) (?P<dst>.+?) for (?P<amt>[0-9,]+) points? of damage\.(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Bouncer Krik slashes Beba for 59 points of damage.",
   "[Tue Jul 28 15:02:15 2026] Morbes bashes Pandos Flintside for 1 point of damage.",
+  "[Tue Jul 28 15:02:15 2026] Bzzazzt stings Dippinsauce for 330 points of damage.",
   "[Tue Jul 28 15:02:15 2026] Eckson slashes Splitpaw Sentry for 45 points of damage. (Critical)",
   "[Tue Jul 28 15:02:15 2026] Bravesirrobin slashes Footman of V`Zher for 36 points of damage.",
   "[Tue Jul 28 15:02:15 2026] Luld slashes a rock golem for 128 points of damage.",
@@ -321,12 +418,16 @@ flag = { from = "flag", as = "str" }
 id = "ds.damage"
 kind = "damage"
 priority = 40
-anchors = ["points of non-melee damage"]
-pattern = '''^(?P<dst>.+?) is (?P<verb>[a-z]+) by (?P<src>.+?) for (?P<amt>[0-9,]+) points of non-melee damage\.$'''
+anchors = ["of non-melee damage"]
+# why: `points?` -- same real singular/plural gap melee.hit's own doc
+# already found and fixed ("1 point of damage" vs "N points"), just
+# never carried over here. 905 real singular occurrences confirmed.
+pattern = '''^(?P<dst>.+?) is (?P<verb>[a-z]+) by (?P<src>.+?) for (?P<amt>[0-9,]+) points? of non-melee damage\.$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Kaeus is burned by Tranixx Darkpaw's flames for 6 points of non-melee damage.",
   "[Tue Jul 28 15:02:15 2026] Master Brewer is pierced by Bravesirrobin's thorns for 3 points of non-melee damage.",
   "[Tue Jul 28 15:02:15 2026] A seafury cyclops is pierced by YOUR thorns for 29 points of non-melee damage.",
+  "[Tue Jul 28 15:02:15 2026] Tranixx Darkpaw is pierced by Taddy's thorns for 1 point of non-melee damage.",
 ]
 [rule.fields]
 source = { from = "src", as = "str" }
@@ -347,6 +448,74 @@ pattern = '''^You were hit by non-melee for (?P<amt>[0-9,]+) damage\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You were hit by non-melee for 1 damage."]
 [rule.fields]
 amount = { from = "amt", as = "u64" }
+
+[[rule]]
+id = "damage.fall_self"
+kind = "damage"
+priority = 40
+anchors = ["YOU were injured by falling"]
+pattern = '''^YOU were injured by falling\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] YOU were injured by falling."]
+
+[[rule]]
+id = "damage.fall_other"
+kind = "damage"
+priority = 40
+anchors = [" was injured by falling"]
+pattern = '''^(?P<who>.+?) was injured by falling\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Govtcheeze was injured by falling."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "mobstate.magical_skin_absorbs"
+kind = "mobstate"
+priority = 20
+anchors = ["'s magical skin absorbs the damage of "]
+pattern = '''^(?P<who>.+?)'s magical skin absorbs the damage of (?P<source>.+?)'s (?:flames|thorns)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Kahaptra Z`Taj's magical skin absorbs the damage of Bravesirrobin's thorns.",
+  "[Tue Jul 28 15:02:15 2026] Konarer's magical skin absorbs the damage of Nisch Val Torash Mashk's flames.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+source = { from = "source", as = "str" }
+
+[[rule]]
+id = "melee.magical_skin_absorbed"
+kind = "block"
+priority = 30
+anchors = ["magical skin absorbs the blow!"]
+# why: not one of the real 4 avoidance types (block/dodge/parry/riposte)
+# -- a magical damage-absorb, not a defender's own evasion skill -- but
+# same "attack landed, no damage got through" bucket, same reason
+# ds.damage's own kind groups a damage-shield's damage with plain hits.
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<dst2>.+?)'s magical skin absorbs the blow!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Bravesirrobin tries to hit Kahaptra Z`Taj, but Kahaptra Z`Taj's magical skin absorbs the blow!"]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+verb = { from = "verb", as = "str" }
+
+[[rule]]
+id = "mobstate.staggers_hazard"
+kind = "mobstate"
+priority = 20
+anchors = [" slams "]
+# why: a trap/environmental proc, not mob.state's own fixed-alternation
+# shape -- the hazard itself varies (only 2 real values found: "dagger
+# of frost"/"frost shard"), so it needs its own capture instead of a
+# literal alternative there. `who` covers both self ("You"/"YOU") and
+# third-person the same lazy way mob.state's own `who` does.
+pattern = '''^(?P<who>.+?) stagger(?:s)? as a (?P<hazard>dagger of frost|frost shard) slams (?:into|against) (?:them|you)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Bravesirrobin staggers as a dagger of frost slams into them.",
+  "[Tue Jul 28 15:02:15 2026] You stagger as a dagger of frost slams into you.",
+  "[Tue Jul 28 15:02:15 2026] Balanque staggers as a frost shard slams against them.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+hazard = { from = "hazard", as = "str" }
 
 # ============================================================ healing
 
@@ -524,6 +693,16 @@ scope = { from = "scope", as = "str" }
 pct = { from = "pct", as = "f64" }
 
 [[rule]]
+id = "xp.gain_bare"
+kind = "xp"
+priority = 40
+anchors = ["You gain experience!"]
+# why: xp.gain above requires a trailing "(N.NNN%)" clause -- a real,
+# distinct bare form exists with no percentage at all.
+pattern = '''^You gain experience!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You gain experience!"]
+
+[[rule]]
 id = "level.up"
 kind = "level"
 priority = 50
@@ -608,6 +787,31 @@ rank = { from = "rank", as = "u64" }
 cost = { from = "cost", as = "u64" }
 
 [[rule]]
+id = "ability.point_gained_first"
+kind = "ability"
+priority = 40
+anchors = ["gained an ability point"]
+# why: the singular first-point phrasing ("an ability point" / "N
+# ability points", no parens) -- a genuinely different trailing shape
+# from ability.point_gained below (which always uses "point(s)" on both
+# sides), not just a number substitution.
+pattern = '''^You have gained an ability point!\s+You now have (?P<total>[0-9]+) ability points\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have gained an ability point!  You now have 5 ability points."]
+[rule.fields]
+total = { from = "total", as = "u64" }
+
+[[rule]]
+id = "ability.point_gained"
+kind = "ability"
+priority = 40
+anchors = ["ability point(s)!"]
+pattern = '''^You have gained (?P<qty>[0-9]+) ability point\(s\)!\s+You now have (?P<total>[0-9]+) ability point\(s\)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have gained 2 ability point(s)!  You now have 10 ability point(s)."]
+[rule.fields]
+qty = { from = "qty", as = "u64" }
+total = { from = "total", as = "u64" }
+
+[[rule]]
 id = "faction.adjust"
 kind = "faction"
 priority = 40
@@ -650,6 +854,34 @@ priority = 50
 anchors = ["can no longer advance your skill from making"]
 pattern = '''^You can no longer advance your skill from making this item\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You can no longer advance your skill from making this item."]
+
+[[rule]]
+id = "craft.destroyed"
+kind = "craft"
+priority = 50
+anchors = ["You successfully destroyed "]
+# why: item capture runs to end of line on purpose -- covers both a
+# plain item and one with a trailing "+N" augment tier the same way.
+pattern = '''^You successfully destroyed (?P<qty>[0-9]+) (?P<item>.+)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You successfully destroyed 1 Guild Summons.",
+  "[Tue Jul 28 15:02:15 2026] You successfully destroyed 1 Raw-Hide Wristbands +2.",
+]
+[rule.fields]
+qty = { from = "qty", as = "u64" }
+item = { from = "item", as = "str" }
+
+[[rule]]
+id = "craft.merged"
+kind = "craft"
+priority = 50
+anchors = ["successfully merged two items together"]
+# why: no trailing period on the real line -- ends on the item's own
+# "+N" tier with nothing after it.
+pattern = '''^You have successfully merged two items together to create a new item: (?P<item>.+)$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have successfully merged two items together to create a new item: Thaumaturgist's Robe +2"]
+[rule.fields]
+item = { from = "item", as = "str" }
 
 [[rule]]
 id = "loot.self"
@@ -819,6 +1051,18 @@ item = { from = "item", as = "str" }
 who = { from = "who", as = "str" }
 
 [[rule]]
+id = "trade.pet_offered"
+kind = "trade"
+priority = 50
+anchors = ["has offered you "]
+pattern = '''^(?P<who>.+?) has offered you (?P<qty>[0-9]+) (?P<item>.+)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Dippinsauce has offered you 1 Gossamer Robe +2."]
+[rule.fields]
+who = { from = "who", as = "str" }
+qty = { from = "qty", as = "u64" }
+item = { from = "item", as = "str" }
+
+[[rule]]
 id = "zone.enter"
 kind = "zone"
 priority = 40
@@ -952,6 +1196,109 @@ examples = [
 ]
 
 [[rule]]
+id = "noise.locked_no_key"
+kind = "noise"
+priority = 60
+anchors = ["not holding the key"]
+pattern = '''^It's locked and you're not holding the key\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] It's locked and you're not holding the key."]
+
+[[rule]]
+id = "noise.who_header"
+kind = "noise"
+priority = 60
+anchors = ["Players in EverQuest Legends:"]
+pattern = '''^Players in EverQuest Legends:$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Players in EverQuest Legends:"]
+
+[[rule]]
+id = "noise.who_count"
+kind = "noise"
+priority = 60
+anchors = [" player in EverQuest Legends"]
+pattern = '''^There (?:is|are) (?P<count>[0-9]+) players? in EverQuest Legends\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] There is 1 player in EverQuest Legends."]
+[rule.fields]
+count = { from = "count", as = "u64" }
+
+[[rule]]
+id = "noise.zoom_pan_hint"
+kind = "noise"
+priority = 60
+anchors = ["zooming and panning is disabled"]
+pattern = '''^Manually zooming and panning is disabled when the map is in Find mode and the "Auto-Zoom" button is active\.\s+If you wish to manually adjust the map while in Find mode, then uncheck the "Auto-Zoom" button or use the right click re-center\.$'''
+examples = ["[Thu Jul 30 18:25:26 2026] Manually zooming and panning is disabled when the map is in Find mode and the \"Auto-Zoom\" button is active.  If you wish to manually adjust the map while in Find mode, then uncheck the \"Auto-Zoom\" button or use the right click re-center."]
+
+[[rule]]
+id = "noise.growl_monologue"
+kind = "noise"
+priority = 60
+anchors = ["growls fiercely; saliva foaming"]
+# why: a scripted aggro monologue -- who/command/legion captured for
+# real even though nothing downstream reads them yet, same stance as
+# pet.summoned's own doc on capturing what's real regardless of current use.
+pattern = '''^A (?P<who>.+?) growls fiercely; saliva foaming around its ferocious, jagged maw, 'This is our home now!\s+(?P<command>.+?), or the legions of (?P<legion>.+?) shall slay you all!'$'''
+examples = ["[Tue Jul 28 15:02:15 2026] A Lteth Mas Gnoll growls fiercely; saliva foaming around its ferocious, jagged maw, 'This is our home now!  Begone, or the legions of TornEar shall slay you all!'"]
+[rule.fields]
+who = { from = "who", as = "str" }
+command = { from = "command", as = "str" }
+legion = { from = "legion", as = "str" }
+
+[[rule]]
+id = "noise.food_flavor"
+kind = "noise"
+priority = 60
+anchors = ["Chomp, chomp, chomp"]
+pattern = '''^Chomp, chomp, chomp\.\.\.\s+(?P<who>.+?) takes a bite from their (?P<food>.+)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Chomp, chomp, chomp...  Zakmordan takes a bite from their Berries."]
+[rule.fields]
+who = { from = "who", as = "str" }
+food = { from = "food", as = "str" }
+
+[[rule]]
+id = "noise.drink_flavor"
+kind = "noise"
+priority = 60
+anchors = ["Glug, glug, glug"]
+pattern = '''^Glug, glug, glug\.\.\.\s+(?P<who>.+?) takes a (?:swig of|drink from their) (?P<drink>.+)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Glug, glug, glug...  Prinny takes a swig of Blood Spirit.",
+  "[Tue Jul 28 15:02:15 2026] Glug, glug, glug...  Anadaria takes a drink from their Skin of Milk.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+drink = { from = "drink", as = "str" }
+
+[[rule]]
+id = "noise.self_messages"
+kind = "noise"
+priority = 60
+# why: no single literal is common to all 14 unrelated real phrases
+# below -- same weak, generic anchor mob.state uses for the same reason.
+anchors = [" "]
+# why: bundles unrelated real fixed self-message confirmations that
+# don't share enough with any existing rule to justify their own -- same
+# "one alternation, not one rule per phrase" call noise.stunned already
+# makes.
+pattern = '''^(?:Your spellbook has been updated!|You feel your strength return\.|You can't reach that, get closer\.|You cannot loot while dead\.|You are not high enough level to memorize that spell\.|You begin to change your stance\.|You are not currently assigned to an adventure\.|This creature would take considerable effort to defeat!|The flames die down\.|The foreign thoughts leave\.|You feel as if you are about to fall\.|You are enveloped by lava\.|You can only cast this spell in the outdoors\.|You cannot change invocations yet\.)$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Your spellbook has been updated!",
+  "[Tue Jul 28 15:02:15 2026] You feel your strength return.",
+  "[Tue Jul 28 15:02:15 2026] You can't reach that, get closer.",
+  "[Tue Jul 28 15:02:15 2026] You cannot loot while dead.",
+  "[Tue Jul 28 15:02:15 2026] You are not high enough level to memorize that spell.",
+  "[Tue Jul 28 15:02:15 2026] You begin to change your stance.",
+  "[Tue Jul 28 15:02:15 2026] You are not currently assigned to an adventure.",
+  "[Tue Jul 28 15:02:15 2026] This creature would take considerable effort to defeat!",
+  "[Tue Jul 28 15:02:15 2026] The flames die down.",
+  "[Tue Jul 28 15:02:15 2026] The foreign thoughts leave.",
+  "[Tue Jul 28 15:02:15 2026] You feel as if you are about to fall.",
+  "[Tue Jul 28 15:02:15 2026] You are enveloped by lava.",
+  "[Tue Jul 28 15:02:15 2026] You can only cast this spell in the outdoors.",
+  "[Tue Jul 28 15:02:15 2026] You cannot change invocations yet.",
+]
+
+[[rule]]
 id = "noise.spell_set_loaded"
 kind = "noise"
 priority = 60
@@ -960,6 +1307,14 @@ anchors = ["Spell set "]
 # occurrences.
 pattern = '''^Spell set .+ loaded\.$'''
 examples = ["[Fri Aug 07 00:47:50 2026] Spell set WED_29_Grind loaded."]
+
+[[rule]]
+id = "noise.spell_set_saved"
+kind = "noise"
+priority = 60
+anchors = ["Spell set "]
+pattern = '''^Spell set .+ saved\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Spell set WED_08_Grind saved."]
 
 [[rule]]
 id = "noise.no_open_slots"
@@ -1300,6 +1655,24 @@ who = { from = "who", as = "str" }
 spell = { from = "spell", as = "str" }
 
 [[rule]]
+id = "state.misc"
+kind = "state"
+priority = 50
+anchors = [" "]
+# why: bundles several unrelated real fixed self-state confirmations
+# that don't share enough with any single existing rule to justify
+# their own -- same "one alternation, not one rule per phrase" call
+# noise.stunned already makes.
+pattern = '''^(?:You have been knocked unconscious!|You lose control of yourself!|You have control of yourself again\.|Your target cannot be mesmerized\.|Your target has been stunned too recently for your stun to have full effect\.)$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You have been knocked unconscious!",
+  "[Tue Jul 28 15:02:15 2026] You lose control of yourself!",
+  "[Tue Jul 28 15:02:15 2026] You have control of yourself again.",
+  "[Tue Jul 28 15:02:15 2026] Your target cannot be mesmerized.",
+  "[Tue Jul 28 15:02:15 2026] Your target has been stunned too recently for your stun to have full effect.",
+]
+
+[[rule]]
 id = "state.you_mesmerized"
 kind = "state"
 priority = 50
@@ -1454,6 +1827,19 @@ examples = ["[Thu Jul 30 18:51:45 2026] Gynok Moltor resisted Kobeker's Cease!"]
 who = { from = "who", as = "str" }
 caster = { from = "caster", as = "str" }
 spell = { from = "spell", as = "str" }
+
+[[rule]]
+id = "resist.you_feel"
+kind = "resist"
+priority = 40
+anchors = ["You feel resistant to "]
+# why: an innate resistance confirmation (item/AA/racial, not a spell
+# landing) -- all 5 real resist types confirmed present (cold, disease,
+# fire, magic, poison).
+pattern = '''^You feel resistant to (?P<resist_type>cold|disease|fire|magic|poison)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You feel resistant to magic."]
+[rule.fields]
+resist_type = { from = "resist_type", as = "str" }
 
 [[rule]]
 id = "cast.blocked"
