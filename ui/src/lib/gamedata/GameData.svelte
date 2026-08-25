@@ -23,6 +23,7 @@
     type GdKind,
   } from '$lib/stores/gamedata';
   import { effectiveEra, eraOptions, passesEra } from '$lib/stores/settings';
+  import { spellbook, loadCharacterModule } from '$lib/stores/character';
   import { displayZoneName } from '$lib/utils';
   import type { ZoneDto, ItemDto, NpcDto, AaDto, SpellDto } from '$lib/tauri/api';
   import ZonePage from './ZonePage.svelte';
@@ -38,6 +39,10 @@
 
   $effect(() => {
     void loadGameDataModule();
+    // why: the "this session" known/possible column needs $spellbook,
+    // which otherwise only loads once Character's own tab has been
+    // opened -- idempotent, cheap, safe to also trigger from here
+    void loadCharacterModule();
   });
 
   // why: items are era-filtered server-side (gearplanner::in_era) -- a
@@ -88,6 +93,12 @@
       .filter((s) => matches(s.name, q) && passesEra(s.era, $effectiveEra, $eraOptions))
       .sort((a, b) => a.name.localeCompare(b.name)),
   );
+
+  // why: this session's own scribe/memorize evidence, linked to the
+  // catalog by name -- moved here from Character's own "Known Spells"
+  // tab (a passive session log fits better as a column on the catalog
+  // it's already about than as a separate page)
+  const knownByName = $derived(new Map($spellbook.map((s) => [s.name, s.confidence])));
 
   const totalForTab: Record<GdKind, number> = $derived({
     zone: filteredZones.length,
@@ -216,7 +227,7 @@
             </table>
           {:else}
             <table class="w-full text-[11px]">
-              <thead><tr class="text-left text-muted-foreground"><th class="pb-1 font-normal">spell</th><th class="pb-1 font-normal">class(es)</th><th class="pb-1 font-normal">mana</th><th class="pb-1 font-normal">cast time</th></tr></thead>
+              <thead><tr class="text-left text-muted-foreground"><th class="pb-1 font-normal">spell</th><th class="pb-1 font-normal">class(es)</th><th class="pb-1 font-normal">mana</th><th class="pb-1 font-normal">cast time</th><th class="pb-1 font-normal">this session</th></tr></thead>
               <tbody>
                 {#each filteredSpells.slice(0, ROW_CAP) as s (s.id)}
                   <tr class="cursor-pointer hover:bg-muted/40" onclick={() => gdOpen.set({ kind: 'spell', key: s.id })}>
@@ -224,6 +235,15 @@
                     <td class="py-0.5 text-muted-foreground">{s.classes.map((c) => (c.level != null ? `${c.class} ${c.level}` : c.class)).join(', ') || '—'}</td>
                     <td class="py-0.5 text-muted-foreground">{s.mana ?? '—'}</td>
                     <td class="py-0.5 text-muted-foreground">{s.casting_time != null ? `${s.casting_time}s` : '—'}</td>
+                    <td class="py-0.5">
+                      {#if knownByName.get(s.name) === 'known'}
+                        <span class="text-primary">known</span>
+                      {:else if knownByName.get(s.name) === 'possible'}
+                        <span class="text-muted-foreground">possible</span>
+                      {:else}
+                        <span class="text-muted-foreground">—</span>
+                      {/if}
+                    </td>
                   </tr>
                 {/each}
               </tbody>

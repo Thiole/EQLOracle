@@ -37,6 +37,7 @@ pub mod routing;
 pub mod settings;
 pub mod skilldata;
 pub mod skyquests;
+pub mod spellbookfiles;
 pub mod spelldata;
 pub mod spelleffect;
 pub mod spelltext;

@@ -29,6 +29,7 @@ use crate::raiding::{self, RaidRowDto};
 use crate::routing;
 use crate::settings;
 use crate::skyquests;
+use crate::spellbookfiles;
 use crate::spelldata;
 use crate::spelleffect;
 use crate::stackingdata;
@@ -1178,6 +1179,61 @@ pub fn get_ui_file(
         .clone();
     let path = uifiles::ui_file_path(&base_dir, &file).map_err(|e| e.to_string())?;
     uifiles::parse_ini(&path).map_err(|e| e.to_string())
+}
+
+/// why: a real character's saved [SpellLoadouts] -- see spellbookfiles's
+/// own doc. `file` is one of list_ui_files's own "hotbuttons"-kind
+/// entries (the non-`UI_`-prefixed one, which is where loadouts live).
+#[tauri::command]
+pub fn load_spellbook_file(
+    state: State<AppState>,
+    file: String,
+) -> Result<spellbookfiles::SpellbookFileDto, String> {
+    let base_dir = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .ok_or("no install folder configured yet")?
+        .base_dir
+        .clone();
+    spellbookfiles::load_spellbook(&base_dir, &file)
+}
+
+#[tauri::command]
+pub fn save_spellbook_file(
+    state: State<AppState>,
+    file: String,
+    loadouts: Vec<spellbookfiles::SpellLoadoutDto>,
+) -> Result<(), String> {
+    let base_dir = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .ok_or("no install folder configured yet")?
+        .base_dir
+        .clone();
+    spellbookfiles::save_spellbook(&base_dir, &file, &loadouts)
+}
+
+/// why: resolves a catalog spell's real numeric id, for placing it into
+/// a loadout slot -- None means spells_us.txt has no exact-name entry,
+/// not that the frontend did anything wrong
+#[tauri::command]
+pub fn resolve_spellbook_spell_id(
+    state: State<AppState>,
+    name: String,
+) -> Result<Option<i64>, String> {
+    let base_dir = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .ok_or("no install folder configured yet")?
+        .base_dir
+        .clone();
+    Ok(spellbookfiles::resolve_spell_id(&base_dir, &name))
 }
 
 #[cfg(test)]

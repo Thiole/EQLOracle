@@ -12,7 +12,7 @@
     pickBuffSuggestions, pickSupportSuggestions, simulateRotation, resistTypeOf,
   } from '$lib/character/spellSuggest';
   import DpsSuggest from './DpsSuggest.svelte';
-  import { api, type UiFileInfoDto, type ParsedUiFileDto, type SpellDto, type DamageSpellDto } from '$lib/tauri/api';
+  import { api, type UiFileInfoDto, type SpellDto, type DamageSpellDto, type SpellbookFileDto } from '$lib/tauri/api';
 
   // why: a spellbook holds up to 14 spells -- 8 base slots plus up to 6
   // more unlocked by the Mnemonic Retention AA (1 extra slot per AA
@@ -176,8 +176,12 @@
   // why: which slot a click (not a drag) should land in -- drag/drop
   // targets its own drop point directly and never touches this; this is
   // only for the click-a-result fallback, for anyone/anywhere drag
-  // doesn't work well.
-  let armed = $state<{ book: number; slot: number } | null>(null);
+  // doesn't work well. Two kinds share one search/picker below: a
+  // virtual planning-book slot (name only, local state) or a real
+  // loadout slot (needs the name resolved to a real numeric id first,
+  // see placeInArmedSlot).
+  type Armed = { kind: 'book'; book: number; slot: number } | { kind: 'loadout'; slot: number };
+  let armed = $state<Armed | null>(null);
 
   let search = $state('');
 
@@ -288,9 +292,13 @@
       .map((s) => ({ name: s.name, icon: s.icon, badge: $spellRanks[s.name] != null ? toRoman($spellRanks[s.name]) : null }));
   });
 
-  function placeInArmedSlot(name: string) {
+  async function placeInArmedSlot(name: string) {
     if (!armed) return;
-    setSlot(armed.book, armed.slot, name);
+    if (armed.kind === 'book') {
+      setSlot(armed.book, armed.slot, name);
+      return;
+    }
+    await placeInLoadoutSlot(armed.slot, name);
   }
 
   function onDragStart(e: DragEvent, name: string) {
@@ -310,13 +318,17 @@
     if (name) setSlot(bookIdx, slotIdx, name);
   }
 
+  function onLoadoutSlotDrop(e: DragEvent, slot: number) {
+    e.preventDefault();
+    const name = e.dataTransfer?.getData(DRAG_MIME);
+    if (name) void placeInLoadoutSlot(slot, name);
+  }
+
   // ---------------------------------------------------------- UI file import
 
   let uiFiles = $state<UiFileInfoDto[] | null>(null);
   let uiFilesError = $state<string | null>(null);
   let selectedFile = $state<string>('');
-  let parsedFile = $state<ParsedUiFileDto | null>(null);
-  let parsedFileError = $state<string | null>(null);
 
   // why: only the real hotbutton-content files matter here -- the
   // `UI_...` layout files (window position/size, never contents) have
@@ -333,33 +345,124 @@
       .catch((e) => (uiFilesError = e instanceof Error ? e.message : String(e)));
   });
 
+  function fileLabel(f: UiFileInfoDto): string {
+    return `${f.character} — ${f.zone}${f.is_backup ? ' (backup)' : ''}`;
+  }
+
+  // ---------------------------------------------------------- real spellbook loadouts
+  //
+  // why: the game's own [SpellLoadouts] section, in the same file
+  // fileLabel/loadFile pick above -- real, confirmed-by-reading-the-
+  // actual-files data (spellbookfiles.rs's own doc has the numbers).
+  // Loaded once per file pick, edited in place (Svelte 5's own deep
+  // $state reactivity), saved back as the full 60-entry shape the
+  // backend expects -- nothing here is a plan; every edit is a real
+  // pending change to a real game file until "save" actually writes it.
+
+  let spellbookFile = $state<SpellbookFileDto | null>(null);
+  let spellbookLoadError = $state<string | null>(null);
+  let selectedLoadoutIndex = $state<number | null>(null);
+  let loadoutActionError = $state<string | null>(null);
+  let saving = $state(false);
+  let savedAt = $state<Date | null>(null);
+
+  const inUseLoadouts = $derived(spellbookFile?.loadouts.filter((l) => l.in_use) ?? []);
+  const selectedLoadout = $derived(spellbookFile?.loadouts.find((l) => l.index === selectedLoadoutIndex) ?? null);
+
   async function loadFile(file: string) {
     selectedFile = file;
-    parsedFile = null;
-    parsedFileError = null;
+    spellbookFile = null;
+    spellbookLoadError = null;
+    selectedLoadoutIndex = null;
+    savedAt = null;
     try {
-      parsedFile = await api.getUiFile(file);
+      spellbookFile = await api.loadSpellbookFile(file);
+      // why: land on the first real loadout, not a blank picker every time
+      selectedLoadoutIndex = spellbookFile.loadouts.find((l) => l.in_use)?.index ?? null;
     } catch (e) {
-      parsedFileError = e instanceof Error ? e.message : String(e);
+      spellbookLoadError = e instanceof Error ? e.message : String(e);
     }
   }
 
-  const hotButtonsSection = $derived(parsedFile?.sections.find((s) => s.name === 'HotButtons') ?? null);
+  async function placeInLoadoutSlot(slot: number, name: string) {
+    if (!selectedLoadout) return;
+    loadoutActionError = null;
+    const id = await api.resolveSpellbookSpellId(name).catch((e) => {
+      loadoutActionError = e instanceof Error ? e.message : String(e);
+      return null;
+    });
+    if (id == null) {
+      loadoutActionError ??= `"${name}" has no matching in-game spell id, from this install's own spells_us.txt -- can't place it in a real slot.`;
+      return;
+    }
+    const s = selectedLoadout.slots.find((s) => s.slot === slot);
+    if (s) {
+      s.spell_id = id;
+      s.name = name;
+      s.catalog_id = null;
+    }
+  }
 
-  function fileLabel(f: UiFileInfoDto): string {
-    return `${f.character} — ${f.zone}${f.is_backup ? ' (backup)' : ''}`;
+  function clearLoadoutSlot(slot: number) {
+    const s = selectedLoadout?.slots.find((s) => s.slot === slot);
+    if (s) {
+      s.spell_id = -1;
+      s.name = null;
+      s.catalog_id = null;
+    }
+  }
+
+  function renameLoadout(name: string) {
+    if (selectedLoadout) selectedLoadout.name = name;
+  }
+
+  function addNewLoadout() {
+    if (!spellbookFile) return;
+    loadoutActionError = null;
+    const free = spellbookFile.loadouts.find((l) => !l.in_use);
+    if (!free) {
+      loadoutActionError = 'All 60 real loadout slots this game reserves are already in use.';
+      return;
+    }
+    free.in_use = true;
+    free.name = `New Loadout ${free.index}`;
+    free.slots = Array.from({ length: 14 }, (_, i) => ({ slot: i + 1, spell_id: -1, name: null, catalog_id: null }));
+    selectedLoadoutIndex = free.index;
+  }
+
+  function deleteLoadout(index: number) {
+    const lo = spellbookFile?.loadouts.find((l) => l.index === index);
+    if (!lo) return;
+    if (!confirm(`Delete loadout "${lo.name}"? A backup of the file as it was before saving is kept alongside it either way.`)) return;
+    lo.in_use = false;
+    lo.name = null;
+    lo.slots = [];
+    if (selectedLoadoutIndex === index) selectedLoadoutIndex = null;
+  }
+
+  async function saveLoadouts() {
+    if (!spellbookFile) return;
+    saving = true;
+    loadoutActionError = null;
+    savedAt = null;
+    try {
+      await api.saveSpellbookFile(spellbookFile.file, spellbookFile.loadouts);
+      savedAt = new Date();
+    } catch (e) {
+      loadoutActionError = e instanceof Error ? e.message : String(e);
+    } finally {
+      saving = false;
+    }
   }
 </script>
 
 <div class="flex flex-col gap-3">
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5 text-[11px] text-muted-foreground">
-      Pick spells into named spellbooks (up to 14 slots -- 8 base, plus 6 more as Mnemonic Retention is leveled), purely as a plan for
-      now -- this doesn't touch your real game files yet. Which spell sits in which slot is server-tracked character state (never
-      written to a local file at all, confirmed against a real dump), so this can't read your *current* spellbook either; it's a place
-      to lay out what you want. Writing a finished spellbook back into your own hotbutton file
-      (<code class="rounded bg-muted px-1 py-0.5">&lt;Character&gt;_&lt;Zone&gt;_LO1.ini</code>) without disturbing anything else in
-      it is planned for later.
+      Pick spells into named spellbooks (up to 14 slots -- 8 base, plus 6 more as Mnemonic Retention is leveled), a free-form plan that
+      stays local to this browser -- it doesn't touch your real game files. Your live gem-slot assignment is separate, server-tracked
+      character state this can't read. What your game files *do* save locally are named loadout presets (a client-side quick-swap
+      feature) -- "Found spellbooks" below reads, edits, and writes those for real.
     </CardContent>
   </Card>
 
@@ -378,7 +481,7 @@
         </div>
         <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
           {#each book.slots as spellName, slotIdx (slotIdx)}
-            {@const isArmed = armed?.book === bookIdx && armed?.slot === slotIdx}
+            {@const isArmed = armed?.kind === 'book' && armed.book === bookIdx && armed.slot === slotIdx}
             <div class="flex flex-col gap-0.5">
               <span class="text-[9px] text-muted-foreground">{slotIdx + 1}{#if slotIdx >= BASE_SLOTS}<span title="unlocked by Mnemonic Retention">*</span>{/if}</span>
               {#if spellName}
@@ -400,7 +503,7 @@
                     : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}"
                   ondragover={(e) => e.preventDefault()}
                   ondrop={(e) => onSlotDrop(e, bookIdx, slotIdx)}
-                  onclick={() => (armed = { book: bookIdx, slot: slotIdx })}
+                  onclick={() => (armed = { kind: 'book', book: bookIdx, slot: slotIdx })}
                 >
                   {isArmed ? 'drop here' : 'empty'}
                 </button>
@@ -474,8 +577,9 @@
           {#if mode === 'buffs'}Solo/target buffs first, then{/if} your active classes first, highest usable level within (level
           {MAX_CHARACTER_LEVEL} cap -- anything above that isn't learnable yet, so it's left out).
         {/if}
-        Drag a result onto any slot above{#if armed}, or click one to fill spellbook "{books[armed.book]?.name}", slot
-        {armed.slot + 1}{/if}.
+        Drag a result onto any slot above{#if armed && armed.kind === 'book'}, or click one to fill spellbook "{books[armed.book]?.name}",
+          slot {armed.slot + 1}{:else if armed && armed.kind === 'loadout'}, or click one to fill "{selectedLoadout?.name}", slot
+          {armed.slot}{/if}.
       </p>
       {#if mode === 'rank10' && rank10Error}
         <p class="text-[12px] text-destructive">{rank10Error}</p>
@@ -518,18 +622,19 @@
 
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
-      <h2 class="panel-title mb-1.5">Your hotbutton files</h2>
+      <h2 class="panel-title mb-1.5">Found spellbooks</h2>
       <p class="mb-2 text-[11px] text-muted-foreground">
-        Read-only for now -- browse what's actually in your own <code class="rounded bg-muted px-1 py-0.5">&lt;Character&gt;_&lt;Zone&gt;_LO1.ini</code>
-        files, the ones that actually hold hotbutton assignments (their `UI_`-prefixed counterparts are window layout only, never
-        contents, so they're left out of this list).
+        Loads the real, saved spell loadouts from your own <code class="rounded bg-muted px-1 py-0.5">&lt;Character&gt;_&lt;Zone&gt;_LO1.ini</code>
+        file (their `UI_`-prefixed counterparts are window layout only, never contents, so they're left out of this list). Edit slots
+        below and hit save to write the change back -- a backup of the file as it was before your most recent save is always kept
+        alongside it, named the same plus <code class="rounded bg-muted px-1 py-0.5">.eqlp-backup</code>.
       </p>
       {#if uiFilesError}
         <p class="text-[12px] text-destructive">{uiFilesError}</p>
       {:else if !hotbuttonFiles}
         <p class="text-[12px] text-muted-foreground">Loading…</p>
       {:else if !hotbuttonFiles.length}
-        <p class="text-[12px] text-muted-foreground">No hotbutton files found in your game folder yet.</p>
+        <p class="text-[12px] text-muted-foreground">No spellbook files found in your game folder yet.</p>
       {:else}
         <Select.Root type="single" value={selectedFile} onValueChange={(v) => v && loadFile(v)}>
           <Select.Trigger class="h-7 w-72 text-[12px]">{selectedFile ? fileLabel(hotbuttonFiles.find((f) => f.file === selectedFile)!) : 'choose a file…'}</Select.Trigger>
@@ -540,30 +645,86 @@
           </Select.Content>
         </Select.Root>
 
-        {#if parsedFileError}
-          <p class="mt-2 text-[12px] text-destructive">{parsedFileError}</p>
-        {:else if parsedFile}
-          {#if parsedFile.skipped_garbage_lines > 10}
-            <p class="mt-2 text-[11px] text-caution">
-              Heads up: this file has {parsedFile.skipped_garbage_lines} lines of unrelated text before its first real section. The real
-              settings after it still parsed fine.
-            </p>
+        {#if spellbookLoadError}
+          <p class="mt-2 text-[12px] text-destructive">{spellbookLoadError}</p>
+        {:else if spellbookFile}
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <Select.Root
+              type="single"
+              value={selectedLoadoutIndex != null ? String(selectedLoadoutIndex) : ''}
+              onValueChange={(v) => (selectedLoadoutIndex = v ? Number(v) : null)}
+            >
+              <Select.Trigger class="h-7 w-56 text-[12px]">
+                {selectedLoadout ? `${selectedLoadout.name} (#${selectedLoadout.index})` : 'choose a loadout…'}
+              </Select.Trigger>
+              <Select.Content>
+                {#each inUseLoadouts as lo (lo.index)}
+                  <Select.Item value={String(lo.index)}>{lo.name} (#{lo.index})</Select.Item>
+                {/each}
+              </Select.Content>
+            </Select.Root>
+            <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={addNewLoadout}>+ new loadout</Button>
+            <span class="text-[11px] text-muted-foreground">{inUseLoadouts.length}/60 in use</span>
+          </div>
+
+          {#if loadoutActionError}
+            <p class="mt-2 text-[12px] text-destructive">{loadoutActionError}</p>
           {/if}
-          {#if hotButtonsSection}
-            <div class="mt-2 max-h-64 overflow-y-auto">
-              <table class="w-full text-[11px]">
-                <tbody>
-                  {#each hotButtonsSection.entries as [key, value] (key)}
-                    <tr class="border-b border-border/50">
-                      <td class="px-2 py-0.5 text-muted-foreground">{key}</td>
-                      <td class="px-2 py-0.5 font-mono">{value}</td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
+
+          {#if selectedLoadout}
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <Input
+                value={selectedLoadout.name ?? ''}
+                oninput={(e) => renameLoadout(e.currentTarget.value)}
+                class="h-7 max-w-48 text-[12px]"
+              />
+              <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={saveLoadouts} disabled={saving}>
+                {saving ? 'saving…' : 'save to file'}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                class="h-7 text-[11px] text-destructive"
+                onclick={() => selectedLoadout && deleteLoadout(selectedLoadout.index)}
+              >
+                delete loadout
+              </Button>
+              {#if savedAt}
+                <span class="text-[11px] text-muted-foreground">saved {savedAt.toLocaleTimeString()}</span>
+              {/if}
             </div>
-          {:else}
-            <p class="mt-2 text-[11px] text-muted-foreground">No [HotButtons] section found -- {parsedFile.sections.length} other section(s) in this file.</p>
+            <div class="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-7">
+              {#each selectedLoadout.slots as s (s.slot)}
+                {@const isArmed = armed?.kind === 'loadout' && armed.slot === s.slot}
+                <div class="flex flex-col gap-0.5">
+                  <span class="text-[9px] text-muted-foreground">{s.slot}</span>
+                  {#if s.name}
+                    <button
+                      type="button"
+                      class="flex h-10 flex-col items-center justify-center rounded-sm border border-primary/40 bg-primary/10 px-1 text-center text-[10px] text-foreground hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+                      title={s.catalog_id ? 'click to clear' : 'click to clear (not found in Game Data)'}
+                      ondragover={(e) => e.preventDefault()}
+                      ondrop={(e) => onLoadoutSlotDrop(e, s.slot)}
+                      onclick={() => clearLoadoutSlot(s.slot)}
+                    >
+                      {s.name}
+                    </button>
+                  {:else}
+                    <button
+                      type="button"
+                      class="flex h-10 items-center justify-center rounded-sm border border-dashed text-[10px] {isArmed
+                        ? 'border-primary text-primary'
+                        : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}"
+                      ondragover={(e) => e.preventDefault()}
+                      ondrop={(e) => onLoadoutSlotDrop(e, s.slot)}
+                      onclick={() => (armed = { kind: 'loadout', slot: s.slot })}
+                    >
+                      {isArmed ? 'drop here' : 'empty'}
+                    </button>
+                  {/if}
+                </div>
+              {/each}
+            </div>
           {/if}
         {/if}
       {/if}

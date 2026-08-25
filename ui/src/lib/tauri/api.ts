@@ -304,6 +304,34 @@ export interface ParsedUiFileDto {
   skipped_garbage_lines: number;
 }
 
+/** why: one real slot in a saved [SpellLoadouts] entry -- see spellbookfiles.rs's own doc.
+ * Named LoadoutSlotDto, not SpellSlotDto -- that name's already taken by SpellDto's own raw
+ * wiki-slot-text shape below, a completely different thing. */
+export interface LoadoutSlotDto {
+  slot: number;
+  /** why: -1 is the real "empty" sentinel the game's own files use */
+  spell_id: number;
+  /** why: resolved via the install folder's own spells_us.txt; null for an empty slot */
+  name: string | null;
+  /** why: packs/spells.json's own id, best-effort name match -- null is common, not an error */
+  catalog_id: string | null;
+}
+
+export interface SpellLoadoutDto {
+  index: number;
+  in_use: boolean;
+  name: string | null;
+  /** why: always 14 long when in_use, empty when not */
+  slots: LoadoutSlotDto[];
+}
+
+export interface SpellbookFileDto {
+  file: string;
+  /** why: always all 60 real loadout slots, most typically unused -- save_spellbook_file
+   * expects the same full shape back */
+  loadouts: SpellLoadoutDto[];
+}
+
 export interface CostModifier {
   kind: string;
   scope: string;
@@ -1072,6 +1100,19 @@ export const api = {
   listUiFiles: () => invoke<UiFileInfoDto[]>('list_ui_files'),
   /** why: one UI file's real content, read-only */
   getUiFile: (file: string) => invoke<ParsedUiFileDto>('get_ui_file', { file }),
+
+  /** why: a real character's saved spell loadouts -- `file` is one of listUiFiles's own
+   * "hotbuttons"-kind entries, the non-UI_-prefixed one (that's where loadouts live) */
+  loadSpellbookFile: (file: string) => invoke<SpellbookFileDto>('load_spellbook_file', { file }),
+
+  /** why: writes back exactly what loadSpellbookFile returned (after edits) -- a real write
+   * to a real game file, backed up first (see spellbookfiles.rs's own doc) */
+  saveSpellbookFile: (file: string, loadouts: SpellLoadoutDto[]) =>
+    invoke<void>('save_spellbook_file', { file, loadouts }),
+
+  /** why: resolves a catalog spell name to its real numeric id, for placing it into a loadout
+   * slot -- null means spells_us.txt has no exact-name entry (real, ~7% of the catalog) */
+  resolveSpellbookSpellId: (name: string) => invoke<number | null>('resolve_spellbook_spell_id', { name }),
 
   // -------------------------------------------------------------- preferences
 
