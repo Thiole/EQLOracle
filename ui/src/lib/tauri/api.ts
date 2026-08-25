@@ -1110,6 +1110,11 @@ export const api = {
   saveSpellbookFile: (file: string, loadouts: SpellLoadoutDto[]) =>
     invoke<void>('save_spellbook_file', { file, loadouts }),
 
+  /** why: forks sourceFile's pair (hotbuttons + its UI_ layout counterpart) under a new
+   * <Character>_<Zone> stem, leaving sourceFile untouched -- returns the new hotbuttons filename */
+  saveSpellbookFileAs: (sourceFile: string, newStem: string, loadouts: SpellLoadoutDto[]) =>
+    invoke<string>('save_spellbook_file_as', { sourceFile, newStem, loadouts }),
+
   /** why: resolves a catalog spell name to its real numeric id, for placing it into a loadout
    * slot -- null means spells_us.txt has no exact-name entry (real, ~7% of the catalog) */
   resolveSpellbookSpellId: (name: string) => invoke<number | null>('resolve_spellbook_spell_id', { name }),

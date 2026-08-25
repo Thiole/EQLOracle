@@ -195,17 +195,10 @@ pub fn resolve_spell_id(base_dir: &Path, name: &str) -> Option<i64> {
         .copied()
 }
 
-/// why: replaces only the [SpellLoadouts] block, byte-for-byte
-/// preserving every other section -- HotButtons/Combat/etc. use a much
-/// denser trailing-field encoding this app has never needed to fully
-/// nail down (see uifiles.rs's own doc), so this never touches them.
-/// Always writes exactly MAX_LOADOUTS entries -- rejects a mismatched
-/// shape rather than silently writing a file the real client can't read.
-pub fn save_spellbook(
-    base_dir: &Path,
-    file: &str,
-    loadouts: &[SpellLoadoutDto],
-) -> Result<(), String> {
+/// why: shared by save_spellbook and save_spellbook_as -- always writes
+/// exactly MAX_LOADOUTS entries, rejects a mismatched shape rather than
+/// silently writing a file the real client can't read.
+fn validate_loadouts_shape(loadouts: &[SpellLoadoutDto]) -> Result<(), String> {
     if loadouts.len() != MAX_LOADOUTS as usize {
         return Err(format!(
             "expected exactly {MAX_LOADOUTS} loadout entries, got {}",
@@ -233,16 +226,15 @@ pub fn save_spellbook(
             }
         }
     }
+    Ok(())
+}
 
-    let path = uifiles::ui_file_path(base_dir, file).map_err(|e| e.to_string())?;
-    let original = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-
-    // why: last-known-good copy before eqlp touches a real game config
-    // file -- overwritten every save, so it's always "the version before
-    // eqlp's most recent edit," not a growing pile
-    let backup_path = PathBuf::from(format!("{}.eqlp-backup", path.display()));
-    std::fs::write(&backup_path, &original).map_err(|e| e.to_string())?;
-
+/// why: shared by save_spellbook and save_spellbook_as -- rebuilds the
+/// [SpellLoadouts] block from `loadouts`, byte-for-byte preserving every
+/// other section of `original` -- HotButtons/Combat/etc. use a much
+/// denser trailing-field encoding this app has never needed to fully
+/// nail down (see uifiles.rs's own doc), so this never touches them.
+fn splice_spell_loadouts_block(original: &str, loadouts: &[SpellLoadoutDto]) -> String {
     let lines: Vec<&str> = original.lines().collect();
     let section_start = lines.iter().position(|l| l.trim() == "[SpellLoadouts]");
     let (before, after): (Vec<&str>, Vec<&str>) = match section_start {
@@ -284,7 +276,85 @@ pub fn save_spellbook(
     new_lines.extend(after.iter().map(|s| s.to_string()));
     let mut new_text = new_lines.join("\n");
     new_text.push('\n');
+    new_text
+}
+
+/// why: overwrites the currently loaded file in place.
+pub fn save_spellbook(
+    base_dir: &Path,
+    file: &str,
+    loadouts: &[SpellLoadoutDto],
+) -> Result<(), String> {
+    validate_loadouts_shape(loadouts)?;
+
+    let path = uifiles::ui_file_path(base_dir, file).map_err(|e| e.to_string())?;
+    let original = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+
+    // why: last-known-good copy before eqlp touches a real game config
+    // file -- overwritten every save, so it's always "the version before
+    // eqlp's most recent edit," not a growing pile
+    let backup_path = PathBuf::from(format!("{}.eqlp-backup", path.display()));
+    std::fs::write(&backup_path, &original).map_err(|e| e.to_string())?;
+
+    let new_text = splice_spell_loadouts_block(&original, loadouts);
     std::fs::write(&path, new_text).map_err(|e| e.to_string())
+}
+
+/// why: real "save as" -- forks the current file pair (hotbuttons +
+/// its `UI_`-prefixed layout counterpart) under a new `<Character>_
+/// <Zone>` name, with the edited loadouts spliced in. The layout file
+/// (window position/size, never spell contents) copies over verbatim --
+/// there's nothing loadout-related in it to edit. Refuses to clobber an
+/// existing pair: this is a fork, never an overwrite (that's what
+/// save_spellbook is for).
+pub fn save_spellbook_as(
+    base_dir: &Path,
+    source_file: &str,
+    new_stem: &str,
+    loadouts: &[SpellLoadoutDto],
+) -> Result<String, String> {
+    validate_loadouts_shape(loadouts)?;
+
+    // why: the game's own naming scheme is exactly two `_`-delimited,
+    // underscore-free segments (see uifiles.rs's name_pattern) -- a
+    // stem that doesn't fit would produce a file the real client's own
+    // UI file picker wouldn't recognize as a character/zone pair.
+    match new_stem.split_once('_') {
+        Some((c, z)) if !c.is_empty() && !z.is_empty() && !z.contains('_') => {}
+        _ => {
+            return Err(format!(
+                "\"{new_stem}\" doesn't match the game's own <Character>_<Zone> naming -- exactly one underscore, no others"
+            ));
+        }
+    }
+
+    let new_hotbuttons = format!("{new_stem}_LO1.ini");
+    let new_layout = format!("UI_{new_stem}_LO1.ini");
+    let new_hotbuttons_path =
+        uifiles::ui_file_path(base_dir, &new_hotbuttons).map_err(|e| e.to_string())?;
+    let new_layout_path =
+        uifiles::ui_file_path(base_dir, &new_layout).map_err(|e| e.to_string())?;
+    if new_hotbuttons_path.exists() || new_layout_path.exists() {
+        return Err(format!(
+            "\"{new_stem}\" already has a saved file -- pick a different name"
+        ));
+    }
+
+    let source_path = uifiles::ui_file_path(base_dir, source_file).map_err(|e| e.to_string())?;
+    let original = std::fs::read_to_string(&source_path).map_err(|e| e.to_string())?;
+    let new_text = splice_spell_loadouts_block(&original, loadouts);
+    std::fs::write(&new_hotbuttons_path, new_text).map_err(|e| e.to_string())?;
+
+    // why: best-effort -- the source may genuinely have no paired layout
+    // file yet (the game only writes UI_ once a window's actually been
+    // moved), missing one is not a reason to fail the whole save
+    if let Ok(source_layout_path) = uifiles::ui_file_path(base_dir, &format!("UI_{source_file}")) {
+        if let Ok(layout_text) = std::fs::read_to_string(&source_layout_path) {
+            let _ = std::fs::write(&new_layout_path, layout_text);
+        }
+    }
+
+    Ok(new_hotbuttons)
 }
 
 #[cfg(test)]
@@ -406,6 +476,73 @@ mod tests {
         assert_eq!(
             reloaded.loadouts[0].slots[3].name.as_deref(),
             Some("Resist Fire")
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn save_as_forks_the_file_pair_under_a_new_name_leaving_the_source_untouched() {
+        let dir = scratch_dir("save_as");
+        write_spells_us(&dir);
+        std::fs::write(
+            dir.join("Manipulator_rivervale_LO1.ini"),
+            minimal_loadouts_ini(),
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("UI_Manipulator_rivervale_LO1.ini"),
+            "[Main]\nUISkin=default_modern\n",
+        )
+        .unwrap();
+
+        let mut sb = load_spellbook(&dir, "Manipulator_rivervale_LO1.ini").unwrap();
+        sb.loadouts[0].name = Some("Forked Loadout".to_string());
+
+        let new_file = save_spellbook_as(
+            &dir,
+            "Manipulator_rivervale_LO1.ini",
+            "Alt_rivervale",
+            &sb.loadouts,
+        )
+        .unwrap();
+        assert_eq!(new_file, "Alt_rivervale_LO1.ini");
+
+        let forked = load_spellbook(&dir, "Alt_rivervale_LO1.ini").unwrap();
+        assert_eq!(forked.loadouts[0].name.as_deref(), Some("Forked Loadout"));
+
+        let forked_layout = std::fs::read_to_string(dir.join("UI_Alt_rivervale_LO1.ini")).unwrap();
+        assert!(
+            forked_layout.contains("UISkin=default_modern"),
+            "layout file copied verbatim"
+        );
+
+        let source = load_spellbook(&dir, "Manipulator_rivervale_LO1.ini").unwrap();
+        assert_eq!(
+            source.loadouts[0].name.as_deref(),
+            Some("buff-Others"),
+            "source file left untouched"
+        );
+
+        assert!(
+            save_spellbook_as(
+                &dir,
+                "Manipulator_rivervale_LO1.ini",
+                "Alt_rivervale",
+                &sb.loadouts
+            )
+            .is_err(),
+            "refuses to clobber an existing pair"
+        );
+        assert!(
+            save_spellbook_as(
+                &dir,
+                "Manipulator_rivervale_LO1.ini",
+                "NoZoneSeparator",
+                &sb.loadouts
+            )
+            .is_err(),
+            "refuses a stem with no <Character>_<Zone> separator"
         );
 
         std::fs::remove_dir_all(&dir).ok();

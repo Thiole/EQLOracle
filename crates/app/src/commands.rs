@@ -1217,6 +1217,27 @@ pub fn save_spellbook_file(
     spellbookfiles::save_spellbook(&base_dir, &file, &loadouts)
 }
 
+/// why: real "save as" -- forks `source_file`'s pair (hotbuttons + its
+/// `UI_` layout counterpart) under a new `<Character>_<Zone>` stem,
+/// never touching the source. See spellbookfiles::save_spellbook_as.
+#[tauri::command]
+pub fn save_spellbook_file_as(
+    state: State<AppState>,
+    source_file: String,
+    new_stem: String,
+    loadouts: Vec<spellbookfiles::SpellLoadoutDto>,
+) -> Result<String, String> {
+    let base_dir = state
+        .config
+        .lock()
+        .unwrap()
+        .as_ref()
+        .ok_or("no install folder configured yet")?
+        .base_dir
+        .clone();
+    spellbookfiles::save_spellbook_as(&base_dir, &source_file, &new_stem, &loadouts)
+}
+
 /// why: resolves a catalog spell's real numeric id, for placing it into
 /// a loadout slot -- None means spells_us.txt has no exact-name entry,
 /// not that the frontend did anything wrong

@@ -15,52 +15,13 @@
   import { api, type UiFileInfoDto, type SpellDto, type DamageSpellDto, type SpellbookFileDto } from '$lib/tauri/api';
   import { status } from '$lib/stores/status';
 
-  // why: a spellbook holds up to 14 spells -- 8 base slots plus up to 6
-  // more unlocked by the Mnemonic Retention AA (1 extra slot per AA
-  // level, 6 levels total). This is the spellbook itself (which spells
-  // are known/slotted), not the hotkey/action bars -- a separate, later
-  // concept this doesn't model.
-  const BASE_SLOTS = 8;
-  const MNEMONIC_RETENTION_LEVELS = 6;
-  const DEFAULT_SLOTS = BASE_SLOTS + MNEMONIC_RETENTION_LEVELS;
-  const STORAGE_KEY = 'eqlp-spellbook-builder-v2';
-  // why: what a dragged spell's own dataTransfer payload is tagged with
-  // -- scoped so dropping something dragged in from elsewhere in the OS
-  // (a stray text selection, say) can't silently fill a slot.
+  // why: a real loadout holds up to 14 spells -- 8 base slots plus up to
+  // 6 more unlocked by the Mnemonic Retention AA (1 extra slot per AA
+  // level, 6 levels total) -- matches spellbookfiles.rs's own MAX_SLOTS.
+  // what a dragged spell's own dataTransfer payload is tagged with --
+  // scoped so dropping something dragged in from elsewhere in the OS (a
+  // stray text selection, say) can't silently fill a slot.
   const DRAG_MIME = 'application/x-eqlp-spell';
-
-  interface Spellbook {
-    name: string;
-    slots: (string | null)[];
-  }
-
-  function loadBooks(): Spellbook[] {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as Spellbook[];
-        // why: pad any book saved under an older, smaller slot count up
-        // to today's default rather than silently dropping/truncating.
-        return saved.map((b) => ({ ...b, slots: [...b.slots, ...Array(Math.max(0, DEFAULT_SLOTS - b.slots.length)).fill(null)] }));
-      }
-    } catch {
-      // why: a private window, cleared site data, or a browser blocking
-      // storage access all read as "nothing saved yet" -- never a
-      // reason to fail the whole page.
-    }
-    return [{ name: 'Spellbook 1', slots: Array(DEFAULT_SLOTS).fill(null) }];
-  }
-
-  let books = $state<Spellbook[]>(loadBooks());
-
-  $effect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(books));
-    } catch {
-      // why: same as loadBooks -- a save that can't land shouldn't throw
-      // and break the page; the plan just stays session-only this time.
-    }
-  });
 
   // why: display only -- `spellRanks` (and the backend) deal in plain
   // integers, but the game itself always shows a rank as a roman
@@ -83,107 +44,12 @@
     return out || String(n);
   }
 
-  function addBook() {
-    books = [...books, { name: `Spellbook ${books.length + 1}`, slots: Array(DEFAULT_SLOTS).fill(null) }];
-  }
-
-  function removeBook(i: number) {
-    books = books.filter((_, idx) => idx !== i);
-  }
-
-  function renameBook(i: number, name: string) {
-    books = books.map((b, idx) => (idx === i ? { ...b, name } : b));
-  }
-
-  function setSlot(bookIdx: number, slotIdx: number, name: string | null) {
-    books = books.map((b, idx) => (idx === bookIdx ? { ...b, slots: b.slots.map((s, si) => (si === slotIdx ? name : s)) } : b));
-  }
-
-  function clearBook(bookIdx: number) {
-    books = books.map((b, idx) => (idx === bookIdx ? { ...b, slots: b.slots.map(() => null) } : b));
-  }
-
-  // why: fills only empty slots, in order -- never overwrites a manual
-  // pick; that's exactly why `clear` exists as its own separate button.
-  function fillEmptySlots(bookIdx: number, names: string[]) {
-    let i = 0;
-    books = books.map((b, idx) => {
-      if (idx !== bookIdx) return b;
-      return {
-        ...b,
-        slots: b.slots.map((s) => (s == null && i < names.length ? names[i++] : s)),
-      };
-    });
-  }
-
-  function emptySlotCount(bookIdx: number): number {
-    return books[bookIdx]?.slots.filter((s) => s == null).length ?? 0;
-  }
-
-  function bookNames(bookIdx: number): string[] {
-    return (books[bookIdx]?.slots ?? []).filter((s): s is string => s != null);
-  }
-
-  function suggestSoloBuff(bookIdx: number) {
-    const count = emptySlotCount(bookIdx);
-    if (count <= 0) return;
-    const pool = $spells.filter((s) => isUsable(s) && isBuff(s) && isSoloTarget(s));
-    const picks = pickBuffSuggestions(
-      pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, $spellLineOverrides, $spellLineCustomMembership,
-    );
-    fillEmptySlots(bookIdx, picks);
-  }
-
-  function suggestTeamBuff(bookIdx: number) {
-    const count = emptySlotCount(bookIdx);
-    if (count <= 0) return;
-    const pool = $spells.filter((s) => isUsable(s) && isBuff(s) && isTeamTarget(s));
-    const picks = pickBuffSuggestions(
-      pool, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, $spellLineOverrides, $spellLineCustomMembership,
-    );
-    fillEmptySlots(bookIdx, picks);
-  }
-
-  // why: leads with the actual DPS-optimal rotation (real damage math,
-  // real weaving), then tops up with support -- crowd control and
-  // target-independent debuffs first, a resist debuff only if it
-  // actually strips a type the rotation's own damage checks (real
-  // correction: level alone isn't the right axis, see
-  // pickSupportSuggestions' own doc).
-  function suggestCombat(bookIdx: number) {
-    let count = emptySlotCount(bookIdx);
-    if (count <= 0) return;
-    const usableDamage = $damageSpells.filter((s) => usableByClasses(s.classes, $activeClasses));
-    const { sequence } = simulateRotation(usableDamage, 60);
-    const distinct: string[] = [];
-    for (const s of sequence) {
-      if (!distinct.includes(s.name)) distinct.push(s.name);
-    }
-    const rotationPicks = distinct.slice(0, count);
-    fillEmptySlots(bookIdx, rotationPicks);
-    count = emptySlotCount(bookIdx);
-    if (count <= 0) return;
-    const damageSpellNames = new Set($damageSpells.map((s) => s.name));
-    const rotationResistTypes = new Set(
-      usableDamage.map((s) => resistTypeOf(s.resist)).filter((t): t is string => t != null),
-    );
-    const supportPicks = pickSupportSuggestions(
-      $spells, $spellEffects, $activeClasses, bookNames(bookIdx), count, $spellStackingGroups, damageSpellNames,
-      $spellLineOverrides, $spellLineCustomMembership, rotationResistTypes,
-    );
-    fillEmptySlots(bookIdx, supportPicks);
-  }
-
   // why: which slot a click (not a drag) should land in -- drag/drop
   // targets its own drop point directly and never touches this; this is
-  // only for the click-a-result fallback, for anyone/anywhere drag
-  // doesn't work well. Two kinds share one search/picker below: a
-  // virtual planning-book slot (name only, local state) or a real
-  // loadout slot (needs the name resolved to a real numeric id first,
-  // see placeInArmedSlot).
-  type Armed =
-    | { kind: 'book'; book: number; slot: number }
-    | { kind: 'loadout'; loadoutIndex: number; slot: number };
+  // only for the click-a-result fallback, for anyone drag doesn't work
+  // well for. The name still needs resolving to a real numeric id
+  // before it can land in a slot -- see placeInArmedSlot.
+  type Armed = { loadoutIndex: number; slot: number };
   let armed = $state<Armed | null>(null);
 
   let search = $state('');
@@ -297,10 +163,6 @@
 
   async function placeInArmedSlot(name: string) {
     if (!armed) return;
-    if (armed.kind === 'book') {
-      setSlot(armed.book, armed.slot, name);
-      return;
-    }
     await placeInLoadoutSlot(armed.loadoutIndex, armed.slot, name);
   }
 
@@ -313,12 +175,6 @@
     // just the icon itself instead, at a small fixed size.
     const icon = (e.currentTarget as HTMLElement).querySelector('img');
     if (icon) e.dataTransfer?.setDragImage(icon, 8, 8);
-  }
-
-  function onSlotDrop(e: DragEvent, bookIdx: number, slotIdx: number) {
-    e.preventDefault();
-    const name = e.dataTransfer?.getData(DRAG_MIME);
-    if (name) setSlot(bookIdx, slotIdx, name);
   }
 
   function onLoadoutSlotDrop(e: DragEvent, loadoutIndex: number, slot: number) {
@@ -396,6 +252,41 @@
   let saving = $state(false);
   let savedAt = $state<Date | null>(null);
 
+  // why: "save as" forks the current file pair under a new name instead
+  // of overwriting it -- a small inline box (not a full dialog, nothing
+  // else here needs one) for the one field it actually needs.
+  let showSaveAsBox = $state(false);
+  let newStemInput = $state('');
+  let savingAs = $state(false);
+  let saveAsError = $state<string | null>(null);
+
+  function openSaveAsBox() {
+    newStemInput = '';
+    saveAsError = null;
+    showSaveAsBox = true;
+  }
+
+  async function saveLoadoutsAsNewFile() {
+    if (!spellbookFile) return;
+    const stem = newStemInput.trim();
+    if (!stem) {
+      saveAsError = 'Name it Character_Zone, matching the game\'s own file naming.';
+      return;
+    }
+    savingAs = true;
+    saveAsError = null;
+    try {
+      const newFile = await api.saveSpellbookFileAs(spellbookFile.file, stem, spellbookFile.loadouts);
+      uiFiles = await api.listUiFiles();
+      showSaveAsBox = false;
+      await loadFile(newFile);
+    } catch (e) {
+      saveAsError = e instanceof Error ? e.message : String(e);
+    } finally {
+      savingAs = false;
+    }
+  }
+
   // why: every real loadout the file has, all loaded and shown at once
   // (not one picked at a time) -- direct correction: "load them all at
   // once, as the successive spellbooks, so when I save to file, it
@@ -455,6 +346,89 @@
     if (lo) lo.name = name;
   }
 
+  function loadoutNames(lo: SpellbookFileDto['loadouts'][number]): string[] {
+    return lo.slots.filter((s) => s.name != null).map((s) => s.name as string);
+  }
+
+  function loadoutEmptySlotCount(lo: SpellbookFileDto['loadouts'][number]): number {
+    return lo.slots.filter((s) => s.name == null).length;
+  }
+
+  // why: real, one-click "start over" for a loadout -- pairs with the
+  // suggest buttons below, which only ever fill empty slots (never
+  // overwrite a manual pick); clear-then-suggest is the easy overwrite.
+  function clearLoadout(loadoutIndex: number) {
+    const lo = loadoutByIndex(loadoutIndex);
+    if (!lo) return;
+    for (const s of lo.slots) clearLoadoutSlot(loadoutIndex, s.slot);
+  }
+
+  // why: each placement is its own real id-resolution round trip (same
+  // as a manual drop), done in slot order so it never disturbs a slot
+  // that already has something in it.
+  async function fillLoadoutEmptySlots(loadoutIndex: number, names: string[]) {
+    const lo = loadoutByIndex(loadoutIndex);
+    if (!lo) return;
+    let i = 0;
+    for (const s of lo.slots) {
+      if (s.name == null && i < names.length) await placeInLoadoutSlot(loadoutIndex, s.slot, names[i++]);
+    }
+  }
+
+  // why: these three mirror the old virtual-book suggest buttons, now
+  // applied directly to a real loadout instead of a separate local-only
+  // planning copy -- filtered by whichever classes are toggled in
+  // Suggested spells below (selectedClasses), same as its own search
+  // results, not the character's fixed active-class trio.
+  async function suggestLoadoutSoloBuff(loadoutIndex: number) {
+    const lo = loadoutByIndex(loadoutIndex);
+    if (!lo) return;
+    const count = loadoutEmptySlotCount(lo);
+    if (count <= 0) return;
+    const pool = $spells.filter((s) => isUsable(s) && isBuff(s) && isSoloTarget(s));
+    const picks = pickBuffSuggestions(
+      pool, selectedClasses, loadoutNames(lo), count, $spellStackingGroups, $spellLineOverrides, $spellLineCustomMembership,
+    );
+    await fillLoadoutEmptySlots(loadoutIndex, picks);
+  }
+
+  async function suggestLoadoutTeamBuff(loadoutIndex: number) {
+    const lo = loadoutByIndex(loadoutIndex);
+    if (!lo) return;
+    const count = loadoutEmptySlotCount(lo);
+    if (count <= 0) return;
+    const pool = $spells.filter((s) => isUsable(s) && isBuff(s) && isTeamTarget(s));
+    const picks = pickBuffSuggestions(
+      pool, selectedClasses, loadoutNames(lo), count, $spellStackingGroups, $spellLineOverrides, $spellLineCustomMembership,
+    );
+    await fillLoadoutEmptySlots(loadoutIndex, picks);
+  }
+
+  async function suggestLoadoutCombat(loadoutIndex: number) {
+    const lo = loadoutByIndex(loadoutIndex);
+    if (!lo) return;
+    let count = loadoutEmptySlotCount(lo);
+    if (count <= 0) return;
+    const usableDamage = $damageSpells.filter((s) => usableByClasses(s.classes, selectedClasses));
+    const { sequence } = simulateRotation(usableDamage, 60);
+    const distinct: string[] = [];
+    for (const s of sequence) {
+      if (!distinct.includes(s.name)) distinct.push(s.name);
+    }
+    await fillLoadoutEmptySlots(loadoutIndex, distinct.slice(0, count));
+    count = loadoutEmptySlotCount(lo);
+    if (count <= 0) return;
+    const damageSpellNames = new Set($damageSpells.map((s) => s.name));
+    const rotationResistTypes = new Set(
+      usableDamage.map((s) => resistTypeOf(s.resist)).filter((t): t is string => t != null),
+    );
+    const supportPicks = pickSupportSuggestions(
+      $spells, $spellEffects, selectedClasses, loadoutNames(lo), count, $spellStackingGroups, damageSpellNames,
+      $spellLineOverrides, $spellLineCustomMembership, rotationResistTypes,
+    );
+    await fillLoadoutEmptySlots(loadoutIndex, supportPicks);
+  }
+
   function addNewLoadout() {
     if (!spellbookFile) return;
     loadoutActionError = null;
@@ -496,10 +470,10 @@
 <div class="flex flex-col gap-3">
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5 text-[11px] text-muted-foreground">
-      Pick spells into named spellbooks (up to 14 slots -- 8 base, plus 6 more as Mnemonic Retention is leveled), a free-form plan that
-      stays local to this browser -- it doesn't touch your real game files. Your live gem-slot assignment is separate, server-tracked
-      character state this can't read. What your game files *do* save locally are named loadout presets (a client-side quick-swap
-      feature) -- "Found spellbooks" above reads, edits, and writes those for real.
+      Reads, edits, and writes your game's own named spellbook-loadout presets -- a real, client-side quick-swap feature saved in your
+      <code class="rounded bg-muted px-1 py-0.5">&lt;Character&gt;_&lt;Zone&gt;_LO1.ini</code> file, up to 14 slots each (8 base, plus 6
+      more as Mnemonic Retention is leveled). Your live gem-slot assignment is separate, server-tracked character state this can't read
+      or write.
     </CardContent>
   </Card>
 
@@ -539,7 +513,10 @@
                hiding the rest behind a picker. -->
           <div class="mt-2 flex flex-wrap items-center gap-2">
             <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={saveLoadouts} disabled={saving}>
-              {saving ? 'saving…' : `save all ${inUseLoadouts.length} to file`}
+              {saving ? 'overwriting…' : `overwrite ${inUseLoadouts.length} to file`}
+            </Button>
+            <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={openSaveAsBox}>
+              save {inUseLoadouts.length} new file
             </Button>
             <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={addNewLoadout}>+ new loadout</Button>
             <span class="text-[11px] text-muted-foreground">{inUseLoadouts.length}/60 loadout slots in use</span>
@@ -547,6 +524,30 @@
               <span class="text-[11px] text-muted-foreground">saved {savedAt.toLocaleTimeString()}</span>
             {/if}
           </div>
+
+          {#if showSaveAsBox}
+            <!-- why: real fork, not an overwrite -- copies the source
+                 file's other data (HotButtons/Combat/etc.) and its UI_
+                 layout counterpart to the new name too, so the new pair
+                 is a complete, real, loadable file, not just a loadouts
+                 fragment. -->
+            <div class="mt-2 flex flex-wrap items-center gap-2 rounded-sm border border-border p-2">
+              <span class="text-[11px] text-muted-foreground">new file name (Character_Zone):</span>
+              <Input
+                bind:value={newStemInput}
+                placeholder="Character_Zone"
+                class="h-7 w-48 text-[12px]"
+                onkeydown={(e) => e.key === 'Enter' && saveLoadoutsAsNewFile()}
+              />
+              <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={saveLoadoutsAsNewFile} disabled={savingAs}>
+                {savingAs ? 'saving…' : 'save'}
+              </Button>
+              <Button size="sm" variant="ghost" class="h-7 text-[11px]" onclick={() => (showSaveAsBox = false)}>cancel</Button>
+              {#if saveAsError}
+                <p class="w-full text-[12px] text-destructive">{saveAsError}</p>
+              {/if}
+            </div>
+          {/if}
 
           {#if loadoutActionError}
             <p class="mt-2 text-[12px] text-destructive">{loadoutActionError}</p>
@@ -573,6 +574,16 @@
                     class="h-7 max-w-48 text-[12px]"
                   />
                   <span class="text-[11px] text-muted-foreground">#{lo.index}</span>
+                  <Button size="sm" variant="outline" class="h-6 text-[11px]" onclick={() => clearLoadout(lo.index)}>clear</Button>
+                  <Button size="sm" variant="outline" class="h-6 text-[11px]" onclick={() => suggestLoadoutSoloBuff(lo.index)}>
+                    suggest solo buff
+                  </Button>
+                  <Button size="sm" variant="outline" class="h-6 text-[11px]" onclick={() => suggestLoadoutTeamBuff(lo.index)}>
+                    suggest team buff
+                  </Button>
+                  <Button size="sm" variant="outline" class="h-6 text-[11px]" onclick={() => suggestLoadoutCombat(lo.index)}>
+                    suggest combat
+                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -584,7 +595,7 @@
                 </div>
                 <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
                   {#each lo.slots as s (s.slot)}
-                    {@const isArmed = armed?.kind === 'loadout' && armed.loadoutIndex === lo.index && armed.slot === s.slot}
+                    {@const isArmed = armed?.loadoutIndex === lo.index && armed.slot === s.slot}
                     <div class="flex flex-col gap-0.5">
                       <span class="text-[9px] text-muted-foreground">{s.slot}</span>
                       {#if s.name}
@@ -606,7 +617,7 @@
                             : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}"
                           ondragover={(e) => e.preventDefault()}
                           ondrop={(e) => onLoadoutSlotDrop(e, lo.index, s.slot)}
-                          onclick={() => (armed = { kind: 'loadout', loadoutIndex: lo.index, slot: s.slot })}
+                          onclick={() => (armed = { loadoutIndex: lo.index, slot: s.slot })}
                         >
                           {isArmed ? 'drop here' : 'empty'}
                         </button>
@@ -622,13 +633,13 @@
     </CardContent>
   </Card>
 
-  <!-- why: right below "Found spellbooks" (capped/scrollable above), not
-       after the virtual books further down -- asked directly for this:
-       the picker needs to stay in easy reach while editing any real
-       loadout, not just whichever one happens to land near the bottom
-       of the page. Still shared with the virtual books below (drag any
-       result onto any slot in either section, or click one to fill
-       whichever slot was last clicked via `armed`). -->
+  <!-- why: right below "Found spellbooks" (capped/scrollable above) --
+       asked directly for this: the picker needs to stay in easy reach
+       while editing any real loadout, not just whichever one happens to
+       land near the bottom of the page. Drag any result onto any slot
+       above, or click one to fill whichever slot was last clicked via
+       `armed`. The class toggles here also drive the suggest buttons on
+       each loadout above, not just this search list. -->
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
       <div class="mb-1.5 flex items-center justify-between gap-2">
@@ -683,9 +694,8 @@
           {#if mode === 'buffs'}Solo/target buffs first, then{/if} your active classes first, highest usable level within (level
           {MAX_CHARACTER_LEVEL} cap -- anything above that isn't learnable yet, so it's left out).
         {/if}
-        Drag a result onto any slot, above in a found spellbook or below in a planning one{#if armed && armed.kind === 'book'}, or click
-          one to fill spellbook "{books[armed.book]?.name}", slot {armed.slot + 1}{:else if armed && armed.kind === 'loadout'}, or click
-          one to fill "{loadoutByIndex(armed.loadoutIndex)?.name}", slot {armed.slot}{/if}.
+        Drag a result onto any slot above{#if armed}, or click one to fill "{loadoutByIndex(armed.loadoutIndex)?.name}", slot
+          {armed.slot}{/if}.
       </p>
       {#if mode === 'rank10' && rank10Error}
         <p class="text-[12px] text-destructive">{rank10Error}</p>
@@ -725,55 +735,4 @@
   </Card>
 
   <DpsSuggest />
-
-  {#each books as book, bookIdx (bookIdx)}
-    <Card class="rounded-sm">
-      <CardContent class="px-3 py-2.5">
-        <div class="mb-2 flex flex-wrap items-center gap-2">
-          <Input value={book.name} oninput={(e) => renameBook(bookIdx, e.currentTarget.value)} class="h-7 max-w-48 text-[12px]" />
-          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => clearBook(bookIdx)}>clear</Button>
-          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestSoloBuff(bookIdx)}>suggest solo buff</Button>
-          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestTeamBuff(bookIdx)}>suggest team buff</Button>
-          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestCombat(bookIdx)}>suggest combat</Button>
-          {#if books.length > 1}
-            <Button size="sm" variant="ghost" class="h-7 text-[11px] text-destructive" onclick={() => removeBook(bookIdx)}>remove spellbook</Button>
-          {/if}
-        </div>
-        <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
-          {#each book.slots as spellName, slotIdx (slotIdx)}
-            {@const isArmed = armed?.kind === 'book' && armed.book === bookIdx && armed.slot === slotIdx}
-            <div class="flex flex-col gap-0.5">
-              <span class="text-[9px] text-muted-foreground">{slotIdx + 1}{#if slotIdx >= BASE_SLOTS}<span title="unlocked by Mnemonic Retention">*</span>{/if}</span>
-              {#if spellName}
-                <button
-                  type="button"
-                  class="flex h-10 flex-col items-center justify-center rounded-sm border border-primary/40 bg-primary/10 px-1 text-center text-[10px] text-foreground hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
-                  title="click to clear"
-                  ondragover={(e) => e.preventDefault()}
-                  ondrop={(e) => onSlotDrop(e, bookIdx, slotIdx)}
-                  onclick={() => setSlot(bookIdx, slotIdx, null)}
-                >
-                  {spellName}{#if $spellRanks[spellName] != null}<span class="text-muted-foreground"> ({toRoman($spellRanks[spellName])})</span>{/if}
-                </button>
-              {:else}
-                <button
-                  type="button"
-                  class="flex h-10 items-center justify-center rounded-sm border border-dashed text-[10px] {isArmed
-                    ? 'border-primary text-primary'
-                    : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}"
-                  ondragover={(e) => e.preventDefault()}
-                  ondrop={(e) => onSlotDrop(e, bookIdx, slotIdx)}
-                  onclick={() => (armed = { kind: 'book', book: bookIdx, slot: slotIdx })}
-                >
-                  {isArmed ? 'drop here' : 'empty'}
-                </button>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </CardContent>
-    </Card>
-  {/each}
-
-  <Button size="sm" variant="outline" class="w-fit" onclick={addBook}>+ add spellbook</Button>
 </div>
