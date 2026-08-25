@@ -264,6 +264,14 @@ fn elimination_confirms_the_third_class_from_two_different_ambiguous_pools() {
     // class. Neither pool touches Wizard or Enchanter -- see this
     // function's sibling test for why a pool that does touch an
     // already-confirmed class can't be used this way.
+    // why: narrowing to exactly one candidate from a single visit's own
+    // pools is real evidence, but not proof by itself -- same real bug
+    // this whole corroboration requirement exists for (see classdetect
+    // module's own doc): broad pools can coincidentally intersect to a
+    // wrong class. Elimination evidence specifically needs a 3rd,
+    // independent distinct visit narrowing to the same class -- a
+    // stricter bar than an unambiguous cast's own 2, since narrowing
+    // is a much weaker signal (see MIN_ELIMINATION_CASTS's own doc).
     let mut d = with_wizard_and_enchanter_confirmed();
     // Exactly CLASS_COUNT - 1 confirmed now -- elimination can start.
     d.observe_cast(YOU, V1, &m(&["Necromancer", "Shadow Knight"])); // Lifedraw-shaped
@@ -276,8 +284,38 @@ fn elimination_confirms_the_third_class_from_two_different_ambiguous_pools() {
     d.observe_cast(YOU, V1, &m(&["Beastlord", "Magician", "Necromancer"])); // Ward of Calliav-shaped
     assert_eq!(
         d.configuration_of_visit(YOU, V1),
+        m(&["Enchanter", "Wizard"]),
+        "narrowed to Necromancer on just this one visit -- not proof by itself"
+    );
+
+    // A 2nd, distinct visit with the same two pools -- still not enough.
+    d.observe_cast(YOU, V3, &w("Wizard"));
+    d.observe_cast(YOU, V3, &w("Enchanter"));
+    d.observe_cast(YOU, V3, &m(&["Necromancer", "Shadow Knight"]));
+    d.observe_cast(YOU, V3, &m(&["Beastlord", "Magician", "Necromancer"]));
+    assert_eq!(
+        d.configuration_of_visit(YOU, V1),
+        m(&["Enchanter", "Wizard"]),
+        "narrowed to Necromancer on 2 visits now -- still not proof by itself"
+    );
+
+    // A 3rd, distinct visit finally corroborates it.
+    d.observe_cast(YOU, V4, &w("Wizard"));
+    d.observe_cast(YOU, V4, &w("Enchanter"));
+    d.observe_cast(YOU, V4, &m(&["Necromancer", "Shadow Knight"]));
+    d.observe_cast(YOU, V4, &m(&["Beastlord", "Magician", "Necromancer"]));
+    assert_eq!(
+        d.configuration_of_visit(YOU, V1),
         m(&["Enchanter", "Necromancer", "Wizard"]),
-        "the intersection of both ambiguous pools narrows to exactly Necromancer"
+        "the intersection of both ambiguous pools narrows to exactly Necromancer, now corroborated"
+    );
+    assert_eq!(
+        d.configuration_of_visit(YOU, V3),
+        m(&["Enchanter", "Necromancer", "Wizard"])
+    );
+    assert_eq!(
+        d.configuration_of_visit(YOU, V4),
+        m(&["Enchanter", "Necromancer", "Wizard"])
     );
 }
 
@@ -366,19 +404,54 @@ fn a_contradictory_pool_restarts_narrowing_instead_of_getting_stuck() {
     );
 
     // Narrowing restarted from the contradictory pool; a matching second
-    // cast from that fresh pool should still resolve normally.
-    d.observe_cast(
-        YOU,
-        V1,
-        &w("Druid")
+    // cast from that fresh pool narrows it, but -- same corroboration
+    // bar as any other elimination result -- not confirmed from just
+    // this one visit yet.
+    let druid_cleric = || {
+        w("Druid")
             .into_iter()
             .chain(w("Cleric"))
-            .collect::<Vec<_>>(),
+            .collect::<Vec<_>>()
+    };
+    d.observe_cast(YOU, V1, &druid_cleric());
+    assert_eq!(
+        d.configuration_of_visit(YOU, V1),
+        m(&["Enchanter", "Wizard"]),
+        "narrowed to Druid on just this one visit -- not proof by itself"
     );
+
+    // A 2nd, distinct visit repeats the same recovered narrowing -- still
+    // not enough (elimination evidence needs a 3rd, see
+    // MIN_ELIMINATION_CASTS's own doc). Needs its own 2-pool
+    // intersection down to Druid too (a fresh visit's `narrowing` starts
+    // empty, so one pool alone only seeds it, same as V1's own first pool did).
+    d.observe_cast(YOU, V3, &w("Wizard"));
+    d.observe_cast(YOU, V3, &w("Enchanter"));
+    d.observe_cast(YOU, V3, &m(&["Druid", "Shaman"]));
+    d.observe_cast(YOU, V3, &druid_cleric());
+    assert_eq!(
+        d.configuration_of_visit(YOU, V1),
+        m(&["Enchanter", "Wizard"]),
+        "narrowed to Druid on 2 visits now -- still not proof by itself"
+    );
+
+    // A 3rd, distinct visit finally corroborates it.
+    d.observe_cast(YOU, V4, &w("Wizard"));
+    d.observe_cast(YOU, V4, &w("Enchanter"));
+    d.observe_cast(YOU, V4, &m(&["Druid", "Shaman"]));
+    d.observe_cast(YOU, V4, &druid_cleric());
     assert_eq!(
         d.configuration_of_visit(YOU, V1),
         m(&["Druid", "Enchanter", "Wizard"]),
-        "narrowing recovered and resolved from the pool after the contradiction"
+        "narrowing recovered and resolved from the pool after the contradiction, now corroborated"
+    );
+    assert_eq!(
+        d.configuration_of_visit(YOU, V3),
+        m(&["Druid", "Enchanter", "Wizard"])
+    );
+    assert_eq!(
+        d.configuration_of_visit(YOU, V4),
+        m(&["Druid", "Enchanter", "Wizard"])
     );
 }
 

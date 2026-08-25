@@ -3897,13 +3897,21 @@ mod skill_evidence_tests {
     use crate::parser::build_engine;
 
     /// why: skill.up was parsed but never routed -- confirms it now
-    /// reaches classdetect like an unambiguous spell (Tracking is Bard/Druid/Ranger only)
+    /// reaches classdetect like an unambiguous spell (Tracking is
+    /// Bard/Druid/Ranger only). Elimination narrowing needs 3 distinct
+    /// visits to corroborate, a stricter bar than an unambiguous cast's
+    /// own 2 (real bug found live -- see classdetect module's own doc
+    /// on MIN_ELIMINATION_CASTS), so the narrowing sequence repeats on
+    /// 2 more visits here.
     #[test]
     fn a_tracking_skill_up_narrows_the_open_slot() {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
-        // why: Enchanter/Wizard reinforced this visit; then an ambiguous
-        // pool sharing only Ranger with Tracking's pool
+        // why: Enchanter/Wizard reinforced first; then an ambiguous pool
+        // sharing only Ranger with Tracking's pool, repeated on 2 more
+        // distinct visits (Highkeep, Runnyeye) -- elimination evidence
+        // needs 3 distinct visits to corroborate, a stricter bar than an
+        // unambiguous cast's own 2 (see MIN_ELIMINATION_CASTS's own doc)
         let lines: Vec<&[u8]> = vec![
             b"[Tue Jul 28 15:01:00 2026] You have entered Befallen.",
             b"[Tue Jul 28 15:01:01 2026] You begin casting Kilan's Animation.",
@@ -3918,8 +3926,21 @@ mod skill_evidence_tests {
             b"[Tue Jul 28 15:03:03 2026] You begin casting Cure Poison.",
             // why: evasive stance narrows with Cure Poison to {Beastlord, Ranger}
             b"[Tue Jul 28 15:03:04 2026] You assume an evasive stance.",
-            // why: Tracking {Bard,Druid,Ranger} -- only Ranger survives all three pools
+            // why: Tracking {Bard,Druid,Ranger} -- only Ranger survives all
+            // three pools, but only on this one visit so far -- not proof yet
             b"[Tue Jul 28 15:03:05 2026] You have become better at Tracking! (1)",
+            b"[Tue Jul 28 15:04:00 2026] You have entered Highkeep.",
+            b"[Tue Jul 28 15:04:01 2026] You begin casting Kilan's Animation.",
+            b"[Tue Jul 28 15:04:02 2026] You begin casting Shock of Lightning.",
+            b"[Tue Jul 28 15:04:03 2026] You begin casting Cure Poison.",
+            b"[Tue Jul 28 15:04:04 2026] You assume an evasive stance.",
+            b"[Tue Jul 28 15:04:05 2026] You have become better at Tracking! (2)",
+            b"[Tue Jul 28 15:05:00 2026] You have entered Runnyeye.",
+            b"[Tue Jul 28 15:05:01 2026] You begin casting Kilan's Animation.",
+            b"[Tue Jul 28 15:05:02 2026] You begin casting Shock of Lightning.",
+            b"[Tue Jul 28 15:05:03 2026] You begin casting Cure Poison.",
+            b"[Tue Jul 28 15:05:04 2026] You assume an evasive stance.",
+            b"[Tue Jul 28 15:05:05 2026] You have become better at Tracking! (3)",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
@@ -3945,7 +3966,11 @@ mod invocation_evidence_tests {
     use crate::parser::build_engine;
 
     /// why: invocation + stance + skill-up, none alone enough, narrow the
-    /// open slot together like three ambiguous spells would
+    /// open slot together like three ambiguous spells would.
+    /// Elimination narrowing needs 3 distinct visits to corroborate, a
+    /// stricter bar than an unambiguous cast's own 2 (real bug found
+    /// live -- see classdetect module's own doc on MIN_ELIMINATION_CASTS),
+    /// so the narrowing sequence repeats on 2 more visits here.
     #[test]
     fn an_invocation_combines_with_a_stance_and_a_skill_to_narrow_the_open_slot() {
         let engine = build_engine().expect("pack builds");
@@ -3964,8 +3989,21 @@ mod invocation_evidence_tests {
             b"[Tue Jul 28 15:03:03 2026] You begin reciting the spellblade invocation.",
             // why: Evasive narrows with Spellblade to {Beastlord, Ranger}
             b"[Tue Jul 28 15:03:04 2026] You assume an evasive stance.",
-            // why: Tracking {Bard,Druid,Ranger} -- only Ranger survives all three
+            // why: Tracking {Bard,Druid,Ranger} -- only Ranger survives all
+            // three, but only on this one visit so far -- not proof yet
             b"[Tue Jul 28 15:03:05 2026] You have become better at Tracking! (1)",
+            b"[Tue Jul 28 15:04:00 2026] You have entered Highkeep.",
+            b"[Tue Jul 28 15:04:01 2026] You begin casting Kilan's Animation.",
+            b"[Tue Jul 28 15:04:02 2026] You begin casting Shock of Lightning.",
+            b"[Tue Jul 28 15:04:03 2026] You begin reciting the spellblade invocation.",
+            b"[Tue Jul 28 15:04:04 2026] You assume an evasive stance.",
+            b"[Tue Jul 28 15:04:05 2026] You have become better at Tracking! (2)",
+            b"[Tue Jul 28 15:05:00 2026] You have entered Runnyeye.",
+            b"[Tue Jul 28 15:05:01 2026] You begin casting Kilan's Animation.",
+            b"[Tue Jul 28 15:05:02 2026] You begin casting Shock of Lightning.",
+            b"[Tue Jul 28 15:05:03 2026] You begin reciting the spellblade invocation.",
+            b"[Tue Jul 28 15:05:04 2026] You assume an evasive stance.",
+            b"[Tue Jul 28 15:05:05 2026] You have become better at Tracking! (3)",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 

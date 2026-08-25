@@ -212,6 +212,12 @@ mod tests {
     /// from the same visit, not stay frozen at close-time state
     #[test]
     fn an_earlier_fights_partial_loadout_is_backfilled_by_later_evidence_in_the_same_visit() {
+        // why: elimination narrowing needs 3 distinct visits to
+        // corroborate, a stricter bar than an unambiguous cast's own 2
+        // (real bug found live -- see classdetect module's own doc on
+        // MIN_ELIMINATION_CASTS), so this checks the record stays
+        // partial until a 3rd visit corroborates, then gets backfilled
+        // retroactively same as before.
         let mut classes = ClassDetector::default();
         for v in [Some(0), Some(1)] {
             classes.observe_cast(1, v, &strs(&["Wizard"]));
@@ -222,10 +228,35 @@ mod tests {
         classes.observe_cast(1, Some(2), &strs(&["Enchanter"]));
         let mut records = vec![fake_record(&["Enchanter", "Wizard"], Some(2))];
 
-        // why: same visit, 3rd class resolves by elimination via later evidence
+        // why: same visit narrows to Cleric, but not proof by itself
         classes.observe_cast(1, Some(2), &strs(&["Beastlord", "Cleric", "Druid"]));
         classes.observe_cast(1, Some(2), &strs(&["Cleric", "Paladin", "Shaman"]));
+        refresh_loadouts(&mut records, &classes, 1);
+        assert_eq!(
+            records[0].loadout,
+            strs(&["Enchanter", "Wizard"]),
+            "narrowed to Cleric on just this one visit -- not proof by itself"
+        );
 
+        // why: a 2nd, distinct visit narrowing to the same class -- still
+        // not enough
+        classes.observe_cast(1, Some(3), &strs(&["Wizard"]));
+        classes.observe_cast(1, Some(3), &strs(&["Enchanter"]));
+        classes.observe_cast(1, Some(3), &strs(&["Beastlord", "Cleric", "Druid"]));
+        classes.observe_cast(1, Some(3), &strs(&["Cleric", "Paladin", "Shaman"]));
+        refresh_loadouts(&mut records, &classes, 1);
+        assert_eq!(
+            records[0].loadout,
+            strs(&["Enchanter", "Wizard"]),
+            "narrowed to Cleric on 2 visits now -- still not proof by itself"
+        );
+
+        // why: a 3rd, distinct visit finally corroborates it, backfilling
+        // visit 2's record retroactively
+        classes.observe_cast(1, Some(4), &strs(&["Wizard"]));
+        classes.observe_cast(1, Some(4), &strs(&["Enchanter"]));
+        classes.observe_cast(1, Some(4), &strs(&["Beastlord", "Cleric", "Druid"]));
+        classes.observe_cast(1, Some(4), &strs(&["Cleric", "Paladin", "Shaman"]));
         refresh_loadouts(&mut records, &classes, 1);
         assert_eq!(records[0].loadout, strs(&["Cleric", "Enchanter", "Wizard"]));
     }
