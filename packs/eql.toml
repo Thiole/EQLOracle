@@ -7,8 +7,11 @@
 #
 #   * XP is "You gain experience! (11.000%)", not the classic "experience!!",
 #     and it carries a percentage.
-#   * There is no "was hit by non-melee" line at all in EQL. Spell damage is
-#     "<src> hit <dst> for N points of <type> damage by <spell>."
+#   * Spell damage is "<src> hit <dst> for N points of <type> damage by
+#     <spell>." A bare, sourceless "You were hit by non-melee for N
+#     damage." also exists for real (288 occurrences, see
+#     damage.non_melee_self) -- an earlier version of this note claimed
+#     no such line existed at all; that was wrong.
 #   * Heals are "<src> healed <dst> for N hit points by <spell>.", with an
 #     optional "(M)" giving the uncapped amount.
 #   * Loot names the corpse: "--You have looted a X from a Y's corpse.--"
@@ -187,6 +190,69 @@ flag = { from = "flag", as = "str" }
 verb = { from = "verb", as = "str" }
 
 [[rule]]
+id = "melee.riposted"
+kind = "block"
+priority = 30
+anchors = ["ripostes!"]
+# Same shape as melee.blocked/melee.dodged/melee.parried -- the real 5th
+# avoidance type (melee.parried's own "4th" note was written before this
+# one was found; 231 real occurrences in the reference log).
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<riposter>.+?) ripostes!(?: \((?P<flag>[^()]+)\))?$'''
+examples = [
+  "[Wed Jul 29 20:19:55 2026] A Teir`Dal ranger tries to slash Kaeus, but Kaeus ripostes!",
+  "[Wed Jul 29 20:29:09 2026] A Teir`Dal rogue tries to pierce Bravesirrobin, but Bravesirrobin ripostes!",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+flag = { from = "flag", as = "str" }
+verb = { from = "verb", as = "str" }
+
+[[rule]]
+id = "taunt.captured"
+kind = "taunt"
+priority = 30
+anchors = ["has captured "]
+# why: a full taunt success -- target's own name always ends "'s
+# attention!" in the real log, no bare-plural edge case found (checked).
+pattern = '''^(?P<src>.+?) has captured (?P<dst>.+?)'s attention!$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Gnommie has captured a dune spiderling's attention!",
+  "[Tue Jul 28 15:02:15 2026] Bravesirrobin has captured a gnoll pet's attention!",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+
+[[rule]]
+id = "taunt.partial"
+kind = "taunt"
+priority = 30
+anchors = ["was partially successful in capturing"]
+pattern = '''^(?P<src>.+?) was partially successful in capturing (?P<dst>.+?)'s attention\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Lebtik was partially successful in capturing a young puma's attention.",
+  "[Tue Jul 28 15:02:15 2026] Morbes was partially successful in capturing Lady Shae's attention.",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+
+[[rule]]
+id = "taunt.failed"
+kind = "taunt"
+priority = 30
+anchors = [" failed to taunt "]
+pattern = '''^(?P<src>.+?) failed to taunt (?P<dst>.+?)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Gnommie failed to taunt a young puma.",
+  "[Tue Jul 28 15:02:15 2026] Yawgmoth failed to taunt a dune spiderling.",
+]
+[rule.fields]
+source = { from = "src", as = "str" }
+target = { from = "dst", as = "str" }
+
+[[rule]]
 id = "spell.damage"
 kind = "damage"
 priority = 40
@@ -243,6 +309,21 @@ examples = [
 [rule.fields]
 source = { from = "src", as = "str" }
 target = { from = "dst", as = "str" }
+amount = { from = "amt", as = "u64" }
+
+[[rule]]
+id = "damage.non_melee_self"
+kind = "damage"
+priority = 40
+anchors = ["were hit by non-melee"]
+# why: a real, distinct shape from ds.damage above -- no source, no
+# spell name, always "You" (288 real occurrences), contradicting this
+# pack's own long-standing header note ("There is no 'was hit by
+# non-melee' line at all in EQL") -- that claim was wrong, confirmed
+# directly against the reference log.
+pattern = '''^You were hit by non-melee for (?P<amt>[0-9,]+) damage\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You were hit by non-melee for 1 damage."]
+[rule.fields]
 amount = { from = "amt", as = "u64" }
 
 # ============================================================ healing
@@ -521,6 +602,34 @@ delta = { from = "delta", as = "i64" }
 # ============================================================ items / world
 
 [[rule]]
+id = "craft.success"
+kind = "craft"
+priority = 50
+anchors = ["fashioned the items together"]
+pattern = '''^You have fashioned the items together to create something new: (?P<item>.+)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have fashioned the items together to create something new: Silver Malachite Ring."]
+[rule.fields]
+item = { from = "item", as = "str" }
+
+[[rule]]
+id = "craft.failure"
+kind = "craft"
+priority = 50
+anchors = ["lacked the skills to fashion"]
+pattern = '''^You lacked the skills to fashion (?P<item>.+)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You lacked the skills to fashion Silver Malachite Ring."]
+[rule.fields]
+item = { from = "item", as = "str" }
+
+[[rule]]
+id = "craft.skill_capped"
+kind = "craft"
+priority = 50
+anchors = ["can no longer advance your skill from making"]
+pattern = '''^You can no longer advance your skill from making this item\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You can no longer advance your skill from making this item."]
+
+[[rule]]
 id = "loot.self"
 kind = "loot"
 priority = 50
@@ -640,6 +749,36 @@ examples = ["[Tue Jul 28 15:02:15 2026] You receive 3 silver and 4 copper from t
 amount = { from = "amount", as = "str" }
 
 [[rule]]
+id = "money.purchase"
+kind = "money"
+priority = 50
+anchors = ["You purchased "]
+# why: distinct from money.vendor_sell above (that's selling to a
+# vendor, this is buying from one). amount can be genuinely blank (a
+# free/quest item, real: "You purchased 1 Package for Old Doug from
+# Dougina for .") -- captured permissively, not required.
+pattern = '''^You purchased (?P<qty>[0-9]+) (?P<item>.+?) from (?P<vendor>.+?) for\s*(?P<amount>[^.]*)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You purchased 1 Backpack from Neuven for  7 gold 7 copper.",
+  "[Tue Jul 28 15:02:15 2026] You purchased 1 Package for Old Doug from Dougina for .",
+]
+[rule.fields]
+qty = { from = "qty", as = "u64" }
+item = { from = "item", as = "str" }
+vendor = { from = "vendor", as = "str" }
+amount = { from = "amount", as = "str" }
+
+[[rule]]
+id = "trade.complete"
+kind = "trade"
+priority = 50
+anchors = ["You complete the trade with"]
+pattern = '''^You complete the trade with (?P<who>.+?)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You complete the trade with Dead Doug."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
 id = "zone.enter"
 kind = "zone"
 priority = 40
@@ -703,12 +842,13 @@ id = "noise.stunned"
 kind = "noise"
 priority = 60
 anchors = ["stun"]
-pattern = '''^(?:You can't cast spells while stunned!|You are stunned!|You are no longer stunned\.|You avoid the stunning blow\.)$'''
+pattern = '''^(?:You can't cast spells while stunned!|You are stunned!|You are no longer stunned\.|You avoid the stunning blow\.|You overcome the stun!)$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] You are stunned!",
   "[Tue Jul 28 15:02:15 2026] You are no longer stunned.",
   "[Tue Jul 28 15:02:15 2026] You can't cast spells while stunned!",
   "[Tue Jul 28 15:02:15 2026] You avoid the stunning blow.",
+  "[Tue Jul 28 15:02:15 2026] You overcome the stun!",
 ]
 
 [[rule]]
@@ -911,16 +1051,59 @@ id = "mob.state"
 kind = "mobstate"
 priority = 20
 anchors = [" "]
-pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better)[.!]$'''
+# why: extended past the original 4 -- every alternative below is a real,
+# still-unmatched shape confirmed against the reference log (counts in
+# the low hundreds to 1000+ each), not a guess. "writhe"/"writhes" both
+# kept (self "You writhe..." vs third-person "X writhes...", same
+# grammatical shape, different conjugation) rather than trying to fold
+# person into the pattern itself.
+pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better|winces|writhes in the grip of agony|writhe in the grip of agony|is surrounded by a traveling spirit|is healed from within|begins to sway|has fallen to the ground|sinks into the ground|is engulfed by a swarm|regains concentration and continues casting|feels a healing touch|is protected by a vortex of shadows|creates a mystic portal|is entwined by roots|is burning|is stung by a dozen flashes of the blade)[.!]$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Splitpaw Sentry staggers.",
   "[Tue Jul 28 15:02:15 2026] Rallo rages.",
   "[Tue Jul 28 15:02:15 2026] Horror fades away.",
   "[Tue Jul 28 15:02:15 2026] Tranixx Darkpaw feels much better.",
+  "[Tue Jul 28 15:02:15 2026] Tranixx Darkpaw winces.",
+  "[Tue Jul 28 15:02:15 2026] Kaeus writhes in the grip of agony.",
+  "[Tue Jul 28 15:02:15 2026] You writhe in the grip of agony.",
+  "[Tue Jul 28 15:02:15 2026] Yawgmoth is surrounded by a traveling spirit.",
+  "[Tue Jul 28 15:02:15 2026] Taddy is healed from within.",
+  "[Tue Jul 28 15:02:15 2026] Myana begins to sway!",
+  "[Tue Jul 28 15:02:15 2026] Kaeus has fallen to the ground.",
+  "[Tue Jul 28 15:02:15 2026] Kaeus sinks into the ground.",
+  "[Tue Jul 28 15:02:15 2026] Knight V`Tal is engulfed by a swarm.",
+  "[Tue Jul 28 15:02:15 2026] Splitpaw Sentry regains concentration and continues casting.",
+  "[Tue Jul 28 15:02:15 2026] Wallhalla feels a healing touch.",
+  "[Tue Jul 28 15:02:15 2026] Sabertooth Overseer is protected by a vortex of shadows.",
+  "[Tue Jul 28 15:02:15 2026] Minsky creates a mystic portal.",
+  "[Tue Jul 28 15:02:15 2026] Zibarer is entwined by roots.",
+  "[Tue Jul 28 15:02:15 2026] Bravesirrobin is burning.",
+  "[Tue Jul 28 15:02:15 2026] Warlord Skarlon is stung by a dozen flashes of the blade.",
+  "[Tue Jul 28 15:02:15 2026] Innoruuk, the Prince of Hate is stung by a dozen flashes of the blade.",
 ]
 [rule.fields]
 who = { from = "who", as = "str" }
 state = { from = "state", as = "str" }
+
+[[rule]]
+id = "mobstate.awakened"
+kind = "mobstate"
+priority = 20
+anchors = [" has been awakened by "]
+# why: a sleeping mob roused by a nearby fight/noise -- real, 838
+# combined occurrences in the reference log. "A " prefix on generic
+# trash ("A Teir`Dal rogue has been awakened by...") is just part of the
+# mob's own display name here, not special syntax, so one pattern
+# covers both the named and generic-trash cases.
+pattern = '''^(?P<who>.+?) has been awakened by (?P<waker>.+?)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Bravesirrobin has been awakened by a gnoll.",
+  "[Tue Jul 28 15:02:15 2026] Korven Nisere has been awakened by Kaeus.",
+  "[Tue Jul 28 15:02:15 2026] A Teir`Dal rogue has been awakened by Bravesirrobin.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+waker = { from = "waker", as = "str" }
 
 [[rule]]
 id = "target.info"
@@ -931,6 +1114,14 @@ pattern = '''^Targeted \((?P<ttype>[^()]+)\): (?P<name>.+)$'''
 examples = ["[Tue Jul 28 15:02:15 2026] Targeted (Player): Moritati"]
 [rule.fields]
 name = { from = "name", as = "str" }
+
+[[rule]]
+id = "target.none"
+kind = "target"
+priority = 40
+anchors = ["You no longer have a target"]
+pattern = '''^You no longer have a target\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You no longer have a target."]
 
 [[rule]]
 id = "noise.cast_failure"
@@ -1010,6 +1201,14 @@ anchors = ["You have been poisoned"]
 pattern = '''^You have been poisoned\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You have been poisoned."]
 note = "First person -- 'has been poisoned' (state.poisoned) is the third-person form, same split this pack already uses for death.you_died/death.other."
+
+[[rule]]
+id = "state.you_summoned"
+kind = "state"
+priority = 50
+anchors = ["You have been summoned"]
+pattern = '''^You have been summoned!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have been summoned!"]
 
 [[rule]]
 id = "state.poisoned"
