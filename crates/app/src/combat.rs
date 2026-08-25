@@ -816,6 +816,17 @@ pub struct FightTimelineDto {
     pub series: Vec<EntitySeriesDto>,
 }
 
+/// why: real, best-effort attribution -- see `Ingest::attribute_effect`'s
+/// own doc for exactly how `source`/`skill` get filled in. Either can be
+/// `None` on its own (skill known, source ambiguous/out of view -- or,
+/// rarer, the reverse); `text` is always real, straight off the log line.
+#[derive(Debug, Clone, Serialize)]
+pub struct RecentEffectDto {
+    pub source: Option<String>,
+    pub skill: Option<String>,
+    pub text: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct EntityStateDto {
     pub name: String,
@@ -828,9 +839,9 @@ pub struct EntityStateDto {
     pub observed: bool,
     /// why: snapshot damage over the trailing inspect window, not a running total
     pub dps: f64,
-    /// why: recognized buff text within EFFECT_RECENCY_MS; only non-empty
-    /// for "You" -- the dictionary is first-person text only
-    pub recent_effects: Vec<String>,
+    /// why: recognized buff/state text within EFFECT_RECENCY_MS, each
+    /// with best-effort source/skill attribution
+    pub recent_effects: Vec<RecentEffectDto>,
 }
 
 /// why: per-entity damage-over-time for the scrub bar; None for an unknown encounter id
@@ -947,7 +958,11 @@ pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<Ent
                     ing.effects
                         .recent(s.0, ts_ms, EFFECT_RECENCY_MS)
                         .into_iter()
-                        .map(str::to_string)
+                        .map(|p| RecentEffectDto {
+                            source: p.source.clone(),
+                            skill: p.skill.clone(),
+                            text: p.text.clone(),
+                        })
                         .collect()
                 })
                 .unwrap_or_default();

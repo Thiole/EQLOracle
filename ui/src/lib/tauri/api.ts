@@ -130,6 +130,18 @@ export interface FightTimelineDto {
   series: EntitySeriesDto[];
 }
 
+export interface RecentEffectDto {
+  /** Who caused it, if attribute_effect found exactly one real recent
+   * caster to explain it -- null means genuinely unresolved (0 or 2+ real
+   * candidates), not "you"/unknown as a guess. */
+  source: string | null;
+  /** The real spell name explaining `text`, independent of whether
+   * `source` also resolved. */
+  skill: string | null;
+  /** The raw landing/wears-off/state text, straight off the log line. */
+  text: string;
+}
+
 export interface EntityStateDto {
   name: string;
   is_player: boolean;
@@ -138,10 +150,11 @@ export interface EntityStateDto {
   state: string;
   observed: boolean;
   dps: number;
-  /** Recognized buff/effect landing text, recent as of this instant --
+  /** Recognized buff/effect landings, recent as of this instant --
    * recency, not a live "still active" claim (the log has no wears-off
-   * line for these). Only ever populated for "You". */
-  recent_effects: string[];
+   * line for most of these), each with best-effort source/skill
+   * attribution -- see RecentEffectDto's own doc. */
+  recent_effects: RecentEffectDto[];
 }
 
 // ---------------------------------------------------------------- character

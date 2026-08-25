@@ -128,9 +128,23 @@
             </tr>
             {#if e.recent_effects.length > 0}
               <tr class="border-b border-border/50">
-                <td colspan="3" class="py-0.5 pl-3 text-muted-foreground">
-                  <span class="text-[10px] uppercase tracking-wide">recent effects</span>
-                  {e.recent_effects.join(' · ')}
+                <td colspan="3" class="py-0.5 pl-3">
+                  <div class="text-[10px] uppercase tracking-wide text-muted-foreground">recent effects</div>
+                  <div class="flex flex-col gap-0.5">
+                    {#each e.recent_effects as eff, i (i)}
+                      <div class="flex gap-1 text-muted-foreground">
+                        {#if eff.source}
+                          <span class="text-foreground">{eff.source}</span>
+                          <span>›</span>
+                        {/if}
+                        {#if eff.skill}
+                          <span class="text-primary">{eff.skill}</span>
+                          <span>›</span>
+                        {/if}
+                        <span>{eff.text}</span>
+                      </div>
+                    {/each}
+                  </div>
                 </td>
               </tr>
             {/if}

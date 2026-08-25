@@ -291,11 +291,18 @@ impl Levels {
 pub struct EffectPing {
     pub ts: Millis,
     pub text: String,
+    /// why: real, resolved caster name -- see `Ingest::attribute_effect`'s
+    /// own doc for how this gets filled in; `None` is an honest "couldn't
+    /// tell", not a guess
+    pub source: Option<String>,
+    /// why: real spell name explaining `text`, independent of whether
+    /// `source` also resolved -- a spell can be identified even when
+    /// exactly who cast it can't be (0 or 2+ real candidates nearby)
+    pub skill: Option<String>,
 }
 
 /// why: separate from Timeline's single exclusive State -- buffs stack,
-/// no one "current state" to query, only "what landed recently". Only
-/// ever populated for "You" -- the dictionary is first-person text only.
+/// no one "current state" to query, only "what landed recently".
 #[derive(Debug, Clone, Default)]
 pub struct Effects {
     by_entity: HashMap<u32, Vec<EffectPing>>,
@@ -303,21 +310,47 @@ pub struct Effects {
 
 impl Effects {
     /// why: inserted in timestamp order, same safety Timeline::push uses
-    fn push(&mut self, entity: u32, ts: Millis, text: String) {
+    fn push(
+        &mut self,
+        entity: u32,
+        ts: Millis,
+        text: String,
+        source: Option<String>,
+        skill: Option<String>,
+    ) {
         let v = self.by_entity.entry(entity).or_default();
         let at = v.partition_point(|p| p.ts <= ts);
-        v.insert(at, EffectPing { ts, text });
+        v.insert(
+            at,
+            EffectPing {
+                ts,
+                text,
+                source,
+                skill,
+            },
+        );
     }
 
     /// why: trailing-window snapshot like dps_window, not a claim the effect is still active
-    pub fn recent(&self, entity: u32, ts: Millis, window_ms: Millis) -> Vec<&str> {
+    pub fn recent(&self, entity: u32, ts: Millis, window_ms: Millis) -> Vec<&EffectPing> {
         let Some(v) = self.by_entity.get(&entity) else {
             return Vec::new();
         };
         let from = ts - window_ms;
         let a = v.partition_point(|p| p.ts < from);
         let b = v.partition_point(|p| p.ts <= ts);
-        v[a..b].iter().map(|p| p.text.as_str()).collect()
+        v[a..b].iter().collect()
+    }
+
+    /// why: text-only convenience over `recent` for call sites that don't
+    /// need source/skill attribution -- mainly this file's own tests,
+    /// most of which predate attribute_effect and only ever asserted on text
+    #[cfg(test)]
+    fn recent_text(&self, entity: u32, ts: Millis, window_ms: Millis) -> Vec<&str> {
+        self.recent(entity, ts, window_ms)
+            .into_iter()
+            .map(|p| p.text.as_str())
+            .collect()
     }
 
     /// why: whole history not one instant's window, mirrors Timeline::transitions_of
@@ -326,6 +359,38 @@ impl Effects {
             .get(&entity)
             .map(|v| v.as_slice())
             .unwrap_or(&[])
+    }
+}
+
+/// why: one real "X began casting Y" sighting, kept just long enough to
+/// explain a later landing/wears-off line -- see `Ingest::attribute_effect`.
+#[derive(Debug, Clone)]
+struct RecentCast {
+    ts: Millis,
+    caster: u32,
+    /// why: rank-stripped, matches `spelldata::spell_by_name`'s own base-name keying
+    spell: String,
+}
+
+/// why: 35s -- the real catalog's own slowest cast (30s, confirmed via a
+/// full scan of packs/spells.json) plus ATTRIBUTION_TOLERANCE_MS's own
+/// slack, so a real slow cast's landing is never pruned away before it
+/// can be checked against its own caster
+const RECENT_CAST_RETENTION_MS: Millis = 35_000;
+
+/// why: real per-entity "who's recently been casting" log, all entities
+/// (not just "You" -- unlike classdetect's own pet exclusion, a pet's
+/// real cast is real information here, not misleading class evidence)
+#[derive(Debug, Clone, Default)]
+struct RecentCasts {
+    entries: Vec<RecentCast>,
+}
+
+impl RecentCasts {
+    fn push(&mut self, ts: Millis, caster: u32, spell: String) {
+        self.entries
+            .retain(|e| ts - e.ts <= RECENT_CAST_RETENTION_MS);
+        self.entries.push(RecentCast { ts, caster, spell });
     }
 }
 
@@ -555,6 +620,8 @@ pub struct Ingest {
     pub levels: Levels,
     /// why: recognized buff landings on "You", separate log from timeline/State
     pub effects: Effects,
+    /// why: private -- attribute_effect's own scratch data, nothing outside this file reads it directly
+    recent_casts: RecentCasts,
     /// why: most recent /loc reading, raw coordinate order the line
     /// printed. Map files use a different order: confirmed (x,y) =
     /// (-y,-x) of this reading via brute-force against 9 real Lower Guk
@@ -654,6 +721,7 @@ impl Default for Ingest {
             classes: ClassDetector::default(),
             levels: Levels::default(),
             effects: Effects::default(),
+            recent_casts: RecentCasts::default(),
             last_loc: None,
             last_teleport_cast: None,
             entered_via_teleport: None,
@@ -1021,6 +1089,10 @@ impl Ingest {
                 let base = base_spell_name(&spell);
                 let spell_sym = self.store.sym(base).0;
                 self.casts.begin(ts, caster.0, spell_sym);
+                // why: every real caster, pets included -- attribute_effect's
+                // own doc, unlike classdetect's pet exclusion, a pet's real
+                // cast is real information here, not misleading class evidence
+                self.recent_casts.push(ts, caster.0, base.to_string());
                 if !self.is_pet(&who) {
                     self.classes.observe_cast(
                         caster.0,
@@ -1625,6 +1697,71 @@ impl Ingest {
         }
     }
 
+    /// why: 3s -- real slack around a spell's own `casting_time` (log
+    /// timestamps are whole seconds; group effects can land a beat after
+    /// the caster's own client sees it) before a cast no longer explains
+    /// a landing/wears-off line
+    const ATTRIBUTION_TOLERANCE_MS: Millis = 3_000;
+
+    /// why: is `e`'s own expected landing moment (cast start + its real
+    /// casting_time from the catalog, 0 if unknown) within tolerance of
+    /// `ts` -- the real timing signal that turns "someone cast something
+    /// vaguely recently" into "this specific cast is what explains this
+    /// specific line landing at this specific moment"
+    fn cast_explains_ts(e: &RecentCast, ts: Millis) -> bool {
+        let cast_ms = crate::spelldata::spell_by_name(&e.spell)
+            .and_then(|s| s.casting_time)
+            .map(|t| (t * 1000.0) as Millis)
+            .unwrap_or(0);
+        (ts - (e.ts + cast_ms)).abs() <= Self::ATTRIBUTION_TOLERANCE_MS
+    }
+
+    /// why: best-effort "who cast this, with what spell" for a landing/
+    /// wears-off/state line -- real signal, most confident tier first:
+    /// (1) `text` is already a real spell name (confirm_spell_effect and
+    /// ability.activated both feed record_effect_ping this way already
+    /// resolved) -- skill is just that name; (2) a flavor sentence
+    /// `spelltext::match_spell_text` resolves confidently catalog-wide --
+    /// same as (1) once resolved; (3) spelltext.rs had to drop it as
+    /// globally ambiguous (shared by several spells catalog-wide), but
+    /// *locally* -- checked only against the spells actually cast nearby
+    /// in this real log, via each candidate's own real `casting_time` --
+    /// it can still be a confident, unique answer even though the global
+    /// dictionary couldn't give one. Every tier requires exactly one real
+    /// candidate; 0 or 2+ is an honest `None`, never a guess.
+    fn attribute_effect(&self, ts: Millis, text: &str) -> (Option<String>, Option<String>) {
+        let known_skill = if crate::spelldata::spell_by_name(text).is_some() {
+            Some(text.to_string())
+        } else {
+            crate::spelltext::match_spell_text(text).map(|m| m.spell.to_string())
+        };
+
+        let candidates: Vec<&RecentCast> = self
+            .recent_casts
+            .entries
+            .iter()
+            .filter(|e| Self::cast_explains_ts(e, ts))
+            .filter(|e| match &known_skill {
+                Some(skill) => &e.spell == skill,
+                None => crate::spelldata::spell_by_name(&e.spell).is_some_and(|sd| {
+                    sd.msg_cast_on_you.as_deref() == Some(text)
+                        || sd.msg_wears_off.as_deref() == Some(text)
+                }),
+            })
+            .collect();
+
+        let casters: HashSet<u32> = candidates.iter().map(|e| e.caster).collect();
+        let source = match casters.into_iter().collect::<Vec<_>>().as_slice() {
+            [one] => Some(self.store.name(Sym(*one)).to_string()),
+            _ => None,
+        };
+        let skill = known_skill.or_else(|| match candidates.as_slice() {
+            [one] => Some(one.spell.clone()),
+            _ => None,
+        });
+        (source, skill)
+    }
+
     /// why: unconditional timestamped ping on target_name, resolved
     /// through pet ownership. Also the other half of
     /// attribute_flavor_hit's group-cast check -- every landing passes
@@ -1632,7 +1769,8 @@ impl Ingest {
     fn record_effect_ping(&mut self, ts: Millis, target_name: &str, text: &str) {
         let resolved = self.resolve_name(target_name);
         let sym = self.sym(&resolved).0;
-        self.effects.push(sym, ts, text.to_string());
+        let (source, skill) = self.attribute_effect(ts, text);
+        self.effects.push(sym, ts, text.to_string(), source, skill);
 
         // why: cancel -- disproves a pending entry via a group cast (other
         // entity) or a pulsing buff (same entity again); ts != p.ts excludes self-cancel
@@ -1687,7 +1825,7 @@ impl Ingest {
             .effects
             .recent(sym, ts, PULSE_WINDOW_MS)
             .iter()
-            .filter(|&&t| t == text)
+            .filter(|p| p.text == text)
             .count()
             > 1; // why: > 1 because text's own current landing is already in there
         if group_cast_already || already_pulsing {
@@ -4271,7 +4409,7 @@ mod effect_ping_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let you = ing.store.names.get("You").expect("You should be interned");
-        let recent = ing.effects.recent(you.0, ing.now_ms(), 1_000);
+        let recent = ing.effects.recent_text(you.0, ing.now_ms(), 1_000);
         assert_eq!(
             recent,
             vec!["A burst of strength surges through your body."]
@@ -4300,7 +4438,7 @@ mod effect_ping_tests {
 
         // why: the ping itself still landed both times
         assert_eq!(
-            ing.effects.recent(you.0, ing.now_ms(), 1_000),
+            ing.effects.recent_text(you.0, ing.now_ms(), 1_000),
             vec!["A blast of acid eats at your skin."]
         );
     }
@@ -4359,10 +4497,12 @@ mod effect_ping_tests {
             .iter()
             .find(|s| s.name == "You")
             .expect("You should be in the fight");
-        assert_eq!(
-            you_state.recent_effects,
-            vec!["A burst of strength surges through your body.".to_string()]
-        );
+        let texts: Vec<&str> = you_state
+            .recent_effects
+            .iter()
+            .map(|e| e.text.as_str())
+            .collect();
+        assert_eq!(texts, vec!["A burst of strength surges through your body."]);
     }
 
     /// why: a third-person landing line pings state on whoever it landed
@@ -4383,14 +4523,17 @@ mod effect_ping_tests {
             .get("Handstuff")
             .expect("Handstuff should be interned");
         assert_eq!(
-            ing.effects.recent(handstuff.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(handstuff.0, ing.now_ms(), 60_000),
             vec!["Your voice booms.", "Your voice booms."],
             "canonical first-person text, not the raw third-person line"
         );
 
         let you = ing.store.names.get("You");
         assert!(
-            you.is_none_or(|s| ing.effects.recent(s.0, ing.now_ms(), 60_000).is_empty()),
+            you.is_none_or(|s| ing
+                .effects
+                .recent_text(s.0, ing.now_ms(), 60_000)
+                .is_empty()),
             "must not land on You -- it landed on Handstuff"
         );
     }
@@ -4430,9 +4573,10 @@ mod effect_ping_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let bravesirrobin = ing.store.names.get("Bravesirrobin");
-        assert!(
-            bravesirrobin.is_none_or(|s| ing.effects.recent(s.0, ing.now_ms(), 60_000).is_empty())
-        );
+        assert!(bravesirrobin.is_none_or(|s| ing
+            .effects
+            .recent_text(s.0, ing.now_ms(), 60_000)
+            .is_empty()));
     }
 
     /// why: conjugated (non-possessive) third-person form, from the user's own report
@@ -4449,7 +4593,7 @@ mod effect_ping_tests {
             .get("Draxiz N`Ryt")
             .expect("Draxiz N`Ryt should be interned");
         assert_eq!(
-            ing.effects.recent(draxiz.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(draxiz.0, ing.now_ms(), 60_000),
             vec!["You feel much faster."]
         );
     }
@@ -4472,7 +4616,7 @@ mod effect_ping_tests {
             .get("The Prophet")
             .expect("The Prophet should be interned");
         assert_eq!(
-            ing.effects.recent(prophet.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(prophet.0, ing.now_ms(), 60_000),
             vec![
                 "You are struck by a sudden force.",
                 "You are struck by a sudden burst of force.",
@@ -4494,7 +4638,7 @@ mod effect_ping_tests {
             .get("Akkirus")
             .expect("Akkirus should be interned");
         assert_eq!(
-            ing.effects.recent(akkirus.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(akkirus.0, ing.now_ms(), 60_000),
             vec!["Your feet adhere to the ground."]
         );
     }
@@ -4514,7 +4658,7 @@ mod effect_ping_tests {
             .get("Baron Telyx V`Zher")
             .expect("Baron Telyx V`Zher should be interned");
         assert_eq!(
-            ing.effects.recent(baron.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(baron.0, ing.now_ms(), 60_000),
             vec!["You feel your skin combust."]
         );
     }
@@ -4534,7 +4678,7 @@ mod effect_ping_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let lenekab = ing.store.names.get("Lenekab").expect("Lenekab interned");
-        let recent = ing.effects.recent(lenekab.0, ing.now_ms(), 60_000);
+        let recent = ing.effects.recent_text(lenekab.0, ing.now_ms(), 60_000);
         assert_eq!(
             recent,
             vec!["Lenekab is surrounded by a brief lupine aura."]
@@ -4557,7 +4701,7 @@ mod effect_ping_tests {
             .get("orc legionnaire")
             .expect("orc legionnaire should be interned");
         assert_eq!(
-            ing.effects.recent(orc.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(orc.0, ing.now_ms(), 60_000),
             vec!["You feel your body pulse with energy."]
         );
     }
@@ -4577,7 +4721,7 @@ mod effect_ping_tests {
             .get("Dreadmoon")
             .expect("Dreadmoon should be interned");
         assert_eq!(
-            ing.effects.recent(dreadmoon.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(dreadmoon.0, ing.now_ms(), 60_000),
             vec!["You feel the favor of the gods upon you."]
         );
     }
@@ -4596,7 +4740,7 @@ mod effect_ping_tests {
             .get("Draxiz N`Ryt")
             .expect("Draxiz N`Ryt should be interned");
         assert_eq!(
-            ing.effects.recent(draxiz.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(draxiz.0, ing.now_ms(), 60_000),
             vec!["You feel dexterous."]
         );
     }
@@ -4642,7 +4786,7 @@ mod effect_ping_tests {
             .get("Joneker")
             .expect("Joneker should be interned");
         assert_eq!(
-            ing.effects.recent(joneker.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(joneker.0, ing.now_ms(), 60_000),
             vec!["Clarity"]
         );
     }
@@ -4661,9 +4805,10 @@ mod effect_ping_tests {
         backfill_lines(&mut ing, &engine, &lines, 1);
 
         let bravesirrobin = ing.store.names.get("Bravesirrobin");
-        assert!(
-            bravesirrobin.is_none_or(|s| ing.effects.recent(s.0, ing.now_ms(), 60_000).is_empty())
-        );
+        assert!(bravesirrobin.is_none_or(|s| ing
+            .effects
+            .recent_text(s.0, ing.now_ms(), 60_000)
+            .is_empty()));
     }
 
     /// why: dot.damage_from_you previously fell through both existing
@@ -4705,7 +4850,7 @@ mod effect_ping_tests {
 
         let you = ing.store.names.get("You").expect("You should be interned");
         assert_eq!(
-            ing.effects.recent(you.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(you.0, ing.now_ms(), 60_000),
             vec!["Diseased", "Poisoned"]
         );
         let dojii = ing
@@ -4714,7 +4859,7 @@ mod effect_ping_tests {
             .get("Dojii")
             .expect("Dojii should be interned");
         assert_eq!(
-            ing.effects.recent(dojii.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(dojii.0, ing.now_ms(), 60_000),
             vec!["Diseased"]
         );
         let snake = ing
@@ -4723,7 +4868,7 @@ mod effect_ping_tests {
             .get("a rattlesnake")
             .expect("rattlesnake should be interned");
         assert_eq!(
-            ing.effects.recent(snake.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(snake.0, ing.now_ms(), 60_000),
             vec!["Poisoned"]
         );
     }
@@ -4743,7 +4888,7 @@ mod effect_ping_tests {
             .get("Flewdur")
             .expect("Flewdur should be interned");
         assert_eq!(
-            ing.effects.recent(flewdur.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(flewdur.0, ing.now_ms(), 60_000),
             vec!["You feel a surge of strength as you let forth a mighty yaulp."]
         );
     }
@@ -4763,7 +4908,8 @@ mod effect_ping_tests {
             .get("Bravesirrobin")
             .expect("Bravesirrobin should be interned");
         assert_eq!(
-            ing.effects.recent(bravesirrobin.0, ing.now_ms(), 60_000),
+            ing.effects
+                .recent_text(bravesirrobin.0, ing.now_ms(), 60_000),
             vec!["You feel protected from magic."]
         );
     }
@@ -4814,7 +4960,7 @@ mod effect_ping_tests {
             .get("Bigneum")
             .expect("Bigneum should be interned");
         assert_eq!(
-            ing.effects.recent(bigneum.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(bigneum.0, ing.now_ms(), 60_000),
             vec!["Skull Bash"]
         );
     }
@@ -4875,7 +5021,7 @@ mod effect_ping_tests {
 
         // why: ping is still real and unconditional -- only the class attribution gets cancelled
         assert_eq!(
-            ing.effects.recent(you.0, ing.now_ms(), 60_000),
+            ing.effects.recent_text(you.0, ing.now_ms(), 60_000),
             vec!["You are enveloped by flame."]
         );
     }
@@ -4939,7 +5085,10 @@ mod effect_ping_tests {
         );
 
         // why: still real, unconditional state -- only class attribution is cancelled
-        assert!(!ing.effects.recent(you.0, ing.now_ms(), 60_000).is_empty());
+        assert!(!ing
+            .effects
+            .recent_text(you.0, ing.now_ms(), 60_000)
+            .is_empty());
     }
 
     /// why: real /loc line from the reference log
@@ -5186,5 +5335,106 @@ mod effect_ping_tests {
             crate::zonedata::map_shortnames(who_name).contains(&"gukbottom".to_string()),
             "who_name {who_name:?} should resolve to the real map file shortname"
         );
+    }
+
+    /// why: real spell, real unique landing text (confirmed against
+    /// packs/spells.json: "You are pelted by hailstones." names only
+    /// Cascade of Hail, catalog-wide) -- proves attribution reaches past
+    /// the trivial self-cast case: the landing text itself never says who
+    /// cast it, only real-cast-timing correlation can.
+    #[test]
+    fn a_third_partys_recent_cast_is_attributed_as_the_source_of_a_self_landing_effect() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:02:11 2026] Dippinsauce begins casting Cascade of Hail.",
+            // why: real casting_time is 2.75s -- 3s later lands well inside ATTRIBUTION_TOLERANCE_MS
+            b"[Tue Jul 28 15:02:14 2026] You are pelted by hailstones.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+
+        let you = ing.store.names.get("You").expect("You should be interned");
+        let recent = ing.effects.recent(you.0, ing.now_ms(), 10_000);
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].source.as_deref(), Some("Dippinsauce"));
+        assert_eq!(recent[0].skill.as_deref(), Some("Cascade of Hail"));
+    }
+
+    /// why: real spells, real shared landing text -- "You feel much
+    /// better." names 8 different real spells catalog-wide (confirmed),
+    /// so spelltext::match_spell_text must drop it as ambiguous. Only
+    /// "Healing" was actually cast nearby here, so attribute_effect's own
+    /// local disambiguation (checking real recent casts, not the whole
+    /// catalog) must still resolve it confidently.
+    #[test]
+    fn globally_ambiguous_text_resolves_locally_when_only_one_real_recent_cast_explains_it() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:02:11 2026] Dippinsauce begins casting Healing.",
+            // why: real casting_time is 2.5s
+            b"[Tue Jul 28 15:02:14 2026] You feel much better.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+
+        let you = ing.store.names.get("You").expect("You should be interned");
+        let recent = ing.effects.recent(you.0, ing.now_ms(), 10_000);
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].source.as_deref(), Some("Dippinsauce"));
+        assert_eq!(recent[0].skill.as_deref(), Some("Healing"));
+    }
+
+    /// why: real bug shape to guard against -- two different real
+    /// entities cast two different real spells sharing the same globally
+    /// ambiguous text, both close enough in time to explain the same
+    /// landing. Neither source nor skill has one confident answer here;
+    /// must stay honestly unresolved, not guess either candidate.
+    #[test]
+    fn two_real_simultaneous_candidates_leave_source_and_skill_unresolved() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:02:11 2026] Dippinsauce begins casting Healing.",
+            b"[Tue Jul 28 15:02:12 2026] Bravesirrobin begins casting Greater Healing.",
+            b"[Tue Jul 28 15:02:14 2026] You feel much better.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+
+        let you = ing.store.names.get("You").expect("You should be interned");
+        let recent = ing.effects.recent(you.0, ing.now_ms(), 10_000);
+        assert_eq!(recent.len(), 1);
+        assert_eq!(
+            recent[0].source, None,
+            "2 real candidates -- no confident source"
+        );
+        assert_eq!(
+            recent[0].skill, None,
+            "2 real candidates -- no confident skill either"
+        );
+    }
+
+    /// why: real spell whose own name already appears verbatim as the
+    /// ping text (Action::AbilityActivated's own shape, "X activates
+    /// Y." -- ability = the real spell name directly, no flavor sentence
+    /// involved at all) -- attribute_effect's own tier 1
+    #[test]
+    fn a_ping_that_is_already_a_real_spell_name_still_attributes_its_caster() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:02:11 2026] Dippinsauce begins casting Antimagic Poison.",
+            b"[Tue Jul 28 15:02:11 2026] Dippinsauce activates Antimagic Poison.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+
+        let dippinsauce = ing
+            .store
+            .names
+            .get("Dippinsauce")
+            .expect("Dippinsauce should be interned");
+        let recent = ing.effects.recent(dippinsauce.0, ing.now_ms(), 10_000);
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].skill.as_deref(), Some("Antimagic Poison"));
+        assert_eq!(recent[0].source.as_deref(), Some("Dippinsauce"));
     }
 }
