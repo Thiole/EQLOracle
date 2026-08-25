@@ -168,7 +168,7 @@
 <Card class="rounded-sm">
   <CardContent class="px-3 py-2.5">
     <button type="button" class="flex w-full items-center gap-1.5 text-left" onclick={() => (open = !open)}>
-      <span class="w-5 text-[20px] leading-none font-bold text-foreground">{open ? '▾' : '▸'}</span>
+      <span class="w-6 text-[26px] leading-none font-bold text-foreground">{open ? '▾' : '▸'}</span>
       <h2 class="panel-title">DPS auto-suggest</h2>
     </button>
     {#if open}
