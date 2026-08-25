@@ -181,7 +181,9 @@
   // virtual planning-book slot (name only, local state) or a real
   // loadout slot (needs the name resolved to a real numeric id first,
   // see placeInArmedSlot).
-  type Armed = { kind: 'book'; book: number; slot: number } | { kind: 'loadout'; slot: number };
+  type Armed =
+    | { kind: 'book'; book: number; slot: number }
+    | { kind: 'loadout'; loadoutIndex: number; slot: number };
   let armed = $state<Armed | null>(null);
 
   let search = $state('');
@@ -299,7 +301,7 @@
       setSlot(armed.book, armed.slot, name);
       return;
     }
-    await placeInLoadoutSlot(armed.slot, name);
+    await placeInLoadoutSlot(armed.loadoutIndex, armed.slot, name);
   }
 
   function onDragStart(e: DragEvent, name: string) {
@@ -319,10 +321,10 @@
     if (name) setSlot(bookIdx, slotIdx, name);
   }
 
-  function onLoadoutSlotDrop(e: DragEvent, slot: number) {
+  function onLoadoutSlotDrop(e: DragEvent, loadoutIndex: number, slot: number) {
     e.preventDefault();
     const name = e.dataTransfer?.getData(DRAG_MIME);
-    if (name) void placeInLoadoutSlot(slot, name);
+    if (name) void placeInLoadoutSlot(loadoutIndex, slot, name);
   }
 
   // ---------------------------------------------------------- UI file import
@@ -390,31 +392,38 @@
 
   let spellbookFile = $state<SpellbookFileDto | null>(null);
   let spellbookLoadError = $state<string | null>(null);
-  let selectedLoadoutIndex = $state<number | null>(null);
   let loadoutActionError = $state<string | null>(null);
   let saving = $state(false);
   let savedAt = $state<Date | null>(null);
 
+  // why: every real loadout the file has, all loaded and shown at once
+  // (not one picked at a time) -- direct correction: "load them all at
+  // once, as the successive spellbooks, so when I save to file, it
+  // saves it all into the same UI file, the same way it is parsed."
+  // save_spellbook_file already always writes the whole 60-entry shape
+  // back regardless; this just makes the UI match that -- edit any of
+  // them inline, one save commits the lot.
   const inUseLoadouts = $derived(spellbookFile?.loadouts.filter((l) => l.in_use) ?? []);
-  const selectedLoadout = $derived(spellbookFile?.loadouts.find((l) => l.index === selectedLoadoutIndex) ?? null);
+
+  function loadoutByIndex(index: number) {
+    return spellbookFile?.loadouts.find((l) => l.index === index) ?? null;
+  }
 
   async function loadFile(file: string) {
     selectedFile = file;
     spellbookFile = null;
     spellbookLoadError = null;
-    selectedLoadoutIndex = null;
     savedAt = null;
     try {
       spellbookFile = await api.loadSpellbookFile(file);
-      // why: land on the first real loadout, not a blank picker every time
-      selectedLoadoutIndex = spellbookFile.loadouts.find((l) => l.in_use)?.index ?? null;
     } catch (e) {
       spellbookLoadError = e instanceof Error ? e.message : String(e);
     }
   }
 
-  async function placeInLoadoutSlot(slot: number, name: string) {
-    if (!selectedLoadout) return;
+  async function placeInLoadoutSlot(loadoutIndex: number, slot: number, name: string) {
+    const lo = loadoutByIndex(loadoutIndex);
+    if (!lo) return;
     loadoutActionError = null;
     const id = await api.resolveSpellbookSpellId(name).catch((e) => {
       loadoutActionError = e instanceof Error ? e.message : String(e);
@@ -424,7 +433,7 @@
       loadoutActionError ??= `"${name}" has no matching in-game spell id, from this install's own spells_us.txt -- can't place it in a real slot.`;
       return;
     }
-    const s = selectedLoadout.slots.find((s) => s.slot === slot);
+    const s = lo.slots.find((s) => s.slot === slot);
     if (s) {
       s.spell_id = id;
       s.name = name;
@@ -432,8 +441,8 @@
     }
   }
 
-  function clearLoadoutSlot(slot: number) {
-    const s = selectedLoadout?.slots.find((s) => s.slot === slot);
+  function clearLoadoutSlot(loadoutIndex: number, slot: number) {
+    const s = loadoutByIndex(loadoutIndex)?.slots.find((s) => s.slot === slot);
     if (s) {
       s.spell_id = -1;
       s.name = null;
@@ -441,8 +450,9 @@
     }
   }
 
-  function renameLoadout(name: string) {
-    if (selectedLoadout) selectedLoadout.name = name;
+  function renameLoadout(loadoutIndex: number, name: string) {
+    const lo = loadoutByIndex(loadoutIndex);
+    if (lo) lo.name = name;
   }
 
   function addNewLoadout() {
@@ -456,17 +466,15 @@
     free.in_use = true;
     free.name = `New Loadout ${free.index}`;
     free.slots = Array.from({ length: 14 }, (_, i) => ({ slot: i + 1, spell_id: -1, name: null, catalog_id: null }));
-    selectedLoadoutIndex = free.index;
   }
 
   function deleteLoadout(index: number) {
-    const lo = spellbookFile?.loadouts.find((l) => l.index === index);
+    const lo = loadoutByIndex(index);
     if (!lo) return;
     if (!confirm(`Delete loadout "${lo.name}"? A backup of the file as it was before saving is kept alongside it either way.`)) return;
     lo.in_use = false;
     lo.name = null;
     lo.slots = [];
-    if (selectedLoadoutIndex === index) selectedLoadoutIndex = null;
   }
 
   async function saveLoadouts() {
@@ -523,84 +531,81 @@
         {#if spellbookLoadError}
           <p class="mt-2 text-[12px] text-destructive">{spellbookLoadError}</p>
         {:else if spellbookFile}
-          <!-- why: every real loadout as its own button, not a dropdown --
-               this file can hold many (a real character had 21), and a
-               collapsed picker made it look like there was only ever one. -->
-          <div class="mt-2 flex flex-wrap gap-1.5">
-            {#each inUseLoadouts as lo (lo.index)}
-              <button
-                type="button"
-                class="rounded-sm border px-2 py-1 text-[11px] {selectedLoadoutIndex === lo.index
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'border-border text-foreground hover:border-primary/50'}"
-                onclick={() => (selectedLoadoutIndex = lo.index)}
-              >
-                {lo.name} <span class="text-muted-foreground">#{lo.index}</span>
-              </button>
-            {/each}
-            <Button size="sm" variant="outline" class="h-6 text-[11px]" onclick={addNewLoadout}>+ new loadout</Button>
+          <!-- why: every real loadout loaded and shown at once, not one
+               picked at a time -- direct correction: this file can hold
+               many (a real character had 21), and save always writes
+               the whole set back regardless of which one you're
+               looking at, so the UI should match that instead of
+               hiding the rest behind a picker. -->
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={saveLoadouts} disabled={saving}>
+              {saving ? 'saving…' : `save all ${inUseLoadouts.length} to file`}
+            </Button>
+            <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={addNewLoadout}>+ new loadout</Button>
+            <span class="text-[11px] text-muted-foreground">{inUseLoadouts.length}/60 loadout slots in use</span>
+            {#if savedAt}
+              <span class="text-[11px] text-muted-foreground">saved {savedAt.toLocaleTimeString()}</span>
+            {/if}
           </div>
-          <p class="mt-1 text-[11px] text-muted-foreground">{inUseLoadouts.length}/60 loadout slots in use</p>
 
           {#if loadoutActionError}
             <p class="mt-2 text-[12px] text-destructive">{loadoutActionError}</p>
           {/if}
 
-          {#if selectedLoadout}
-            <div class="mt-2 flex flex-wrap items-center gap-2">
-              <Input
-                value={selectedLoadout.name ?? ''}
-                oninput={(e) => renameLoadout(e.currentTarget.value)}
-                class="h-7 max-w-48 text-[12px]"
-              />
-              <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={saveLoadouts} disabled={saving}>
-                {saving ? 'saving…' : 'save to file'}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                class="h-7 text-[11px] text-destructive"
-                onclick={() => selectedLoadout && deleteLoadout(selectedLoadout.index)}
-              >
-                delete loadout
-              </Button>
-              {#if savedAt}
-                <span class="text-[11px] text-muted-foreground">saved {savedAt.toLocaleTimeString()}</span>
-              {/if}
-            </div>
-            <div class="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-7">
-              {#each selectedLoadout.slots as s (s.slot)}
-                {@const isArmed = armed?.kind === 'loadout' && armed.slot === s.slot}
-                <div class="flex flex-col gap-0.5">
-                  <span class="text-[9px] text-muted-foreground">{s.slot}</span>
-                  {#if s.name}
-                    <button
-                      type="button"
-                      class="flex h-10 flex-col items-center justify-center rounded-sm border border-primary/40 bg-primary/10 px-1 text-center text-[10px] text-foreground hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
-                      title={s.catalog_id ? 'click to clear' : 'click to clear (not found in Game Data)'}
-                      ondragover={(e) => e.preventDefault()}
-                      ondrop={(e) => onLoadoutSlotDrop(e, s.slot)}
-                      onclick={() => clearLoadoutSlot(s.slot)}
-                    >
-                      {s.name}
-                    </button>
-                  {:else}
-                    <button
-                      type="button"
-                      class="flex h-10 items-center justify-center rounded-sm border border-dashed text-[10px] {isArmed
-                        ? 'border-primary text-primary'
-                        : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}"
-                      ondragover={(e) => e.preventDefault()}
-                      ondrop={(e) => onLoadoutSlotDrop(e, s.slot)}
-                      onclick={() => (armed = { kind: 'loadout', slot: s.slot })}
-                    >
-                      {isArmed ? 'drop here' : 'empty'}
-                    </button>
-                  {/if}
+          <div class="mt-2 flex flex-col gap-2">
+            {#each inUseLoadouts as lo (lo.index)}
+              <div class="rounded-sm border border-border p-2">
+                <div class="mb-1.5 flex flex-wrap items-center gap-2">
+                  <Input
+                    value={lo.name ?? ''}
+                    oninput={(e) => renameLoadout(lo.index, e.currentTarget.value)}
+                    class="h-7 max-w-48 text-[12px]"
+                  />
+                  <span class="text-[11px] text-muted-foreground">#{lo.index}</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    class="h-6 text-[11px] text-destructive"
+                    onclick={() => deleteLoadout(lo.index)}
+                  >
+                    delete
+                  </Button>
                 </div>
-              {/each}
-            </div>
-          {/if}
+                <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
+                  {#each lo.slots as s (s.slot)}
+                    {@const isArmed = armed?.kind === 'loadout' && armed.loadoutIndex === lo.index && armed.slot === s.slot}
+                    <div class="flex flex-col gap-0.5">
+                      <span class="text-[9px] text-muted-foreground">{s.slot}</span>
+                      {#if s.name}
+                        <button
+                          type="button"
+                          class="flex h-10 flex-col items-center justify-center rounded-sm border border-primary/40 bg-primary/10 px-1 text-center text-[10px] text-foreground hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+                          title={s.catalog_id ? 'click to clear' : 'click to clear (not found in Game Data)'}
+                          ondragover={(e) => e.preventDefault()}
+                          ondrop={(e) => onLoadoutSlotDrop(e, lo.index, s.slot)}
+                          onclick={() => clearLoadoutSlot(lo.index, s.slot)}
+                        >
+                          {s.name}
+                        </button>
+                      {:else}
+                        <button
+                          type="button"
+                          class="flex h-10 items-center justify-center rounded-sm border border-dashed text-[10px] {isArmed
+                            ? 'border-primary text-primary'
+                            : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}"
+                          ondragover={(e) => e.preventDefault()}
+                          ondrop={(e) => onLoadoutSlotDrop(e, lo.index, s.slot)}
+                          onclick={() => (armed = { kind: 'loadout', loadoutIndex: lo.index, slot: s.slot })}
+                        >
+                          {isArmed ? 'drop here' : 'empty'}
+                        </button>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              </div>
+            {/each}
+          </div>
         {/if}
       {/if}
     </CardContent>
@@ -718,8 +723,8 @@
           {MAX_CHARACTER_LEVEL} cap -- anything above that isn't learnable yet, so it's left out).
         {/if}
         Drag a result onto any slot above{#if armed && armed.kind === 'book'}, or click one to fill spellbook "{books[armed.book]?.name}",
-          slot {armed.slot + 1}{:else if armed && armed.kind === 'loadout'}, or click one to fill "{selectedLoadout?.name}", slot
-          {armed.slot}{/if}.
+          slot {armed.slot + 1}{:else if armed && armed.kind === 'loadout'}, or click one to fill "{loadoutByIndex(armed.loadoutIndex)
+            ?.name}", slot {armed.slot}{/if}.
       </p>
       {#if mode === 'rank10' && rank10Error}
         <p class="text-[12px] text-destructive">{rank10Error}</p>
