@@ -485,7 +485,7 @@
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
       <button type="button" class="flex w-full items-center gap-1.5 text-left" onclick={() => (foundOpen = !foundOpen)}>
-        <span class="w-4 text-[14px] leading-none text-muted-foreground">{foundOpen ? '▾' : '▸'}</span>
+        <span class="w-5 text-[20px] leading-none font-bold text-foreground">{foundOpen ? '▾' : '▸'}</span>
         <h2 class="panel-title">Found spellbooks</h2>
       </button>
       {#if foundOpen}
@@ -659,7 +659,7 @@
     <CardContent class="px-3 py-2.5">
       <div class="mb-1.5 flex items-center justify-between gap-2">
         <button type="button" class="flex items-center gap-1.5 text-left" onclick={() => (suggestedOpen = !suggestedOpen)}>
-          <span class="w-4 text-[14px] leading-none text-muted-foreground">{suggestedOpen ? '▾' : '▸'}</span>
+          <span class="w-5 text-[20px] leading-none font-bold text-foreground">{suggestedOpen ? '▾' : '▸'}</span>
           <h2 class="panel-title">Suggested spells</h2>
         </button>
         {#if suggestedOpen}
