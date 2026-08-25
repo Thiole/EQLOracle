@@ -552,7 +552,12 @@
             <p class="mt-2 text-[12px] text-destructive">{loadoutActionError}</p>
           {/if}
 
-          <div class="mt-2 flex flex-col gap-2">
+          <!-- why: capped to ~2-2.5 loadouts tall with its own scroll,
+               not the whole page -- a real file can hold 20+, and the
+               spell picker below needs to stay in reach for editing any
+               of them, not just whichever happened to land near the
+               bottom of a long unbounded list. -->
+          <div class="mt-2 flex max-h-[420px] flex-col gap-2 overflow-y-auto pr-1">
             {#each inUseLoadouts as lo (lo.index)}
               <div class="rounded-sm border border-border p-2">
                 <div class="mb-1.5 flex flex-wrap items-center gap-2">
@@ -611,63 +616,13 @@
     </CardContent>
   </Card>
 
-  {#each books as book, bookIdx (bookIdx)}
-    <Card class="rounded-sm">
-      <CardContent class="px-3 py-2.5">
-        <div class="mb-2 flex flex-wrap items-center gap-2">
-          <Input value={book.name} oninput={(e) => renameBook(bookIdx, e.currentTarget.value)} class="h-7 max-w-48 text-[12px]" />
-          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => clearBook(bookIdx)}>clear</Button>
-          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestSoloBuff(bookIdx)}>suggest solo buff</Button>
-          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestTeamBuff(bookIdx)}>suggest team buff</Button>
-          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestCombat(bookIdx)}>suggest combat</Button>
-          {#if books.length > 1}
-            <Button size="sm" variant="ghost" class="h-7 text-[11px] text-destructive" onclick={() => removeBook(bookIdx)}>remove spellbook</Button>
-          {/if}
-        </div>
-        <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
-          {#each book.slots as spellName, slotIdx (slotIdx)}
-            {@const isArmed = armed?.kind === 'book' && armed.book === bookIdx && armed.slot === slotIdx}
-            <div class="flex flex-col gap-0.5">
-              <span class="text-[9px] text-muted-foreground">{slotIdx + 1}{#if slotIdx >= BASE_SLOTS}<span title="unlocked by Mnemonic Retention">*</span>{/if}</span>
-              {#if spellName}
-                <button
-                  type="button"
-                  class="flex h-10 flex-col items-center justify-center rounded-sm border border-primary/40 bg-primary/10 px-1 text-center text-[10px] text-foreground hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
-                  title="click to clear"
-                  ondragover={(e) => e.preventDefault()}
-                  ondrop={(e) => onSlotDrop(e, bookIdx, slotIdx)}
-                  onclick={() => setSlot(bookIdx, slotIdx, null)}
-                >
-                  {spellName}{#if $spellRanks[spellName] != null}<span class="text-muted-foreground"> ({toRoman($spellRanks[spellName])})</span>{/if}
-                </button>
-              {:else}
-                <button
-                  type="button"
-                  class="flex h-10 items-center justify-center rounded-sm border border-dashed text-[10px] {isArmed
-                    ? 'border-primary text-primary'
-                    : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}"
-                  ondragover={(e) => e.preventDefault()}
-                  ondrop={(e) => onSlotDrop(e, bookIdx, slotIdx)}
-                  onclick={() => (armed = { kind: 'book', book: bookIdx, slot: slotIdx })}
-                >
-                  {isArmed ? 'drop here' : 'empty'}
-                </button>
-              {/if}
-            </div>
-          {/each}
-        </div>
-      </CardContent>
-    </Card>
-  {/each}
-
-  <Button size="sm" variant="outline" class="w-fit" onclick={addBook}>+ add spellbook</Button>
-
-  <!-- why: a big, persistent suggestion block at the bottom -- asked
-       directly for this instead of a popup that opens per-slot: drag
-       any result straight onto any slot in any spellbook above, no
-       need to click a slot first. Clicking a result still works too,
-       filling whichever slot was last clicked (`armed`), for drag not
-       landing cleanly or just preferring clicks. -->
+  <!-- why: right below "Found spellbooks" (capped/scrollable above), not
+       after the virtual books further down -- asked directly for this:
+       the picker needs to stay in easy reach while editing any real
+       loadout, not just whichever one happens to land near the bottom
+       of the page. Still shared with the virtual books below (drag any
+       result onto any slot in either section, or click one to fill
+       whichever slot was last clicked via `armed`). -->
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
       <div class="mb-1.5 flex items-center justify-between gap-2">
@@ -722,9 +677,9 @@
           {#if mode === 'buffs'}Solo/target buffs first, then{/if} your active classes first, highest usable level within (level
           {MAX_CHARACTER_LEVEL} cap -- anything above that isn't learnable yet, so it's left out).
         {/if}
-        Drag a result onto any slot above{#if armed && armed.kind === 'book'}, or click one to fill spellbook "{books[armed.book]?.name}",
-          slot {armed.slot + 1}{:else if armed && armed.kind === 'loadout'}, or click one to fill "{loadoutByIndex(armed.loadoutIndex)
-            ?.name}", slot {armed.slot}{/if}.
+        Drag a result onto any slot, above in a found spellbook or below in a planning one{#if armed && armed.kind === 'book'}, or click
+          one to fill spellbook "{books[armed.book]?.name}", slot {armed.slot + 1}{:else if armed && armed.kind === 'loadout'}, or click
+          one to fill "{loadoutByIndex(armed.loadoutIndex)?.name}", slot {armed.slot}{/if}.
       </p>
       {#if mode === 'rank10' && rank10Error}
         <p class="text-[12px] text-destructive">{rank10Error}</p>
@@ -764,4 +719,55 @@
   </Card>
 
   <DpsSuggest />
+
+  {#each books as book, bookIdx (bookIdx)}
+    <Card class="rounded-sm">
+      <CardContent class="px-3 py-2.5">
+        <div class="mb-2 flex flex-wrap items-center gap-2">
+          <Input value={book.name} oninput={(e) => renameBook(bookIdx, e.currentTarget.value)} class="h-7 max-w-48 text-[12px]" />
+          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => clearBook(bookIdx)}>clear</Button>
+          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestSoloBuff(bookIdx)}>suggest solo buff</Button>
+          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestTeamBuff(bookIdx)}>suggest team buff</Button>
+          <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={() => suggestCombat(bookIdx)}>suggest combat</Button>
+          {#if books.length > 1}
+            <Button size="sm" variant="ghost" class="h-7 text-[11px] text-destructive" onclick={() => removeBook(bookIdx)}>remove spellbook</Button>
+          {/if}
+        </div>
+        <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
+          {#each book.slots as spellName, slotIdx (slotIdx)}
+            {@const isArmed = armed?.kind === 'book' && armed.book === bookIdx && armed.slot === slotIdx}
+            <div class="flex flex-col gap-0.5">
+              <span class="text-[9px] text-muted-foreground">{slotIdx + 1}{#if slotIdx >= BASE_SLOTS}<span title="unlocked by Mnemonic Retention">*</span>{/if}</span>
+              {#if spellName}
+                <button
+                  type="button"
+                  class="flex h-10 flex-col items-center justify-center rounded-sm border border-primary/40 bg-primary/10 px-1 text-center text-[10px] text-foreground hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+                  title="click to clear"
+                  ondragover={(e) => e.preventDefault()}
+                  ondrop={(e) => onSlotDrop(e, bookIdx, slotIdx)}
+                  onclick={() => setSlot(bookIdx, slotIdx, null)}
+                >
+                  {spellName}{#if $spellRanks[spellName] != null}<span class="text-muted-foreground"> ({toRoman($spellRanks[spellName])})</span>{/if}
+                </button>
+              {:else}
+                <button
+                  type="button"
+                  class="flex h-10 items-center justify-center rounded-sm border border-dashed text-[10px] {isArmed
+                    ? 'border-primary text-primary'
+                    : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}"
+                  ondragover={(e) => e.preventDefault()}
+                  ondrop={(e) => onSlotDrop(e, bookIdx, slotIdx)}
+                  onclick={() => (armed = { kind: 'book', book: bookIdx, slot: slotIdx })}
+                >
+                  {isArmed ? 'drop here' : 'empty'}
+                </button>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </CardContent>
+    </Card>
+  {/each}
+
+  <Button size="sm" variant="outline" class="w-fit" onclick={addBook}>+ add spellbook</Button>
 </div>
