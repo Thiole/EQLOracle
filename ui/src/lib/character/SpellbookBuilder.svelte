@@ -480,6 +480,11 @@
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
       <h2 class="panel-title mb-1.5">Found spellbooks</h2>
+      <p class="mb-2 text-[11px] font-medium text-destructive">
+        AUTO suggests are work in progress, please triple check. The auto rules are currently: Optimal DPS Loop + best cc or shot term
+        buff spells for remaining available combat lines it tries its best to not have multiple from same spell line. I am working on
+        specific overrides like Mez which is level 16 for example as "outliers"
+      </p>
       <p class="mb-2 text-[11px] text-muted-foreground">
         Loads the real, saved spell loadouts from your own <code class="rounded bg-muted px-1 py-0.5">&lt;Character&gt;_&lt;Zone&gt;_LO1.ini</code>
         file (their `UI_`-prefixed counterparts are window layout only, never contents, so they're left out of this list). Edit slots
