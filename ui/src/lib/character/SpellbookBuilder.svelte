@@ -559,7 +559,13 @@
                bottom of a long unbounded list. -->
           <div class="mt-2 flex max-h-[420px] flex-col gap-2 overflow-y-auto pr-1">
             {#each inUseLoadouts as lo (lo.index)}
-              <div class="rounded-sm border border-border p-2">
+              <!-- why: shrink-0 is load-bearing -- a flex-col container's
+                   children shrink to fit by default, which was squeezing
+                   every loadout's own slot grid down to fit inside
+                   max-h-[420px] instead of letting the container scroll
+                   past them (the real bug: only each block's name/delete
+                   row, which resists collapsing, stayed visible). -->
+              <div class="shrink-0 rounded-sm border border-border p-2">
                 <div class="mb-1.5 flex flex-wrap items-center gap-2">
                   <Input
                     value={lo.name ?? ''}
