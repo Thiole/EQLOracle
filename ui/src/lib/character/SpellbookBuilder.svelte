@@ -252,11 +252,10 @@
   let saving = $state(false);
   let savedAt = $state<Date | null>(null);
 
-  // why: collapsible sections -- open by default (the two live-editing
-  // panels), so a decent-sized window still shows every section's
-  // header even when one's expanded, rather than one long unbroken page.
-  let foundOpen = $state(true);
-  let suggestedOpen = $state(true);
+  // why: collapsed by default -- a decent-sized window should show every
+  // section's header at a glance, not one already expanded to full height.
+  let foundOpen = $state(false);
+  let suggestedOpen = $state(false);
 
   // why: "save as" forks the current file pair under a new name instead
   // of overwriting it -- a small inline box (not a full dialog, nothing
@@ -486,7 +485,7 @@
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
       <button type="button" class="flex w-full items-center gap-1.5 text-left" onclick={() => (foundOpen = !foundOpen)}>
-        <span class="w-3 text-[9px] text-muted-foreground">{foundOpen ? '▾' : '▸'}</span>
+        <span class="w-4 text-[14px] leading-none text-muted-foreground">{foundOpen ? '▾' : '▸'}</span>
         <h2 class="panel-title">Found spellbooks</h2>
       </button>
       {#if foundOpen}
@@ -660,7 +659,7 @@
     <CardContent class="px-3 py-2.5">
       <div class="mb-1.5 flex items-center justify-between gap-2">
         <button type="button" class="flex items-center gap-1.5 text-left" onclick={() => (suggestedOpen = !suggestedOpen)}>
-          <span class="w-3 text-[9px] text-muted-foreground">{suggestedOpen ? '▾' : '▸'}</span>
+          <span class="w-4 text-[14px] leading-none text-muted-foreground">{suggestedOpen ? '▾' : '▸'}</span>
           <h2 class="panel-title">Suggested spells</h2>
         </button>
         {#if suggestedOpen}
