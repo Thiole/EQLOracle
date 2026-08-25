@@ -189,10 +189,24 @@ pub fn load_spellbook(base_dir: &Path, file: &str) -> Result<SpellbookFileDto, S
 /// spells_us.txt has no entry under that exact name (real, confirmed:
 /// ~7% of the full catalog), not that the name is wrong
 pub fn resolve_spell_id(base_dir: &Path, name: &str) -> Option<i64> {
-    build_spell_id_index(base_dir)
-        .by_name
-        .get(&name.to_ascii_lowercase())
-        .copied()
+    resolve_spell_ids(base_dir, std::slice::from_ref(&name.to_string()))
+        .into_iter()
+        .next()
+        .flatten()
+}
+
+/// why: real, measured fix for a real slowdown -- filling a loadout's
+/// worth of empty slots used to call resolve_spell_id once per slot,
+/// each of which reread and reparsed all of spells_us.txt (73,971
+/// lines) from scratch. One index build serving every name in the
+/// batch instead of one per name -- same result, one parse instead of
+/// up to fourteen.
+pub fn resolve_spell_ids(base_dir: &Path, names: &[String]) -> Vec<Option<i64>> {
+    let idx = build_spell_id_index(base_dir);
+    names
+        .iter()
+        .map(|n| idx.by_name.get(&n.to_ascii_lowercase()).copied())
+        .collect()
 }
 
 /// why: shared by save_spellbook and save_spellbook_as -- always writes
@@ -572,6 +586,23 @@ mod tests {
         assert_eq!(resolve_spell_id(&dir, "obscure"), Some(652));
         assert_eq!(resolve_spell_id(&dir, "OBSCURE"), Some(652));
         assert_eq!(resolve_spell_id(&dir, "Not A Real Spell"), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn resolve_spell_ids_batches_a_whole_loadout_in_one_parse() {
+        let dir = scratch_dir("resolve_batch");
+        write_spells_us(&dir);
+        let names = vec![
+            "obscure".to_string(),
+            "RESIST FIRE".to_string(),
+            "Not A Real Spell".to_string(),
+            "Augmentation".to_string(),
+        ];
+        assert_eq!(
+            resolve_spell_ids(&dir, &names),
+            vec![Some(652), Some(60), None, Some(10)]
+        );
         std::fs::remove_dir_all(&dir).ok();
     }
 }

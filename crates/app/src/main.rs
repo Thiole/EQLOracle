@@ -58,7 +58,7 @@ fn main() {
             commands::load_spellbook_file,
             commands::save_spellbook_file,
             commands::save_spellbook_file_as,
-            commands::resolve_spellbook_spell_id,
+            commands::resolve_spellbook_spell_ids,
             commands::get_mob_history,
             commands::get_loadout_summary,
             commands::list_mobs,

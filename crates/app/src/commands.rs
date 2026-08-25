@@ -1238,14 +1238,17 @@ pub fn save_spellbook_file_as(
     spellbookfiles::save_spellbook_as(&base_dir, &source_file, &new_stem, &loadouts)
 }
 
-/// why: resolves a catalog spell's real numeric id, for placing it into
-/// a loadout slot -- None means spells_us.txt has no exact-name entry,
-/// not that the frontend did anything wrong
+/// why: resolves a batch of catalog spell names to their real numeric
+/// ids in one call -- None per entry means spells_us.txt has no
+/// exact-name entry, not that the frontend did anything wrong. Batched
+/// on purpose: filling a loadout's worth of empty slots used to call
+/// this once per slot, each a fresh full spells_us.txt reparse -- real,
+/// measured slowdown. See spellbookfiles::resolve_spell_ids.
 #[tauri::command]
-pub fn resolve_spellbook_spell_id(
+pub fn resolve_spellbook_spell_ids(
     state: State<AppState>,
-    name: String,
-) -> Result<Option<i64>, String> {
+    names: Vec<String>,
+) -> Result<Vec<Option<i64>>, String> {
     let base_dir = state
         .config
         .lock()
@@ -1254,7 +1257,7 @@ pub fn resolve_spellbook_spell_id(
         .ok_or("no install folder configured yet")?
         .base_dir
         .clone();
-    Ok(spellbookfiles::resolve_spell_id(&base_dir, &name))
+    Ok(spellbookfiles::resolve_spell_ids(&base_dir, &names))
 }
 
 #[cfg(test)]

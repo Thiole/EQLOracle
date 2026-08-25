@@ -1115,9 +1115,10 @@ export const api = {
   saveSpellbookFileAs: (sourceFile: string, newStem: string, loadouts: SpellLoadoutDto[]) =>
     invoke<string>('save_spellbook_file_as', { sourceFile, newStem, loadouts }),
 
-  /** why: resolves a catalog spell name to its real numeric id, for placing it into a loadout
-   * slot -- null means spells_us.txt has no exact-name entry (real, ~7% of the catalog) */
-  resolveSpellbookSpellId: (name: string) => invoke<number | null>('resolve_spellbook_spell_id', { name }),
+  /** why: resolves a batch of catalog spell names to their real numeric ids in one call --
+   * null per entry means spells_us.txt has no exact-name entry (real, ~7% of the catalog).
+   * Batched on purpose: one spells_us.txt parse for the whole request, not one per name. */
+  resolveSpellbookSpellIds: (names: string[]) => invoke<(number | null)[]>('resolve_spellbook_spell_ids', { names }),
 
   // -------------------------------------------------------------- preferences
 

@@ -321,10 +321,11 @@
     const lo = loadoutByIndex(loadoutIndex);
     if (!lo) return;
     loadoutActionError = null;
-    const id = await api.resolveSpellbookSpellId(name).catch((e) => {
+    const ids = await api.resolveSpellbookSpellIds([name]).catch((e) => {
       loadoutActionError = e instanceof Error ? e.message : String(e);
       return null;
     });
+    const id = ids?.[0];
     if (id == null) {
       loadoutActionError ??= `"${name}" has no matching in-game spell id, from this install's own spells_us.txt -- can't place it in a real slot.`;
       return;
@@ -368,15 +369,37 @@
     for (const s of lo.slots) clearLoadoutSlot(loadoutIndex, s.slot);
   }
 
-  // why: each placement is its own real id-resolution round trip (same
-  // as a manual drop), done in slot order so it never disturbs a slot
-  // that already has something in it.
+  // why: one batched id-resolution round trip for the whole fill, not
+  // one per slot -- real, measured fix: up to 14 sequential
+  // resolveSpellbookSpellIds calls each reread and reparsed all of
+  // spells_us.txt (73,971 lines) from scratch, the "reallllly slow"
+  // case reported live. First N empty slots in slot order get
+  // names[0..N], same order the old one-at-a-time loop filled them in.
   async function fillLoadoutEmptySlots(loadoutIndex: number, names: string[]) {
     const lo = loadoutByIndex(loadoutIndex);
-    if (!lo) return;
-    let i = 0;
-    for (const s of lo.slots) {
-      if (s.name == null && i < names.length) await placeInLoadoutSlot(loadoutIndex, s.slot, names[i++]);
+    if (!lo || !names.length) return;
+    const targets = lo.slots.filter((s) => s.name == null).slice(0, names.length);
+    if (!targets.length) return;
+    const picks = names.slice(0, targets.length);
+    loadoutActionError = null;
+    const ids = await api.resolveSpellbookSpellIds(picks).catch((e) => {
+      loadoutActionError = e instanceof Error ? e.message : String(e);
+      return null;
+    });
+    if (!ids) return;
+    const unresolved: string[] = [];
+    targets.forEach((s, i) => {
+      const id = ids[i];
+      if (id == null) {
+        unresolved.push(picks[i]);
+        return;
+      }
+      s.spell_id = id;
+      s.name = picks[i];
+      s.catalog_id = null;
+    });
+    if (unresolved.length) {
+      loadoutActionError = `${unresolved.length} suggested spell${unresolved.length > 1 ? 's' : ''} had no matching in-game id, from this install's own spells_us.txt -- skipped: ${unresolved.join(', ')}`;
     }
   }
 
