@@ -281,7 +281,11 @@ flag = { from = "flag", as = "str" }
 id = "melee.blocked"
 kind = "block"
 priority = 30
-anchors = ["blocks!"]
+# why: "blocks!" alone missed every real 2nd-person "YOU block!" line (no
+# "s") -- the pattern already handled both conjugations, the anchor just
+# never covered the one without it. Tens of thousands of real occurrences
+# confirmed previously unmatched.
+anchors = [" block"]
 # Same swing-attempt shape as melee.miss, but the target actively avoided
 # it -- kept as its own kind so a per-source accuracy breakdown can say
 # "blocked" rather than lumping it in with a plain miss. `blocker` is
@@ -292,6 +296,8 @@ pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P
 examples = [
   "[Tue Jul 28 15:02:15 2026] Refuse tries to punch Refugee Splitpaw, but Refugee Splitpaw blocks!",
   "[Tue Jul 28 15:02:15 2026] Refuse tries to kick Refugee Splitpaw, but Refugee Splitpaw blocks!",
+  "[Tue Jul 28 15:02:15 2026] A seafury cyclops tries to hit YOU, but YOU block!",
+  "[Tue Jul 28 15:02:15 2026] Bzzazzt tries to sting YOU, but YOU block!",
 ]
 [rule.fields]
 source = { from = "src", as = "str" }
@@ -463,12 +469,18 @@ anchors = ["of non-melee damage"]
 # why: `points?` -- same real singular/plural gap melee.hit's own doc
 # already found and fixed ("1 point of damage" vs "N points"), just
 # never carried over here. 905 real singular occurrences confirmed.
-pattern = '''^(?P<dst>.+?) is (?P<verb>[a-z]+) by (?P<src>.+?) for (?P<amt>[0-9,]+) points? of non-melee damage\.$'''
+# why is|are and .|! -- the 2nd-person "YOU are burned/pierced by ...!"
+# form (self as target, exclamation) is a real, separate client message
+# from the 3rd-person "X is burned/pierced by ...." form, not a typo of
+# it -- tens of thousands of real occurrences confirmed, previously unmatched.
+pattern = '''^(?P<dst>.+?) (?:is|are) (?P<verb>[a-z]+) by (?P<src>.+?) for (?P<amt>[0-9,]+) points? of non-melee damage[.!]$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Kaeus is burned by Tranixx Darkpaw's flames for 6 points of non-melee damage.",
   "[Tue Jul 28 15:02:15 2026] Master Brewer is pierced by Bravesirrobin's thorns for 3 points of non-melee damage.",
   "[Tue Jul 28 15:02:15 2026] A seafury cyclops is pierced by YOUR thorns for 29 points of non-melee damage.",
   "[Tue Jul 28 15:02:15 2026] Tranixx Darkpaw is pierced by Taddy's thorns for 1 point of non-melee damage.",
+  "[Tue Jul 28 15:02:15 2026] YOU are pierced by an ire ghast's thorns for 18 points of non-melee damage!",
+  "[Tue Jul 28 15:02:15 2026] YOU are burned by a Pickclaw Arroweater's flames for 7 points of non-melee damage!",
 ]
 [rule.fields]
 source = { from = "src", as = "str" }
@@ -509,14 +521,35 @@ examples = ["[Tue Jul 28 15:02:15 2026] Govtcheeze was injured by falling."]
 who = { from = "who", as = "str" }
 
 [[rule]]
+id = "damage.self_hurt"
+kind = "damage"
+priority = 40
+# why: real, distinct self-damage shape -- no source named at all
+# (backlash/reflect/self-targeted-effect damage), `points?` for the same
+# real singular/plural gap this pack's other damage rules already fixed.
+anchors = ["You hurt yourself for"]
+pattern = '''^You hurt yourself for (?P<amt>[0-9,]+) points?\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You hurt yourself for 1 points.",
+  "[Tue Jul 28 15:02:15 2026] You hurt yourself for 5 points.",
+]
+[rule.fields]
+amount = { from = "amt", as = "u64" }
+
+[[rule]]
 id = "mobstate.magical_skin_absorbs"
 kind = "mobstate"
 priority = 20
 anchors = ["'s magical skin absorbs the damage of "]
-pattern = '''^(?P<who>.+?)'s magical skin absorbs the damage of (?P<source>.+?)'s (?:flames|thorns)\.$'''
+# why: `(?:'s )?` -- "YOUR flames" (2nd-person pronoun, already
+# possessive on its own) has no "'s" the way a real name's own
+# possessive ("Bravesirrobin's thorns") does. Same real gap ds.damage's
+# own doc already found and fixed for this exact source-name shape.
+pattern = '''^(?P<who>.+?)'s magical skin absorbs the damage of (?P<source>.+?)(?:'s)? (?:flames|thorns)\.$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Kahaptra Z`Taj's magical skin absorbs the damage of Bravesirrobin's thorns.",
   "[Tue Jul 28 15:02:15 2026] Konarer's magical skin absorbs the damage of Nisch Val Torash Mashk's flames.",
+  "[Tue Jul 28 15:02:15 2026] A yun ghoul wizard's magical skin absorbs the damage of YOUR flames.",
 ]
 [rule.fields]
 who = { from = "who", as = "str" }
@@ -630,6 +663,61 @@ examples = ["[Tue Jul 28 15:02:15 2026] Murgledoo begins singing Chords of Disso
 [rule.fields]
 source = { from = "src", as = "str" }
 song = { from = "song", as = "str" }
+
+[[rule]]
+id = "sing.paused"
+kind = "cast"
+priority = 30
+# why: a channeled song ducking out (moving, target out of range, etc.)
+# and coming back -- "Your X paused."/"Your X resumed." is always the
+# log owner's own song, never third-person.
+anchors = [" paused."]
+pattern = '''^Your (?P<song>.+?) paused\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your Symphonic Aura paused."]
+[rule.fields]
+song = { from = "song", as = "str" }
+
+[[rule]]
+id = "sing.resumed"
+kind = "cast"
+priority = 30
+anchors = [" resumed."]
+pattern = '''^Your (?P<song>.+?) resumed\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your Symphonic Aura resumed."]
+[rule.fields]
+song = { from = "song", as = "str" }
+
+[[rule]]
+id = "track.direction"
+kind = "noise"
+priority = 60
+# why: the Tracking radar's own directional readout -- pure UI feedback,
+# not a discrete game-state change (the target's real position is what
+# matters, this is just a compass hint toward it). Real compound shape:
+# an optional horizontal component (straight ahead/ahead/behind/to the
+# left/to the right, or a horizontal pair like "ahead and to the left"),
+# an optional vertical component (above/below you), joined by "and" when
+# there are 2 parts or Oxford-comma-style when there are 3 -- "you" only
+# appears on the final component ("behind you" alone, but "behind and to
+# the right" with none, and "...and below you" when vertical is present).
+# Built from real observed combinations, not a guessed-at full grammar --
+# 3-part lists use an Oxford comma before the final "and" ("ahead, to the
+# right, and below you"), 2-part lists just " and ", explicitly enumerated
+# rather than generalized since the comma placement isn't uniform.
+anchors = [" is "]
+pattern = '''^(?P<who>.+?) is (?P<direction>straight ahead(?: and (?:above|below) you)?|ahead(?: and to the (?:left|right))?(?: and (?:above|below) you)?|behind(?: and to the (?:left|right))?(?: and (?:above|below) you)?|to the (?:left|right)(?: and (?:above|below) you)?|ahead, to the (?:left|right), and (?:above|below) you|behind, to the (?:left|right), and (?:above|below) you|behind you|ahead of you)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] An ire ghast is straight ahead.",
+  "[Tue Jul 28 15:02:15 2026] Groflah Steadirt is ahead and to the left.",
+  "[Tue Jul 28 15:02:15 2026] Groflah Steadirt is behind you.",
+  "[Tue Jul 28 15:02:15 2026] An ire ghast is straight ahead and above you.",
+  "[Tue Jul 28 15:02:15 2026] An ire ghast is to the right and above you.",
+  "[Tue Jul 28 15:02:15 2026] Groflah Steadirt is behind and to the right.",
+  "[Tue Jul 28 15:02:15 2026] Voidling is ahead, to the right, and below you.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+direction = { from = "direction", as = "str" }
 
 [[rule]]
 id = "spell.memorize_start"
@@ -1018,6 +1106,25 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] You receive 9 platinum 5 gold 7 silver from Klok Koglin for the Gold Malachite Bracelet(s).",
   "[Tue Jul 28 15:02:15 2026] You receive 70 platinum 2 gold from Canarie for the Golden Star Ruby Ring(s).",
   "[Tue Jul 28 15:02:15 2026] You receive 185 platinum from Klok Koglin for the Fire Emerald Platinum Ring(s).",
+]
+[rule.fields]
+amount = { from = "amount", as = "str" }
+
+[[rule]]
+id = "money.received_plain"
+kind = "money"
+priority = 50
+# why: a real, distinct shape from money.vendor_sell -- no "for <item>"
+# clause at all (money handed over directly, not paid for a sale).
+# Excludes " for " so a real vendor-sell line (which also starts "You
+# receive ... from ...") can never double-match this rule too, and
+# excludes "from the corpse" -- money.corpse's own, more specific shape.
+anchors = ["You receive"]
+excludes = [" for ", "from the corpse"]
+pattern = '''^You receive (?P<amount>.+?) from [^.]+\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You receive 3 gold from Groflah Steadirt.",
+  "[Tue Jul 28 15:02:15 2026] You receive 5 silver from Groflah Steadirt.",
 ]
 [rule.fields]
 amount = { from = "amount", as = "str" }
@@ -1418,6 +1525,32 @@ pattern = '''^Spell set .+ saved\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] Spell set WED_08_Grind saved."]
 
 [[rule]]
+id = "noise.resting_state_required"
+kind = "noise"
+priority = 60
+anchors = ["resting state to use"]
+pattern = '''^You must be in a resting state to use the (?P<item>.+?)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You must be in a resting state to use the Port Ring."]
+[rule.fields]
+item = { from = "item", as = "str" }
+
+[[rule]]
+id = "noise.camp_countdown"
+kind = "noise"
+priority = 60
+# why: "It will take about N more seconds" (still camping) and "It will
+# take you about N seconds" (just started) -- 2 real phrasings of the
+# same countdown, bundled since neither is state worth tracking on its own.
+anchors = ["to prepare your camp"]
+pattern = '''^It will take (?:about|you about) (?P<secs>[0-9]+)(?: more)? seconds to prepare your camp\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] It will take about 25 more seconds to prepare your camp.",
+  "[Tue Jul 28 15:02:15 2026] It will take you about 20 seconds to prepare your camp.",
+]
+[rule.fields]
+seconds = { from = "secs", as = "u64" }
+
+[[rule]]
 id = "noise.no_open_slots"
 kind = "noise"
 priority = 60
@@ -1432,6 +1565,23 @@ priority = 60
 anchors = ["target is out of range"]
 pattern = '''^Your target is out of range, get closer!$'''
 examples = ["[Fri Aug 07 16:58:14 2026] Your target is out of range, get closer!"]
+
+[[rule]]
+id = "noise.no_target_selected"
+kind = "noise"
+priority = 60
+# why: 3 unrelated real UI hints bundled -- neither is game state, all
+# are "you tried to act with no valid target/path" client feedback, same
+# "one alternation" call this pack's other noise bundles already make.
+# Weak anchor -- no single literal common to all 3, same reason
+# state.misc/noise.self_messages use one too.
+anchors = [" "]
+pattern = '''^(?:You must first click on the being you wish to attack!|You can't hit them from here\.|Consider whom\?)$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You must first click on the being you wish to attack!",
+  "[Tue Jul 28 15:02:15 2026] You can't hit them from here.",
+  "[Tue Jul 28 15:02:15 2026] Consider whom?",
+]
 
 [[rule]]
 id = "noise.missing_component"
@@ -1693,6 +1843,33 @@ examples = [
 who = { from = "who", as = "str" }
 
 [[rule]]
+id = "mobstate.possessive_flavor"
+kind = "mobstate"
+priority = 20
+# why: 3 unrelated real possessive third-person flavor lines bundled --
+# same "one alternation" call mobstate.possessive_misc already makes for
+# this exact family, just a different fixed-phrase set.
+anchors = ["'s "]
+pattern = '''^(?P<who>.+?)'s (?:blessings wither!|skin gleams like steel\.|corpse splinters into hundreds of tiny bone fragments\.)$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] a seafury cyclops's blessings wither!",
+  "[Tue Jul 28 15:02:15 2026] Princess Cherista's skin gleams like steel.",
+  "[Tue Jul 28 15:02:15 2026] A decaying skeleton's corpse splinters into hundreds of tiny bone fragments.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "mobstate.infused_renewal"
+kind = "mobstate"
+priority = 20
+anchors = [" is infused by a divine renewal"]
+pattern = '''^(?P<who>.+?) is infused by a divine renewal\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Morpheus is infused by a divine renewal."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
 id = "mobstate.tortured"
 kind = "mobstate"
 priority = 20
@@ -1702,6 +1879,18 @@ examples = ["[Tue Jul 28 15:02:15 2026] Commander Yarik is tortured by the conde
 [rule.fields]
 who = { from = "who", as = "str" }
 source = { from = "source", as = "str" }
+
+[[rule]]
+id = "mobstate.notices_you"
+kind = "mobstate"
+priority = 20
+# why: real aggro/notice flavor line -- a mob turning to face the player,
+# no source (nothing caused this, it's the mob's own AI noticing).
+anchors = [" turns towards you"]
+pattern = '''^(?P<who>.+?) clatters as it turns towards you\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] A decaying skeleton clatters as it turns towards you."]
+[rule.fields]
+who = { from = "who", as = "str" }
 
 [[rule]]
 id = "mobstate.awakened"
@@ -1822,7 +2011,7 @@ anchors = [" "]
 # that don't share enough with any single existing rule to justify
 # their own -- same "one alternation, not one rule per phrase" call
 # noise.stunned already makes.
-pattern = '''^(?:You have been knocked unconscious!|You lose control of yourself!|You have control of yourself again\.|Your target cannot be mesmerized\.|Your target has been stunned too recently for your stun to have full effect\.|You are encumbered!|You are no longer encumbered\.|You cannot have more than one pet at a time\.|You cannot remove this effect\.|Your target is immune to the stun portion of this effect\.|This NPC cannot be charmed\.)$'''
+pattern = '''^(?:You have been knocked unconscious!|You lose control of yourself!|You have control of yourself again\.|Your target cannot be mesmerized\.|Your target cannot be mesmerized \(with this spell\)\.|Your target has been stunned too recently for your stun to have full effect\.|You are encumbered!|You are no longer encumbered\.|You cannot have more than one pet at a time\.|You cannot remove this effect\.|Your target is immune to the stun portion of this effect\.|This NPC cannot be charmed\.|You must be standing to cast a spell\.|You must be standing to attack!|This spell only works on the undead\.|Your will is not sufficient to command this weapon\.|Your attempt to disarm failed\.|You feel an aura of vigorous protection surrounding you\.|You have hidden yourself from view\.|You are as quiet as a cat stalking its prey\.|You are as quiet as a herd of running elephants\.|You stop sneaking\.|You stop hiding\.|You failed to hide yourself\.|You have moved and are no longer hidden!|You are no longer hidden\.|Your song ends\.|Your melody has been interrupted!|A mystical path appears before you\.|Your attack failed because your target is Encounter Locked to someone else\.|The aria lifts you into the air\.|You mend your wounds and heal some damage\.|You feel torn between life and death\.|You are engulfed in a blinding rage\.|You are surrounded by a shield of songs\.|YOU are burning!|You feel a healing touch\.|You gain party experience!|Your mind clouds as your concentration bleeds away\.|This creature would take an army to defeat!|You have momentarily ducked away from the main combat\.|The heal within you blooms\.|Your skin erupts with festering sores\.|For a few heartbeats, further stuns will not take hold\.|Your enemies have forgotten you!|You bear a curse of broken oaths\.)$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] You have been knocked unconscious!",
   "[Tue Jul 28 15:02:15 2026] You lose control of yourself!",
@@ -1834,7 +2023,42 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] Your target is immune to the stun portion of this effect.",
   "[Tue Jul 28 15:02:15 2026] This NPC cannot be charmed.",
   "[Tue Jul 28 15:02:15 2026] Your target cannot be mesmerized.",
+  "[Tue Jul 28 15:02:15 2026] Your target cannot be mesmerized (with this spell).",
   "[Tue Jul 28 15:02:15 2026] Your target has been stunned too recently for your stun to have full effect.",
+  "[Tue Jul 28 15:02:15 2026] You must be standing to cast a spell.",
+  "[Tue Jul 28 15:02:15 2026] This spell only works on the undead.",
+  "[Tue Jul 28 15:02:15 2026] Your will is not sufficient to command this weapon.",
+  "[Tue Jul 28 15:02:15 2026] Your attempt to disarm failed.",
+  "[Tue Jul 28 15:02:15 2026] You feel an aura of vigorous protection surrounding you.",
+  "[Tue Jul 28 15:02:15 2026] You have hidden yourself from view.",
+  "[Tue Jul 28 15:02:15 2026] You are as quiet as a cat stalking its prey.",
+  "[Tue Jul 28 15:02:15 2026] You stop sneaking.",
+  "[Tue Jul 28 15:02:15 2026] You have moved and are no longer hidden!",
+  "[Tue Jul 28 15:02:15 2026] You are no longer hidden.",
+  "[Tue Jul 28 15:02:15 2026] Your song ends.",
+  "[Tue Jul 28 15:02:15 2026] Your melody has been interrupted!",
+  "[Tue Jul 28 15:02:15 2026] A mystical path appears before you.",
+  "[Tue Jul 28 15:02:15 2026] Your attack failed because your target is Encounter Locked to someone else.",
+  "[Tue Jul 28 15:02:15 2026] The aria lifts you into the air.",
+  "[Tue Jul 28 15:02:15 2026] You mend your wounds and heal some damage.",
+  "[Tue Jul 28 15:02:15 2026] You feel torn between life and death.",
+  "[Tue Jul 28 15:02:15 2026] You are engulfed in a blinding rage.",
+  "[Tue Jul 28 15:02:15 2026] You are surrounded by a shield of songs.",
+  "[Tue Jul 28 15:02:15 2026] YOU are burning!",
+  "[Tue Jul 28 15:02:15 2026] You feel a healing touch.",
+  "[Tue Jul 28 15:02:15 2026] You gain party experience!",
+  "[Tue Jul 28 15:02:15 2026] Your mind clouds as your concentration bleeds away.",
+  "[Tue Jul 28 15:02:15 2026] You are as quiet as a herd of running elephants.",
+  "[Tue Jul 28 15:02:15 2026] This creature would take an army to defeat!",
+  "[Tue Jul 28 15:02:15 2026] You have momentarily ducked away from the main combat.",
+  "[Tue Jul 28 15:02:15 2026] You stop hiding.",
+  "[Tue Jul 28 15:02:15 2026] The heal within you blooms.",
+  "[Tue Jul 28 15:02:15 2026] You failed to hide yourself.",
+  "[Tue Jul 28 15:02:15 2026] Your skin erupts with festering sores.",
+  "[Tue Jul 28 15:02:15 2026] For a few heartbeats, further stuns will not take hold.",
+  "[Tue Jul 28 15:02:15 2026] You must be standing to attack!",
+  "[Tue Jul 28 15:02:15 2026] Your enemies have forgotten you!",
+  "[Tue Jul 28 15:02:15 2026] You bear a curse of broken oaths.",
 ]
 
 [[rule]]
@@ -2174,26 +2398,33 @@ who = { from = "who", as = "str" }
 id = "ability.activated"
 kind = "ability"
 priority = 40
-anchors = ["activates "]
+# why: "activates " (with the trailing "s") missed every real 1st-person
+# "You activate X." line -- same anchor-too-narrow bug melee.blocked's
+# own doc found. The doc below used to claim this was 100% third-person;
+# real data (327 "You activate ..." lines, confirmed) disproves that --
+# corrected, and the log owner's own poison casts now feed classdetect
+# too, not just other players'.
+anchors = ["activate"]
 excludes = ["Quick Buff"]
 # General discipline/poison activation -- 1,846 real occurrences across 23
-# distinct abilities, 100% third-person (the log owner never sees their
-# *own* activation this way -- only other players'). classdata::
-# classes_for recognizes 9 of the 23 (all Rogue poisons: Antimagic,
-# Binding, Clumsiness, Concussive, Fettering, Mage Bane, Neurotoxic,
-# Paralytic, Thought Drain); the rest just yield no evidence, same as any
-# unrecognized spell name -- not a guess, a real lookup against the same
-# data every other cast already uses.
+# distinct abilities. classdata::classes_for recognizes 9 of the 23 (all
+# Rogue poisons: Antimagic, Binding, Clumsiness, Concussive, Fettering,
+# Mage Bane, Neurotoxic, Paralytic, Thought Drain); the rest just yield no
+# evidence, same as any unrecognized spell name -- not a guess, a real
+# lookup against the same data every other cast already uses. "Asp
+# Venom"/"Blood Siphon Venom" (this rule's own examples) are 2 of the
+# unrecognized 14 -- real poisons, just not in spell_classes.json's own
+# scrape yet.
 #
-# The real value here isn't the log owner's own state (they're never the
-# `who`) -- it's identifying *other players'* classes from something they
-# visibly did, and confirming what's now on their weapon (fed to
-# `Effects` as a self-directed state fact on the activator, same
-# mechanism as any other recognized state).
+# Also confirms what's now on the activator's weapon (fed to `Effects` as
+# a self-directed state fact on the activator, same mechanism as any
+# other recognized state) -- real value for *other* players even where
+# the specific poison isn't classdata-recognized.
 pattern = '''^(?P<who>.+?) activates? (?P<ability>.+?)\.$'''
 examples = [
   "[Thu Aug 13 21:46:48 2026] Aella activates Asp Venom.",
   "[Thu Aug 13 21:46:57 2026] Aella activates Blood Siphon Venom.",
+  "[Thu Aug 13 21:46:57 2026] You activate Blood Siphon Venom.",
 ]
 [rule.fields]
 who = { from = "who", as = "str" }
