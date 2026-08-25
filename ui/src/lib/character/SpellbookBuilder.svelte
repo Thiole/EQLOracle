@@ -462,7 +462,118 @@
       Pick spells into named spellbooks (up to 14 slots -- 8 base, plus 6 more as Mnemonic Retention is leveled), a free-form plan that
       stays local to this browser -- it doesn't touch your real game files. Your live gem-slot assignment is separate, server-tracked
       character state this can't read. What your game files *do* save locally are named loadout presets (a client-side quick-swap
-      feature) -- "Found spellbooks" below reads, edits, and writes those for real.
+      feature) -- "Found spellbooks" above reads, edits, and writes those for real.
+    </CardContent>
+  </Card>
+
+  <Card class="rounded-sm">
+    <CardContent class="px-3 py-2.5">
+      <h2 class="panel-title mb-1.5">Found spellbooks</h2>
+      <p class="mb-2 text-[11px] text-muted-foreground">
+        Loads the real, saved spell loadouts from your own <code class="rounded bg-muted px-1 py-0.5">&lt;Character&gt;_&lt;Zone&gt;_LO1.ini</code>
+        file (their `UI_`-prefixed counterparts are window layout only, never contents, so they're left out of this list). Edit slots
+        below and hit save to write the change back -- a backup of the file as it was before your most recent save is always kept
+        alongside it, named the same plus <code class="rounded bg-muted px-1 py-0.5">.eqlp-backup</code>.
+      </p>
+      {#if uiFilesError}
+        <p class="text-[12px] text-destructive">{uiFilesError}</p>
+      {:else if !hotbuttonFiles}
+        <p class="text-[12px] text-muted-foreground">Loading…</p>
+      {:else if !hotbuttonFiles.length}
+        <p class="text-[12px] text-muted-foreground">No spellbook files found in your game folder yet.</p>
+      {:else}
+        <Select.Root type="single" value={selectedFile} onValueChange={(v) => v && loadFile(v)}>
+          <Select.Trigger class="h-7 w-72 text-[12px]">{selectedFile ? fileLabel(hotbuttonFiles.find((f) => f.file === selectedFile)!) : 'choose a file…'}</Select.Trigger>
+          <Select.Content>
+            {#each hotbuttonFiles as f (f.file)}
+              <Select.Item value={f.file}>{fileLabel(f)}</Select.Item>
+            {/each}
+          </Select.Content>
+        </Select.Root>
+
+        {#if spellbookLoadError}
+          <p class="mt-2 text-[12px] text-destructive">{spellbookLoadError}</p>
+        {:else if spellbookFile}
+          <div class="mt-2 flex flex-wrap items-center gap-2">
+            <Select.Root
+              type="single"
+              value={selectedLoadoutIndex != null ? String(selectedLoadoutIndex) : ''}
+              onValueChange={(v) => (selectedLoadoutIndex = v ? Number(v) : null)}
+            >
+              <Select.Trigger class="h-7 w-56 text-[12px]">
+                {selectedLoadout ? `${selectedLoadout.name} (#${selectedLoadout.index})` : 'choose a loadout…'}
+              </Select.Trigger>
+              <Select.Content>
+                {#each inUseLoadouts as lo (lo.index)}
+                  <Select.Item value={String(lo.index)}>{lo.name} (#{lo.index})</Select.Item>
+                {/each}
+              </Select.Content>
+            </Select.Root>
+            <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={addNewLoadout}>+ new loadout</Button>
+            <span class="text-[11px] text-muted-foreground">{inUseLoadouts.length}/60 in use</span>
+          </div>
+
+          {#if loadoutActionError}
+            <p class="mt-2 text-[12px] text-destructive">{loadoutActionError}</p>
+          {/if}
+
+          {#if selectedLoadout}
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <Input
+                value={selectedLoadout.name ?? ''}
+                oninput={(e) => renameLoadout(e.currentTarget.value)}
+                class="h-7 max-w-48 text-[12px]"
+              />
+              <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={saveLoadouts} disabled={saving}>
+                {saving ? 'saving…' : 'save to file'}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                class="h-7 text-[11px] text-destructive"
+                onclick={() => selectedLoadout && deleteLoadout(selectedLoadout.index)}
+              >
+                delete loadout
+              </Button>
+              {#if savedAt}
+                <span class="text-[11px] text-muted-foreground">saved {savedAt.toLocaleTimeString()}</span>
+              {/if}
+            </div>
+            <div class="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-7">
+              {#each selectedLoadout.slots as s (s.slot)}
+                {@const isArmed = armed?.kind === 'loadout' && armed.slot === s.slot}
+                <div class="flex flex-col gap-0.5">
+                  <span class="text-[9px] text-muted-foreground">{s.slot}</span>
+                  {#if s.name}
+                    <button
+                      type="button"
+                      class="flex h-10 flex-col items-center justify-center rounded-sm border border-primary/40 bg-primary/10 px-1 text-center text-[10px] text-foreground hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
+                      title={s.catalog_id ? 'click to clear' : 'click to clear (not found in Game Data)'}
+                      ondragover={(e) => e.preventDefault()}
+                      ondrop={(e) => onLoadoutSlotDrop(e, s.slot)}
+                      onclick={() => clearLoadoutSlot(s.slot)}
+                    >
+                      {s.name}
+                    </button>
+                  {:else}
+                    <button
+                      type="button"
+                      class="flex h-10 items-center justify-center rounded-sm border border-dashed text-[10px] {isArmed
+                        ? 'border-primary text-primary'
+                        : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}"
+                      ondragover={(e) => e.preventDefault()}
+                      ondrop={(e) => onLoadoutSlotDrop(e, s.slot)}
+                      onclick={() => (armed = { kind: 'loadout', slot: s.slot })}
+                    >
+                      {isArmed ? 'drop here' : 'empty'}
+                    </button>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+        {/if}
+      {/if}
     </CardContent>
   </Card>
 
@@ -619,115 +730,4 @@
   </Card>
 
   <DpsSuggest />
-
-  <Card class="rounded-sm">
-    <CardContent class="px-3 py-2.5">
-      <h2 class="panel-title mb-1.5">Found spellbooks</h2>
-      <p class="mb-2 text-[11px] text-muted-foreground">
-        Loads the real, saved spell loadouts from your own <code class="rounded bg-muted px-1 py-0.5">&lt;Character&gt;_&lt;Zone&gt;_LO1.ini</code>
-        file (their `UI_`-prefixed counterparts are window layout only, never contents, so they're left out of this list). Edit slots
-        below and hit save to write the change back -- a backup of the file as it was before your most recent save is always kept
-        alongside it, named the same plus <code class="rounded bg-muted px-1 py-0.5">.eqlp-backup</code>.
-      </p>
-      {#if uiFilesError}
-        <p class="text-[12px] text-destructive">{uiFilesError}</p>
-      {:else if !hotbuttonFiles}
-        <p class="text-[12px] text-muted-foreground">Loading…</p>
-      {:else if !hotbuttonFiles.length}
-        <p class="text-[12px] text-muted-foreground">No spellbook files found in your game folder yet.</p>
-      {:else}
-        <Select.Root type="single" value={selectedFile} onValueChange={(v) => v && loadFile(v)}>
-          <Select.Trigger class="h-7 w-72 text-[12px]">{selectedFile ? fileLabel(hotbuttonFiles.find((f) => f.file === selectedFile)!) : 'choose a file…'}</Select.Trigger>
-          <Select.Content>
-            {#each hotbuttonFiles as f (f.file)}
-              <Select.Item value={f.file}>{fileLabel(f)}</Select.Item>
-            {/each}
-          </Select.Content>
-        </Select.Root>
-
-        {#if spellbookLoadError}
-          <p class="mt-2 text-[12px] text-destructive">{spellbookLoadError}</p>
-        {:else if spellbookFile}
-          <div class="mt-2 flex flex-wrap items-center gap-2">
-            <Select.Root
-              type="single"
-              value={selectedLoadoutIndex != null ? String(selectedLoadoutIndex) : ''}
-              onValueChange={(v) => (selectedLoadoutIndex = v ? Number(v) : null)}
-            >
-              <Select.Trigger class="h-7 w-56 text-[12px]">
-                {selectedLoadout ? `${selectedLoadout.name} (#${selectedLoadout.index})` : 'choose a loadout…'}
-              </Select.Trigger>
-              <Select.Content>
-                {#each inUseLoadouts as lo (lo.index)}
-                  <Select.Item value={String(lo.index)}>{lo.name} (#{lo.index})</Select.Item>
-                {/each}
-              </Select.Content>
-            </Select.Root>
-            <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={addNewLoadout}>+ new loadout</Button>
-            <span class="text-[11px] text-muted-foreground">{inUseLoadouts.length}/60 in use</span>
-          </div>
-
-          {#if loadoutActionError}
-            <p class="mt-2 text-[12px] text-destructive">{loadoutActionError}</p>
-          {/if}
-
-          {#if selectedLoadout}
-            <div class="mt-2 flex flex-wrap items-center gap-2">
-              <Input
-                value={selectedLoadout.name ?? ''}
-                oninput={(e) => renameLoadout(e.currentTarget.value)}
-                class="h-7 max-w-48 text-[12px]"
-              />
-              <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={saveLoadouts} disabled={saving}>
-                {saving ? 'saving…' : 'save to file'}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                class="h-7 text-[11px] text-destructive"
-                onclick={() => selectedLoadout && deleteLoadout(selectedLoadout.index)}
-              >
-                delete loadout
-              </Button>
-              {#if savedAt}
-                <span class="text-[11px] text-muted-foreground">saved {savedAt.toLocaleTimeString()}</span>
-              {/if}
-            </div>
-            <div class="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-7">
-              {#each selectedLoadout.slots as s (s.slot)}
-                {@const isArmed = armed?.kind === 'loadout' && armed.slot === s.slot}
-                <div class="flex flex-col gap-0.5">
-                  <span class="text-[9px] text-muted-foreground">{s.slot}</span>
-                  {#if s.name}
-                    <button
-                      type="button"
-                      class="flex h-10 flex-col items-center justify-center rounded-sm border border-primary/40 bg-primary/10 px-1 text-center text-[10px] text-foreground hover:border-destructive hover:bg-destructive/10 hover:text-destructive"
-                      title={s.catalog_id ? 'click to clear' : 'click to clear (not found in Game Data)'}
-                      ondragover={(e) => e.preventDefault()}
-                      ondrop={(e) => onLoadoutSlotDrop(e, s.slot)}
-                      onclick={() => clearLoadoutSlot(s.slot)}
-                    >
-                      {s.name}
-                    </button>
-                  {:else}
-                    <button
-                      type="button"
-                      class="flex h-10 items-center justify-center rounded-sm border border-dashed text-[10px] {isArmed
-                        ? 'border-primary text-primary'
-                        : 'border-border text-muted-foreground hover:border-primary hover:text-primary'}"
-                      ondragover={(e) => e.preventDefault()}
-                      ondrop={(e) => onLoadoutSlotDrop(e, s.slot)}
-                      onclick={() => (armed = { kind: 'loadout', slot: s.slot })}
-                    >
-                      {isArmed ? 'drop here' : 'empty'}
-                    </button>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {/if}
-        {/if}
-      {/if}
-    </CardContent>
-  </Card>
 </div>
