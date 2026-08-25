@@ -13,6 +13,7 @@
   } from '$lib/character/spellSuggest';
   import DpsSuggest from './DpsSuggest.svelte';
   import { api, type UiFileInfoDto, type SpellDto, type DamageSpellDto, type SpellbookFileDto } from '$lib/tauri/api';
+  import { status } from '$lib/stores/status';
 
   // why: a spellbook holds up to 14 spells -- 8 base slots plus up to 6
   // more unlocked by the Mnemonic Retention AA (1 extra slot per AA
@@ -335,8 +336,33 @@
   // nothing to do with spells, so there's no reason to make the player
   // pick past them. The two are linked purely by sharing the same
   // `<Character>_<Zone>` stem with/without the `UI_` prefix -- confirmed
-  // directly, not assumed.
-  const hotbuttonFiles = $derived(uiFiles?.filter((f) => f.kind === 'hotbuttons') ?? null);
+  // directly, not assumed. Sorted so whichever file matches the
+  // currently-tailed log's own character/server (real evidence, the
+  // same identity tail_worker.rs already resolves) sorts first --
+  // almost always the one you actually want, without hunting for it.
+  const hotbuttonFiles = $derived.by(() => {
+    const files = uiFiles?.filter((f) => f.kind === 'hotbuttons') ?? null;
+    if (!files) return null;
+    const char = $status?.status.character;
+    const server = $status?.status.server;
+    const matches = (f: UiFileInfoDto) => char != null && server != null && f.character === char && f.zone === server;
+    return [...files].sort((a, b) => Number(matches(b)) - Number(matches(a)));
+  });
+
+  // why: lands on the suggested file automatically instead of making
+  // the player pick it themselves -- only once, and only while nothing's
+  // been picked yet, so it never yanks a deliberate manual pick away
+  let suggestedFileLoaded = false;
+  $effect(() => {
+    if (suggestedFileLoaded || !hotbuttonFiles?.length || selectedFile) return;
+    const char = $status?.status.character;
+    const server = $status?.status.server;
+    const suggested = hotbuttonFiles.find((f) => f.character === char && f.zone === server);
+    if (suggested) {
+      suggestedFileLoaded = true;
+      void loadFile(suggested.file);
+    }
+  });
 
   $effect(() => {
     api
@@ -346,7 +372,10 @@
   });
 
   function fileLabel(f: UiFileInfoDto): string {
-    return `${f.character} — ${f.zone}${f.is_backup ? ' (backup)' : ''}`;
+    const char = $status?.status.character;
+    const server = $status?.status.server;
+    const suggested = f.character === char && f.zone === server ? ' (current)' : '';
+    return `${f.character} — ${f.zone}${suggested}${f.is_backup ? ' (backup)' : ''}`;
   }
 
   // ---------------------------------------------------------- real spellbook loadouts
@@ -494,24 +523,24 @@
         {#if spellbookLoadError}
           <p class="mt-2 text-[12px] text-destructive">{spellbookLoadError}</p>
         {:else if spellbookFile}
-          <div class="mt-2 flex flex-wrap items-center gap-2">
-            <Select.Root
-              type="single"
-              value={selectedLoadoutIndex != null ? String(selectedLoadoutIndex) : ''}
-              onValueChange={(v) => (selectedLoadoutIndex = v ? Number(v) : null)}
-            >
-              <Select.Trigger class="h-7 w-56 text-[12px]">
-                {selectedLoadout ? `${selectedLoadout.name} (#${selectedLoadout.index})` : 'choose a loadout…'}
-              </Select.Trigger>
-              <Select.Content>
-                {#each inUseLoadouts as lo (lo.index)}
-                  <Select.Item value={String(lo.index)}>{lo.name} (#{lo.index})</Select.Item>
-                {/each}
-              </Select.Content>
-            </Select.Root>
-            <Button size="sm" variant="outline" class="h-7 text-[11px]" onclick={addNewLoadout}>+ new loadout</Button>
-            <span class="text-[11px] text-muted-foreground">{inUseLoadouts.length}/60 in use</span>
+          <!-- why: every real loadout as its own button, not a dropdown --
+               this file can hold many (a real character had 21), and a
+               collapsed picker made it look like there was only ever one. -->
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            {#each inUseLoadouts as lo (lo.index)}
+              <button
+                type="button"
+                class="rounded-sm border px-2 py-1 text-[11px] {selectedLoadoutIndex === lo.index
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border text-foreground hover:border-primary/50'}"
+                onclick={() => (selectedLoadoutIndex = lo.index)}
+              >
+                {lo.name} <span class="text-muted-foreground">#{lo.index}</span>
+              </button>
+            {/each}
+            <Button size="sm" variant="outline" class="h-6 text-[11px]" onclick={addNewLoadout}>+ new loadout</Button>
           </div>
+          <p class="mt-1 text-[11px] text-muted-foreground">{inUseLoadouts.length}/60 loadout slots in use</p>
 
           {#if loadoutActionError}
             <p class="mt-2 text-[12px] text-destructive">{loadoutActionError}</p>
