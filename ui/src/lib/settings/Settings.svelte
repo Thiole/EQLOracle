@@ -10,15 +10,18 @@
     currentEra,
     saveProfile,
     updateChannel,
+    theme,
     settingsLoaded,
     setVolume,
     setEra,
     setSaveProfile,
     setUpdateChannel,
+    setTheme,
     loadPreferences,
   } from '$lib/stores/settings';
   import { mapPacks, rescanMapFolder } from '$lib/stores/maps';
   import SpellLinePriority from './SpellLinePriority.svelte';
+  import { THEME_CATEGORIES, THEME_SWATCHES, themeName } from './themes';
 
   $effect(() => {
     void loadPreferences();
@@ -50,6 +53,14 @@
   {#if !$settingsLoaded}
     <p class="text-[12px] text-muted-foreground">Loading…</p>
   {:else}
+    {#snippet themeSwatch(slug: string)}
+      <span class="flex shrink-0 gap-[3px]">
+        {#each THEME_SWATCHES[slug] ?? [] as color, i (i)}
+          <span class="size-2.5 rounded-full border border-black/20" style="background-color: {color}"></span>
+        {/each}
+      </span>
+    {/snippet}
+
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
         <h2 class="panel-title mb-1.5">notifications</h2>
@@ -132,6 +143,45 @@
         <p class="mt-1.5 text-[11px] text-muted-foreground">
           Public (default): only real, deliberate releases. Beta: every build off the testing branch, ahead of a
           real release but less tested -- expect rough edges.
+        </p>
+      </CardContent>
+    </Card>
+
+    <Card class="rounded-sm">
+      <CardContent class="px-3 py-2.5">
+        <h2 class="panel-title mb-1.5">theme</h2>
+        <label class="flex max-w-sm items-center gap-2 text-[12px]">
+          <span class="w-16 shrink-0 text-muted-foreground">theme</span>
+          <Select.Root type="single" value={$theme} onValueChange={(v) => v && setTheme(v)}>
+            <Select.Trigger class="h-7 flex-1 text-[12px]">
+              <span class="flex items-center gap-2">
+                {@render themeSwatch($theme)}
+                {themeName($theme)}
+              </span>
+            </Select.Trigger>
+            <Select.Content>
+              {#each THEME_CATEGORIES as cat (cat.label)}
+                <Select.Group>
+                  <Select.GroupHeading class="text-[10px] tracking-[0.1em] text-muted-foreground uppercase"
+                    >{cat.label}</Select.GroupHeading
+                  >
+                  {#each cat.themes as t (t.slug)}
+                    <Select.Item value={t.slug}>
+                      <span class="flex items-center gap-2">
+                        {@render themeSwatch(t.slug)}
+                        {t.name}
+                      </span>
+                    </Select.Item>
+                  {/each}
+                </Select.Group>
+              {/each}
+            </Select.Content>
+          </Select.Root>
+        </label>
+        <p class="mt-1.5 text-[11px] text-muted-foreground">
+          Recolors the whole app. "Default (brass)" is this app's own original look; everything else is a real
+          preset pulled from the shadcn/ui theme ecosystem -- dark variants only, same as this app's own always-dark
+          stance.
         </p>
       </CardContent>
     </Card>

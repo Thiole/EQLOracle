@@ -860,6 +860,10 @@ export interface PreferencesDto {
    * deliberate releases only); 'beta' checks `testing` (every push to
    * `testing`, prerelease) -- see `.github/workflows/3-release.yml`. */
   update_channel: 'public' | 'beta';
+  /** why: a slug matching one of themes.css's own `[data-theme="X"]`
+   * blocks -- 'eqlp' is this app's own original identity, everything
+   * else is a real preset, see themes.css's own doc for where they're from */
+  theme: string;
 }
 
 export interface UpdateInfoDto {

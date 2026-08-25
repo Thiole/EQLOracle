@@ -21,7 +21,19 @@ export const saveProfile = writable(false);
 /** why: which release channel this install checks for updates against --
  * see PreferencesDto.update_channel's own doc */
 export const updateChannel = writable<'public' | 'beta'>('public');
+/** why: a themes.css `data-theme` slug -- see PreferencesDto.theme's own doc */
+export const theme = writable('eqlp');
 export const settingsLoaded = writable(false);
+
+// why: applies on every change, not just after an explicit setTheme() --
+// covers the initial value loadPreferences() sets too, so the real saved
+// theme is live the moment it's known rather than waiting on Settings.
+// svelte to mount. Guarded for SSR/test environments with no `document`.
+theme.subscribe((t) => {
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.theme = t;
+  }
+});
 
 /** why: what every era-aware API call should actually send -- resolves
  * the "no preference saved" null to the live server's own current era,
@@ -40,6 +52,7 @@ export function loadPreferences(): Promise<void> {
     era.set(prefs.era);
     saveProfile.set(prefs.save_profile);
     updateChannel.set(prefs.update_channel);
+    theme.set(prefs.theme);
     settingsLoaded.set(true);
   })();
   return loading;
@@ -51,6 +64,7 @@ function currentPrefs(): PreferencesDto {
     era: get(era),
     save_profile: get(saveProfile),
     update_channel: get(updateChannel),
+    theme: get(theme),
   };
 }
 
@@ -72,6 +86,11 @@ export async function setSaveProfile(on: boolean) {
 export async function setUpdateChannel(channel: 'public' | 'beta') {
   updateChannel.set(channel);
   await api.setPreferences({ ...currentPrefs(), update_channel: channel }).catch(() => {});
+}
+
+export async function setTheme(slug: string) {
+  theme.set(slug);
+  await api.setPreferences({ ...currentPrefs(), theme: slug }).catch(() => {});
 }
 
 /** why: shared by every era-tagged Game Data category that carries a

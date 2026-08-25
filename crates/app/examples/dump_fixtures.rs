@@ -433,7 +433,13 @@ fn main() {
     );
     out.insert(
         "get_preferences".to_string(),
-        json!({ "": { "volume": 100, "era": Value::Null } }),
+        json!({ "": {
+            "volume": 100,
+            "era": Value::Null,
+            "save_profile": false,
+            "update_channel": "public",
+            "theme": "eqlp",
+        } }),
     );
     // why: real catalog items ("Brass Ring", "Adamantite Band" -- both
     // confirmed present, and exercised the same way in gearplanner.rs's

@@ -11,6 +11,13 @@ fn default_volume() -> u8 {
     100
 }
 
+/// why: this app's own original identity -- see themes.css's own doc for
+/// where the other presets come from and why "eqlp" mirrors :root's own
+/// base values rather than being a special-cased empty string
+fn default_theme() -> String {
+    "eqlp".to_string()
+}
+
 /// why: which release channel this install checks for updates against --
 /// `public` = the `latest` GitHub release (main, deliberate releases
 /// only), `beta` = the `testing` release (every push to `testing`,
@@ -44,6 +51,13 @@ pub struct Preferences {
     /// builds without asking
     #[serde(default)]
     pub update_channel: UpdateChannel,
+    /// why: a slug matching one of themes.css's own `[data-theme="X"]`
+    /// blocks -- not validated against a known list here, an unknown/old
+    /// slug from a downgraded install just falls back to no visible
+    /// override (browser ignores an unmatched attribute selector),
+    /// never a hard error
+    #[serde(default = "default_theme")]
+    pub theme: String,
 }
 
 impl Default for Preferences {
@@ -53,6 +67,7 @@ impl Default for Preferences {
             era: None,
             save_profile: false,
             update_channel: UpdateChannel::default(),
+            theme: default_theme(),
         }
     }
 }
@@ -103,6 +118,10 @@ mod tests {
             UpdateChannel::Public,
             "never opts into prerelease builds without being asked"
         );
+        assert_eq!(
+            p.theme, "eqlp",
+            "this app's own identity, not an upstream preset"
+        );
     }
 
     #[test]
@@ -112,6 +131,7 @@ mod tests {
             era: Some("All".to_string()),
             save_profile: true,
             update_channel: UpdateChannel::Beta,
+            theme: "claude".to_string(),
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: Preferences = serde_json::from_str(&json).unwrap();
@@ -119,6 +139,7 @@ mod tests {
         assert_eq!(back.era.as_deref(), Some("All"));
         assert!(back.save_profile);
         assert_eq!(back.update_channel, UpdateChannel::Beta);
+        assert_eq!(back.theme, "claude");
     }
 
     /// why: an old/partial file must still load via #[serde(default)]
@@ -129,5 +150,6 @@ mod tests {
         assert_eq!(back.era, None);
         assert!(!back.save_profile);
         assert_eq!(back.update_channel, UpdateChannel::Public);
+        assert_eq!(back.theme, "eqlp");
     }
 }

@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './themes.css';
 
 /* why: self-hosted variable font, one family, weight does the hierarchy work */
 @font-face {
@@ -10,7 +11,13 @@
 }
 
 /* Dark-only, deliberately -- a desktop tool meant to run alongside a game
-   window, not a page that needs to match an OS light-mode preference. */
+   window, not a page that needs to match an OS light-mode preference.
+   This app's own original identity -- the base values here are what
+   `[data-theme="eqlp"]` in themes.css mirrors. Settings > theme can
+   override every token below by setting `data-theme` on <html> to a
+   preset slug (`:root[data-theme="X"]`'s higher specificity always wins
+   over this bare :root, regardless of import order) -- see themes.css's
+   own doc for where the presets come from. */
 :root {
   --radius: 0.25rem;
 
