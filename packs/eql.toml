@@ -68,6 +68,28 @@ examples = [
 who = { from = "who", as = "str" }
 chan = { from = "chan", as = "str" }
 
+[[rule]]
+id = "chat.npc_told"
+kind = "chat"
+priority = 80
+anchors = [" told you, '"]
+# why: the client's own past-tense phrasing for NPC replies (vendor
+# price quotes, quest dialogue, "I am unable to wake X" pet responses,
+# taunt/attack narration) -- distinct verb from chat.directed's player
+# forms above ("tells you"/"says"/etc), 9,164 real occurrences across
+# 244 distinct speakers. One general rule, not one per trailing
+# phrasing -- same reasoning money.vendor_sell's own doc gives for not
+# parsing a currency list's internal structure inline.
+pattern = '''^(?P<who>.+?) told you, '(?P<text>.*)'$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Canarie told you, 'I'll give you 1 platinum 2 gold 8 silver 5 copper for the Silver Carnelian Wedding Ring.'",
+  "[Tue Jul 28 15:02:15 2026] Janer told you, 'I am unable to wake Soldier of V`Zher, Master.'",
+  "[Tue Jul 28 15:02:15 2026] Zobobtik told you, 'Attacking Gynok Moltor Master.'",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+text = { from = "text", as = "str" }
+
 # ============================================================ combat
 
 [[rule]]
@@ -779,6 +801,24 @@ examples = ["[Tue Jul 28 15:02:15 2026] You complete the trade with Dead Doug."]
 who = { from = "who", as = "str" }
 
 [[rule]]
+id = "trade.offered"
+kind = "trade"
+priority = 50
+anchors = ["You offered "]
+# why: an item handed to an NPC mid-trade (quest turn-in, pet-summoning
+# skull, etc) -- "The @" targets (e.g. "The Gobbler") need no special
+# case, `who`'s own lazy match already covers them.
+pattern = '''^You offered (?P<qty>[0-9]+) (?P<item>.+?) to (?P<who>.+?)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You offered 1 Fragile Pet's Skull to Dead Doug.",
+  "[Tue Jul 28 15:02:15 2026] You offered 1 Preserved Leg to The Gobbler.",
+]
+[rule.fields]
+qty = { from = "qty", as = "u64" }
+item = { from = "item", as = "str" }
+who = { from = "who", as = "str" }
+
+[[rule]]
 id = "zone.enter"
 kind = "zone"
 priority = 40
@@ -825,6 +865,27 @@ item = { from = "item", as = "str" }
 effect = { from = "effect", as = "str" }
 message = { from = "msg", as = "str" }
 
+[[rule]]
+id = "proc.item_unnamed"
+kind = "proc"
+priority = 30
+anchors = ["feels alive with power"]
+# why: proc.item above requires a named "(Effect)" clause -- some items
+# proc without one, same trailing message otherwise. Confirmed real and
+# narrow: of 38,232 real "feels alive with power" lines, 1,351 have no
+# parenthetical at all; it's the only message seen in this exact
+# unparenthesized shape, so a fixed-suffix rule is safe here (a bare
+# `(?P<item>.+?) (?P<msg>.+)\.$` would be genuinely ambiguous with no
+# anchor between item and message). `[^()]+?` (not `.+?`) for item is
+# deliberate -- keeps this from also matching proc.item's own
+# parenthesized shape (lint's own ambiguity check caught the overlap
+# when this used a bare `.+?`), a real item name never contains parens
+# in this pack's own established convention (see proc.item itself).
+pattern = '''^Your (?P<item>[^()]+?) feels alive with power\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Your Bone-Clasped Girdle feels alive with power."]
+[rule.fields]
+item = { from = "item", as = "str" }
+
 # ============================================================ noise
 # Not interesting, but 141k lines of it. Claiming known-boring lines keeps the
 # unmatched backlog honest -- what's left is genuinely unhandled.
@@ -849,6 +910,17 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] You can't cast spells while stunned!",
   "[Tue Jul 28 15:02:15 2026] You avoid the stunning blow.",
   "[Tue Jul 28 15:02:15 2026] You overcome the stun!",
+]
+
+[[rule]]
+id = "noise.auto_attack"
+kind = "noise"
+priority = 60
+anchors = ["Auto attack is "]
+pattern = '''^Auto attack is (?:on|off)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Auto attack is on.",
+  "[Tue Jul 28 15:02:15 2026] Auto attack is off.",
 ]
 
 [[rule]]
@@ -1057,7 +1129,7 @@ anchors = [" "]
 # kept (self "You writhe..." vs third-person "X writhes...", same
 # grammatical shape, different conjugation) rather than trying to fold
 # person into the pattern itself.
-pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better|winces|writhes in the grip of agony|writhe in the grip of agony|is surrounded by a traveling spirit|is healed from within|begins to sway|has fallen to the ground|sinks into the ground|is engulfed by a swarm|regains concentration and continues casting|feels a healing touch|is protected by a vortex of shadows|creates a mystic portal|is entwined by roots|is burning|is stung by a dozen flashes of the blade)[.!]$'''
+pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better|winces|writhes in the grip of agony|writhe in the grip of agony|is surrounded by a traveling spirit|is healed from within|begins to sway|has fallen to the ground|sinks into the ground|is engulfed by a swarm|regains concentration and continues casting|feels a healing touch|is protected by a vortex of shadows|creates a mystic portal|is entwined by roots|is burning|is stung by a dozen flashes of the blade|is torn between life and death|stumbles, clutching their head|looks glamorous)[.!]$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Splitpaw Sentry staggers.",
   "[Tue Jul 28 15:02:15 2026] Rallo rages.",
@@ -1080,10 +1152,42 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] Bravesirrobin is burning.",
   "[Tue Jul 28 15:02:15 2026] Warlord Skarlon is stung by a dozen flashes of the blade.",
   "[Tue Jul 28 15:02:15 2026] Innoruuk, the Prince of Hate is stung by a dozen flashes of the blade.",
+  "[Tue Jul 28 15:02:15 2026] Iceduya is torn between life and death.",
+  "[Tue Jul 28 15:02:15 2026] Kaeus stumbles, clutching their head!",
+  "[Tue Jul 28 15:02:15 2026] Myana looks glamorous.",
 ]
 [rule.fields]
 who = { from = "who", as = "str" }
 state = { from = "state", as = "str" }
+
+[[rule]]
+id = "mobstate.skin_rent"
+kind = "mobstate"
+priority = 20
+anchors = ["'s skin is rent by massive shards of deadly ice"]
+# why: possessive third-person, same family as mob.state above but a
+# different grammatical join ("X's Y" not "X Y") -- 1,315 real
+# occurrences combined (plain name + comma-titled, e.g. "Innoruuk, the
+# Prince of Hate's skin is..."), doesn't fit mob.state's own space-split
+# alternation.
+pattern = '''^(?P<who>.+?)'s skin is rent by massive shards of deadly ice\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Kaeus's skin is rent by massive shards of deadly ice.",
+  "[Tue Jul 28 15:02:15 2026] Innoruuk, the Prince of Hate's skin is rent by massive shards of deadly ice.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "mobstate.tortured"
+kind = "mobstate"
+priority = 20
+anchors = [" is tortured by the condemnation of "]
+pattern = '''^(?P<who>.+?) is tortured by the condemnation of (?P<source>.+?)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Commander Yarik is tortured by the condemnation of Rodcet Nife."]
+[rule.fields]
+who = { from = "who", as = "str" }
+source = { from = "source", as = "str" }
 
 [[rule]]
 id = "mobstate.awakened"
@@ -1122,6 +1226,16 @@ priority = 40
 anchors = ["You no longer have a target"]
 pattern = '''^You no longer have a target\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You no longer have a target."]
+
+[[rule]]
+id = "target.inspecting"
+kind = "target"
+priority = 40
+anchors = ["You are inspecting "]
+pattern = '''^You are inspecting (?P<who>.+?)\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You are inspecting Nikko."]
+[rule.fields]
+who = { from = "who", as = "str" }
 
 [[rule]]
 id = "noise.cast_failure"
