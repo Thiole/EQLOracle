@@ -62,17 +62,17 @@ fn main() {
                 "\n=== real visit timestamps for {classes:?} level_range={:?} ===",
                 row.level_range
             );
-            let mut starts: Vec<(i64, String)> = visits
+            let mut starts: Vec<(i64, usize, String)> = visits
                 .iter()
                 .filter_map(|v| {
                     let i = v.index?;
                     let (start, _) = ing.zone.bounds(i)?;
-                    Some((start / 1000, v.label.clone()))
+                    Some((start / 1000, i, v.label.clone()))
                 })
                 .collect();
             starts.sort();
-            for (secs, label) in &starts {
-                println!("  {secs}  {label}");
+            for (secs, i, label) in &starts {
+                println!("  {secs}  idx={i}  {label}");
             }
             for w in starts.windows(2) {
                 println!("    gap: {}s", w[1].0 - w[0].0);

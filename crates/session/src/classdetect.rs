@@ -45,6 +45,23 @@
 //! `proven` outright from then on regardless of which kind of evidence
 //! crosses it -- see `propose`.
 //!
+//! ## A real contradiction poisons a visit's narrowing, it doesn't restart it
+//! why: 2nd real bug, found tracing the *same* player's Beastlord false
+//! positive further after the fix above didn't fully clear it. One real
+//! visit's own stance evidence (Balanced/Offensive/Evasive, several real
+//! casts each) agreed with itself down to {Monk, Rogue} -- genuinely
+//! excluding Beastlord along the way, since Striker's own real class
+//! list has no Beastlord in it. A single later {Beastlord, Shaman}
+//! spell pool then contradicted that (empty intersection), and the old
+//! code discarded the *stronger*, multiply-corroborated prior narrowing
+//! and restarted fresh from the *weaker* one-off pool that caused the
+//! contradiction -- which then narrowed cleanly to Beastlord entirely on
+//! its own. Whichever evidence happens to arrive chronologically after a
+//! contradiction has no special claim to being the correct side of it.
+//! Now an empty intersection poisons the visit instead: no further
+//! elimination proposal from that visit, ever (unambiguous evidence is
+//! untouched). See `narrow`'s own doc for the full trace.
+//!
 //! ## Partial evidence is not a smaller configuration
 //! why: a below-CLASS_COUNT visit is lag/unresolved, never shown as its
 //! own legitimate config -- see `visits_by_resolved_configuration`.
@@ -70,6 +87,10 @@ struct VisitState {
     narrowing: Option<BTreeSet<String>>,
     /// why: ambiguous pools too early to use, replayed once the 2nd class lands
     pending_pools: Vec<BTreeSet<String>>,
+    /// why: a real contradiction happened -- see `narrow`'s own doc for why
+    /// that permanently disqualifies this visit's elimination narrowing
+    /// rather than restarting from whichever pool arrived after it
+    poisoned: bool,
 }
 
 #[derive(Debug, Default)]
@@ -210,14 +231,39 @@ impl Detector {
     /// narrowing sits at exactly one, for the caller to route through
     /// `propose`'s own cross-visit corroboration (never writes
     /// `confirmed` directly -- that's `propose`'s job once corroborated).
+    ///
+    /// why an empty intersection poisons rather than restarts: a real
+    /// incident traced live on a 2nd player's log -- one visit's own
+    /// stance evidence (Balanced/Offensive/Evasive/Striker, cast
+    /// several times each, real events) agreed with itself down to
+    /// {Monk, Rogue}, genuinely excluding Beastlord along the way
+    /// (Striker's own real class list has no Beastlord). A single later
+    /// {Beastlord, Shaman} spell pool then contradicted that -- empty
+    /// intersection -- and the old code discarded the *stronger*,
+    /// multiply-corroborated prior narrowing and restarted fresh from
+    /// the *weaker* one-off pool that caused the contradiction, which
+    /// then narrowed cleanly to Beastlord on its own. Whichever evidence
+    /// happens to arrive chronologically after a contradiction has no
+    /// special claim to being the correct side of it. A real
+    /// contradiction inside one visit is itself the signal that this
+    /// visit's own "one visit, one stable loadout" assumption (this
+    /// module's own doc) has broken -- a mid-visit reconfig, or noisy
+    /// data -- so once it happens, this visit stops proposing any
+    /// elimination class at all, permanently, rather than picking a
+    /// side. Its unambiguous evidence (`propose`'s `Evidence::Unambiguous`
+    /// path) is untouched; only this visit's own further elimination
+    /// narrowing is disabled.
     fn narrow(visit: &mut VisitState, candidates: BTreeSet<String>) -> Option<String> {
+        if visit.poisoned {
+            return None;
+        }
         let narrowed: BTreeSet<String> = match &visit.narrowing {
             Some(prev) => prev.intersection(&candidates).cloned().collect(),
             None => candidates.clone(),
         };
         if narrowed.is_empty() {
-            // why: empty intersection means bad data -- restart from this pool
-            visit.narrowing = Some(candidates);
+            visit.poisoned = true;
+            visit.narrowing = None;
             return None;
         }
         let single = (narrowed.len() == 1)
@@ -277,35 +323,57 @@ impl Detector {
         let Some(state) = self.by_entity.get(&entity) else {
             return (Vec::new(), Vec::new());
         };
-        let mut by_raw: HashMap<Vec<String>, Vec<ZoneVisit>> = HashMap::new();
-        for (&visit, vs) in &state.by_visit {
-            if vs.confirmed.is_empty() {
-                continue;
+        let mut full: Vec<(BTreeSet<String>, Vec<ZoneVisit>)> = Vec::new();
+        {
+            let mut by_full: HashMap<Vec<String>, Vec<ZoneVisit>> = HashMap::new();
+            for (&visit, vs) in &state.by_visit {
+                if vs.confirmed.len() == CLASS_COUNT {
+                    by_full
+                        .entry(vs.confirmed.iter().cloned().collect())
+                        .or_default()
+                        .push(visit);
+                }
             }
-            by_raw
-                .entry(vs.confirmed.iter().cloned().collect())
-                .or_default()
-                .push(visit);
+            full.extend(
+                by_full
+                    .into_iter()
+                    .map(|(c, vs)| (c.into_iter().collect(), vs)),
+            );
         }
 
-        let mut full: Vec<(BTreeSet<String>, Vec<ZoneVisit>)> = by_raw
-            .iter()
-            .filter(|(c, _)| c.len() == CLASS_COUNT)
-            .map(|(c, vs)| (c.iter().cloned().collect(), vs.clone()))
-            .collect();
-
+        // why: a partial visit only folds into the one full config it's
+        // actually consistent with -- `poisoned` (a real contradiction
+        // happened, see `narrow`'s own doc) rules out every candidate
+        // outright, and a live `narrowing` that doesn't contain a
+        // candidate's own extra class is the same kind of real exclusion
+        // even short of a full contradiction (this visit's own evidence
+        // already ruled that class out, just not down to one yet).
+        // Blindly subset-matching on `confirmed` alone -- the old
+        // behavior -- ignored this and could fold a visit into a config
+        // its own narrowing had already excluded.
         let mut unresolved: Vec<ZoneVisit> = Vec::new();
-        for (c, vs) in by_raw.iter().filter(|(c, _)| c.len() < CLASS_COUNT) {
-            let partial: BTreeSet<String> = c.iter().cloned().collect();
+        for (&visit, vs) in &state.by_visit {
+            if vs.confirmed.is_empty() || vs.confirmed.len() == CLASS_COUNT {
+                continue;
+            }
+            let compatible = |f: &BTreeSet<String>| -> bool {
+                if vs.poisoned || !vs.confirmed.is_subset(f) {
+                    return false;
+                }
+                match &vs.narrowing {
+                    Some(narrowing) => f.difference(&vs.confirmed).all(|c| narrowing.contains(c)),
+                    None => true,
+                }
+            };
             let matches: Vec<usize> = full
                 .iter()
                 .enumerate()
-                .filter(|(_, (f, _))| partial.is_subset(f))
+                .filter(|(_, (f, _))| compatible(f))
                 .map(|(i, _)| i)
                 .collect();
             match matches.as_slice() {
-                [i] => full[*i].1.extend(vs.iter().copied()),
-                _ => unresolved.extend(vs.iter().copied()),
+                [i] => full[*i].1.push(visit),
+                _ => unresolved.push(visit),
             }
         }
 
@@ -473,7 +541,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pool_sharing_no_class_with_the_running_intersection_restarts_instead_of_sticking_empty() {
+    fn a_pool_sharing_no_class_with_the_running_intersection_poisons_this_visit_for_good() {
         let mut d = Detector::default();
         for v in [0, 1] {
             d.observe_cast(1, Some(v), &strs(&["Enchanter"]));
@@ -481,7 +549,9 @@ mod tests {
         }
         d.observe_cast(1, Some(2), &strs(&["Enchanter"]));
         d.observe_cast(1, Some(2), &strs(&["Wizard"]));
-        // why: no-overlap pools = bad data, restart narrowing instead of sticking
+        // why: no-overlap pools = a real contradiction -- see narrow's own
+        // doc for why that poisons this visit's elimination narrowing for
+        // good, rather than restarting from whichever pool arrived after it
         d.observe_cast(1, Some(2), &strs(&["Beastlord", "Druid"]));
         d.observe_cast(1, Some(2), &strs(&["Paladin", "Shadow Knight"])); // shares nothing with the above
         assert_eq!(
@@ -489,32 +559,28 @@ mod tests {
             strs(&["Enchanter", "Wizard"]),
             "3rd slot still open -- the contradiction must not fabricate a class"
         );
+        // why: a pool that *would* have narrowed cleanly, had it arrived
+        // first, must not un-poison this visit just because it arrives after
         d.observe_cast(1, Some(2), &strs(&["Paladin", "Warrior"]));
         assert_eq!(
             d.configuration_of_visit(1, Some(2)),
             strs(&["Enchanter", "Wizard"]),
-            "narrowed to Paladin, but still only this one visit's own evidence"
+            "poisoned -- must not silently pick Paladin just because it showed up after the contradiction"
         );
-        // why: a 2nd distinct visit repeats the same restart-then-narrow
-        // result -- still not enough (needs 3 for elimination evidence)
-        d.observe_cast(1, Some(3), &strs(&["Enchanter"]));
-        d.observe_cast(1, Some(3), &strs(&["Wizard"]));
-        d.observe_cast(1, Some(3), &strs(&["Beastlord", "Druid"]));
-        d.observe_cast(1, Some(3), &strs(&["Paladin", "Shadow Knight"]));
-        d.observe_cast(1, Some(3), &strs(&["Paladin", "Warrior"]));
+        // why: repeating on 2 more distinct visits still never confirms
+        // anything for visit 2 -- poisoned is permanent, not a 3rd-visit gate
+        for v in [3, 4] {
+            d.observe_cast(1, Some(v), &strs(&["Enchanter"]));
+            d.observe_cast(1, Some(v), &strs(&["Wizard"]));
+            d.observe_cast(1, Some(v), &strs(&["Beastlord", "Druid"]));
+            d.observe_cast(1, Some(v), &strs(&["Paladin", "Shadow Knight"]));
+            d.observe_cast(1, Some(v), &strs(&["Paladin", "Warrior"]));
+        }
         assert_eq!(
             d.configuration_of_visit(1, Some(2)),
             strs(&["Enchanter", "Wizard"]),
-            "narrowed to Paladin on 2 visits now -- still not proof by itself"
+            "still just Enchanter/Wizard -- visit 2's own contradiction is permanent"
         );
-        // why: a 3rd distinct visit finally corroborates it
-        d.observe_cast(1, Some(4), &strs(&["Enchanter"]));
-        d.observe_cast(1, Some(4), &strs(&["Wizard"]));
-        d.observe_cast(1, Some(4), &strs(&["Beastlord", "Druid"]));
-        d.observe_cast(1, Some(4), &strs(&["Paladin", "Shadow Knight"]));
-        d.observe_cast(1, Some(4), &strs(&["Paladin", "Warrior"]));
-        let cfg = d.configuration_of_visit(1, Some(2));
-        assert_eq!(cfg, strs(&["Enchanter", "Paladin", "Wizard"]));
     }
 
     /// why: direct regression test for the real incident -- Recovery/Over

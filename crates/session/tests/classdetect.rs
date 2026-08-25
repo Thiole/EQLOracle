@@ -10,6 +10,7 @@ const V1: Option<usize> = Some(1);
 const V2: Option<usize> = Some(2);
 const V3: Option<usize> = Some(3);
 const V4: Option<usize> = Some(4);
+const V5: Option<usize> = Some(5);
 
 fn w(s: &str) -> Vec<String> {
     vec![s.to_string()]
@@ -388,12 +389,14 @@ fn elimination_needs_a_second_pool_to_narrow_a_wide_first_one() {
 }
 
 #[test]
-fn a_contradictory_pool_restarts_narrowing_instead_of_getting_stuck() {
+fn a_contradictory_pool_poisons_that_visits_narrowing_for_good() {
     // Two ambiguous pools sharing no class at all, both claiming the same
     // single open slot, can't both be right -- most likely a bad entry in
-    // spell_classes.json for one of the spells involved. Must not wedge
-    // narrowing at an empty set forever; a later pool should still be able
-    // to resolve normally.
+    // spell_classes.json for one of the spells involved, or (the real
+    // incident this guards against) a genuine mid-visit reconfiguration.
+    // See `narrow`'s own doc: a real contradiction poisons this visit's
+    // elimination narrowing permanently rather than restarting from
+    // whichever pool happened to arrive after it.
     let mut d = with_wizard_and_enchanter_confirmed();
     d.observe_cast(YOU, V1, &m(&["Necromancer", "Shadow Knight"]));
     d.observe_cast(YOU, V1, &m(&["Druid", "Shaman"])); // shares nothing with the above -- contradiction
@@ -403,10 +406,8 @@ fn a_contradictory_pool_restarts_narrowing_instead_of_getting_stuck() {
         "the contradiction must not have confirmed anything"
     );
 
-    // Narrowing restarted from the contradictory pool; a matching second
-    // cast from that fresh pool narrows it, but -- same corroboration
-    // bar as any other elimination result -- not confirmed from just
-    // this one visit yet.
+    // A pool that *would* have narrowed cleanly to Druid, had it arrived
+    // first, must not un-poison this visit just because it arrives after.
     let druid_cleric = || {
         w("Druid")
             .into_iter()
@@ -417,41 +418,31 @@ fn a_contradictory_pool_restarts_narrowing_instead_of_getting_stuck() {
     assert_eq!(
         d.configuration_of_visit(YOU, V1),
         m(&["Enchanter", "Wizard"]),
-        "narrowed to Druid on just this one visit -- not proof by itself"
+        "poisoned -- must not silently pick Druid just because it showed up after the contradiction"
     );
 
-    // A 2nd, distinct visit repeats the same recovered narrowing -- still
-    // not enough (elimination evidence needs a 3rd, see
-    // MIN_ELIMINATION_CASTS's own doc). Needs its own 2-pool
-    // intersection down to Druid too (a fresh visit's `narrowing` starts
-    // empty, so one pool alone only seeds it, same as V1's own first pool did).
-    d.observe_cast(YOU, V3, &w("Wizard"));
-    d.observe_cast(YOU, V3, &w("Enchanter"));
-    d.observe_cast(YOU, V3, &m(&["Druid", "Shaman"]));
-    d.observe_cast(YOU, V3, &druid_cleric());
+    // 3 other, distinct visits independently narrow cleanly to Druid --
+    // no contradiction on any of them -- crossing MIN_ELIMINATION_CASTS
+    // and proving Druid globally.
+    for v in [V3, V4, V5] {
+        d.observe_cast(YOU, v, &w("Wizard"));
+        d.observe_cast(YOU, v, &w("Enchanter"));
+        d.observe_cast(YOU, v, &m(&["Druid", "Shaman"]));
+        d.observe_cast(YOU, v, &druid_cleric());
+    }
+    for v in [V3, V4, V5] {
+        assert_eq!(
+            d.configuration_of_visit(YOU, v),
+            m(&["Druid", "Enchanter", "Wizard"])
+        );
+    }
+    // V1's own contradiction is permanent: proving Druid globally through
+    // 3 *other* visits must not retroactively grant it to the visit whose
+    // own evidence was self-contradictory.
     assert_eq!(
         d.configuration_of_visit(YOU, V1),
         m(&["Enchanter", "Wizard"]),
-        "narrowed to Druid on 2 visits now -- still not proof by itself"
-    );
-
-    // A 3rd, distinct visit finally corroborates it.
-    d.observe_cast(YOU, V4, &w("Wizard"));
-    d.observe_cast(YOU, V4, &w("Enchanter"));
-    d.observe_cast(YOU, V4, &m(&["Druid", "Shaman"]));
-    d.observe_cast(YOU, V4, &druid_cleric());
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        m(&["Druid", "Enchanter", "Wizard"]),
-        "narrowing recovered and resolved from the pool after the contradiction, now corroborated"
-    );
-    assert_eq!(
-        d.configuration_of_visit(YOU, V3),
-        m(&["Druid", "Enchanter", "Wizard"])
-    );
-    assert_eq!(
-        d.configuration_of_visit(YOU, V4),
-        m(&["Druid", "Enchanter", "Wizard"])
+        "V1's own contradiction stays poisoned even after Druid is proven from other visits"
     );
 }
 
