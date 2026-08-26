@@ -11,13 +11,16 @@
   //    tracked spell effect on it. Real spell-icon art (same assets
   //    SpellbookBuilder already renders, see ICON_BASE) when the backend
   //    resolved one; a compact 2-letter badge falls back for anything
-  //    unrecognized. Player-selected, same trackedSkillNames list as
-  //    cooldowns above -- Spencer's own correction: this used to show
-  //    every DoT/debuff landed on the target unconditionally, "should
-  //    be player selected, not auto selected". The backend still
-  //    observes everything (so a spell added mid-fight shows its real
-  //    history immediately, not just future casts); only what's
-  //    rendered here is opt-in now.
+  //    unrecognized. Player-selected, but its own SEPARATE
+  //    trackedTargetEffectNames list, not trackedSkillNames -- Spencer's
+  //    correction, twice: first "should be player selected, not auto
+  //    selected", then "dont do spell tracking for 'ready' ... maybe we
+  //    need a separate list for 'per target'". A spell tracked here
+  //    never gets its own cooldown row in section 2, only ever shows up
+  //    against the current target. The backend still observes
+  //    everything (so a spell added mid-fight shows its real history
+  //    immediately, not just future casts); only what's rendered here
+  //    is opt-in.
   import type { StatusEffectsDto, SkillStatusDto, TargetEffectsDto } from '$lib/tauri/api';
   import { ICON_BASE } from '$lib/character/constants';
   import StatusEffectsWidget from './StatusEffectsWidget.svelte';
@@ -26,12 +29,14 @@
     status,
     skills,
     trackedSkillNames,
+    trackedTargetEffectNames,
     targetEffects,
     opacity,
   }: {
     status: StatusEffectsDto | null;
     skills: SkillStatusDto[];
     trackedSkillNames: string[];
+    trackedTargetEffectNames: string[];
     targetEffects: TargetEffectsDto | null;
     opacity: number;
   } = $props();
@@ -51,8 +56,8 @@
   // on this. Checked both ways rather than needing the server's own
   // PROTECTED_SPELL_NAMES list client-side: a name that's genuinely
   // just roman numerals (no real un-suffixed catalog entry) would only
-  // ever appear in trackedSkillNames under its own full name anyway, so
-  // the stripped fallback never false-matches it.
+  // ever appear in trackedTargetEffectNames under its own full name
+  // anyway, so the stripped fallback never false-matches it.
   function stripRank(name: string): string {
     const parts = name.split(' ');
     const tail = parts[parts.length - 1];
@@ -63,7 +68,7 @@
   }
   const visibleTargetEffects = $derived(
     (targetEffects?.effects ?? []).filter(
-      (e) => trackedSkillNames.includes(e.spell) || trackedSkillNames.includes(stripRank(e.spell)),
+      (e) => trackedTargetEffectNames.includes(e.spell) || trackedTargetEffectNames.includes(stripRank(e.spell)),
     ),
   );
 

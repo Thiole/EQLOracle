@@ -1025,10 +1025,18 @@ export interface PreferencesDto {
    * of the Skill Tracker's own sections (status effects, cooldowns,
    * target effects), one window, one panel, one alpha */
   overlay_skill_tracker_opacity: number;
-  /** why: any ability/spell name the player has "track"ed (Spellbook,
-   * Combat's ability rows, or the Skill Tracker's own settings card) --
-   * not a fixed list, empty until the user tracks something */
+  /** why: any ability/spell name the player has "track"ed for the
+   * cooldowns section (Combat's ability rows, or the Skill Tracker's
+   * own settings card) -- not a fixed list, empty until the user
+   * tracks something. Not per-target -- see tracked_target_effects. */
   tracked_skills: string[];
+  /** why: a separate list from tracked_skills -- a spell added here
+   * (Spellbook's own "Overlay spell tracking" section, the only real
+   * entry point) shows up ONLY in the target-effects section (landed?
+   * how much duration left?), never its own cooldown/READY row. Empty
+   * by default -- nothing baked in here, unlike tracked_skills' 4
+   * status pseudo-entries. */
+  tracked_target_effects: string[];
 }
 
 export interface UpdateInfoDto {

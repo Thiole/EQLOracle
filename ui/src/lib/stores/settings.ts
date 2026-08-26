@@ -38,11 +38,19 @@ export const skillTrackerEnabled = writable(false);
 export const skillTrackerOpacity = writable(0.85);
 /** why: any ability/spell the player has "track"ed for the Skill
  * Tracker's own cooldowns section -- not a fixed list, populated by a
- * real "track" action wherever a spell/ability shows up (Spellbook,
- * Combat's ability rows, or the Skill Tracker's own settings card).
- * IS persisted, a real content choice, unlike the on/off above. Empty
- * until the user tracks something. */
+ * real "track" action wherever a spell/ability shows up (Combat's
+ * ability rows, or the Skill Tracker's own settings card). IS
+ * persisted, a real content choice, unlike the on/off above. Empty
+ * until the user tracks something. Not per-target -- see
+ * trackedTargetEffects below for that. */
 export const trackedSkills = writable<string[]>([]);
+/** why: a separate list from trackedSkills -- Spencer's own
+ * correction: "dont do spell tracking for 'ready' ... maybe we need a
+ * separate list for 'per target'". A spell added here (Spellbook's own
+ * "Overlay spell tracking" section, the only real entry point) shows
+ * up ONLY against the current target (landed? duration left?), never
+ * its own cooldown/READY row. Empty by default -- nothing baked in. */
+export const trackedTargetEffects = writable<string[]>([]);
 export const settingsLoaded = writable(false);
 
 // why: applies on every change, not just after an explicit setTheme() --
@@ -76,6 +84,7 @@ export function loadPreferences(): Promise<void> {
     dpsMeterOpacity.set(prefs.overlay_dps_meter_opacity);
     skillTrackerOpacity.set(prefs.overlay_skill_tracker_opacity);
     trackedSkills.set(prefs.tracked_skills);
+    trackedTargetEffects.set(prefs.tracked_target_effects);
     settingsLoaded.set(true);
   })();
   return loading;
@@ -91,6 +100,7 @@ function currentPrefs(): PreferencesDto {
     overlay_dps_meter_opacity: get(dpsMeterOpacity),
     overlay_skill_tracker_opacity: get(skillTrackerOpacity),
     tracked_skills: get(trackedSkills),
+    tracked_target_effects: get(trackedTargetEffects),
   };
 }
 
@@ -170,6 +180,22 @@ export async function toggleTrackedSkill(name: string) {
   const current = get(trackedSkills);
   const next = current.includes(name) ? current.filter((s) => s !== name) : [...current, name];
   await setTrackedSkills(next);
+}
+
+/** why: which spells show against the current target -- see
+ * trackedTargetEffects' own doc for why this is separate from
+ * setTrackedSkills */
+export async function setTrackedTargetEffects(spells: string[]) {
+  trackedTargetEffects.set(spells);
+  await api.setPreferences({ ...currentPrefs(), tracked_target_effects: spells }).catch(() => {});
+}
+
+/** why: the one call Spellbook's own "Overlay spell tracking" section
+ * uses -- same "is this one tracked, flip it" shape as toggleTrackedSkill */
+export async function toggleTrackedTargetEffect(name: string) {
+  const current = get(trackedTargetEffects);
+  const next = current.includes(name) ? current.filter((s) => s !== name) : [...current, name];
+  await setTrackedTargetEffects(next);
 }
 
 /** why: shared by every era-tagged Game Data category that carries a

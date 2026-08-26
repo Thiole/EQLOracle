@@ -109,6 +109,19 @@ pub struct Preferences {
     /// skill is (the overlay's own listbox).
     #[serde(default = "default_tracked_skills")]
     pub tracked_skills: Vec<String>,
+    /// why: a separate list from tracked_skills -- Spencer's own
+    /// correction: "dont do spell tracking for 'ready' ... maybe we
+    /// need a separate list for 'per target', not a tracking effect
+    /// like charm etc since thats not a per target thing". A DoT/debuff
+    /// added here shows up ONLY in the target-effects section (landed?
+    /// how much duration left?), never as its own cooldown/READY row --
+    /// Combat's own ability breakdown is still the place to track
+    /// something for reuse timing. Empty by default -- unlike
+    /// tracked_skills, nothing here is baked in (a status effect isn't
+    /// a per-target thing at all). Only real entry point is Spellbook's
+    /// own "Overlay spell tracking" section.
+    #[serde(default)]
+    pub tracked_target_effects: Vec<String>,
     // why: no "is this widget / the overlay window currently on" field --
     // deliberately not a style preference to remember, it's live session
     // state. Caught live: an earlier version persisted the window's own
@@ -130,6 +143,7 @@ impl Default for Preferences {
             overlay_dps_meter_opacity: default_overlay_opacity(),
             overlay_skill_tracker_opacity: default_overlay_opacity(),
             tracked_skills: default_tracked_skills(),
+            tracked_target_effects: Vec::new(),
         }
     }
 }
@@ -191,6 +205,10 @@ mod tests {
             vec!["Charmed", "Invisible", "Hide", "Sneak"],
             "on by default, not opt-in like a real tracked skill -- see default_tracked_skills' own doc"
         );
+        assert!(
+            p.tracked_target_effects.is_empty(),
+            "nothing baked in -- a per-target effect is always an opt-in pick, unlike the 4 status pseudo-entries above"
+        );
     }
 
     #[test]
@@ -204,6 +222,7 @@ mod tests {
             overlay_dps_meter_opacity: 0.4,
             overlay_skill_tracker_opacity: 0.6,
             tracked_skills: vec!["Kick".to_string(), "Backstab".to_string()],
+            tracked_target_effects: vec!["Tashania".to_string()],
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: Preferences = serde_json::from_str(&json).unwrap();
@@ -215,6 +234,7 @@ mod tests {
         assert_eq!(back.overlay_dps_meter_opacity, 0.4);
         assert_eq!(back.overlay_skill_tracker_opacity, 0.6);
         assert_eq!(back.tracked_skills, vec!["Kick", "Backstab"]);
+        assert_eq!(back.tracked_target_effects, vec!["Tashania"]);
     }
 
     /// why: an old/partial file must still load via #[serde(default)]
@@ -232,5 +252,6 @@ mod tests {
             back.tracked_skills,
             vec!["Charmed", "Invisible", "Hide", "Sneak"]
         );
+        assert!(back.tracked_target_effects.is_empty());
     }
 }

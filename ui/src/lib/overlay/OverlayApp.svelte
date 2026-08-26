@@ -17,6 +17,7 @@
 
   let opacity = $state(0.85);
   let trackedSkillNames = $state<string[]>([]);
+  let trackedTargetEffectNames = $state<string[]>([]);
   let meter = $state<LiveMeterDto | null>(null);
   let status = $state<StatusEffectsDto | null>(null);
   let skills = $state<SkillStatusDto[]>([]);
@@ -33,6 +34,7 @@
       // this list changes rarely enough that re-fetching preferences
       // alongside the data poll is cheap either way
       trackedSkillNames = p.tracked_skills;
+      trackedTargetEffectNames = p.tracked_target_effects;
     }
   }
 
@@ -71,6 +73,6 @@
   {#if widget === 'dps_meter'}
     <DpsMeterWidget {meter} {opacity} />
   {:else if widget === 'skill_tracker'}
-    <SkillTrackerWidget {status} {skills} {trackedSkillNames} {targetEffects} {opacity} />
+    <SkillTrackerWidget {status} {skills} {trackedSkillNames} {trackedTargetEffectNames} {targetEffects} {opacity} />
   {/if}
 </div>

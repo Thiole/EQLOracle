@@ -1,20 +1,34 @@
 <script lang="ts">
-  // why: shared between Overlay settings and Spellbook's own "overlay
-  // spell tracking" section -- one real listbox reflecting
-  // stores/settings.ts's trackedSkills, not two copies of the same
-  // markup drifting apart. Click a row to select/highlight it (own
-  // keyboard support too), its own × removes it independent of selection.
+  // why: shared between Overlay settings and Spellbook's own tracking
+  // sections -- one real listbox implementation, not two copies of the
+  // same markup drifting apart. Parameterized over which list it's
+  // showing (trackedSkills for cooldowns, or trackedTargetEffects for
+  // the per-target panel -- see stores/settings.ts's own doc on why
+  // those are two separate lists now) rather than hardcoding one.
+  // Click a row to select/highlight it (own keyboard support too), its
+  // own × removes it independent of selection.
   import XIcon from '@lucide/svelte/icons/x';
-  import { trackedSkills, toggleTrackedSkill } from '$lib/stores/settings';
+
+  let {
+    items,
+    onRemove,
+    ariaLabel,
+    emptyLabel,
+  }: {
+    items: string[];
+    onRemove: (name: string) => void;
+    ariaLabel: string;
+    emptyLabel: string;
+  } = $props();
 
   let selected = $state<string | null>(null);
 </script>
 
-<div role="listbox" aria-label="Tracked cooldowns" class="max-h-32 overflow-y-auto rounded-sm border border-border">
-  {#if !$trackedSkills.length}
-    <p class="px-2 py-3 text-center text-[11px] text-muted-foreground italic">Nothing tracked yet.</p>
+<div role="listbox" aria-label={ariaLabel} class="max-h-32 overflow-y-auto rounded-sm border border-border">
+  {#if !items.length}
+    <p class="px-2 py-3 text-center text-[11px] text-muted-foreground italic">{emptyLabel}</p>
   {:else}
-    {#each $trackedSkills as skill (skill)}
+    {#each items as skill (skill)}
       <div
         role="option"
         aria-selected={selected === skill}
@@ -35,7 +49,7 @@
           title="Stop tracking {skill}"
           onclick={(e) => {
             e.stopPropagation();
-            void toggleTrackedSkill(skill);
+            onRemove(skill);
           }}
         >
           <XIcon class="size-3" />

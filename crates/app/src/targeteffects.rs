@@ -30,11 +30,16 @@
 //! Observation here stays unfiltered -- every real DoT/debuff the
 //! player lands or attempts on the target, not just tracked ones --
 //! so a spell added to the tracked list mid-fight shows its real
-//! history immediately. Spencer's correction: which of those get
-//! DISPLAYED is player-selected, the same tracked_skills list
-//! cooldowns already use, not automatic for everything landed; that
-//! filter lives client-side (SkillTrackerWidget.svelte), same split
-//! as skill_status/cooldowns already has.
+//! history immediately. Spencer's correction (twice, now): which of
+//! those get DISPLAYED is player-selected, but a SEPARATE list from
+//! skill_status/cooldowns' own tracked_skills -- "dont do spell
+//! tracking for 'ready' ... maybe we need a separate list for 'per
+//! target', not a tracking effect like charm etc since thats not a
+//! per target thing". preferences.rs's own tracked_target_effects,
+//! not tracked_skills; a spell added there never gets its own
+//! cooldown/READY row, only ever shows up here. That filter lives
+//! client-side (SkillTrackerWidget.svelte), same split as skill_status/
+//! cooldowns already has, just against the other list now.
 
 use crate::combat;
 use crate::ingest::Ingest;

@@ -14,7 +14,7 @@
   import DpsSuggest from './DpsSuggest.svelte';
   import { api, type UiFileInfoDto, type SpellDto, type DamageSpellDto, type SpellbookFileDto } from '$lib/tauri/api';
   import { status } from '$lib/stores/status';
-  import { trackedSkills, toggleTrackedSkill } from '$lib/stores/settings';
+  import { trackedTargetEffects, toggleTrackedTargetEffect } from '$lib/stores/settings';
   import TrackedSkillsList from '$lib/overlay/TrackedSkillsList.svelte';
 
   // why: a real loadout holds up to 14 spells -- 8 base slots plus up to
@@ -796,11 +796,18 @@
   </Card>
 
   <!-- why: Spencer's own ask -- a dedicated section to build the Skill
-       Tracker overlay's own tracked list, instead of a small icon
-       scattered through the search grid above. Search finds a spell,
-       clicking a result tracks it; TrackedSkillsList (shared with
-       Overlay settings) shows and removes what's already tracked. A
-       real "profile" to hot-swap between different tracked sets is the
+       Tracker overlay's own per-target tracked list, instead of a small
+       icon scattered through the search grid above. Search finds a
+       spell, clicking a result tracks it; TrackedSkillsList (shared with
+       Overlay settings) shows and removes what's already tracked.
+       Correction, twice over: "dont do spell tracking for 'ready' ...
+       this is for making sure the spells land" -- a spell tracked here
+       is about the current TARGET (landed? how much duration left?),
+       never its own cooldown row (Combat's own ability breakdown is
+       still where reuse timing lives). Writes to its own separate
+       trackedTargetEffects, not the cooldowns section's trackedSkills --
+       see stores/settings.ts's own doc for why they're split. A real
+       "profile" to hot-swap between different tracked sets is the
        planned next step here, not built yet -- this is the single set
        every profile would eventually fork from. -->
   <Card class="rounded-sm">
@@ -817,8 +824,9 @@
 
       {#if overlayTrackOpen}
         <p class="mb-2 text-[11px] text-muted-foreground">
-          Spells tracked here show their own cooldown in the Skill Tracker overlay, estimated from your own real reuse
-          gaps. Search and click a result to track/untrack it.
+          Spells tracked here show up against your current target in the Skill Tracker overlay -- did it land, and how
+          much duration's left. Not a cooldown timer (Combat's own ability breakdown covers that). Search and click a
+          result to track/untrack it.
         </p>
 
         {#if overlayTrackSearch.trim() && overlayTrackResults.length}
@@ -834,14 +842,14 @@
                  the same result set). Fully regenerated on every
                  search change anyway, so no per-item identity to keep. -->
             {#each overlayTrackResults as s, i (i)}
-              {@const tracked = $trackedSkills.includes(s.name)}
+              {@const tracked = $trackedTargetEffects.includes(s.name)}
               <button
                 type="button"
                 class="flex items-center gap-1 rounded-sm px-1 py-0.5 text-left text-[10px] leading-tight hover:bg-accent {tracked
                   ? 'text-primary'
                   : 'text-foreground'}"
                 title={tracked ? `Stop tracking ${s.name}` : `Track ${s.name}`}
-                onclick={() => void toggleTrackedSkill(s.name)}
+                onclick={() => void toggleTrackedTargetEffect(s.name)}
               >
                 {#if s.icon}
                   <img src={ICON_BASE + encodeURIComponent(s.icon)} alt="" class="size-4 shrink-0 rounded-[2px] border border-border bg-muted/20" />
@@ -857,7 +865,12 @@
           <p class="mb-2 text-[11px] text-muted-foreground">no matches</p>
         {/if}
 
-        <TrackedSkillsList />
+        <TrackedSkillsList
+          items={$trackedTargetEffects}
+          onRemove={(name) => void toggleTrackedTargetEffect(name)}
+          ariaLabel="Tracked target effects"
+          emptyLabel="Nothing tracked yet."
+        />
       {/if}
     </CardContent>
   </Card>

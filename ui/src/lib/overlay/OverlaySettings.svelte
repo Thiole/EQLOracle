@@ -18,6 +18,10 @@
     skillTrackerOpacity,
     setSkillTrackerEnabled,
     setSkillTrackerOpacity,
+    trackedSkills,
+    toggleTrackedSkill,
+    trackedTargetEffects,
+    toggleTrackedTargetEffect,
     loadPreferences,
   } from '$lib/stores/settings';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
@@ -158,15 +162,30 @@
 
       <div class="mt-2.5">
         <p class="text-[11px] text-muted-foreground">
-          tracked cooldowns <span class="text-muted-foreground/70">(add spells from Character → Spellbook's own "overlay spell tracking" section, or an ability from Combat's own breakdown)</span>
+          tracked cooldowns <span class="text-muted-foreground/70">(add an ability from Combat's own breakdown, or track a spell right here)</span>
         </p>
         <div class="mt-1">
-          <TrackedSkillsList />
+          <TrackedSkillsList
+            items={$trackedSkills}
+            onRemove={(name) => void toggleTrackedSkill(name)}
+            ariaLabel="Tracked cooldowns"
+            emptyLabel="Nothing tracked yet."
+          />
         </div>
       </div>
-      <p class="mt-2 text-[11px] text-muted-foreground">
-        Target effects use the same tracked list above -- add a DoT or debuff there and it'll show up against your current target too.
-      </p>
+      <div class="mt-2.5">
+        <p class="text-[11px] text-muted-foreground">
+          target effects <span class="text-muted-foreground/70">(a DoT or debuff -- landed? how long's left? add spells from Character → Spellbook's own "overlay spell tracking" section)</span>
+        </p>
+        <div class="mt-1">
+          <TrackedSkillsList
+            items={$trackedTargetEffects}
+            onRemove={(name) => void toggleTrackedTargetEffect(name)}
+            ariaLabel="Tracked target effects"
+            emptyLabel="Nothing tracked yet."
+          />
+        </div>
+      </div>
 
       {@render alphaPreview($skillTrackerOpacity, (v) => void setSkillTrackerOpacity(v), capped)}
     </CardContent>
