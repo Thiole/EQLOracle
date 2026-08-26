@@ -20,6 +20,7 @@
     loadPreferences,
   } from '$lib/stores/settings';
   import { mapPacks, rescanMapFolder } from '$lib/stores/maps';
+  import { checkForUpdates, availableUpdate, updateCheckError } from '$lib/stores/updater';
   import SpellLinePriority from './SpellLinePriority.svelte';
   import { THEME_CATEGORIES, THEME_SWATCHES, themeName } from './themes';
 
@@ -41,6 +42,22 @@
     } finally {
       rescanning = false;
     }
+  }
+
+  // why: same local-only shape as rescanning -- checkForUpdates already
+  // self-cleans availableUpdate/updateCheckError on every call (see its
+  // own doc), this just gates when Settings shows their result so a
+  // stale error from the silent launch-time check doesn't leak in here
+  // before the user has actually clicked the button themselves.
+  let checkingUpdate = $state(false);
+  let justCheckedUpdate = $state(false);
+
+  async function onCheckForUpdates() {
+    checkingUpdate = true;
+    justCheckedUpdate = false;
+    await checkForUpdates();
+    checkingUpdate = false;
+    justCheckedUpdate = true;
   }
 
   // why: the dropdown's own display value -- an unsaved preference shows
@@ -144,6 +161,21 @@
           Public (default): only real, deliberate releases. Beta: every build off the testing branch, ahead of a
           real release but less tested -- expect rough edges.
         </p>
+
+        <div class="mt-2.5 flex items-center gap-2">
+          <Button size="sm" variant="outline" class="h-7 text-[11px]" disabled={checkingUpdate} onclick={onCheckForUpdates}>
+            {checkingUpdate ? 'Checking…' : 'Check for updates'}
+          </Button>
+          {#if justCheckedUpdate && !checkingUpdate}
+            {#if $availableUpdate}
+              <span class="text-[11px] text-primary">Update found -- see the prompt in the corner.</span>
+            {:else if $updateCheckError}
+              <span class="text-[11px] text-bad">Check failed: {$updateCheckError}</span>
+            {:else}
+              <span class="text-[11px] text-muted-foreground">You're up to date.</span>
+            {/if}
+          {/if}
+        </div>
       </CardContent>
     </Card>
 

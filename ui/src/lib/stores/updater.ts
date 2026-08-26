@@ -14,8 +14,10 @@ export async function checkForUpdates() {
     updateCheckError.set(null);
   } catch (e) {
     // why: a failed check (offline, GitHub unreachable) is not user-facing
-    // noise -- silent by default, surfaced only if Settings adds a manual
-    // "check now" button later
+    // noise on the silent launch-time check that also calls this --
+    // Settings' own "check for updates" button is what actually surfaces
+    // this store's value, gated behind its own justCheckedUpdate so a
+    // stale launch-time failure doesn't leak in before the user clicks it
     updateCheckError.set(e instanceof Error ? e.message : String(e));
   }
 }
