@@ -484,6 +484,11 @@ fn main() {
         "get_mob_stats".to_string(),
         json!({ format!("mobName={history_target}"): monsters::mob_stats(&ing, history_target) }),
     );
+    // why: Loot History's whole data source, no args
+    out.insert(
+        "list_mobs".to_string(),
+        json!({ "": monsters::list_mobs(&ing) }),
+    );
     // why: a zone/NPC page's own "your parsed encounters" section --
     // "Blackburrow" is a real zone id (packs/zones.json) real fights in
     // this log actually resolve to; history_target/richest_id are the

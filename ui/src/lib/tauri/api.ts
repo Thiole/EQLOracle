@@ -849,6 +849,27 @@ export interface LootEventDto {
   zone: string | null;
 }
 
+export interface LootRowDto {
+  item: string;
+  /** why: stack sizes summed in, not a line count; 0 for a not-yet-gotten known drop */
+  count: number;
+}
+
+export interface MobDto {
+  name: string;
+  /** why: confirmed death lines only -- a Reset isn't evidence either way */
+  kills: number;
+  /** why: every encounter, kills and resets alike */
+  pulls: number;
+  /** why: whether `monsterdata` recognizes this mob -- whether `loot` is
+   * the complete wiki-known list or just what's actually been looted */
+  known: boolean;
+  /** why: gotten-first by count, then alphabetically */
+  loot: LootRowDto[];
+  /** why: mean over kills with a matched Xp row; null if none do */
+  avg_xp_pct: number | null;
+}
+
 // ---------------------------------------------------------------- preferences
 
 export interface EraOptionsDto {
@@ -1091,6 +1112,9 @@ export const api = {
   getItemLootHistory: (item: string) => invoke<LootEventDto[]>('get_item_loot_history', { item }),
 
   getMobStats: (mobName: string) => invoke<MobStatsDto>('get_mob_stats', { mobName }),
+
+  /** why: every mob type fought this session, grouped -- the Loot History tab's whole data source */
+  listMobs: () => invoke<MobDto[]>('list_mobs'),
 
   /** why: a zone page's "your parsed encounters here" section */
   listZoneEncounters: (zoneId: string, limit: number | null = null) =>

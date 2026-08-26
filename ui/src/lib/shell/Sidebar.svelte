@@ -12,9 +12,9 @@
   }
 
   const items: NavItem[] = [
-    { id: 'overview', label: 'Overview', enabled: false },
+    { id: 'overview', label: 'Overview', enabled: true },
     { id: 'combat', label: 'Combat', enabled: true },
-    { id: 'monsters', label: 'Loot History', enabled: false },
+    { id: 'monsters', label: 'Loot History', enabled: true },
     { id: 'character', label: 'Character', enabled: true },
     { id: 'endgame', label: 'Endgame', enabled: true },
     { id: 'gamedata', label: 'Game Data', enabled: true },

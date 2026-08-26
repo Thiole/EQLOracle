@@ -3,12 +3,14 @@
   import FirstLaunch from '$lib/shell/FirstLaunch.svelte';
   import Toolbar from '$lib/shell/Toolbar.svelte';
   import Sidebar from '$lib/shell/Sidebar.svelte';
+  import Overview from '$lib/shell/Overview.svelte';
   import Combat from '$lib/combat/Combat.svelte';
   import Character from '$lib/character/Character.svelte';
   import Endgame from '$lib/endgame/Endgame.svelte';
   import Debug from '$lib/debug/Debug.svelte';
   import Info from '$lib/shell/Info.svelte';
   import GameData from '$lib/gamedata/GameData.svelte';
+  import LootHistory from '$lib/monsters/LootHistory.svelte';
   import Maps from '$lib/maps/Maps.svelte';
   import Settings from '$lib/settings/Settings.svelte';
   import InventoryDumpBanner from '$lib/shell/InventoryDumpBanner.svelte';
@@ -49,8 +51,12 @@
       <div class="flex flex-1 overflow-hidden">
         <Sidebar bind:active={$activeModule} />
         <main class="flex-1 overflow-y-auto">
-          {#if $activeModule === 'combat'}
+          {#if $activeModule === 'overview'}
+            <Overview />
+          {:else if $activeModule === 'combat'}
             <Combat />
+          {:else if $activeModule === 'monsters'}
+            <LootHistory />
           {:else if $activeModule === 'character'}
             <Character />
           {:else if $activeModule === 'endgame'}
