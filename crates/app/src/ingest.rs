@@ -1308,7 +1308,14 @@ impl Ingest {
                 CastOutcome::Unconfirmed => flag::CAST_UNCONFIRMED,
             };
             let tier = self.current_tier(r.end_ms);
-            self.store.push(
+            // why: real bug, caught live -- this always pushed NO_ENCOUNTER,
+            // so cast_rows()'s own `enc[i] != id.0` check could never match
+            // a real encounter and CombatSummaryDto.casts was silently
+            // empty for every selection, always. Same lookup record_avoided
+            // already uses for Miss rows.
+            let actor_name = self.store.name(actor).to_string();
+            let enc = self.current_encounter_of(&actor_name);
+            let idx = self.store.push(
                 r.end_ms,
                 EventKind::Cast,
                 actor,
@@ -1316,9 +1323,12 @@ impl Ingest {
                 ability,
                 0,
                 flags,
-                NO_ENCOUNTER,
+                enc.map(|e| e.0).unwrap_or(NO_ENCOUNTER),
                 tier,
             );
+            if let Some(id) = enc {
+                self.store.extend_encounter(id, idx);
+            }
         }
     }
 
