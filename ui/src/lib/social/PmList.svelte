@@ -39,7 +39,7 @@
     {:else if !$pmHistory.length}
       <p class="text-[11px] text-muted-foreground">No messages with {$activePmPlayer} yet.</p>
     {:else}
-      <div class="flex max-h-[480px] flex-col gap-0.5 overflow-y-auto">
+      <div class="flex h-[360px] flex-col gap-0.5 overflow-y-auto">
         {#each $pmHistory as m, i (i)}
           <p class="text-[11px] leading-snug">
             <span class="text-muted-foreground tabular-nums">{new Date(m.ts_ms).toLocaleTimeString()}</span>

@@ -1,39 +1,38 @@
 // why: single source of truth for the Social tab -- refreshed on every
 // parse-tick (see events.ts's own onChatTick) so a new guild/party/raid
-// line or PM shows up live, same pattern raiding.ts already uses. Only
-// the channel/thread actually open gets refetched, not every one that
-// exists -- a PM history can get long, no reason to re-pull threads
-// nobody's looking at right now.
+// line or PM shows up live, same pattern raiding.ts already uses. All 3
+// public channels are fetched every tick (cheap, small logs) so the
+// Channels list can show a real last-message preview for each one, not
+// just whichever's currently selected -- same shape PM's own thread
+// list already needed. Only the PM thread actually open gets its full
+// history refetched -- a long thread nobody's looking at right now
+// doesn't need to be re-pulled every tick.
 import { writable, get } from 'svelte/store';
 import { api, type ChatMessageDto, type PmThreadDto } from '../tauri/api';
 
 export type ChatChannelKind = 'guild' | 'party' | 'raid';
 
-const CHANNEL_FETCH: Record<ChatChannelKind, () => Promise<ChatMessageDto[]>> = {
-  guild: api.getGuildChat,
-  party: api.getPartyChat,
-  raid: api.getRaidChat,
-};
-
-export const activeChannel = writable<ChatChannelKind>('guild');
-export const channelMessages = writable<ChatMessageDto[] | null>(null);
+export const guildMessages = writable<ChatMessageDto[] | null>(null);
+export const partyMessages = writable<ChatMessageDto[] | null>(null);
+export const raidMessages = writable<ChatMessageDto[] | null>(null);
 export const channelError = writable<string | null>(null);
 
-export async function refreshActiveChannel() {
-  const kind = get(activeChannel);
+export const activeChannel = writable<ChatChannelKind>('guild');
+
+export function setActiveChannel(kind: ChatChannelKind) {
+  activeChannel.set(kind);
+}
+
+export async function refreshChannels() {
   try {
-    channelMessages.set(await CHANNEL_FETCH[kind]());
+    const [guild, party, raid] = await Promise.all([api.getGuildChat(), api.getPartyChat(), api.getRaidChat()]);
+    guildMessages.set(guild);
+    partyMessages.set(party);
+    raidMessages.set(raid);
     channelError.set(null);
   } catch (e) {
     channelError.set(e instanceof Error ? e.message : String(e));
   }
-}
-
-export function setActiveChannel(kind: ChatChannelKind) {
-  if (get(activeChannel) === kind) return;
-  activeChannel.set(kind);
-  channelMessages.set(null);
-  void refreshActiveChannel();
 }
 
 export const pmThreads = writable<PmThreadDto[] | null>(null);
@@ -67,7 +66,7 @@ export function openPmThread(player: string) {
 /** why: called from events.ts's own parse-tick handler, unconditionally
  * (same as refreshRaidRows) -- keeps data warm across tab switches. */
 export function onChatTick() {
+  void refreshChannels();
   void refreshPmThreads();
-  void refreshActiveChannel();
   void refreshActivePmHistory();
 }
