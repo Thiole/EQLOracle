@@ -24,6 +24,18 @@ fn default_overlay_opacity() -> f64 {
     0.85
 }
 
+/// why: the Skill Tracker's 4 baked-in status pseudo-entries -- distinct
+/// from any real spell/ability name a track button could add (in
+/// particular "Invisible" not "Invisibility", the real spell -- that
+/// exact string is trackable on its own via Spellbook, and must never
+/// collide with "am I currently invisible" from effects.rs)
+fn default_tracked_skills() -> Vec<String> {
+    ["Charm", "Invisible", "Hide", "Sneak"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
 /// why: which release channel this install checks for updates against --
 /// `public` = the `latest` GitHub release (main, deliberate releases
 /// only), `beta` = the `testing` release (every push to `testing`,
@@ -82,13 +94,16 @@ pub struct Preferences {
     /// overlay widget here.
     #[serde(default = "default_overlay_opacity")]
     pub overlay_skill_tracker_opacity: f64,
-    /// why: which of skilltracker::TRACKED_SKILLS to actually show in
-    /// the Skill Tracker's own cooldowns section -- Spencer's own ask
-    /// ("allow users to select skills to track"). Empty by default,
-    /// same "nothing shown until you opt in" stance as everything else
-    /// overlay-related here -- a fresh install doesn't know which
-    /// skills this character even has.
-    #[serde(default)]
+    /// why: which entries actually show in the Skill Tracker overlay --
+    /// both real tracked abilities/spells (added via a "track" button in
+    /// Spellbook/Combat, nothing by default -- a fresh install doesn't
+    /// know which skills this character even has) AND the 4 baked-in
+    /// status pseudo-entries (Charm/Invisible/Hide/Sneak), which start
+    /// present -- Spencer's own ask: "not always track, but on by
+    /// default", i.e. real list members like anything else here, just
+    /// pre-added instead of opt-in. Removable the same way any tracked
+    /// skill is (the overlay's own listbox).
+    #[serde(default = "default_tracked_skills")]
     pub tracked_skills: Vec<String>,
     // why: no "is this widget / the overlay window currently on" field --
     // deliberately not a style preference to remember, it's live session
@@ -110,7 +125,7 @@ impl Default for Preferences {
             theme: default_theme(),
             overlay_dps_meter_opacity: default_overlay_opacity(),
             overlay_skill_tracker_opacity: default_overlay_opacity(),
-            tracked_skills: Vec::new(),
+            tracked_skills: default_tracked_skills(),
         }
     }
 }
@@ -167,7 +182,11 @@ mod tests {
         );
         assert_eq!(p.overlay_dps_meter_opacity, 0.85);
         assert_eq!(p.overlay_skill_tracker_opacity, 0.85);
-        assert!(p.tracked_skills.is_empty());
+        assert_eq!(
+            p.tracked_skills,
+            vec!["Charm", "Invisible", "Hide", "Sneak"],
+            "on by default, not opt-in like a real tracked skill -- see default_tracked_skills' own doc"
+        );
     }
 
     #[test]
@@ -205,6 +224,9 @@ mod tests {
         assert_eq!(back.theme, "eqlp");
         assert_eq!(back.overlay_dps_meter_opacity, 0.85);
         assert_eq!(back.overlay_skill_tracker_opacity, 0.85);
-        assert!(back.tracked_skills.is_empty());
+        assert_eq!(
+            back.tracked_skills,
+            vec!["Charm", "Invisible", "Hide", "Sneak"]
+        );
     }
 }

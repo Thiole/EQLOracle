@@ -1,8 +1,10 @@
 <script lang="ts">
   // why: combined overlay widget, three sections in one window/panel --
   // Spencer's own spec:
-  // 1. status effects (Charm/Invis/Hide/Sneak) -- baked in, always shown,
-  //    no picker (StatusEffectsWidget's own rows, unchanged logic).
+  // 1. status effects (Charm/Invis/Hide/Sneak) -- real members of the
+  //    same tracked_skills list as any other skill, just on by default
+  //    (see preferences.rs's own default_tracked_skills) instead of
+  //    opt-in, and removable the same way.
   // 2. skill cooldowns (Kick/Bash/...) -- only the ones picked in
   //    Settings, "select skills to track".
   // 3. target effects -- "Target: <name>" header, one icon+timer per
@@ -80,7 +82,7 @@
 </script>
 
 <div class="flex flex-col gap-1.5 rounded-md p-2 text-[12px]" style:background-color="rgba(10, 11, 13, {opacity})">
-  <StatusEffectsWidget {status} />
+  <StatusEffectsWidget {status} tracked={trackedSkillNames} />
 
   {#if visibleSkills.length}
     <div class="flex flex-col gap-0.5 border-t border-white/10 pt-1.5">

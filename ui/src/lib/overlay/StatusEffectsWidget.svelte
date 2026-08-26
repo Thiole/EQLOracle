@@ -4,13 +4,19 @@
   // before it ends), Hide/Sneak are one-shot attempt outcomes (flashed
   // for FLASH_MS then cleared). Same house rules as DpsMeterWidget: flat
   // panel, no continuous CSS animation on a value -- color/text changes
-  // are discrete state, not eased. Baked into the Skill Tracker widget
-  // as its own always-shown section (no enable picker of its own,
-  // Spencer's own ask) -- bare rows, no panel/background of its own;
-  // SkillTrackerWidget's outer div owns the one shared panel for every section.
+  // are discrete state, not eased. Bare rows, no panel/background of its
+  // own; SkillTrackerWidget's outer div owns the one shared panel for
+  // every section.
+  //
+  // Each row is a real member of the same tracked_skills list any other
+  // skill/spell lives in -- "Charm"/"Invisible"/"Hide"/"Sneak" start
+  // present by default (see preferences.rs's own
+  // default_tracked_skills), not hardcoded-forever the way an earlier
+  // version had them; `tracked` is just that list, and a row this
+  // component would otherwise show still needs its own name in it.
   import type { StatusEffectsDto } from '$lib/tauri/api';
 
-  let { status }: { status: StatusEffectsDto | null } = $props();
+  let { status, tracked }: { status: StatusEffectsDto | null; tracked: string[] } = $props();
 
   /** why: how long a one-shot outcome (hide/sneak/invis-ended) stays
    * visible before it's just stale news, not a real overlay-worthy fact */
@@ -37,30 +43,32 @@
   const charmRow = $derived.by(() => {
     const c = status?.charm;
     if (!c) return null;
-    if (c.active) return { label: `Charm: ACTIVE (${c.who})`, tone: 'good' as const, blink: false };
-    return { label: `Charm: Broke (${c.who})`, tone: 'bad' as const, blink: nowMs - c.since_ms < CHARM_BLINK_MS };
+    if (c.active) return { key: 'Charm', label: `Charm: ACTIVE (${c.who})`, tone: 'good' as const, blink: false };
+    return { key: 'Charm', label: `Charm: Broke (${c.who})`, tone: 'bad' as const, blink: nowMs - c.since_ms < CHARM_BLINK_MS };
   });
 
   const invisRow = $derived.by(() => {
     const s = status?.invis;
     if (!s) return null;
-    if (s.active && s.fading) return { label: 'Invisible: FADING', tone: 'warn' as const, blink: false };
-    if (s.active) return { label: 'Invisible: ACTIVE', tone: 'good' as const, blink: false };
-    if (recent(s.since_ms)) return { label: 'Invisible: ENDED', tone: 'bad' as const, blink: false };
+    if (s.active && s.fading) return { key: 'Invisible', label: 'Invisible: FADING', tone: 'warn' as const, blink: false };
+    if (s.active) return { key: 'Invisible', label: 'Invisible: ACTIVE', tone: 'good' as const, blink: false };
+    if (recent(s.since_ms)) return { key: 'Invisible', label: 'Invisible: ENDED', tone: 'bad' as const, blink: false };
     return null;
   });
 
-  function momentaryRow(label: string, m: { outcome: 'success' | 'failure' | 'ended'; since_ms: number } | null | undefined) {
+  function momentaryRow(key: string, m: { outcome: 'success' | 'failure' | 'ended'; since_ms: number } | null | undefined) {
     if (!m || !recent(m.since_ms)) return null;
-    if (m.outcome === 'success') return { label: `${label}: SUCCESS`, tone: 'good' as const, blink: false };
-    if (m.outcome === 'failure') return { label: `${label}: FAILURE`, tone: 'bad' as const, blink: false };
-    return { label: `${label}: ENDED`, tone: 'dim' as const, blink: false };
+    if (m.outcome === 'success') return { key, label: `${key}: SUCCESS`, tone: 'good' as const, blink: false };
+    if (m.outcome === 'failure') return { key, label: `${key}: FAILURE`, tone: 'bad' as const, blink: false };
+    return { key, label: `${key}: ENDED`, tone: 'dim' as const, blink: false };
   }
 
   const hideRow = $derived(momentaryRow('Hide', status?.hide));
   const sneakRow = $derived(momentaryRow('Sneak', status?.sneak));
 
-  const rows = $derived([charmRow, invisRow, hideRow, sneakRow].filter((r) => r !== null));
+  const rows = $derived(
+    [charmRow, invisRow, hideRow, sneakRow].filter((r): r is NonNullable<typeof r> => r !== null && tracked.includes(r.key)),
+  );
 
   const toneClass = { good: 'text-good', bad: 'text-bad', warn: 'text-caution', dim: 'text-white/50' } as const;
 </script>

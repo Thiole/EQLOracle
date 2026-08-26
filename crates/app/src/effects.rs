@@ -148,6 +148,23 @@ mod tests {
         assert!(!dto.charm.expect("still tracked, now inactive").active);
     }
 
+    /// why: Spencer's own ask -- a charmed pet never follows you across a
+    /// zone line, and this break is often silent (no "worn off" line at
+    /// all), so zoning must clear it unconditionally rather than waiting
+    /// for a confirmation that may never come
+    #[test]
+    fn zoning_breaks_an_active_charm_even_with_no_explicit_break_line() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
+            "[Tue Jul 28 15:01:05 2026] You have entered The Northern Desert of Ro.",
+        ]);
+        let dto = status_effects(&ing);
+        assert!(
+            !dto.charm.expect("still tracked, now inactive").active,
+            "zoning must break an active charm even with no worn-off line"
+        );
+    }
+
     /// why: real bug shape this guards against -- state.charm_broken's
     /// pattern is generic ("Your <any spell> spell has worn off of
     /// <target>"), so an unrelated buff wearing off elsewhere must not

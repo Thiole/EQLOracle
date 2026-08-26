@@ -1106,6 +1106,15 @@ impl Ingest {
             Action::Zone { zone } => {
                 // why: stop fights bleeding across zone changes
                 self.encounters.close_all(ts);
+                // why: a charmed pet never follows you across a zone line --
+                // real loss even with no "spell has worn off" confirmation
+                // line at all (charm's own break is often silent on zoning)
+                if let Some(c) = &mut self.charm {
+                    if c.active {
+                        c.active = false;
+                        c.since_ms = ts;
+                    }
+                }
                 self.entered_via_teleport = self
                     .last_teleport_cast
                     .clone()
