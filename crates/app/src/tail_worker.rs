@@ -110,12 +110,21 @@ fn run(
     };
     let mut matcher = engine.matcher();
     let clock = SystemClock;
-    // why: backfill parses in parallel, live growth stays single-threaded;
-    // 16-thread cap re-measured via examples/backfill_bench.rs
+    // why: backfill parses in parallel, live growth stays single-threaded.
+    // 2x detected cores, not just the raw count -- re-measured live via
+    // examples/backfill_bench.rs's own thread-count sweep against a real
+    // 265MB/3.3M-line log: the curve keeps improving well past
+    // available_parallelism() (12 real threads clearly beats 6, 32 beat
+    // 24 by a hair too -- this is mixed regex-CPU work with brief
+    // per-chunk lock contention, not purely compute-bound, so
+    // oversubscribing a bit keeps cores fed during those stalls). 32 is
+    // the real ceiling that sweep found -- returns essentially flat
+    // past it (24->32 saved only 0.05s of a 4.28s run).
     let backfill_threads = thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4)
-        .min(16);
+        .saturating_mul(2)
+        .min(32);
 
     // why: fresh directory starts fresh -- old row/encounter ids mean nothing here
     *ingest.lock().unwrap() = Ingest::default();

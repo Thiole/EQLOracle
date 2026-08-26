@@ -1,10 +1,12 @@
 <script lang="ts">
+  import * as Select from '$lib/components/ui/select';
   import { Button } from '$lib/components/ui/button';
   import { Checkbox } from '$lib/components/ui/checkbox';
   import { Card, CardHeader, CardTitle, CardContent } from '$lib/components/ui/card';
   import { api } from '$lib/tauri/api';
   import { status, refreshStatus } from '$lib/stores/status';
-  import { saveProfile, setSaveProfile, loadPreferences } from '$lib/stores/settings';
+  import { saveProfile, setSaveProfile, theme, setTheme, loadPreferences } from '$lib/stores/settings';
+  import { THEME_CATEGORIES, THEME_SWATCHES, themeName } from '$lib/settings/themes';
 
   $effect(() => {
     void loadPreferences();
@@ -29,12 +31,48 @@
   }
 </script>
 
+{#snippet themeSwatch(slug: string)}
+  <span class="flex shrink-0 gap-[3px]">
+    {#each THEME_SWATCHES[slug] ?? [] as color, i (i)}
+      <span class="size-2.5 rounded-full border border-black/20" style="background-color: {color}"></span>
+    {/each}
+  </span>
+{/snippet}
+
 <div class="flex min-h-screen items-center justify-center p-8">
   <Card class="max-w-md">
     <CardHeader>
       <CardTitle>Find your install folder</CardTitle>
     </CardHeader>
     <CardContent class="space-y-4 text-sm text-muted-foreground">
+      <label class="flex items-center gap-2 text-[12px] text-foreground">
+        <span class="w-16 shrink-0 text-muted-foreground">theme</span>
+        <Select.Root type="single" value={$theme} onValueChange={(v) => v && setTheme(v)}>
+          <Select.Trigger class="h-7 flex-1 text-[12px]">
+            <span class="flex items-center gap-2">
+              {@render themeSwatch($theme)}
+              {themeName($theme)}
+            </span>
+          </Select.Trigger>
+          <Select.Content>
+            {#each THEME_CATEGORIES as cat (cat.label)}
+              <Select.Group>
+                <Select.GroupHeading class="text-[10px] tracking-[0.1em] text-muted-foreground uppercase">{cat.label}</Select.GroupHeading>
+                {#each cat.themes as t (t.slug)}
+                  <Select.Item value={t.slug}>
+                    <span class="flex items-center gap-2">
+                      {@render themeSwatch(t.slug)}
+                      {t.name}
+                    </span>
+                  </Select.Item>
+                {/each}
+              </Select.Group>
+            {/each}
+          </Select.Content>
+        </Select.Root>
+      </label>
+      <p class="text-[11px]">Try on a look before you get started -- this applies live and carries over into the app once you're in.</p>
+
       <p>
         Point EQL Oracle at your EverQuest Legends install folder -- the one that directly contains
         <code class="rounded bg-muted px-1 py-0.5 text-foreground">Logs</code>
