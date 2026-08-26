@@ -75,10 +75,21 @@ pub struct Preferences {
     /// widget follows the same pattern instead of inventing a new shape.
     #[serde(default = "default_overlay_opacity")]
     pub overlay_dps_meter_opacity: f64,
-    /// why: the timed-effects widget's own opacity -- see
-    /// overlay_dps_meter_opacity's own doc, same pattern
+    /// why: the Skill Tracker widget's own opacity -- see
+    /// overlay_dps_meter_opacity's own doc, same pattern. Covers all
+    /// three of its sections (status effects, skill cooldowns, target
+    /// effects) -- one window, one panel, one alpha, same as any other
+    /// overlay widget here.
     #[serde(default = "default_overlay_opacity")]
-    pub overlay_status_effects_opacity: f64,
+    pub overlay_skill_tracker_opacity: f64,
+    /// why: which of skilltracker::TRACKED_SKILLS to actually show in
+    /// the Skill Tracker's own cooldowns section -- Spencer's own ask
+    /// ("allow users to select skills to track"). Empty by default,
+    /// same "nothing shown until you opt in" stance as everything else
+    /// overlay-related here -- a fresh install doesn't know which
+    /// skills this character even has.
+    #[serde(default)]
+    pub tracked_skills: Vec<String>,
     // why: no "is this widget / the overlay window currently on" field --
     // deliberately not a style preference to remember, it's live session
     // state. Caught live: an earlier version persisted the window's own
@@ -98,7 +109,8 @@ impl Default for Preferences {
             update_channel: UpdateChannel::default(),
             theme: default_theme(),
             overlay_dps_meter_opacity: default_overlay_opacity(),
-            overlay_status_effects_opacity: default_overlay_opacity(),
+            overlay_skill_tracker_opacity: default_overlay_opacity(),
+            tracked_skills: Vec::new(),
         }
     }
 }
@@ -154,7 +166,8 @@ mod tests {
             "this app's own identity, not an upstream preset"
         );
         assert_eq!(p.overlay_dps_meter_opacity, 0.85);
-        assert_eq!(p.overlay_status_effects_opacity, 0.85);
+        assert_eq!(p.overlay_skill_tracker_opacity, 0.85);
+        assert!(p.tracked_skills.is_empty());
     }
 
     #[test]
@@ -166,7 +179,8 @@ mod tests {
             update_channel: UpdateChannel::Beta,
             theme: "claude".to_string(),
             overlay_dps_meter_opacity: 0.4,
-            overlay_status_effects_opacity: 0.6,
+            overlay_skill_tracker_opacity: 0.6,
+            tracked_skills: vec!["Kick".to_string(), "Backstab".to_string()],
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: Preferences = serde_json::from_str(&json).unwrap();
@@ -176,7 +190,8 @@ mod tests {
         assert_eq!(back.update_channel, UpdateChannel::Beta);
         assert_eq!(back.theme, "claude");
         assert_eq!(back.overlay_dps_meter_opacity, 0.4);
-        assert_eq!(back.overlay_status_effects_opacity, 0.6);
+        assert_eq!(back.overlay_skill_tracker_opacity, 0.6);
+        assert_eq!(back.tracked_skills, vec!["Kick", "Backstab"]);
     }
 
     /// why: an old/partial file must still load via #[serde(default)]
@@ -189,6 +204,7 @@ mod tests {
         assert_eq!(back.update_channel, UpdateChannel::Public);
         assert_eq!(back.theme, "eqlp");
         assert_eq!(back.overlay_dps_meter_opacity, 0.85);
-        assert_eq!(back.overlay_status_effects_opacity, 0.85);
+        assert_eq!(back.overlay_skill_tracker_opacity, 0.85);
+        assert!(back.tracked_skills.is_empty());
     }
 }

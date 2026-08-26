@@ -4,10 +4,13 @@
   // before it ends), Hide/Sneak are one-shot attempt outcomes (flashed
   // for FLASH_MS then cleared). Same house rules as DpsMeterWidget: flat
   // panel, no continuous CSS animation on a value -- color/text changes
-  // are discrete state, not eased.
+  // are discrete state, not eased. Baked into the Skill Tracker widget
+  // as its own always-shown section (no enable picker of its own,
+  // Spencer's own ask) -- bare rows, no panel/background of its own;
+  // SkillTrackerWidget's outer div owns the one shared panel for every section.
   import type { StatusEffectsDto } from '$lib/tauri/api';
 
-  let { status, opacity }: { status: StatusEffectsDto | null; opacity: number } = $props();
+  let { status }: { status: StatusEffectsDto | null } = $props();
 
   /** why: how long a one-shot outcome (hide/sneak/invis-ended) stays
    * visible before it's just stale news, not a real overlay-worthy fact */
@@ -62,15 +65,13 @@
   const toneClass = { good: 'text-good', bad: 'text-bad', warn: 'text-caution', dim: 'text-white/50' } as const;
 </script>
 
-<div class="flex flex-col gap-1 rounded-md p-2 text-[12px]" style:background-color="rgba(10, 11, 13, {opacity})">
-  {#if !rows.length}
-    <p class="text-white/70">no active effects</p>
-  {:else}
-    {#each rows as r (r.label)}
-      <div class="rounded-sm px-1 font-medium {toneClass[r.tone]} {r.blink ? 'charm-broke-blink' : ''}">{r.label}</div>
-    {/each}
-  {/if}
-</div>
+{#if !rows.length}
+  <p class="text-white/70">no active effects</p>
+{:else}
+  {#each rows as r (r.label)}
+    <div class="rounded-sm px-1 font-medium {toneClass[r.tone]} {r.blink ? 'charm-broke-blink' : ''}">{r.label}</div>
+  {/each}
+{/if}
 
 <style>
   /* why: the one row worth a real blink, not just a color -- Spencer's

@@ -299,6 +299,10 @@ pub struct EffectPing {
     /// `source` also resolved -- a spell can be identified even when
     /// exactly who cast it can't be (0 or 2+ real candidates nearby)
     pub skill: Option<String>,
+    /// why: false for a resisted-cast ping (Skill Tracker's target-effects
+    /// section) -- everything else pushed through here is a real landing,
+    /// see `Effects::push`'s own doc
+    pub landed: bool,
 }
 
 /// why: separate from Timeline's single exclusive State -- buffs stack,
@@ -309,7 +313,9 @@ pub struct Effects {
 }
 
 impl Effects {
-    /// why: inserted in timestamp order, same safety Timeline::push uses
+    /// why: inserted in timestamp order, same safety Timeline::push uses.
+    /// `landed` -- see EffectPing's own doc; every call site before the
+    /// Skill Tracker's target-effects section existed was a real landing.
     fn push(
         &mut self,
         entity: u32,
@@ -317,6 +323,7 @@ impl Effects {
         text: String,
         source: Option<String>,
         skill: Option<String>,
+        landed: bool,
     ) {
         let v = self.by_entity.entry(entity).or_default();
         let at = v.partition_point(|p| p.ts <= ts);
@@ -327,6 +334,7 @@ impl Effects {
                 text,
                 source,
                 skill,
+                landed,
             },
         );
     }
@@ -722,6 +730,8 @@ pub struct Ingest {
     pub invis: Option<crate::effects::InvisStatus>,
     pub hide: Option<crate::effects::MomentaryStatus>,
     pub sneak: Option<crate::effects::MomentaryStatus>,
+    /// why: overlay's Skill Tracker widget -- see skilltracker.rs's own doc
+    pub skills: std::collections::HashMap<String, crate::skilltracker::SkillTrack>,
     /// why: every AA rank purchase this session, see AaLog
     pub aa: AaLog,
     /// why: every spell confirmed known this session, see SpellLog
@@ -809,6 +819,7 @@ impl Default for Ingest {
             invis: None,
             hide: None,
             sneak: None,
+            skills: std::collections::HashMap::new(),
             aa: AaLog::default(),
             spellbook: SpellLog::default(),
             spell_ranks: SpellRanks::default(),
@@ -1183,11 +1194,24 @@ impl Ingest {
                     );
                 }
             }
-            Action::CastResisted { source, spell } => {
+            Action::CastResisted {
+                source,
+                spell,
+                target,
+            } => {
                 let src = self.sym(&source).0;
                 let spell_sym = self.store.sym(base_spell_name(&spell)).0;
                 self.casts
                     .resolve(ts, src, spell_sym, CastOutcome::Resisted);
+                // why: Skill Tracker's target-effects section -- a failed
+                // attempt is still worth showing (flashed, 0:00), not
+                // just silently dropped
+                if let Some(target) = target {
+                    let resolved = self.resolve_name(&target);
+                    let sym = self.sym(&resolved).0;
+                    self.effects
+                        .push(sym, ts, spell.clone(), Some(source), Some(spell), false);
+                }
             }
             Action::PetSpellWoreOff { spell } => {
                 self.record_effect_ping(ts, "Your pet", &spell);
@@ -1432,6 +1456,12 @@ impl Ingest {
         let t = self.sym(dst);
         self.note_shared_target(ts, enc, src, t);
         self.clear_dead_if_acting(ts, a);
+        // why: a landed real special attack -- see skilltracker.rs's own
+        // doc for why only these named abilities (not every weapon swing)
+        // are worth tracking
+        if src.eq_ignore_ascii_case("you") {
+            crate::skilltracker::observe_skill_use(&mut self.skills, ts, ability, true);
+        }
         let ab = self.store.ability_id(ability, tags);
         let tier = self.current_tier(ts);
         let idx = self
@@ -1519,9 +1549,13 @@ impl Ingest {
         let a = self.sym(src);
         let t = self.sym(dst);
         self.clear_dead_if_acting(ts, a);
-        let ab = self
-            .store
-            .ability_id(canonical_melee_ability(verb), tag::MELEE);
+        let canonical = canonical_melee_ability(verb);
+        // why: an avoided real special attack -- see record_damage's own
+        // matching hook, and skilltracker.rs's own doc
+        if src.eq_ignore_ascii_case("you") {
+            crate::skilltracker::observe_skill_use(&mut self.skills, ts, canonical, false);
+        }
+        let ab = self.store.ability_id(canonical, tag::MELEE);
         let tier = self.current_tier(ts);
         let idx = self.store.push(
             ts,
@@ -1939,7 +1973,8 @@ impl Ingest {
         let resolved = self.resolve_name(target_name);
         let sym = self.sym(&resolved).0;
         let (source, skill) = self.attribute_effect(ts, text);
-        self.effects.push(sym, ts, text.to_string(), source, skill);
+        self.effects
+            .push(sym, ts, text.to_string(), source, skill, true);
 
         // why: cancel -- disproves a pending entry via a group cast (other
         // entity) or a pulsing buff (same entity again); ts != p.ts excludes self-cancel
@@ -2295,14 +2330,17 @@ enum Action {
         spell: String,
     },
     /// why: three real phrasings resolve here now -- "X resisted your Y!"
-    /// (source hardcoded "You" at the call site, resister never
-    /// extracted -- irrelevant, the cast tracker is keyed by caster),
-    /// "You resist X's Y!", and third-party "X resisted Y's Z!" (neither
-    /// side is You; still real, still worth resolving -- the cast
-    /// tracker is multi-actor already, see `Action::Cast`'s own handling)
+    /// (source hardcoded "You" at the call site), "You resist X's Y!",
+    /// and third-party "X resisted Y's Z!" (neither side is You; still
+    /// real, still worth resolving -- the cast tracker is multi-actor
+    /// already, see `Action::Cast`'s own handling). `target` is who
+    /// resisted -- only populated for the first phrasing (the other two
+    /// don't name a fight the player is on the casting side of, nothing
+    /// for the Skill Tracker's target-effects section to attribute).
     CastResisted {
         source: String,
         spell: String,
+        target: Option<String>,
     },
     /// why: same shape as `state.charm_broken`'s own "worn off of
     /// <target>" rule, but for a pet's buff specifically -- no target to
@@ -2662,10 +2700,12 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "spell.resisted" => Some(Action::CastResisted {
             source: "You".to_string(),
             spell: str_field("spell")?,
+            target: str_field("who"),
         }),
         "spell.you_resisted" | "spell.resisted_by" => Some(Action::CastResisted {
             source: str_field("caster")?,
             spell: str_field("spell")?,
+            target: None,
         }),
         "cast.blocked" => Some(Action::CastBlocked {
             spell: str_field("spell")?,

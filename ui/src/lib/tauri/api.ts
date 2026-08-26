@@ -210,6 +210,36 @@ export interface StatusEffectsDto {
   sneak: MomentaryStatusDto | null;
 }
 
+/** why: Skill Tracker's own-cooldowns section -- see skilltracker.rs's own doc */
+export interface SkillStatusDto {
+  skill: string;
+  last_outcome: 'landed' | 'avoided';
+  last_used_ms: number;
+  /** why: null until a second real use gives an actual gap to learn from */
+  estimated_interval_ms: number | null;
+  /** why: null exactly when estimated_interval_ms is null */
+  ready: boolean | null;
+  /** why: 0 once ready, null when estimated_interval_ms is null */
+  remaining_ms: number | null;
+}
+
+/** why: Skill Tracker's target-effects section -- see targeteffects.rs's own doc */
+export interface TargetEffectDto {
+  spell: string;
+  /** why: false when the most recent real observation was a resisted cast, not a landing */
+  landed: boolean;
+  since_ms: number;
+  /** why: null for a failed cast, or a landed effect with no known real duration */
+  duration_ms: number | null;
+  ready_at_ms: number | null;
+}
+
+export interface TargetEffectsDto {
+  /** why: null when there's no live enemy target to report against */
+  target: string | null;
+  effects: TargetEffectDto[];
+}
+
 // ---------------------------------------------------------------- character
 
 export interface ClassConfigurationDto {
@@ -988,8 +1018,13 @@ export interface PreferencesDto {
    * window-wide value -- 0.0 (invisible) to 1.0 (fully opaque), this
    * widget's own panel background alpha */
   overlay_dps_meter_opacity: number;
-  /** why: same pattern as overlay_dps_meter_opacity -- this widget's own panel background alpha */
-  overlay_status_effects_opacity: number;
+  /** why: same pattern as overlay_dps_meter_opacity -- covers all three
+   * of the Skill Tracker's own sections (status effects, cooldowns,
+   * target effects), one window, one panel, one alpha */
+  overlay_skill_tracker_opacity: number;
+  /** why: which skilltracker::TRACKED_SKILLS to actually show in the
+   * Skill Tracker's own cooldowns section -- empty until the user picks */
+  tracked_skills: string[];
 }
 
 export interface UpdateInfoDto {
@@ -1217,6 +1252,10 @@ export const api = {
   getLiveMeter: () => invoke<LiveMeterDto | null>('get_live_meter'),
   /** why: the timed-effects overlay's whole data source */
   getStatusEffects: () => invoke<StatusEffectsDto>('get_status_effects'),
+  /** why: the Skill Tracker's own-cooldowns section data source */
+  getSkillStatus: () => invoke<SkillStatusDto[]>('get_skill_status'),
+  /** why: the Skill Tracker's target-effects section data source */
+  getTargetEffects: () => invoke<TargetEffectsDto>('get_target_effects'),
   /** why: each widget is its own real OS window -- opens/closes just that
    * one; rejects with a plain-language reason if the session's
    * capability caps below click-through */

@@ -7,7 +7,8 @@ use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
 use eqlp_app::parser::build_engine;
 use eqlp_app::{
     aadata, character, chat, combat, debugview, effects, gearplanner, history, inventory, monsters,
-    npcdata, overview, progression, spelldata, spelleffect, windowcap, zonedata,
+    npcdata, overview, progression, skilltracker, spelldata, spelleffect, targeteffects, windowcap,
+    zonedata,
 };
 use serde_json::{json, Map, Value};
 use std::path::Path;
@@ -529,6 +530,15 @@ fn main() {
     out.insert(
         "get_status_effects".to_string(),
         json!({ "": effects::status_effects(&ing) }),
+    );
+    // why: Skill Tracker's own-cooldowns and target-effects sections, no args
+    out.insert(
+        "get_skill_status".to_string(),
+        json!({ "": skilltracker::skill_status(&ing) }),
+    );
+    out.insert(
+        "get_target_effects".to_string(),
+        json!({ "": targeteffects::target_effects(&ing) }),
     );
     // why: a zone/NPC page's own "your parsed encounters" section --
     // "Blackburrow" is a real zone id (packs/zones.json) real fights in

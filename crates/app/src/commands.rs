@@ -443,6 +443,18 @@ pub fn get_status_effects(state: State<AppState>) -> crate::effects::StatusEffec
     crate::effects::status_effects(&state.ingest.lock().unwrap())
 }
 
+/// why: Skill Tracker widget's own-cooldowns section -- see skilltracker.rs's own doc
+#[tauri::command]
+pub fn get_skill_status(state: State<AppState>) -> Vec<crate::skilltracker::SkillStatusDto> {
+    crate::skilltracker::skill_status(&state.ingest.lock().unwrap())
+}
+
+/// why: Skill Tracker widget's target-effects section -- see targeteffects.rs's own doc
+#[tauri::command]
+pub fn get_target_effects(state: State<AppState>) -> crate::targeteffects::TargetEffectsDto {
+    crate::targeteffects::target_effects(&state.ingest.lock().unwrap())
+}
+
 /// why: each widget is its own real OS window now, not content stacked
 /// inside one shared overlay surface -- independently draggable,
 /// independently closable, matches how every other per-widget thing

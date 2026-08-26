@@ -1065,6 +1065,30 @@ pub struct LiveMeterDto {
     pub incoming: Vec<EntityStateDto>,
 }
 
+/// why: shared by live_meter and the Skill Tracker's target-effects
+/// section -- "most recently ACTIVE real encounter," not just most
+/// recently opened. Real bug, caught live -- Encounter::start_ms is when
+/// that encounter object was *opened*, not evidence anything real is
+/// still happening in it. A stray miss/attempt against an unrelated
+/// target (real case: a lone 0/0 encounter against "Consetta") can open
+/// a brand new encounter with a later start_ms than a real fight that's
+/// still actively landing damage, winning a max_by_key(start_ms) pick
+/// outright and showing an empty meter while the real fight goes on.
+/// The store is append order (chronological) -- walking backward for
+/// the last row that actually belongs to *any* encounter finds
+/// whichever one most recently had real activity, not just whichever
+/// was opened most recently. Short-circuits near-instantly in the
+/// common case (the most recent row almost always belongs to whatever's
+/// actively being fought). None before any real encounter exists yet
+/// this session.
+pub fn current_encounter(ing: &Ingest) -> Option<&Encounter> {
+    let latest_id = (0..ing.store.len())
+        .rev()
+        .map(|i| ing.store.enc[i])
+        .find(|&e| e != NO_ENCOUNTER)?;
+    ing.store.encounter(EncounterId(latest_id))
+}
+
 /// why: overlay's own live poll -- most recent encounter, `fight_state_at`'s
 /// own trailing INSPECT_WINDOW_MS dps (already a rolling snapshot, not
 /// cumulative, so a fight that ended minutes ago self-corrects to 0 dps
@@ -1072,24 +1096,7 @@ pub struct LiveMeterDto {
 /// before any real encounter exists yet this session.
 pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     let now = ing.now_ms();
-    // why: real bug, caught live -- Encounter::start_ms is when that
-    // encounter object was *opened*, not evidence anything real is still
-    // happening in it. A stray miss/attempt against an unrelated target
-    // (real case: a lone 0/0 encounter against "Consetta") can open a
-    // brand new encounter with a later start_ms than a real fight that's
-    // still actively landing damage, winning a max_by_key(start_ms) pick
-    // outright and showing an empty meter while the real fight goes on.
-    // The store is append order (chronological) -- walking backward for
-    // the last row that actually belongs to *any* encounter finds
-    // whichever one most recently had real activity, not just whichever
-    // was opened most recently. Short-circuits near-instantly in the
-    // common case (the most recent row almost always belongs to
-    // whatever's actively being fought).
-    let latest_id = (0..ing.store.len())
-        .rev()
-        .map(|i| ing.store.enc[i])
-        .find(|&e| e != NO_ENCOUNTER)?;
-    let latest = ing.store.encounter(EncounterId(latest_id))?;
+    let latest = current_encounter(ing)?;
     let rows = fight_state_at(ing, latest.id.0, now);
     let (outgoing, incoming) = rows.into_iter().partition(|r| r.is_player || r.is_pet);
     Some(LiveMeterDto {

@@ -14,13 +14,20 @@
     dpsMeterOpacity,
     setDpsMeterEnabled,
     setDpsMeterOpacity,
-    statusEffectsEnabled,
-    statusEffectsOpacity,
-    setStatusEffectsEnabled,
-    setStatusEffectsOpacity,
+    skillTrackerEnabled,
+    skillTrackerOpacity,
+    setSkillTrackerEnabled,
+    setSkillTrackerOpacity,
+    trackedSkills,
+    setTrackedSkills,
     loadPreferences,
   } from '$lib/stores/settings';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
+
+  // why: mirrors skilltracker.rs's own TRACKED_SKILLS -- kept in sync by
+  // hand, same as the update-channel public/beta pair elsewhere in
+  // Settings; a fixed list this small isn't worth a round trip to fetch.
+  const TRACKABLE_SKILLS = ['Kick', 'Bash', 'Backstab', 'Frenzy', 'Smite', 'Reave'];
 
   $effect(() => {
     void loadPreferences();
@@ -28,10 +35,10 @@
   });
 
   let enableError = $state<string | null>(null);
-  let statusEffectsError = $state<string | null>(null);
+  let skillTrackerError = $state<string | null>(null);
   // why: each widget's own window starts locked (click-through) --
   // matches every widget window's own real default at open
-  let locked = $state<Record<string, boolean>>({ dps_meter: true, status_effects: true });
+  let locked = $state<Record<string, boolean>>({ dps_meter: true, skill_tracker: true });
 
   async function onToggleDpsMeter(on: boolean) {
     enableError = null;
@@ -43,14 +50,20 @@
     }
   }
 
-  async function onToggleStatusEffects(on: boolean) {
-    statusEffectsError = null;
+  async function onToggleSkillTracker(on: boolean) {
+    skillTrackerError = null;
     try {
-      await setStatusEffectsEnabled(on);
-      locked.status_effects = true;
+      await setSkillTrackerEnabled(on);
+      locked.skill_tracker = true;
     } catch (e) {
-      statusEffectsError = e instanceof Error ? e.message : String(e);
+      skillTrackerError = e instanceof Error ? e.message : String(e);
     }
+  }
+
+  function onToggleTrackedSkill(skill: string, on: boolean) {
+    const current = $trackedSkills;
+    const next = on ? [...current, skill] : current.filter((s) => s !== skill);
+    void setTrackedSkills(next);
   }
 
   async function toggleLocked(widget: string) {
@@ -139,23 +152,45 @@
 
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
-      <h2 class="panel-title mb-1.5">status effects</h2>
+      <h2 class="panel-title mb-1.5">skill tracker</h2>
       <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
-        <Checkbox checked={$statusEffectsEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleStatusEffects(v)} />
+        <Checkbox checked={$skillTrackerEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleSkillTracker(v)} />
         enable
       </label>
-      <p class="mt-0.5 text-[11px] text-muted-foreground">Charm, invisibility, hide, and sneak -- flags when one's about to end or just failed.</p>
+      <p class="mt-0.5 text-[11px] text-muted-foreground">
+        Charm, invisibility, hide, and sneak (always shown), plus the cooldowns and target effects below.
+      </p>
       {#if capped}
         <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
       {/if}
-      {#if statusEffectsError}
-        <p class="mt-1 text-[11px] text-bad">{statusEffectsError}</p>
+      {#if skillTrackerError}
+        <p class="mt-1 text-[11px] text-bad">{skillTrackerError}</p>
       {/if}
-      {#if $statusEffectsEnabled && !capped}
-        {@render repositionButton('status_effects')}
+      {#if $skillTrackerEnabled && !capped}
+        {@render repositionButton('skill_tracker')}
       {/if}
 
-      {@render alphaPreview($statusEffectsOpacity, (v) => void setStatusEffectsOpacity(v), capped)}
+      <div class="mt-2.5">
+        <p class="text-[11px] text-muted-foreground">Cooldowns to show (estimated from your own real reuse gaps):</p>
+        <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+          {#each TRACKABLE_SKILLS as skill (skill)}
+            <label class="flex items-center gap-1.5 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
+              <Checkbox
+                checked={$trackedSkills.includes(skill)}
+                disabled={capped}
+                onCheckedChange={(v: boolean) => onToggleTrackedSkill(skill, v)}
+              />
+              {skill}
+            </label>
+          {/each}
+        </div>
+      </div>
+      <p class="mt-2 text-[11px] text-muted-foreground">
+        Target effects (DoTs, debuffs you've cast) track automatically against whatever you're currently fighting -- no
+        picker needed there.
+      </p>
+
+      {@render alphaPreview($skillTrackerOpacity, (v) => void setSkillTrackerOpacity(v), capped)}
     </CardContent>
   </Card>
 
