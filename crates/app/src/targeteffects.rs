@@ -26,6 +26,15 @@
 //! not a live still active claim"), so a timer reaching zero doesn't
 //! mean gone for certain -- the frontend flashes it instead of dropping
 //! it, until the target itself clears.
+//!
+//! Observation here stays unfiltered -- every real DoT/debuff the
+//! player lands or attempts on the target, not just tracked ones --
+//! so a spell added to the tracked list mid-fight shows its real
+//! history immediately. Spencer's correction: which of those get
+//! DISPLAYED is player-selected, the same tracked_skills list
+//! cooldowns already use, not automatic for everything landed; that
+//! filter lives client-side (SkillTrackerWidget.svelte), same split
+//! as skill_status/cooldowns already has.
 
 use crate::combat;
 use crate::ingest::Ingest;

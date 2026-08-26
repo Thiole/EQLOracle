@@ -164,7 +164,9 @@
           <TrackedSkillsList />
         </div>
       </div>
-      <p class="mt-2 text-[11px] text-muted-foreground">Target effects track automatically -- no picker needed.</p>
+      <p class="mt-2 text-[11px] text-muted-foreground">
+        Target effects use the same tracked list above -- add a DoT or debuff there and it'll show up against your current target too.
+      </p>
 
       {@render alphaPreview($skillTrackerOpacity, (v) => void setSkillTrackerOpacity(v), capped)}
     </CardContent>

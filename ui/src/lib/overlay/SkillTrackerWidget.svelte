@@ -11,7 +11,13 @@
   //    tracked spell effect on it. Real spell-icon art (same assets
   //    SpellbookBuilder already renders, see ICON_BASE) when the backend
   //    resolved one; a compact 2-letter badge falls back for anything
-  //    unrecognized.
+  //    unrecognized. Player-selected, same trackedSkillNames list as
+  //    cooldowns above -- Spencer's own correction: this used to show
+  //    every DoT/debuff landed on the target unconditionally, "should
+  //    be player selected, not auto selected". The backend still
+  //    observes everything (so a spell added mid-fight shows its real
+  //    history immediately, not just future casts); only what's
+  //    rendered here is opt-in now.
   import type { StatusEffectsDto, SkillStatusDto, TargetEffectsDto } from '$lib/tauri/api';
   import { ICON_BASE } from '$lib/character/constants';
   import StatusEffectsWidget from './StatusEffectsWidget.svelte';
@@ -37,6 +43,29 @@
   });
 
   const visibleSkills = $derived(skills.filter((s) => trackedSkillNames.includes(s.skill)));
+
+  // why: a target-effect's own `spell` can carry a live per-character
+  // rank suffix the tracked list never does (added via Spellbook's
+  // search against the catalog's own base name) -- see
+  // targeteffects.rs's own doc on the two attribution paths disagreeing
+  // on this. Checked both ways rather than needing the server's own
+  // PROTECTED_SPELL_NAMES list client-side: a name that's genuinely
+  // just roman numerals (no real un-suffixed catalog entry) would only
+  // ever appear in trackedSkillNames under its own full name anyway, so
+  // the stripped fallback never false-matches it.
+  function stripRank(name: string): string {
+    const parts = name.split(' ');
+    const tail = parts[parts.length - 1];
+    if (parts.length > 1 && /^[IVXLCDM]+$/.test(tail)) {
+      return parts.slice(0, -1).join(' ');
+    }
+    return name;
+  }
+  const visibleTargetEffects = $derived(
+    (targetEffects?.effects ?? []).filter(
+      (e) => trackedSkillNames.includes(e.spell) || trackedSkillNames.includes(stripRank(e.spell)),
+    ),
+  );
 
   function fmtCountdown(ms: number): string {
     const secs = Math.max(0, Math.ceil(ms / 1000));
@@ -93,11 +122,11 @@
     </div>
   {/if}
 
-  {#if targetEffects?.target && targetEffects.effects.length}
+  {#if targetEffects?.target && visibleTargetEffects.length}
     <div class="flex flex-col gap-1 border-t border-white/10 pt-1.5">
       <div class="truncate font-medium text-white">Target: {targetEffects.target}</div>
       <div class="flex flex-wrap gap-2">
-        {#each targetEffects.effects as e (e.spell)}
+        {#each visibleTargetEffects as e (e.spell)}
           {@const st = targetEffectState(e)}
           <div class="flex flex-col items-center gap-0.5" title={e.spell}>
             <div class="flex size-7 items-center justify-center overflow-hidden rounded-sm bg-black/40 text-[10px] font-bold tracking-wide {st.flash ? 'target-effect-blink' : 'text-white/90'}">
