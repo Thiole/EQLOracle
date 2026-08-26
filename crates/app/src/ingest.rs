@@ -368,6 +368,33 @@ impl Effects {
             .map(|v| v.as_slice())
             .unwrap_or(&[])
     }
+
+    /// why: Skill Tracker's target-effects fallback -- real bug, caught
+    /// live: a pure debuff/CC cast (Tashania, a resist-decrease debuff
+    /// with no damage component at all) never lands a single Damage
+    /// event, so it never opens or extends combat::current_encounter's
+    /// own damage-graph (deliberately damage-only, see record_damage's
+    /// own doc) -- a support/CC character who never personally lands
+    /// damage on the pull could never get a target-effects panel at
+    /// all. This is the "who did my last real spell effect actually go
+    /// against" answer instead, entity-agnostic (scans every entity's
+    /// own most recent ping, not one already-known target).
+    pub fn most_recent_by_you(&self) -> Option<(u32, &EffectPing)> {
+        self.by_entity
+            .iter()
+            .filter_map(|(&entity, pings)| {
+                pings
+                    .iter()
+                    .rev()
+                    .find(|p| {
+                        p.source
+                            .as_deref()
+                            .is_some_and(|s| s.eq_ignore_ascii_case("you"))
+                    })
+                    .map(|p| (entity, p))
+            })
+            .max_by_key(|(_, p)| p.ts)
+    }
 }
 
 /// why: one chat line, whichever channel it landed in

@@ -3,9 +3,11 @@
 //! per target ... a target (ex: Lord Nagafen) that shows the icons for
 //! tracked spell effects that were/tried on him, like slow with a
 //! timer." Scoped to the player's own casts against the current fight's
-//! target -- reuses combat::current_encounter (the same "most recently
-//! ACTIVE real encounter" resolution live_meter already got right, not
-//! just most recently opened).
+//! target -- primarily combat::current_encounter (the same "most
+//! recently ACTIVE real encounter" resolution live_meter already got
+//! right, not just most recently opened), with a fallback (see
+//! target_effects' own doc) for when that damage-graph has nothing at
+//! all yet -- a pure debuff/CC cast alone never opens it.
 //!
 //! Two real signals feed this, both already-existing infrastructure, no
 //! new parsing:
@@ -46,7 +48,7 @@ use crate::ingest::Ingest;
 use crate::{spelldata, spelleffect};
 use eqlp_session::{Allegiance, State};
 use eqlp_source::Millis;
-use eqlp_store::{tag, EventKind};
+use eqlp_store::{tag, EventKind, Sym};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -88,20 +90,33 @@ fn duration_ms_for(spell: &str) -> Option<i64> {
     d.max_secs.map(|secs| (secs * 1000.0).round() as i64)
 }
 
+/// why: real gap in combat::current_encounter for this feature
+/// specifically, caught live against a real pull: it's damage-graph
+/// based on purpose (record_damage's own doc: "the only event kind
+/// that opens a new fight"), so a pure debuff/CC cast that never lands
+/// a single point of damage -- Tashania, a resist-decrease debuff with
+/// no damage component at all -- never opens or extends it. A
+/// support/CC character who casts on adds but doesn't personally deal
+/// damage could never get a target here, even mid-fight, even with
+/// real tracked spells actually landing. Falls back to `Ingest::
+/// effects`' own most-recent You-sourced ping, entity-agnostic --
+/// exactly the same evidence this function already reads for the
+/// "everything else" observation stream below, just used to find the
+/// target too when the damage graph has nothing.
+const FALLBACK_TARGET_WINDOW_MS: Millis = 5 * 60 * 1000;
+
 /// why: the overlay's own poll -- same polled-on-tick shape as
 /// combat::live_meter/effects::status_effects
 pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
     let now = ing.now_ms();
-    let Some(enc) = combat::current_encounter(ing) else {
-        return TargetEffectsDto::default();
+    let primary = combat::current_encounter(ing).filter(|e| e.is_open());
+    let target_sym = match primary {
+        Some(enc) => enc.target,
+        None => match ing.effects.most_recent_by_you() {
+            Some((entity, p)) if now - p.ts <= FALLBACK_TARGET_WINDOW_MS => Sym(entity),
+            _ => return TargetEffectsDto::default(),
+        },
     };
-    // why: Spencer's own ask -- clear the whole panel once the fight is
-    // over, not linger showing stale effects against a mob no longer
-    // being fought
-    if !enc.is_open() {
-        return TargetEffectsDto::default();
-    }
-    let target_sym = enc.target;
     let target_name = ing.store.name(target_sym).to_string();
     let kind = ing.encounters.entities.kind(&target_name);
     let state = ing
@@ -112,6 +127,14 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
     if !Allegiance::of(kind, state).is_enemy() {
         // why: charmed by a teammate (or otherwise no longer an enemy) --
         // Spencer's other named clear condition
+        return TargetEffectsDto::default();
+    }
+    // why: Allegiance::of doesn't special-case Dead (a dead Unproven
+    // mob still reads Enemy by kind alone) -- only matters for the
+    // fallback path above, where a lingering ping could still name an
+    // already-confirmed-dead entity; the primary path's own is_open()
+    // filter already rules this out for a real damage-graph fight
+    if state == State::Dead {
         return TargetEffectsDto::default();
     }
 
@@ -177,7 +200,11 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
         }
     };
 
-    if let Some(you_sym) = ing.store.names.get("You") {
+    // why: `primary` only, not the fallback -- a real Damage event
+    // always opens/extends the damage graph itself (record_damage's own
+    // link() call, unconditional), so if there's no real encounter here
+    // there's provably no Damage row to find either
+    if let (Some(enc), Some(you_sym)) = (primary, ing.store.names.get("You")) {
         for i in enc.range() {
             if ing.store.kind[i] != EventKind::Damage
                 || ing.store.actor[i] != you_sym
@@ -278,6 +305,58 @@ mod tests {
         let dto = target_effects(&ing);
         assert_eq!(dto.target, None);
         assert!(dto.effects.is_empty());
+    }
+
+    /// why: real bug, caught live against Spencer's own log -- a pure
+    /// debuff/CC cast with no damage component at all (real "Tashania",
+    /// a resist-decrease debuff) never opens or extends
+    /// combat::current_encounter (damage-graph only, by design). A
+    /// support/CC character casting on a mob but never personally
+    /// dealing damage used to get no target at all, ever -- "im not
+    /// seeing a target pop up in the overlay". Zero Damage events
+    /// anywhere in this scenario, on purpose.
+    #[test]
+    fn a_pure_debuff_with_no_damage_at_all_still_resolves_a_target() {
+        let ing = run(&["[Tue Jul 28 15:01:00 2026] a rat resisted your Tashania!"]);
+        let dto = target_effects(&ing);
+        assert_eq!(
+            dto.target.as_deref(),
+            Some("a rat"),
+            "the damage graph has nothing, but the fallback still finds a rat"
+        );
+        let e = dto
+            .effects
+            .iter()
+            .find(|e| e.spell == "Tashania")
+            .expect("Tashania should show even with zero damage ever exchanged");
+        assert!(!e.landed);
+    }
+
+    /// why: the fallback's own staleness cutoff -- a ping from ages ago
+    /// shouldn't resurrect a target no one's actually still fighting
+    #[test]
+    fn a_stale_fallback_ping_past_the_window_reports_no_target() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] a rat resisted your Tashania!",
+            // why: 6 minutes later, past FALLBACK_TARGET_WINDOW_MS (5min)
+            "[Tue Jul 28 15:07:00 2026] You tell your party, 'ready'",
+        ]);
+        let dto = target_effects(&ing);
+        assert_eq!(dto.target, None);
+    }
+
+    /// why: Allegiance::of doesn't special-case Dead on its own (a dead
+    /// Unproven mob still reads Enemy by kind alone) -- the fallback
+    /// path needs its own explicit dead check, since there's no
+    /// enc.is_open() to already rule this out the way the primary path has
+    #[test]
+    fn a_fallback_target_confirmed_dead_reports_no_target() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] a rat resisted your Tashania!",
+            "[Tue Jul 28 15:01:05 2026] You have slain a rat!",
+        ]);
+        let dto = target_effects(&ing);
+        assert_eq!(dto.target, None);
     }
 
     /// why: real spell (SK/Necro DoT), real "3 ticks" duration -- proves
