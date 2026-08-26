@@ -71,8 +71,9 @@
       <h2 class="panel-title mb-1.5">DPS meter</h2>
       <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
         <Checkbox checked={$dpsMeterEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleDpsMeter(v)} />
-        players and assumed pets, rolling recent-fight damage
+        enable
       </label>
+      <p class="mt-0.5 text-[11px] text-muted-foreground">Players and assumed pets, rolling recent-fight damage.</p>
       {#if capped}
         <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
       {/if}
