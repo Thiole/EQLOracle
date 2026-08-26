@@ -7,7 +7,7 @@ use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
 use eqlp_app::parser::build_engine;
 use eqlp_app::{
     aadata, character, combat, debugview, gearplanner, history, inventory, monsters, npcdata,
-    progression, spelldata, spelleffect, zonedata,
+    overview, progression, spelldata, spelleffect, zonedata,
 };
 use serde_json::{json, Map, Value};
 use std::path::Path;
@@ -488,6 +488,11 @@ fn main() {
     out.insert(
         "list_mobs".to_string(),
         json!({ "": monsters::list_mobs(&ing) }),
+    );
+    // why: Overview's own session-rate stats, no args
+    out.insert(
+        "get_session".to_string(),
+        json!({ "": overview::session(&ing) }),
     );
     // why: a zone/NPC page's own "your parsed encounters" section --
     // "Blackburrow" is a real zone id (packs/zones.json) real fights in

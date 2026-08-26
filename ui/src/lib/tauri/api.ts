@@ -170,6 +170,23 @@ export interface ClassConfigurationsDto {
   unresolved_visits: number;
 }
 
+/** why: Overview module's own session-scoped rate stats -- see overview.rs's own doc */
+export interface SessionDto {
+  afk: boolean;
+  /** why: null only before a single line has been parsed at all */
+  session_start_ms: number | null;
+  session_duration_ms: number;
+  /** why: null below overview.rs's own MIN_SESSION_MS_FOR_RATE */
+  platinum_per_hour: number | null;
+  xp_pct_per_hour: number | null;
+  /** why: null means no level.up line yet, not "level unknown" */
+  current_level: number | null;
+  /** why: summed Xp since the last level.up -- doesn't reset on AFK, only on ding */
+  progress_pct: number | null;
+  /** why: null if either half unavailable, or rate is 0 (would be infinity) */
+  eta_hours: number | null;
+}
+
 // ---------------------------------------------------------------- endgame
 
 export interface RaidDropDto {
@@ -1006,6 +1023,9 @@ export const api = {
   getCurrentLevel: () => invoke<number | null>('get_current_level'),
 
   getDefaultGearClasses: () => invoke<string[]>('get_default_gear_classes', { name: 'You' }),
+
+  /** why: Overview's plat/hr, xp%/hr, current level + progress, ETA to next ding */
+  getSession: () => invoke<SessionDto>('get_session'),
 
   getAaLog: () => invoke<AaLogDto>('get_aa_log'),
 
