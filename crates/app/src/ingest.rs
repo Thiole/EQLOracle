@@ -1555,12 +1555,27 @@ impl Ingest {
     }
 
     /// why: shared guard, never promotes a currently charmed entity -- a
-    /// temporary ally must not become a permanent one
+    /// temporary ally must not become a permanent one. Spencer's own
+    /// framing: real players stay a consistent, permanent classification
+    /// (chat proof or shared-target proof); a mob is only ever a
+    /// temporary ally (charm, already correctly time-scoped via the
+    /// timeline's own State::Charmed -- reverts the instant the charm
+    /// itself does, nothing sticky about it). Real bug, caught live: a
+    /// mob dealing damage to an anchor "You" already confirmed (two
+    /// mobs cross-tangled, cleave splash, ...) got promoted to
+    /// permanent Kind::Player via this same path, silently poisoning
+    /// EVERY later encounter with that same name -- "a haunted chest,
+    /// only thing in combat... wasnt parsing to the ui for it". Guarded
+    /// with plausible_player_name so an obviously-a-mob name can never
+    /// earn that permanent status in the first place.
     fn promote_party_member(&mut self, sym: Sym, ts: Millis) {
         if matches!(self.timeline.state_at(sym.0, ts), Some((State::Charmed, _))) {
             return;
         }
         let name = self.store.name(sym).to_string();
+        if !plausible_player_name(&name) {
+            return;
+        }
         self.encounters.entities.note_shared_target(&name);
     }
 
@@ -3013,6 +3028,19 @@ const PROTECTED_SPELL_NAMES: &[&str] = &[
     "Yaulp III",
 ];
 
+/// why: real EQ convention -- a player character's own name is always
+/// exactly one capitalized word, never lowercase-initial the way a
+/// generic mob name always is ("a haunted chest", "an elemental
+/// warrior", "a kobold watcher"). Used to guard promote_party_member's
+/// own shared-target-damage heuristic -- see its own doc for the real
+/// bug this closes. Deliberately loose (any uppercase-initial name
+/// passes, including unique/named mobs like "Lord Nagafen") -- the
+/// point isn't a perfect player detector, just ruling out the
+/// overwhelming, confirmed-real false-positive shape outright.
+fn plausible_player_name(name: &str) -> bool {
+    name.chars().next().is_some_and(|c| c.is_uppercase())
+}
+
 /// why: strips a trailing rank numeral so a ranked cast name compares
 /// against an unranked damage/heal line; checks PROTECTED_SPELL_NAMES first
 fn base_spell_name(name: &str) -> &str {
@@ -3197,6 +3225,61 @@ mod spell_rank_tests {
         r.observe(2000, "Ice Comet", 6); // why: a lower re-observation must not regress it
         assert_eq!(r.rank_of("Ice Comet"), Some(9));
         assert_eq!(r.rank_of("Never Cast"), None);
+    }
+}
+
+#[cfg(test)]
+mod party_promotion_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    fn run(lines: &[&str]) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let bytes: Vec<&[u8]> = lines.iter().map(|l| l.as_bytes()).collect();
+        backfill_lines(&mut ing, &engine, &bytes, 1);
+        ing
+    }
+
+    #[test]
+    fn plausible_player_name_rejects_generic_mob_shapes() {
+        assert!(plausible_player_name("Kaeus"));
+        assert!(plausible_player_name("Lord Nagafen")); // why: unique/named mobs still pass -- see its own doc
+        assert!(!plausible_player_name("a haunted chest"));
+        assert!(!plausible_player_name("an elemental warrior"));
+        assert!(!plausible_player_name(""));
+    }
+
+    /// why: real bug, caught live -- "a haunted chest, only thing in
+    /// combat... wasnt parsing to the ui for it, but it was parsing
+    /// fine to dps meter". A mob dealing damage to an anchor "You" had
+    /// already confirmed (here: two mobs cross-damaging each other)
+    /// used to promote that mob to permanent Kind::Player via the same
+    /// shared-target heuristic that's supposed to catch silent real
+    /// party members -- poisoning every later encounter with that same
+    /// name for the rest of the session. Spencer's own framing: real
+    /// players stay a consistent classification, a mob is only ever a
+    /// TEMPORARY ally (charm).
+    #[test]
+    fn a_mob_cross_damaging_a_confirmed_anchor_is_never_promoted_to_player() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You hit a bat for 5 points of damage.",
+            "[Tue Jul 28 15:01:02 2026] a rat hit a bat for 3 points of damage.",
+        ]);
+        assert_eq!(ing.encounters.entities.kind("a rat"), Kind::Unproven);
+    }
+
+    /// why: the same heuristic must still work for its own real,
+    /// intended purpose -- a genuine, silently-present party member
+    /// (never spoken on a player channel) still gets recognized as one
+    /// through the exact same shared-target-damage evidence
+    #[test]
+    fn a_real_silent_party_member_still_gets_promoted() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You hit a bat for 5 points of damage.",
+            "[Tue Jul 28 15:01:02 2026] Groupmate hit a bat for 3 points of damage.",
+        ]);
+        assert_eq!(ing.encounters.entities.kind("Groupmate"), Kind::Player);
     }
 }
 
