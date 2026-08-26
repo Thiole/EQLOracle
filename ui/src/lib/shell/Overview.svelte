@@ -8,7 +8,7 @@
   import { api, type MobDto, type ZoneContextDto } from '$lib/tauri/api';
   import { status } from '$lib/stores/status';
   import { activeModule } from '$lib/stores/shell';
-  import { race, activeClasses, levels, currentLevel, loadCharacterModule } from '$lib/stores/character';
+  import { race, activeClasses, currentLevel, loadCharacterModule } from '$lib/stores/character';
   import { displayZoneName } from '$lib/utils';
 
   $effect(() => {
@@ -43,9 +43,14 @@
           {#if $race}{$race} · {/if}level {$currentLevel ?? '?'}
         </p>
         {#if $activeClasses.length}
-          <p class="mt-0.5 text-[11px] text-muted-foreground">
-            {$activeClasses.map((c) => `${c} ${$levels[c] ?? '?'}`).join(' / ')}
-          </p>
+          <!-- why: NOT `levels` here -- that store is the Character
+               Planner's manual, edit-by-hand gear-planning input (seeded
+               once from a rough historical range, never re-synced to a
+               real "Welcome to level N!" line -- see character.ts's own
+               applyEstimatedLevels doc). currentLevel is the one number
+               that's actually live; showing a per-class figure here would
+               just be whatever was seeded on first load, frozen. -->
+          <p class="mt-0.5 text-[11px] text-muted-foreground">{$activeClasses.join(' / ')}</p>
         {/if}
       {/if}
       <button
