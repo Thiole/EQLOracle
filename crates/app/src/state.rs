@@ -18,15 +18,6 @@ pub struct AppState {
     /// Update itself carries the download URL/signature, no reason to
     /// re-check just to install what was already found
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
-    /// why: the real overlay window is one shared window holding every
-    /// enabled widget -- must stay open as long as ANY widget wants it,
-    /// close only once none do (see commands::set_overlay_enabled's own
-    /// doc). The overlay window itself is a separate webview/JS realm
-    /// (see ui's OverlayApp.svelte) that can't see the main window's
-    /// local Svelte stores, so which widgets are live has to be real
-    /// backend state it can query/be told about, not something inferred
-    /// client-side.
-    pub overlay_widgets: Mutex<std::collections::HashSet<String>>,
 }
 
 impl AppState {
@@ -37,7 +28,6 @@ impl AppState {
             ingest: Arc::new(Mutex::new(Ingest::default())),
             status: Arc::new(Mutex::new(TailStatus::default())),
             pending_update: Mutex::new(None),
-            overlay_widgets: Mutex::new(std::collections::HashSet::new()),
         }
     }
 }

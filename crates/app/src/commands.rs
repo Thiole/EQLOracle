@@ -443,124 +443,73 @@ pub fn get_status_effects(state: State<AppState>) -> crate::effects::StatusEffec
     crate::effects::status_effects(&state.ingest.lock().unwrap())
 }
 
-const OVERLAY_LABEL: &str = "overlay";
+/// why: each widget is its own real OS window now, not content stacked
+/// inside one shared overlay surface -- independently draggable,
+/// independently closable, matches how every other per-widget thing
+/// here already works (own enable, own opacity). `overlay-*` is a glob
+/// entry in capabilities/default.json so a new widget never needs a
+/// capabilities edit to get IPC.
+fn overlay_label(widget: &str) -> String {
+    format!("overlay-{widget}")
+}
 
-/// why: creates (or closes) the real floating window -- a fresh
-/// capability check every time, never trusts a stale frontend value,
-/// since the session's own display server can't change mid-run but a
-/// stale cached capability shouldn't be trusted to open one anyway.
-/// `widget` names which widget is toggling -- the window is one shared
-/// surface for every enabled widget (see AppState::overlay_widgets' own
-/// doc), so it opens on the first widget to enable and closes only once
-/// the last one disables, not on any single toggle.
+/// why: creates (or closes) this one widget's own floating window -- a
+/// fresh capability check every time, never trusts a stale frontend
+/// value, since the session's own display server can't change mid-run
+/// but a stale cached capability shouldn't be trusted to open one
+/// anyway.
 
 #[tauri::command]
 pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    {
-        let mut widgets = state.overlay_widgets.lock().unwrap();
-        if enabled {
-            widgets.insert(widget.clone());
-        } else {
-            widgets.remove(&widget);
-        }
-    }
-    let now_empty = state.overlay_widgets.lock().unwrap().is_empty();
-
-    if now_empty {
-        if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
+    let label = overlay_label(&widget);
+    if !enabled {
+        if let Some(w) = app.get_webview_window(&label) {
             let _ = w.close();
         }
         return Ok(());
     }
-
-    if app.get_webview_window(OVERLAY_LABEL).is_none() {
-        let cap = windowcap::detect();
-        if cap.capability == WindowCapability::Docked {
-            // why: this widget didn't actually get a window -- don't
-            // leave it recorded as "on" with nothing to show for it
-            state.overlay_widgets.lock().unwrap().remove(&widget);
-            return Err(cap.reason.unwrap_or_else(|| {
-                "Floating overlays aren't available in this session.".to_string()
-            }));
-        }
-        let window =
-            WebviewWindowBuilder::new(&app, OVERLAY_LABEL, WebviewUrl::App("overlay.html".into()))
-                .title("EQL Oracle Overlay")
-                .inner_size(360.0, 240.0)
-                .transparent(true)
-                .decorations(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .shadow(false)
-                .build()
-                .map_err(|e| e.to_string())?;
-        // why: ClickThrough only -- Floating alone (never actually
-        // reachable today, detect() only ever returns Docked or
-        // ClickThrough, kept as its own tier for when finer Wayland
-        // detection becomes possible) would still block clicks on the
-        // game underneath it
-        if cap.capability == WindowCapability::ClickThrough {
-            let _ = window.set_ignore_cursor_events(true);
-        }
+    if app.get_webview_window(&label).is_some() {
+        return Ok(()); // already open
     }
-
-    notify_overlay_widgets(&app, &state);
+    let cap = windowcap::detect();
+    if cap.capability == WindowCapability::Docked {
+        return Err(cap
+            .reason
+            .unwrap_or_else(|| "Floating overlays aren't available in this session.".to_string()));
+    }
+    // why: one shared overlay.html bundle for every widget -- which one
+    // to render is read from the window's own label at runtime (see
+    // ui's currentOverlayWidget()), not a distinct HTML entry per widget
+    let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("overlay.html".into()))
+        .title(format!("EQL Oracle Overlay -- {widget}"))
+        .inner_size(360.0, 240.0)
+        .transparent(true)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .shadow(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+    // why: ClickThrough only -- Floating alone (never actually
+    // reachable today, detect() only ever returns Docked or
+    // ClickThrough, kept as its own tier for when finer Wayland
+    // detection becomes possible) would still block clicks on the
+    // game underneath it
+    if cap.capability == WindowCapability::ClickThrough {
+        let _ = window.set_ignore_cursor_events(true);
+    }
     Ok(())
 }
 
-fn notify_overlay_widgets(app: &AppHandle, state: &State<AppState>) {
-    if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
-        let widgets: Vec<String> = state
-            .overlay_widgets
-            .lock()
-            .unwrap()
-            .iter()
-            .cloned()
-            .collect();
-        let _ = w.emit("overlay-widgets", widgets);
-    }
-}
-
-/// why: the overlay window's own mount -- it's a separate webview/JS
-/// realm (see ui's OverlayApp.svelte), can't read the main window's
-/// local Svelte stores, so it asks the backend directly for which
-/// widgets are currently enabled instead of assuming "the window is
-/// open, so my one widget must be why" (true when there was only ever
-/// one widget, not once a second exists)
-#[tauri::command]
-pub fn get_overlay_enabled_widgets(state: State<AppState>) -> Vec<String> {
-    state
-        .overlay_widgets
-        .lock()
-        .unwrap()
-        .iter()
-        .cloned()
-        .collect()
-}
-
-/// why: live-pushes to the open overlay window -- a no-op, not an error,
-/// when it isn't open; persistence is the caller's own setPreferences
-/// call. `widget` names which one changed -- each overlay widget owns
-/// its own opacity, not one shared window-wide value (see
-/// preferences.rs's own overlay_dps_meter_opacity doc)
-
-#[derive(Debug, Clone, Serialize)]
-struct OverlayOpacityEvent {
-    widget: String,
-    opacity: f64,
-}
+/// why: live-pushes to this widget's own open window -- a no-op, not an
+/// error, when it isn't open; persistence is the caller's own
+/// setPreferences call. The window is already widget-scoped by its own
+/// label, so the event payload is just the number.
 
 #[tauri::command]
 pub fn set_overlay_opacity(app: AppHandle, widget: String, opacity: f64) {
-    if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
-        let _ = w.emit(
-            "overlay-opacity",
-            OverlayOpacityEvent {
-                widget,
-                opacity: opacity.clamp(0.0, 1.0),
-            },
-        );
+    if let Some(w) = app.get_webview_window(&overlay_label(&widget)) {
+        let _ = w.emit("overlay-opacity", opacity.clamp(0.0, 1.0));
     }
 }
 
@@ -573,16 +522,18 @@ pub fn set_overlay_opacity(app: AppHandle, widget: String, opacity: f64) {
 /// `data-tauri-drag-region`'s own move request silently doesn't move the
 /// window there (a resize-border drag does), so the one mechanism every
 /// window manager is guaranteed to support -- dragging a real title bar
-/// -- is what's actually used, not the borderless trick. A no-op if the
-/// overlay isn't open, or if this session's own capability never allowed
-/// click-through to begin with (nothing to toggle back to)
+/// -- is what's actually used, not the borderless trick. Per-widget,
+/// same as everything else here -- each window is repositioned on its
+/// own. A no-op if that widget's window isn't open, or if this
+/// session's own capability never allowed click-through to begin with
+/// (nothing to toggle back to)
 
 #[tauri::command]
-pub fn set_overlay_locked(app: AppHandle, locked: bool) -> Result<(), String> {
+pub fn set_overlay_locked(app: AppHandle, widget: String, locked: bool) -> Result<(), String> {
     if windowcap::detect().capability != WindowCapability::ClickThrough {
         return Ok(());
     }
-    if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
+    if let Some(w) = app.get_webview_window(&overlay_label(&widget)) {
         w.set_ignore_cursor_events(locked)
             .map_err(|e| e.to_string())?;
         w.set_decorations(!locked).map_err(|e| e.to_string())?;

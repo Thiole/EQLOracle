@@ -1217,17 +1217,14 @@ export const api = {
   getLiveMeter: () => invoke<LiveMeterDto | null>('get_live_meter'),
   /** why: the timed-effects overlay's whole data source */
   getStatusEffects: () => invoke<StatusEffectsDto>('get_status_effects'),
-  /** why: the shared overlay window opens on the first widget to enable
-   * and closes only once the last one disables; rejects with a
-   * plain-language reason if the session's capability caps below click-through */
+  /** why: each widget is its own real OS window -- opens/closes just that
+   * one; rejects with a plain-language reason if the session's
+   * capability caps below click-through */
   setOverlayEnabled: (widget: string, enabled: boolean) => invoke<void>('set_overlay_enabled', { widget, enabled }),
-  /** why: the overlay window's own mount -- which widgets are currently
-   * enabled, since it can't read the main window's local stores */
-  getOverlayEnabledWidgets: () => invoke<string[]>('get_overlay_enabled_widgets'),
-  /** why: live-pushes to the open overlay window only -- pair with setPreferences to persist */
+  /** why: live-pushes to that widget's own open window only -- pair with setPreferences to persist */
   setOverlayOpacity: (widget: string, opacity: number) => invoke<void>('set_overlay_opacity', { widget, opacity }),
-  /** why: unlock to drag the overlay into position, lock to make it click-through again */
-  setOverlayLocked: (locked: boolean) => invoke<void>('set_overlay_locked', { locked }),
+  /** why: unlock to drag that widget's own window into position, lock to make it click-through again */
+  setOverlayLocked: (widget: string, locked: boolean) => invoke<void>('set_overlay_locked', { widget, locked }),
 
   /** why: Social tab's 3 shared channels */
   getGuildChat: () => invoke<ChatMessageDto[]>('get_guild_chat'),
