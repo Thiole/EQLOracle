@@ -20,5 +20,17 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
   },
+  // why: a 2nd real HTML entry, for the overlay window's own separate
+  // webview (WebviewWindowBuilder points it at "overlay.html", see
+  // commands.rs's own set_overlay_enabled) -- not a route inside the
+  // main SPA, a genuinely different window with its own bundle.
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(root, 'index.html'),
+        overlay: path.resolve(root, 'overlay.html'),
+      },
+    },
+  },
   clearScreen: false,
 });

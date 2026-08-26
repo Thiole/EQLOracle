@@ -1,0 +1,29 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/* why: self-hosted variable font, same as app.css's own -- duplicated
+   (not shared via an import) only because it's this small; the tokens
+   themselves live in tokens.css so there's nothing bigger to drift. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Variable.ttf') format('truetype-variations');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* why: the Tauri window itself is `transparent: true` -- html/body must
+   stay transparent too, or a painted background here defeats the whole
+   feature. Deliberately NOT reusing app.css's own `body { @apply
+   bg-background }` rule -- that's the one difference from app.css that
+   actually matters. No theme import either: the overlay doesn't theme-
+   switch in v1, just the base "eqlp" tokens tokens.css already sets. */
+@layer base {
+  html,
+  body {
+    background: transparent;
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 13px;
+  }
+}

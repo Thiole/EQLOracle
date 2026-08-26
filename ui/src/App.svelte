@@ -13,6 +13,7 @@
   import LootHistory from '$lib/monsters/LootHistory.svelte';
   import Social from '$lib/social/Social.svelte';
   import Maps from '$lib/maps/Maps.svelte';
+  import OverlaySettings from '$lib/overlay/OverlaySettings.svelte';
   import Settings from '$lib/settings/Settings.svelte';
   import InventoryDumpBanner from '$lib/shell/InventoryDumpBanner.svelte';
   import UpdateBanner from '$lib/shell/UpdateBanner.svelte';
@@ -72,6 +73,8 @@
             <GameData />
           {:else if $activeModule === 'maps'}
             <Maps />
+          {:else if $activeModule === 'overlay'}
+            <OverlaySettings />
           {:else if $activeModule === 'settings'}
             <Settings />
           {/if}

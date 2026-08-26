@@ -7,7 +7,7 @@ use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
 use eqlp_app::parser::build_engine;
 use eqlp_app::{
     aadata, character, chat, combat, debugview, gearplanner, history, inventory, monsters, npcdata,
-    overview, progression, spelldata, spelleffect, zonedata,
+    overview, progression, spelldata, spelleffect, windowcap, zonedata,
 };
 use serde_json::{json, Map, Value};
 use std::path::Path;
@@ -431,15 +431,13 @@ fn main() {
             "current": gearplanner::CURRENT_ERA,
         } }),
     );
+    // why: the real struct, not a hand-typed object -- a hand-typed one
+    // already drifted once (missing 3 real fields after preferences.rs
+    // grew overlay_enabled/overlay_opacity/overlay_dps_meter, silently
+    // NaN-ing the Overlay tab's own transparency slider in mock mode)
     out.insert(
         "get_preferences".to_string(),
-        json!({ "": {
-            "volume": 100,
-            "era": Value::Null,
-            "save_profile": false,
-            "update_channel": "public",
-            "theme": "eqlp",
-        } }),
+        json!({ "": eqlp_app::preferences::Preferences::default() }),
     );
     // why: real catalog items ("Brass Ring", "Adamantite Band" -- both
     // confirmed present, and exercised the same way in gearplanner.rs's
@@ -517,6 +515,15 @@ fn main() {
     out.insert(
         "get_pm_history".to_string(),
         json!({ "player=Kaeus": chat::pm_history(&ing, "Kaeus") }),
+    );
+    // why: Overlay tab's own capability check + DPS meter data source, both no args
+    out.insert(
+        "get_window_capability".to_string(),
+        json!({ "": windowcap::detect() }),
+    );
+    out.insert(
+        "get_live_meter".to_string(),
+        json!({ "": combat::live_meter(&ing) }),
     );
     // why: a zone/NPC page's own "your parsed encounters" section --
     // "Blackburrow" is a real zone id (packs/zones.json) real fights in

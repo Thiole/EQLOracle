@@ -157,6 +157,24 @@ export interface EntityStateDto {
   recent_effects: RecentEffectDto[];
 }
 
+// ------------------------------------------------------------------ overlay
+
+/** why: window role is a negotiated capability, never assumed -- see windowcap.rs's own doc */
+export type WindowCapability = 'docked' | 'floating' | 'click_through';
+
+export interface WindowCapabilityDto {
+  capability: WindowCapability;
+  /** why: plain-language, shown directly -- set only when capped below click_through */
+  reason: string | null;
+}
+
+export interface LiveMeterDto {
+  target: string;
+  open: boolean;
+  /** why: players and assumed pets only -- see live_meter's own doc */
+  rows: EntityStateDto[];
+}
+
 // ---------------------------------------------------------------- character
 
 export interface ClassConfigurationDto {
@@ -931,6 +949,12 @@ export interface PreferencesDto {
    * blocks -- 'eqlp' is this app's own original identity, everything
    * else is a real preset, see themes.css's own doc for where they're from */
   theme: string;
+  /** why: off by default -- a floating always-on-top window is opt-in */
+  overlay_enabled: boolean;
+  /** why: 0.0 (invisible) to 1.0 (fully opaque) -- the overlay panel's own background alpha */
+  overlay_opacity: number;
+  /** why: the one overlay widget that exists so far */
+  overlay_dps_meter: boolean;
 }
 
 export interface UpdateInfoDto {
@@ -1151,6 +1175,18 @@ export const api = {
 
   /** why: every mob type fought this session, grouped -- the Loot History tab's whole data source */
   listMobs: () => invoke<MobDto[]>('list_mobs'),
+
+  /** why: Overlay tab's own runtime capability check -- see windowcap.rs's own doc */
+  getWindowCapability: () => invoke<WindowCapabilityDto>('get_window_capability'),
+  /** why: the DPS meter overlay's whole data source */
+  getLiveMeter: () => invoke<LiveMeterDto | null>('get_live_meter'),
+  /** why: opens/closes the real floating overlay window; rejects with a
+   * plain-language reason if the session's capability caps below click-through */
+  setOverlayEnabled: (enabled: boolean) => invoke<void>('set_overlay_enabled', { enabled }),
+  /** why: live-pushes to the open overlay window only -- pair with setPreferences to persist */
+  setOverlayOpacity: (opacity: number) => invoke<void>('set_overlay_opacity', { opacity }),
+  /** why: unlock to drag the overlay into position, lock to make it click-through again */
+  setOverlayLocked: (locked: boolean) => invoke<void>('set_overlay_locked', { locked }),
 
   /** why: Social tab's 3 shared channels */
   getGuildChat: () => invoke<ChatMessageDto[]>('get_guild_chat'),

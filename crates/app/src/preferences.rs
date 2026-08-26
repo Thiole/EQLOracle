@@ -18,6 +18,16 @@ fn default_theme() -> String {
     "eqlp".to_string()
 }
 
+/// why: mostly opaque but still see-through by default -- a fresh install
+/// should read cleanly over the game, not vanish into it
+fn default_overlay_opacity() -> f64 {
+    0.85
+}
+
+fn default_true() -> bool {
+    true
+}
+
 /// why: which release channel this install checks for updates against --
 /// `public` = the `latest` GitHub release (main, deliberate releases
 /// only), `beta` = the `testing` release (every push to `testing`,
@@ -58,6 +68,20 @@ pub struct Preferences {
     /// never a hard error
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// why: off by default -- a floating always-on-top window is an
+    /// opt-in, not something a fresh install springs on someone
+    #[serde(default)]
+    pub overlay_enabled: bool,
+    /// why: 0.0 (invisible) to 1.0 (fully opaque) -- the overlay panel's
+    /// own background alpha, not a native window-opacity call (see
+    /// windowcap.rs's own doc on why the window itself is just
+    /// `transparent: true` and content controls how see-through it reads)
+    #[serde(default = "default_overlay_opacity")]
+    pub overlay_opacity: f64,
+    /// why: the only overlay widget that exists so far -- a bool, not a
+    /// list, until a second one actually exists to justify one
+    #[serde(default = "default_true")]
+    pub overlay_dps_meter: bool,
 }
 
 impl Default for Preferences {
@@ -68,6 +92,9 @@ impl Default for Preferences {
             save_profile: false,
             update_channel: UpdateChannel::default(),
             theme: default_theme(),
+            overlay_enabled: false,
+            overlay_opacity: default_overlay_opacity(),
+            overlay_dps_meter: default_true(),
         }
     }
 }
@@ -122,6 +149,15 @@ mod tests {
             p.theme, "eqlp",
             "this app's own identity, not an upstream preset"
         );
+        assert!(
+            !p.overlay_enabled,
+            "off by default -- a floating window is opt-in"
+        );
+        assert_eq!(p.overlay_opacity, 0.85);
+        assert!(
+            p.overlay_dps_meter,
+            "the one overlay widget defaults on, gated by overlay_enabled itself"
+        );
     }
 
     #[test]
@@ -132,6 +168,9 @@ mod tests {
             save_profile: true,
             update_channel: UpdateChannel::Beta,
             theme: "claude".to_string(),
+            overlay_enabled: true,
+            overlay_opacity: 0.4,
+            overlay_dps_meter: false,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: Preferences = serde_json::from_str(&json).unwrap();
@@ -140,6 +179,9 @@ mod tests {
         assert!(back.save_profile);
         assert_eq!(back.update_channel, UpdateChannel::Beta);
         assert_eq!(back.theme, "claude");
+        assert!(back.overlay_enabled);
+        assert_eq!(back.overlay_opacity, 0.4);
+        assert!(!back.overlay_dps_meter);
     }
 
     /// why: an old/partial file must still load via #[serde(default)]
@@ -151,5 +193,8 @@ mod tests {
         assert!(!back.save_profile);
         assert_eq!(back.update_channel, UpdateChannel::Public);
         assert_eq!(back.theme, "eqlp");
+        assert!(!back.overlay_enabled);
+        assert_eq!(back.overlay_opacity, 0.85);
+        assert!(back.overlay_dps_meter);
     }
 }

@@ -23,6 +23,12 @@ export const saveProfile = writable(false);
 export const updateChannel = writable<'public' | 'beta'>('public');
 /** why: a themes.css `data-theme` slug -- see PreferencesDto.theme's own doc */
 export const theme = writable('eqlp');
+/** why: the floating overlay window's own on/off -- see windowcap.rs's own doc */
+export const overlayEnabled = writable(false);
+/** why: 0.0 (invisible) to 1.0 (fully opaque) -- the overlay panel's own background alpha */
+export const overlayOpacity = writable(0.85);
+/** why: the one overlay widget that exists so far */
+export const overlayDpsMeter = writable(true);
 export const settingsLoaded = writable(false);
 
 // why: applies on every change, not just after an explicit setTheme() --
@@ -53,6 +59,9 @@ export function loadPreferences(): Promise<void> {
     saveProfile.set(prefs.save_profile);
     updateChannel.set(prefs.update_channel);
     theme.set(prefs.theme);
+    overlayEnabled.set(prefs.overlay_enabled);
+    overlayOpacity.set(prefs.overlay_opacity);
+    overlayDpsMeter.set(prefs.overlay_dps_meter);
     settingsLoaded.set(true);
   })();
   return loading;
@@ -65,6 +74,9 @@ function currentPrefs(): PreferencesDto {
     save_profile: get(saveProfile),
     update_channel: get(updateChannel),
     theme: get(theme),
+    overlay_enabled: get(overlayEnabled),
+    overlay_opacity: get(overlayOpacity),
+    overlay_dps_meter: get(overlayDpsMeter),
   };
 }
 
@@ -91,6 +103,31 @@ export async function setUpdateChannel(channel: 'public' | 'beta') {
 export async function setTheme(slug: string) {
   theme.set(slug);
   await api.setPreferences({ ...currentPrefs(), theme: slug }).catch(() => {});
+}
+
+/** why: two real effects -- persists like every other preference, and
+ * opens/closes the actual floating window. Throws the backend's own
+ * plain-language capability reason on failure (see windowcap.rs); the
+ * store still flips on optimistically but the caller should show that
+ * reason rather than pretend the window opened. */
+export async function setOverlayEnabled(on: boolean) {
+  overlayEnabled.set(on);
+  await api.setPreferences({ ...currentPrefs(), overlay_enabled: on }).catch(() => {});
+  await api.setOverlayEnabled(on);
+}
+
+/** why: persists, and live-pushes to the open overlay window (a no-op
+ * there if it isn't open) -- two separate calls, not one round trip,
+ * since a slider drag shouldn't wait on a disk write to feel live */
+export async function setOverlayOpacity(v: number) {
+  overlayOpacity.set(v);
+  void api.setOverlayOpacity(v);
+  await api.setPreferences({ ...currentPrefs(), overlay_opacity: v }).catch(() => {});
+}
+
+export async function setOverlayDpsMeter(on: boolean) {
+  overlayDpsMeter.set(on);
+  await api.setPreferences({ ...currentPrefs(), overlay_dps_meter: on }).catch(() => {});
 }
 
 /** why: shared by every era-tagged Game Data category that carries a

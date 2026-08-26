@@ -38,11 +38,12 @@ use crate::state::AppState;
 use crate::tail_worker::{self, TailStatus};
 use crate::uifiles;
 use crate::updater;
+use crate::windowcap::{self, WindowCapability, WindowCapabilityDto};
 use crate::zonedata;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct StatusDto {
@@ -417,6 +418,97 @@ pub fn list_pm_threads(state: State<AppState>) -> Vec<PmThreadDto> {
 #[tauri::command]
 pub fn get_pm_history(state: State<AppState>, player: String) -> Vec<ChatMessageDto> {
     chat::pm_history(&state.ingest.lock().unwrap(), &player)
+}
+
+/// why: Overlay tab's own capability check -- see windowcap.rs's own doc
+/// on why this is asked, never assumed
+
+#[tauri::command]
+pub fn get_window_capability() -> WindowCapabilityDto {
+    windowcap::detect()
+}
+
+/// why: the DPS meter overlay's whole data source, also usable for a
+/// live preview inside the main window itself
+
+#[tauri::command]
+pub fn get_live_meter(state: State<AppState>) -> Option<combat::LiveMeterDto> {
+    combat::live_meter(&state.ingest.lock().unwrap())
+}
+
+const OVERLAY_LABEL: &str = "overlay";
+
+/// why: creates (or closes) the real floating window -- a fresh
+/// capability check every time, never trusts a stale frontend value,
+/// since the session's own display server can't change mid-run but a
+/// stale cached capability shouldn't be trusted to open one anyway
+
+#[tauri::command]
+pub fn set_overlay_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
+    if !enabled {
+        if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
+            let _ = w.close();
+        }
+        return Ok(());
+    }
+    if app.get_webview_window(OVERLAY_LABEL).is_some() {
+        return Ok(()); // already open
+    }
+    let cap = windowcap::detect();
+    if cap.capability == WindowCapability::Docked {
+        return Err(cap
+            .reason
+            .unwrap_or_else(|| "Floating overlays aren't available in this session.".to_string()));
+    }
+    let window =
+        WebviewWindowBuilder::new(&app, OVERLAY_LABEL, WebviewUrl::App("overlay.html".into()))
+            .title("EQL Oracle Overlay")
+            .inner_size(360.0, 240.0)
+            .transparent(true)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .shadow(false)
+            .build()
+            .map_err(|e| e.to_string())?;
+    // why: ClickThrough only -- Floating alone (never actually reachable
+    // today, detect() only ever returns Docked or ClickThrough, kept as
+    // its own tier for when finer Wayland detection becomes possible)
+    // would still block clicks on the game underneath it
+    if cap.capability == WindowCapability::ClickThrough {
+        let _ = window.set_ignore_cursor_events(true);
+    }
+    Ok(())
+}
+
+/// why: live-pushes to the open overlay window -- a no-op, not an error,
+/// when it isn't open; persistence is the caller's own setPreferences call
+
+#[tauri::command]
+pub fn set_overlay_opacity(app: AppHandle, opacity: f64) {
+    if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
+        let _ = w.emit("overlay-opacity", opacity.clamp(0.0, 1.0));
+    }
+}
+
+/// why: click-through (locked, the default -- see set_overlay_enabled)
+/// makes the window impossible to drag into position at all, since every
+/// click passes straight to the game underneath it. Unlocking briefly
+/// (a real toggle in the Overlay tab) accepts clicks again so the panel
+/// can actually be repositioned; a no-op if the overlay isn't open, or
+/// if this session's own capability never allowed click-through to
+/// begin with (nothing to toggle back to)
+
+#[tauri::command]
+pub fn set_overlay_locked(app: AppHandle, locked: bool) -> Result<(), String> {
+    if windowcap::detect().capability != WindowCapability::ClickThrough {
+        return Ok(());
+    }
+    if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
+        w.set_ignore_cursor_events(locked)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// why: Game Data's Zones tab, 117 zones small enough to ship whole

@@ -20,6 +20,7 @@
     { id: 'endgame', label: 'Endgame', enabled: true },
     { id: 'gamedata', label: 'Game Data', enabled: true },
     { id: 'maps', label: 'Maps', enabled: true },
+    { id: 'overlay', label: 'Overlay', enabled: true },
   ];
 
   let { active = $bindable('combat') }: { active?: string } = $props();

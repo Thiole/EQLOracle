@@ -986,6 +986,33 @@ pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<Ent
     out
 }
 
+/// why: the overlay DPS meter's whole data source
+#[derive(Debug, Clone, Serialize)]
+pub struct LiveMeterDto {
+    pub target: String,
+    pub open: bool,
+    /// why: players and their assumed pets only -- an overlay meter is
+    /// about your own group's output, not a full enemy roster
+    pub rows: Vec<EntityStateDto>,
+}
+
+/// why: overlay's own live poll -- most recent encounter, `fight_state_at`'s
+/// own trailing INSPECT_WINDOW_MS dps (already a rolling snapshot, not
+/// cumulative, so a fight that ended minutes ago self-corrects to 0 dps
+/// rather than needing its own separate staleness cutoff here). None
+/// before any real encounter exists yet this session.
+pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
+    let now = ing.now_ms();
+    let latest = ing.store.encounters.iter().max_by_key(|e| e.start_ms)?;
+    let mut rows = fight_state_at(ing, latest.id.0, now);
+    rows.retain(|r| r.is_player || r.is_pet);
+    Some(LiveMeterDto {
+        target: ing.store.name(latest.target).to_string(),
+        open: latest.is_open(),
+        rows,
+    })
+}
+
 // ---------------------------------------------------------------- class detection
 
 #[derive(Debug, Clone, Serialize)]
@@ -1150,6 +1177,49 @@ pub fn zone_visits_for_configuration(
         .collect();
     sort_zone_visits(&mut out);
     out
+}
+
+#[cfg(test)]
+mod live_meter_tests {
+    use super::*;
+    use crate::ingest::backfill_lines;
+    use crate::parser::build_engine;
+
+    fn run(text: &str) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = text.lines().map(str::as_bytes).collect();
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing
+    }
+
+    #[test]
+    fn no_encounters_yet_is_none_not_a_panic() {
+        let ing = run("");
+        assert!(live_meter(&ing).is_none());
+    }
+
+    #[test]
+    fn a_real_fight_surfaces_the_player_row_only() {
+        // why: "You" isn't Kind::Player until proven (a player-only chat
+        // channel, or damaging a mob "You" also damaged) -- solo melee
+        // alone never proves it, so a real chat line comes first
+        let ing = run("[Tue Jul 28 15:00:00 2026] You tell your party, 'ready'\n\
+             [Tue Jul 28 15:01:00 2026] You hit Refugee Splitpaw for 10 points of damage.\n");
+        let m = live_meter(&ing).expect("a real encounter should exist");
+        assert_eq!(m.target, "Refugee Splitpaw");
+        assert!(m.open, "no death/reset line yet -- still open");
+        assert!(
+            m.rows.iter().any(|r| r.name == "You" && r.is_player),
+            "{:?}",
+            m.rows
+        );
+        assert!(
+            m.rows.iter().all(|r| !r.is_enemy),
+            "overlay meter is players/pets only, {:?}",
+            m.rows
+        );
+    }
 }
 
 #[cfg(test)]
