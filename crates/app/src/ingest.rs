@@ -1436,6 +1436,13 @@ impl Ingest {
             // empty for every selection, always. Same lookup record_avoided
             // already uses for Miss rows.
             let actor_name = self.store.name(actor).to_string();
+            // why: Skill Tracker's own recovery clock -- Spencer's own
+            // correction, a spell's real cooldown starts at this
+            // confirmed landing, not at cast.begin's own attempt
+            // timestamp; see skilltracker.rs's own doc
+            if r.outcome == CastOutcome::Landed && actor_name.eq_ignore_ascii_case("you") {
+                crate::skilltracker::observe_skill_landed(&mut self.skills, r.end_ms, &spell_name);
+            }
             let enc = self.current_encounter_of(&actor_name);
             let idx = self.store.push(
                 r.end_ms,

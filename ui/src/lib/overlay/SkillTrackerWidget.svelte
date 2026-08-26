@@ -75,18 +75,16 @@
   }
 
   function skillRow(s: SkillStatusDto) {
-    // why: last_used_ms + estimated_interval_ms is a real absolute
-    // deadline (both already real values from the backend), so a smooth
-    // local countdown against nowMs is precise -- same as
-    // targetEffectState's own ready_at_ms countdown, not the coarse
-    // poll-only refresh a *relative* value like remaining_ms would need
+    // why: ready_at_ms is already a real absolute deadline (resolved
+    // server-side as max(reuse, recovery), see skilltracker.rs's own
+    // doc), so a smooth local countdown against nowMs is precise -- same
+    // as targetEffectState's own ready_at_ms countdown
     const missed = s.last_outcome === 'avoided' ? ' (missed)' : '';
-    if (s.estimated_interval_ms === null) {
+    if (s.ready_at_ms === null) {
       return { text: `${s.skill}: READY${missed}`, tone: 'good' as const };
     }
-    const readyAt = s.last_used_ms + s.estimated_interval_ms;
-    const ready = nowMs >= readyAt;
-    const label = ready ? 'READY' : fmtCountdown(readyAt - nowMs);
+    const ready = nowMs >= s.ready_at_ms;
+    const label = ready ? 'READY' : fmtCountdown(s.ready_at_ms - nowMs);
     return { text: `${s.skill}: ${label}${missed}`, tone: ready ? ('good' as const) : ('warn' as const) };
   }
 

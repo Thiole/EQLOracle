@@ -18,8 +18,8 @@
 //! real uses are seen -- same "trust the log over a wiki number" stance
 //! this app takes everywhere else (spell resist types, class detection, ...).
 //!
-//! Two real triggers feed this, picked to never double-count the same
-//! real action twice:
+//! Two real triggers feed the *attempt* signal, picked to never
+//! double-count the same real action twice:
 //! - Melee abilities (Kick/Bash/Backstab/... and ordinary weapon swings
 //!   alike): observed off Damage/Miss events, landed vs avoided is real.
 //! - Spells: observed off cast.begin instead of any Damage event a
@@ -28,6 +28,22 @@
 //!   module's own "last outcome" field isn't meaningful for spells,
 //!   the target-effects section is where a resisted spell cast shows
 //!   up for real).
+//!
+//! Spencer's own correction: this used to estimate readiness off that
+//! single attempt-to-attempt gap alone (`reuse`). Real mechanic on this
+//! server -- "when a spell lands, it goes on cooldown, the cooldown is
+//! a recovery timer ... uses whichever is longer": a *second*, separate
+//! signal, `recovery`, measured from a confirmed LANDING (not the
+//! attempt) to the next attempt. Fed off the same `CastResolver::
+//! confirm_landed` timestamp ingest.rs already resolves for the Cast
+//! row/CombatSummaryDto pathway (Damage/Heal/a spelltext-matched
+//! landing line) -- real, already-existing infrastructure, no new
+//! parsing. Reuse alone can't be trusted as the whole story: it's fed
+//! by every attempt including resists/misses, which don't carry the
+//! same lockout a real landing does, so a fast resisted-then-recast
+//! sample can make reuse look shorter than the real minimum. Final
+//! readiness is whichever of the two (independently tracked, from
+//! their own anchors) clears later -- never the optimistic one.
 
 use crate::ingest::Ingest;
 use eqlp_source::Millis;
@@ -37,8 +53,15 @@ use serde::Serialize;
 pub struct SkillTrack {
     pub last_used_ms: Millis,
     pub last_landed: bool,
-    /// why: None until a second real use gives an actual gap to learn from
-    pub min_gap_ms: Option<i64>,
+    /// why: None until a second real attempt gives an actual gap to learn from
+    pub reuse_gap_ms: Option<i64>,
+    /// why: None until a real landing has ever confirmed for this skill
+    /// at all -- not every attempt lands, and some abilities (a pure
+    /// melee swing) never resolve through CastResolver in the first
+    /// place, so this stays None forever for those, same as recovery_gap_ms
+    pub last_landed_ms: Option<Millis>,
+    /// why: None until a landing AND a later attempt both exist
+    pub recovery_gap_ms: Option<i64>,
 }
 
 impl SkillTrack {
@@ -46,7 +69,9 @@ impl SkillTrack {
         SkillTrack {
             last_used_ms: ts,
             last_landed: landed,
-            min_gap_ms: None,
+            reuse_gap_ms: None,
+            last_landed_ms: None,
+            recovery_gap_ms: None,
         }
     }
 
@@ -56,10 +81,41 @@ impl SkillTrack {
     fn observe(&mut self, ts: Millis, landed: bool) {
         let gap = ts - self.last_used_ms;
         if gap > 0 {
-            self.min_gap_ms = Some(self.min_gap_ms.map_or(gap, |m| m.min(gap)));
+            self.reuse_gap_ms = Some(self.reuse_gap_ms.map_or(gap, |m| m.min(gap)));
+        }
+        if let Some(landed_ms) = self.last_landed_ms {
+            let rgap = ts - landed_ms;
+            if rgap > 0 {
+                self.recovery_gap_ms = Some(self.recovery_gap_ms.map_or(rgap, |m| m.min(rgap)));
+            }
         }
         self.last_used_ms = ts;
         self.last_landed = landed;
+    }
+
+    /// why: a confirmed landing, separate from (and usually a little
+    /// after) the attempt that caused it -- see this module's own doc
+    fn observe_landing(&mut self, ts: Millis) {
+        self.last_landed_ms = Some(ts);
+    }
+
+    /// why: reuse and recovery are measured from different anchors and
+    /// can't be combined into one "anchor + interval" pair (SkillStatusDto
+    /// exposes the resolved absolute deadline directly instead, see its
+    /// own doc) -- whichever of the two clears later is the real answer,
+    /// see this module's own top-level doc for why neither alone is safe
+    fn ready_at(&self) -> Option<Millis> {
+        let reuse = self.reuse_gap_ms.map(|g| self.last_used_ms + g);
+        let recovery = match (self.last_landed_ms, self.recovery_gap_ms) {
+            (Some(landed_ms), Some(g)) => Some(landed_ms + g),
+            _ => None,
+        };
+        match (reuse, recovery) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
     }
 }
 
@@ -81,18 +137,36 @@ pub fn observe_skill_use(
     }
 }
 
+/// why: called from flush_cast_resolutions when a cast resolves Landed
+/// for "You" -- confirm_landed's own real timestamp (whichever of
+/// Damage/Heal/a spelltext-matched landing line actually confirmed it),
+/// a separate, later signal than cast.begin's own attempt timestamp.
+/// A landing with no tracked attempt behind it (name mismatch, or
+/// nothing else ever tracked it) is a safe no-op, not a fresh entry --
+/// there's nothing meaningful to time a recovery gap against yet.
+pub fn observe_skill_landed(
+    skills: &mut std::collections::HashMap<String, SkillTrack>,
+    ts: Millis,
+    ability: &str,
+) {
+    if let Some(t) = skills.get_mut(ability) {
+        t.observe_landing(ts);
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SkillStatusDto {
     pub skill: String,
     pub last_outcome: &'static str,
     pub last_used_ms: Millis,
-    /// why: None until a second real use gives an actual gap to learn from
-    pub estimated_interval_ms: Option<i64>,
-    /// why: None exactly when estimated_interval_ms is None -- nothing
-    /// to compare "now" against yet
-    pub ready: Option<bool>,
-    /// why: 0 once ready, None when estimated_interval_ms is None
-    pub remaining_ms: Option<i64>,
+    /// why: already resolved as max(reuse, recovery) -- see SkillTrack::
+    /// ready_at's own doc for why the two can't be exposed as a single
+    /// "anchor + interval" pair. A real absolute deadline (same
+    /// countdown-from-a-deadline shape targeteffects.rs's own
+    /// ready_at_ms uses), not a relative duration that would go stale
+    /// between polls. None only when there's no data to estimate from
+    /// at all yet (a single attempt, nothing landed).
+    pub ready_at_ms: Option<Millis>,
 }
 
 /// why: the overlay's own poll -- same polled-on-tick shape as
@@ -101,19 +175,13 @@ pub struct SkillStatusDto {
 /// display -- see this module's own doc for why filtering which ones
 /// actually show is the frontend's job, not this query's.
 pub fn skill_status(ing: &Ingest) -> Vec<SkillStatusDto> {
-    let now = ing.now_ms();
     ing.skills
         .iter()
-        .map(|(skill, t)| {
-            let ready_at = t.min_gap_ms.map(|g| t.last_used_ms + g);
-            SkillStatusDto {
-                skill: skill.clone(),
-                last_outcome: if t.last_landed { "landed" } else { "avoided" },
-                last_used_ms: t.last_used_ms,
-                estimated_interval_ms: t.min_gap_ms,
-                ready: ready_at.map(|r| now >= r),
-                remaining_ms: ready_at.map(|r| (r - now).max(0)),
-            }
+        .map(|(skill, t)| SkillStatusDto {
+            skill: skill.clone(),
+            last_outcome: if t.last_landed { "landed" } else { "avoided" },
+            last_used_ms: t.last_used_ms,
+            ready_at_ms: t.ready_at(),
         })
         .collect()
 }
@@ -128,7 +196,7 @@ mod tests {
         let mut skills = HashMap::new();
         observe_skill_use(&mut skills, 1000, "Kick", true);
         let t = skills["Kick"];
-        assert_eq!(t.min_gap_ms, None);
+        assert_eq!(t.reuse_gap_ms, None);
     }
 
     #[test]
@@ -139,7 +207,7 @@ mod tests {
         observe_skill_use(&mut skills, 3500, "Kick", true); // gap 1500, smaller
         observe_skill_use(&mut skills, 8000, "Kick", true); // gap 4500, larger -- ignored
         let t = skills["Kick"];
-        assert_eq!(t.min_gap_ms, Some(1500));
+        assert_eq!(t.reuse_gap_ms, Some(1500));
         assert_eq!(t.last_used_ms, 8000);
         assert!(t.last_landed);
     }
@@ -151,7 +219,67 @@ mod tests {
         observe_skill_use(&mut skills, 1000, "Kick", false); // same log second
         observe_skill_use(&mut skills, 3000, "Kick", true); // real gap: 2000
         let t = skills["Kick"];
-        assert_eq!(t.min_gap_ms, Some(2000));
+        assert_eq!(t.reuse_gap_ms, Some(2000));
+    }
+
+    /// why: recovery_gap_ms tracks its own independent minimum, only
+    /// ever updated at an attempt that has a landing already behind it --
+    /// a landing-less (resisted) fast recast tightens reuse_gap_ms
+    /// without ever touching recovery_gap_ms
+    #[test]
+    fn recovery_gap_only_updates_at_an_attempt_with_a_landing_behind_it() {
+        let mut skills = HashMap::new();
+        observe_skill_use(&mut skills, 0, "Wandering Mind", true);
+        observe_skill_landed(&mut skills, 3, "Wandering Mind");
+        observe_skill_use(&mut skills, 90, "Wandering Mind", true); // reuse 90, recovery 90-3=87
+                                                                    // no landing this cycle (resisted) -- a fast retry right after
+        observe_skill_use(&mut skills, 95, "Wandering Mind", true); // reuse min(90,5)=5, recovery untouched
+        let t = skills["Wandering Mind"];
+        assert_eq!(t.reuse_gap_ms, Some(5), "the fluke fast resisted retry");
+        assert_eq!(
+            t.recovery_gap_ms,
+            Some(87),
+            "no landing since 3, so unaffected by the fast retry"
+        );
+    }
+
+    /// why: Spencer's own correction -- "the cooldown is a recovery
+    /// timer ... uses whichever is longer". Tested directly against the
+    /// resolved struct rather than a call sequence -- a landing can
+    /// legitimately confirm after a later attempt already fired (a
+    /// slow-to-confirm landing line arriving after a quick subsequent
+    /// resisted retry), so last_landed_ms > last_used_ms is a real state,
+    /// not just a hypothetical -- see the doc on SkillTrack::ready_at.
+    #[test]
+    fn ready_at_uses_whichever_of_reuse_or_recovery_clears_later() {
+        let recovery_wins = SkillTrack {
+            last_used_ms: 100,
+            last_landed: true,
+            reuse_gap_ms: Some(20),    // reuse ready at 120
+            last_landed_ms: Some(150), // recovery ready at 150+90=240
+            recovery_gap_ms: Some(90),
+        };
+        assert_eq!(recovery_wins.ready_at(), Some(240));
+
+        let reuse_wins = SkillTrack {
+            last_used_ms: 200,
+            last_landed: true,
+            reuse_gap_ms: Some(90), // reuse ready at 290
+            last_landed_ms: Some(150),
+            recovery_gap_ms: Some(20), // recovery ready at 170
+        };
+        assert_eq!(reuse_wins.ready_at(), Some(290));
+    }
+
+    /// why: a landing with no attempt behind it (name mismatch, or an
+    /// entry that was never tracked as an attempt at all) is a no-op,
+    /// not a fresh entry -- nothing meaningful to time a recovery
+    /// gap against
+    #[test]
+    fn a_landing_with_no_tracked_attempt_is_a_safe_no_op() {
+        let mut skills = HashMap::new();
+        observe_skill_landed(&mut skills, 100, "Nothing Tracked");
+        assert!(!skills.contains_key("Nothing Tracked"));
     }
 
     /// why: real change this turn -- Spencer's ask generalized tracking
@@ -182,6 +310,43 @@ mod tests {
             .iter()
             .find(|s| s.skill == "Spirit of Wolf")
             .expect("a self-buff with no damage event should still be tracked");
-        assert_eq!(s.estimated_interval_ms, Some(240_000));
+        // why: no landing confirmed in this minimal scenario (no Damage/
+        // Heal/spelltext-matched line), so this is reuse alone
+        assert_eq!(s.ready_at_ms.map(|r| r - s.last_used_ms), Some(240_000));
+    }
+
+    /// why: proves the real wiring end-to-end -- ingest.rs's own
+    /// flush_cast_resolutions really does call observe_skill_landed off
+    /// a genuine CastResolver::confirm_landed (here, the real Damage
+    /// event a DoT tick produces), not just the pure combinator logic
+    /// the unit tests above exercise directly
+    #[test]
+    fn a_real_landing_confirmed_through_ingest_feeds_the_recovery_clock() {
+        use crate::ingest::{backfill_lines, Ingest};
+        use crate::parser::build_engine;
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You begin casting Ignite Bones.",
+            b"[Tue Jul 28 15:01:03 2026] You hit a rat for 3 points of magic damage by Ignite Bones.",
+            b"[Tue Jul 28 15:02:00 2026] You begin casting Ignite Bones.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        // why: asserted straight off the tracked entry, not skill_status's
+        // own resolved ready_at_ms -- with only one sample each, reuse and
+        // recovery mathematically land on the same final instant either
+        // way (see the unit test above for a real divergence), so a DTO-
+        // level assertion here couldn't actually tell "landing wired
+        // correctly" apart from "landing never fired at all"
+        let t = ing
+            .skills
+            .get("Ignite Bones")
+            .expect("tracked off cast.begin");
+        assert_eq!(t.reuse_gap_ms, Some(60_000), "15:02:00 - 15:01:00");
+        assert_eq!(
+            t.recovery_gap_ms,
+            Some(57_000),
+            "15:02:00 - 15:01:03, the real Damage-confirmed landing"
+        );
     }
 }

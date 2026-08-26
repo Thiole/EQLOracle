@@ -215,12 +215,11 @@ export interface SkillStatusDto {
   skill: string;
   last_outcome: 'landed' | 'avoided';
   last_used_ms: number;
-  /** why: null until a second real use gives an actual gap to learn from */
-  estimated_interval_ms: number | null;
-  /** why: null exactly when estimated_interval_ms is null */
-  ready: boolean | null;
-  /** why: 0 once ready, null when estimated_interval_ms is null */
-  remaining_ms: number | null;
+  /** why: already resolved as max(reuse, recovery) server-side -- a real
+   * absolute deadline, not a relative duration that would go stale
+   * between polls (same shape as TargetEffectDto's own ready_at_ms).
+   * null only when there's no data to estimate from at all yet. */
+  ready_at_ms: number | null;
 }
 
 /** why: Skill Tracker's target-effects section -- see targeteffects.rs's own doc */
