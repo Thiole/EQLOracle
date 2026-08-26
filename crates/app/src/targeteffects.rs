@@ -109,6 +109,22 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
     // worth its own badge. Grouped by the line's own base name -- higher
     // rank always wins, recency only breaks a tie within the same rank
     // (or when neither side has a resolvable rank at all).
+    //
+    // Real bug, caught live against Spencer's own log ("Wandering
+    // Mind"): a resisted cast keeps its rank suffix verbatim in the log
+    // text ("resisted your Wandering Mind VI!"), but a LANDED cast is
+    // only ever attributed through recent_casts, which is already
+    // base_spell_name-stripped before it gets here -- so a landed
+    // observation can never carry a resolvable rank, even when the real
+    // cast was rank VI. Under rank-only comparison that landed
+    // observation's `None` read as "known lower rank" and could never
+    // beat an earlier resisted `Some(6)`, so a later real landing was
+    // silently ignored and the panel stayed stuck on a stale resist
+    // forever. Landed status is checked first now: a fresh landing is
+    // real confirmed state and always supersedes an older failure
+    // regardless of rank; a later failed *re*-attempt never erases a
+    // landing that already happened. Rank only decides ties between two
+    // observations of the same landed-ness.
     struct LineObs {
         full_name: String,
         rank: Option<u8>,
@@ -127,11 +143,15 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
         };
         match latest.get_mut(&base) {
             Some(existing) => {
-                let better = match (candidate.rank, existing.rank) {
-                    (Some(r), Some(er)) => r > er || (r == er && candidate.ts >= existing.ts),
-                    (Some(_), None) => true,
-                    (None, Some(_)) => false,
-                    (None, None) => candidate.ts >= existing.ts,
+                let better = match (candidate.landed, existing.landed) {
+                    (true, false) => true,
+                    (false, true) => false,
+                    _ => match (candidate.rank, existing.rank) {
+                        (Some(r), Some(er)) => r > er || (r == er && candidate.ts >= existing.ts),
+                        (Some(_), None) => true,
+                        (None, Some(_)) => false,
+                        (None, None) => candidate.ts >= existing.ts,
+                    },
                 };
                 if better {
                     *existing = candidate;
@@ -309,6 +329,38 @@ mod tests {
             tashania_rows[0].spell, "Tashania II",
             "the higher rank wins even though the plain-rank attempt was more recent"
         );
+    }
+
+    /// why: real bug, caught live against Spencer's own log -- a
+    /// resisted "Wandering Mind VI" (rank text survives in a resist
+    /// line) followed, minutes later, by a real successful land
+    /// (attributed generically via recent_casts, which never carries a
+    /// rank suffix) used to get stuck showing the stale resist forever,
+    /// because the landed observation's unresolvable rank read as
+    /// "known lower" under rank-only comparison. A fresh landing must
+    /// always supersede an older failure.
+    #[test]
+    fn a_later_land_beats_an_earlier_resist_even_when_its_own_rank_is_unknown() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You hit a rat for 5 points of damage.",
+            "[Tue Jul 28 15:01:02 2026] You begin casting Wandering Mind VI.",
+            "[Tue Jul 28 15:01:05 2026] a rat resisted your Wandering Mind VI!",
+            "[Tue Jul 28 15:01:07 2026] You hit a rat for 5 points of damage.",
+            "[Tue Jul 28 15:01:09 2026] You begin casting Wandering Mind VI.",
+            "[Tue Jul 28 15:01:11 2026] a rat stares off into space.",
+        ]);
+        let dto = target_effects(&ing);
+        let rows: Vec<_> = dto
+            .effects
+            .iter()
+            .filter(|e| e.spell.starts_with("Wandering Mind"))
+            .collect();
+        assert_eq!(rows.len(), 1, "one row for the whole line");
+        assert!(
+            rows[0].landed,
+            "the later land must win, not the stale resist"
+        );
+        assert_eq!(rows[0].duration_ms, Some(120_000), "real 2-minute duration");
     }
 
     #[test]
