@@ -8,7 +8,6 @@
   // positioned.
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Checkbox } from '$lib/components/ui/checkbox';
-  import XIcon from '@lucide/svelte/icons/x';
   import { api } from '$lib/tauri/api';
   import {
     dpsMeterEnabled,
@@ -19,11 +18,10 @@
     skillTrackerOpacity,
     setSkillTrackerEnabled,
     setSkillTrackerOpacity,
-    trackedSkills,
-    toggleTrackedSkill,
     loadPreferences,
   } from '$lib/stores/settings';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
+  import TrackedSkillsList from './TrackedSkillsList.svelte';
 
   $effect(() => {
     void loadPreferences();
@@ -32,9 +30,6 @@
 
   let enableError = $state<string | null>(null);
   let skillTrackerError = $state<string | null>(null);
-  // why: which tracked-cooldown row is highlighted -- a real listbox
-  // selection, separate from removal (its own × per row)
-  let selectedSkill = $state<string | null>(null);
   // why: each widget's own window starts locked (click-through) --
   // matches every widget window's own real default at open
   let locked = $state<Record<string, boolean>>({ dps_meter: true, skill_tracker: true });
@@ -163,41 +158,10 @@
 
       <div class="mt-2.5">
         <p class="text-[11px] text-muted-foreground">
-          tracked cooldowns <span class="text-muted-foreground/70">(track one from Spellbook or Combat's own ability breakdown)</span>
+          tracked cooldowns <span class="text-muted-foreground/70">(add spells from Character → Spellbook's own "overlay spell tracking" section, or an ability from Combat's own breakdown)</span>
         </p>
-        <div role="listbox" aria-label="Tracked cooldowns" class="mt-1 max-h-32 overflow-y-auto rounded-sm border border-border">
-          {#if !$trackedSkills.length}
-            <p class="px-2 py-3 text-center text-[11px] text-muted-foreground italic">Nothing tracked yet.</p>
-          {:else}
-            {#each $trackedSkills as skill (skill)}
-              <div
-                role="option"
-                aria-selected={selectedSkill === skill}
-                tabindex="0"
-                class="flex items-center justify-between gap-2 border-b border-border/50 px-2 py-1 text-[12px] last:border-b-0 {selectedSkill ===
-                skill
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-foreground hover:bg-muted/40'}"
-                onclick={() => (selectedSkill = selectedSkill === skill ? null : skill)}
-                onkeydown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') selectedSkill = selectedSkill === skill ? null : skill;
-                }}
-              >
-                <span class="truncate">{skill}</span>
-                <button
-                  type="button"
-                  class="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:bg-bad/20 hover:text-bad"
-                  title="Stop tracking {skill}"
-                  onclick={(e) => {
-                    e.stopPropagation();
-                    void toggleTrackedSkill(skill);
-                  }}
-                >
-                  <XIcon class="size-3" />
-                </button>
-              </div>
-            {/each}
-          {/if}
+        <div class="mt-1">
+          <TrackedSkillsList />
         </div>
       </div>
       <p class="mt-2 text-[11px] text-muted-foreground">Target effects track automatically -- no picker needed.</p>

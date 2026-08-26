@@ -15,7 +15,7 @@
   import { api, type UiFileInfoDto, type SpellDto, type DamageSpellDto, type SpellbookFileDto } from '$lib/tauri/api';
   import { status } from '$lib/stores/status';
   import { trackedSkills, toggleTrackedSkill } from '$lib/stores/settings';
-  import TargetIcon from '@lucide/svelte/icons/target';
+  import TrackedSkillsList from '$lib/overlay/TrackedSkillsList.svelte';
 
   // why: a real loadout holds up to 14 spells -- 8 base slots plus up to
   // 6 more unlocked by the Mnemonic Retention AA (1 extra slot per AA
@@ -258,6 +258,20 @@
   // section's header at a glance, not one already expanded to full height.
   let foundOpen = $state(false);
   let suggestedOpen = $state(false);
+  let overlayTrackOpen = $state(false);
+
+  // why: separate search from "Suggested spells" own -- this section
+  // isn't mode/class filtered, just "find a spell, track it"
+  let overlayTrackSearch = $state('');
+  const OVERLAY_TRACK_RESULTS_LIMIT = 40;
+  const overlayTrackResults = $derived.by(() => {
+    const q = overlayTrackSearch.trim().toLowerCase();
+    if (!q) return [];
+    return [...$spells]
+      .filter((s) => s.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, OVERLAY_TRACK_RESULTS_LIMIT);
+  });
 
   // why: "save as" forks the current file pair under a new name instead
   // of overwriting it -- a small inline box (not a full dialog, nothing
@@ -756,14 +770,68 @@
                list is fully regenerated on every filter/sort change
                anyway, so there's no per-item identity worth preserving. -->
           {#each searchResults as s, i (i)}
-            <div class="group flex items-center gap-0.5 rounded-sm text-[10px] leading-tight hover:bg-accent">
+            <button
+              type="button"
+              draggable="true"
+              ondragstart={(e) => onDragStart(e, s.name)}
+              onclick={() => placeInArmedSlot(s.name)}
+              class="flex items-center gap-1 rounded-sm px-1 py-0.5 text-left text-[10px] leading-tight text-foreground hover:bg-accent active:cursor-grabbing"
+              title={s.name}
+            >
+              {#if s.icon}
+                <img src={ICON_BASE + encodeURIComponent(s.icon)} alt="" class="size-4 shrink-0 rounded-[2px] border border-border bg-muted/20" />
+              {:else}
+                <span class="size-4 shrink-0 rounded-[2px] border border-dashed border-border"></span>
+              {/if}
+              <span class="truncate">{s.name}</span>
+              {#if s.badge}<span class="shrink-0 text-muted-foreground">({s.badge})</span>{/if}
+            </button>
+          {/each}
+        </div>
+      {:else}
+        <p class="text-[11px] text-muted-foreground">no matches</p>
+      {/if}
+      {/if}
+    </CardContent>
+  </Card>
+
+  <!-- why: Spencer's own ask -- a dedicated section to build the Skill
+       Tracker overlay's own tracked list, instead of a small icon
+       scattered through the search grid above. Search finds a spell,
+       clicking a result tracks it; TrackedSkillsList (shared with
+       Overlay settings) shows and removes what's already tracked. A
+       real "profile" to hot-swap between different tracked sets is the
+       planned next step here, not built yet -- this is the single set
+       every profile would eventually fork from. -->
+  <Card class="rounded-sm">
+    <CardContent class="px-3 py-2.5">
+      <div class="mb-1.5 flex items-center justify-between gap-2">
+        <button type="button" class="flex items-center gap-1.5 text-left" onclick={() => (overlayTrackOpen = !overlayTrackOpen)}>
+          <span class="w-6 text-[26px] leading-none font-bold text-foreground">{overlayTrackOpen ? '▾' : '▸'}</span>
+          <h2 class="panel-title">Overlay spell tracking</h2>
+        </button>
+        {#if overlayTrackOpen}
+          <Input bind:value={overlayTrackSearch} placeholder="search spells to track…" class="h-7 w-56 text-[12px]" />
+        {/if}
+      </div>
+
+      {#if overlayTrackOpen}
+        <p class="mb-2 text-[11px] text-muted-foreground">
+          Spells tracked here show their own cooldown in the Skill Tracker overlay, estimated from your own real reuse
+          gaps. Search and click a result to track/untrack it.
+        </p>
+
+        {#if overlayTrackSearch.trim() && overlayTrackResults.length}
+          <div class="mb-2 grid grid-cols-4 gap-x-2 gap-y-0.5">
+            {#each overlayTrackResults as s (s.name)}
+              {@const tracked = $trackedSkills.includes(s.name)}
               <button
                 type="button"
-                draggable="true"
-                ondragstart={(e) => onDragStart(e, s.name)}
-                onclick={() => placeInArmedSlot(s.name)}
-                class="flex min-w-0 flex-1 items-center gap-1 px-1 py-0.5 text-left text-foreground active:cursor-grabbing"
-                title={s.name}
+                class="flex items-center gap-1 rounded-sm px-1 py-0.5 text-left text-[10px] leading-tight hover:bg-accent {tracked
+                  ? 'text-primary'
+                  : 'text-foreground'}"
+                title={tracked ? `Stop tracking ${s.name}` : `Track ${s.name}`}
+                onclick={() => void toggleTrackedSkill(s.name)}
               >
                 {#if s.icon}
                   <img src={ICON_BASE + encodeURIComponent(s.icon)} alt="" class="size-4 shrink-0 rounded-[2px] border border-border bg-muted/20" />
@@ -771,27 +839,15 @@
                   <span class="size-4 shrink-0 rounded-[2px] border border-dashed border-border"></span>
                 {/if}
                 <span class="truncate">{s.name}</span>
-                {#if s.badge}<span class="shrink-0 text-muted-foreground">({s.badge})</span>{/if}
+                {#if tracked}<span class="shrink-0">✓</span>{/if}
               </button>
-              <!-- why: "track" from wherever a spell shows up -- Spencer's own
-                   ask; adds/removes it from the Skill Tracker overlay's own
-                   cooldowns section (see stores/settings.ts's own doc) -->
-              <button
-                type="button"
-                class="shrink-0 rounded-sm p-0.5 {$trackedSkills.includes(s.name)
-                  ? 'text-primary'
-                  : 'text-muted-foreground opacity-0 group-hover:opacity-100'}"
-                title={$trackedSkills.includes(s.name) ? `Stop tracking ${s.name}` : `Track ${s.name} in the Skill Tracker overlay`}
-                onclick={() => void toggleTrackedSkill(s.name)}
-              >
-                <TargetIcon class="size-3" />
-              </button>
-            </div>
-          {/each}
-        </div>
-      {:else}
-        <p class="text-[11px] text-muted-foreground">no matches</p>
-      {/if}
+            {/each}
+          </div>
+        {:else if overlayTrackSearch.trim()}
+          <p class="mb-2 text-[11px] text-muted-foreground">no matches</p>
+        {/if}
+
+        <TrackedSkillsList />
       {/if}
     </CardContent>
   </Card>
