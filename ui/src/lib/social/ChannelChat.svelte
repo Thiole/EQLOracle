@@ -29,7 +29,7 @@
 </script>
 
 <div class="flex gap-3">
-  <div class="flex w-56 shrink-0 flex-col rounded-sm border border-border">
+  <div class="flex h-[520px] w-56 shrink-0 flex-col overflow-y-auto rounded-sm border border-border">
     {#if $channelError}
       <p class="p-1.5 text-[11px] text-bad">Couldn't load chat: {$channelError}</p>
     {:else}
@@ -49,19 +49,21 @@
     {/if}
   </div>
 
-  <div class="min-w-0 flex-1 rounded-sm border border-border p-1.5">
+  <div class="min-w-0 flex-1 rounded-sm border border-border p-2">
     {#if !active}
-      <p class="text-[11px] text-muted-foreground">Loading…</p>
+      <p class="text-[12px] text-muted-foreground">Loading…</p>
     {:else if !active.length}
-      <p class="text-[11px] text-muted-foreground">No {$activeChannel} chat parsed yet this session.</p>
+      <p class="text-[12px] text-muted-foreground">No {$activeChannel} chat parsed yet this session.</p>
     {:else}
-      <div class="flex h-[360px] flex-col gap-0.5 overflow-y-auto">
+      <div class="flex h-[520px] flex-col gap-1.5 overflow-y-auto p-0.5">
         {#each active as m, i (i)}
-          <p class="text-[11px] leading-snug">
-            <span class="text-muted-foreground tabular-nums">{new Date(m.ts_ms).toLocaleTimeString()}</span>
-            <span class="ml-1.5 font-medium {m.who === 'You' ? 'text-primary' : 'text-foreground'}">{m.who}:</span>
-            <span class="ml-1 text-foreground/90">{m.text}</span>
-          </p>
+          <div class="rounded-md px-2.5 py-1.5 {m.who === 'You' ? 'bg-primary/10' : 'bg-muted/40'}">
+            <div class="flex items-baseline gap-2">
+              <span class="text-[12px] font-medium {m.who === 'You' ? 'text-primary' : 'text-foreground'}">{m.who}</span>
+              <span class="text-[10px] text-muted-foreground">{new Date(m.ts_ms).toLocaleString()}</span>
+            </div>
+            <p class="mt-0.5 text-[13px] leading-relaxed text-foreground/90">{m.text}</p>
+          </div>
         {/each}
       </div>
     {/if}
