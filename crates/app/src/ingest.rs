@@ -714,6 +714,14 @@ pub struct Ingest {
     /// wiki-quotable destination (confirmed: 4 different real zones over
     /// 3 weeks). Learned empirically, last-one-wins, self-correcting.
     pub learned_origin: Option<(Millis, String)>,
+    /// why: overlay's timed-effects tracker -- see effects.rs's own doc.
+    /// Most-recent-wins, self-only for invis/hide/sneak; charm is keyed
+    /// by `who` so an unrelated spell's own wear-off (state.charm_broken's
+    /// pattern is generic, fires for any spell) can't false-clear it.
+    pub charm: Option<crate::effects::CharmStatus>,
+    pub invis: Option<crate::effects::InvisStatus>,
+    pub hide: Option<crate::effects::MomentaryStatus>,
+    pub sneak: Option<crate::effects::MomentaryStatus>,
     /// why: every AA rank purchase this session, see AaLog
     pub aa: AaLog,
     /// why: every spell confirmed known this session, see SpellLog
@@ -797,6 +805,10 @@ impl Default for Ingest {
             entered_via_teleport: None,
             last_origin_cast: None,
             learned_origin: None,
+            charm: None,
+            invis: None,
+            hide: None,
+            sneak: None,
             aa: AaLog::default(),
             spellbook: SpellLog::default(),
             spell_ranks: SpellRanks::default(),
@@ -1264,10 +1276,81 @@ impl Ingest {
             Action::Charm { who } => {
                 let sym = self.sym(&who);
                 self.timeline.observed(ts, sym.0, State::Charmed);
+                self.charm = Some(crate::effects::CharmStatus {
+                    who,
+                    active: true,
+                    since_ms: ts,
+                });
             }
             Action::Recovered { who } => {
                 let sym = self.sym(&who);
                 self.timeline.observed(ts, sym.0, State::Engaged);
+                // why: state.charm_broken's own pattern is generic (any
+                // spell wearing off of any target) -- only clear the
+                // tracked charm if this is really that same target
+                if let Some(c) = &mut self.charm {
+                    if c.who == who && c.active {
+                        c.active = false;
+                        c.since_ms = ts;
+                    }
+                }
+            }
+            Action::InvisFading => {
+                self.invis = Some(crate::effects::InvisStatus {
+                    active: self.invis.map(|s| s.active).unwrap_or(true),
+                    fading: true,
+                    since_ms: ts,
+                });
+            }
+            Action::InvisLanded => {
+                self.invis = Some(crate::effects::InvisStatus {
+                    active: true,
+                    fading: false,
+                    since_ms: ts,
+                });
+            }
+            Action::InvisEnded => {
+                self.invis = Some(crate::effects::InvisStatus {
+                    active: false,
+                    fading: false,
+                    since_ms: ts,
+                });
+            }
+            Action::HideSuccess => {
+                self.hide = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Success,
+                    since_ms: ts,
+                });
+            }
+            Action::HideFailure => {
+                self.hide = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Failure,
+                    since_ms: ts,
+                });
+            }
+            Action::HideEnded => {
+                self.hide = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Ended,
+                    since_ms: ts,
+                });
+            }
+            Action::SneakSuccess => {
+                self.sneak = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Success,
+                    since_ms: ts,
+                });
+            }
+            Action::SneakFailure => {
+                self.sneak = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Failure,
+                    since_ms: ts,
+                });
+            }
+            Action::SneakEnded => {
+                self.sneak = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Ended,
+                    since_ms: ts,
+                });
             }
             Action::Loot {
                 item,
@@ -2315,6 +2398,19 @@ enum Action {
     Recovered {
         who: String,
     },
+    /// why: self-only overlay signals -- see effects.rs's own doc. No
+    /// payload: which literal variant fired (regular/undead/animal invis,
+    /// "moved" vs "stop hiding", ...) doesn't matter downstream, only the
+    /// semantic outcome does.
+    InvisFading,
+    InvisLanded,
+    InvisEnded,
+    HideSuccess,
+    HideFailure,
+    HideEnded,
+    SneakSuccess,
+    SneakFailure,
+    SneakEnded,
     /// why: always the player, no third-person loot line exists. corpse
     /// keeps its raw suffix (stripped in record_loot, not here); sold_for
     /// present only for an auto-sell, raw and unparsed
@@ -2670,6 +2766,19 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "state.charm_broken" | "state.you_mesmerized" => Some(Action::Recovered {
             who: str_field("who").unwrap_or_else(|| "You".to_string()),
         }),
+        "invis.fading" => Some(Action::InvisFading),
+        "invis.landed.vanish" | "invis.landed.tingle" | "invis.landed.fade" => {
+            Some(Action::InvisLanded)
+        }
+        "invis.ended.appear" | "invis.ended.tingle" | "invis.ended.fade" => {
+            Some(Action::InvisEnded)
+        }
+        "hide.success" => Some(Action::HideSuccess),
+        "hide.failure" => Some(Action::HideFailure),
+        "hide.broken" | "hide.stopped" => Some(Action::HideEnded),
+        "sneak.success" => Some(Action::SneakSuccess),
+        "sneak.failure" => Some(Action::SneakFailure),
+        "sneak.broken" => Some(Action::SneakEnded),
         // why: two client line forms for the same fact (bracketed vs
         // direct, varying trailing clause); both produce the identical Action::Loot
         "loot.self" | "loot.self.direct" => Some(Action::Loot {

@@ -436,49 +436,107 @@ pub fn get_live_meter(state: State<AppState>) -> Option<combat::LiveMeterDto> {
     combat::live_meter(&state.ingest.lock().unwrap())
 }
 
+/// why: overlay's timed-effects widget -- same polled-on-tick shape as
+/// get_live_meter, see effects.rs's own doc
+#[tauri::command]
+pub fn get_status_effects(state: State<AppState>) -> crate::effects::StatusEffectsDto {
+    crate::effects::status_effects(&state.ingest.lock().unwrap())
+}
+
 const OVERLAY_LABEL: &str = "overlay";
 
 /// why: creates (or closes) the real floating window -- a fresh
 /// capability check every time, never trusts a stale frontend value,
 /// since the session's own display server can't change mid-run but a
-/// stale cached capability shouldn't be trusted to open one anyway
+/// stale cached capability shouldn't be trusted to open one anyway.
+/// `widget` names which widget is toggling -- the window is one shared
+/// surface for every enabled widget (see AppState::overlay_widgets' own
+/// doc), so it opens on the first widget to enable and closes only once
+/// the last one disables, not on any single toggle.
 
 #[tauri::command]
-pub fn set_overlay_enabled(app: AppHandle, enabled: bool) -> Result<(), String> {
-    if !enabled {
+pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    {
+        let mut widgets = state.overlay_widgets.lock().unwrap();
+        if enabled {
+            widgets.insert(widget.clone());
+        } else {
+            widgets.remove(&widget);
+        }
+    }
+    let now_empty = state.overlay_widgets.lock().unwrap().is_empty();
+
+    if now_empty {
         if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
             let _ = w.close();
         }
         return Ok(());
     }
-    if app.get_webview_window(OVERLAY_LABEL).is_some() {
-        return Ok(()); // already open
+
+    if app.get_webview_window(OVERLAY_LABEL).is_none() {
+        let cap = windowcap::detect();
+        if cap.capability == WindowCapability::Docked {
+            // why: this widget didn't actually get a window -- don't
+            // leave it recorded as "on" with nothing to show for it
+            state.overlay_widgets.lock().unwrap().remove(&widget);
+            return Err(cap.reason.unwrap_or_else(|| {
+                "Floating overlays aren't available in this session.".to_string()
+            }));
+        }
+        let window =
+            WebviewWindowBuilder::new(&app, OVERLAY_LABEL, WebviewUrl::App("overlay.html".into()))
+                .title("EQL Oracle Overlay")
+                .inner_size(360.0, 240.0)
+                .transparent(true)
+                .decorations(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .shadow(false)
+                .build()
+                .map_err(|e| e.to_string())?;
+        // why: ClickThrough only -- Floating alone (never actually
+        // reachable today, detect() only ever returns Docked or
+        // ClickThrough, kept as its own tier for when finer Wayland
+        // detection becomes possible) would still block clicks on the
+        // game underneath it
+        if cap.capability == WindowCapability::ClickThrough {
+            let _ = window.set_ignore_cursor_events(true);
+        }
     }
-    let cap = windowcap::detect();
-    if cap.capability == WindowCapability::Docked {
-        return Err(cap
-            .reason
-            .unwrap_or_else(|| "Floating overlays aren't available in this session.".to_string()));
-    }
-    let window =
-        WebviewWindowBuilder::new(&app, OVERLAY_LABEL, WebviewUrl::App("overlay.html".into()))
-            .title("EQL Oracle Overlay")
-            .inner_size(360.0, 240.0)
-            .transparent(true)
-            .decorations(false)
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .shadow(false)
-            .build()
-            .map_err(|e| e.to_string())?;
-    // why: ClickThrough only -- Floating alone (never actually reachable
-    // today, detect() only ever returns Docked or ClickThrough, kept as
-    // its own tier for when finer Wayland detection becomes possible)
-    // would still block clicks on the game underneath it
-    if cap.capability == WindowCapability::ClickThrough {
-        let _ = window.set_ignore_cursor_events(true);
-    }
+
+    notify_overlay_widgets(&app, &state);
     Ok(())
+}
+
+fn notify_overlay_widgets(app: &AppHandle, state: &State<AppState>) {
+    if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
+        let widgets: Vec<String> = state
+            .overlay_widgets
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect();
+        let _ = w.emit("overlay-widgets", widgets);
+    }
+}
+
+/// why: the overlay window's own mount -- it's a separate webview/JS
+/// realm (see ui's OverlayApp.svelte), can't read the main window's
+/// local Svelte stores, so it asks the backend directly for which
+/// widgets are currently enabled instead of assuming "the window is
+/// open, so my one widget must be why" (true when there was only ever
+/// one widget, not once a second exists)
+#[tauri::command]
+pub fn get_overlay_enabled_widgets(state: State<AppState>) -> Vec<String> {
+    state
+        .overlay_widgets
+        .lock()
+        .unwrap()
+        .iter()
+        .cloned()
+        .collect()
 }
 
 /// why: live-pushes to the open overlay window -- a no-op, not an error,

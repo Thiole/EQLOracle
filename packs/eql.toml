@@ -2036,7 +2036,7 @@ anchors = [" "]
 # that don't share enough with any single existing rule to justify
 # their own -- same "one alternation, not one rule per phrase" call
 # noise.stunned already makes.
-pattern = '''^(?:You have been knocked unconscious!|You lose control of yourself!|You have control of yourself again\.|Your target cannot be mesmerized\.|Your target cannot be mesmerized \(with this spell\)\.|Your target has been stunned too recently for your stun to have full effect\.|You are encumbered!|You are no longer encumbered\.|You cannot have more than one pet at a time\.|You cannot remove this effect\.|Your target is immune to the stun portion of this effect\.|This NPC cannot be charmed\.|You must be standing to cast a spell\.|You must be standing to attack!|This spell only works on the undead\.|Your will is not sufficient to command this weapon\.|Your attempt to disarm failed\.|You feel an aura of vigorous protection surrounding you\.|You have hidden yourself from view\.|You are as quiet as a cat stalking its prey\.|You are as quiet as a herd of running elephants\.|You stop sneaking\.|You stop hiding\.|You failed to hide yourself\.|You have moved and are no longer hidden!|You are no longer hidden\.|Your song ends\.|Your melody has been interrupted!|A mystical path appears before you\.|Your attack failed because your target is Encounter Locked to someone else\.|The aria lifts you into the air\.|You mend your wounds and heal some damage\.|You feel torn between life and death\.|You are engulfed in a blinding rage\.|You are surrounded by a shield of songs\.|YOU are burning!|You feel a healing touch\.|You gain party experience!|Your mind clouds as your concentration bleeds away\.|This creature would take an army to defeat!|You have momentarily ducked away from the main combat\.|The heal within you blooms\.|Your skin erupts with festering sores\.|For a few heartbeats, further stuns will not take hold\.|Your enemies have forgotten you!|You bear a curse of broken oaths\.)$'''
+pattern = '''^(?:You have been knocked unconscious!|You lose control of yourself!|You have control of yourself again\.|Your target cannot be mesmerized\.|Your target cannot be mesmerized \(with this spell\)\.|Your target has been stunned too recently for your stun to have full effect\.|You are encumbered!|You are no longer encumbered\.|You cannot have more than one pet at a time\.|You cannot remove this effect\.|Your target is immune to the stun portion of this effect\.|This NPC cannot be charmed\.|You must be standing to cast a spell\.|You must be standing to attack!|This spell only works on the undead\.|Your will is not sufficient to command this weapon\.|Your attempt to disarm failed\.|You feel an aura of vigorous protection surrounding you\.|Your song ends\.|Your melody has been interrupted!|A mystical path appears before you\.|Your attack failed because your target is Encounter Locked to someone else\.|The aria lifts you into the air\.|You mend your wounds and heal some damage\.|You feel torn between life and death\.|You are engulfed in a blinding rage\.|You are surrounded by a shield of songs\.|YOU are burning!|You feel a healing touch\.|You gain party experience!|Your mind clouds as your concentration bleeds away\.|This creature would take an army to defeat!|You have momentarily ducked away from the main combat\.|The heal within you blooms\.|Your skin erupts with festering sores\.|For a few heartbeats, further stuns will not take hold\.|Your enemies have forgotten you!|You bear a curse of broken oaths\.)$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] You have been knocked unconscious!",
   "[Tue Jul 28 15:02:15 2026] You lose control of yourself!",
@@ -2055,11 +2055,6 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] Your will is not sufficient to command this weapon.",
   "[Tue Jul 28 15:02:15 2026] Your attempt to disarm failed.",
   "[Tue Jul 28 15:02:15 2026] You feel an aura of vigorous protection surrounding you.",
-  "[Tue Jul 28 15:02:15 2026] You have hidden yourself from view.",
-  "[Tue Jul 28 15:02:15 2026] You are as quiet as a cat stalking its prey.",
-  "[Tue Jul 28 15:02:15 2026] You stop sneaking.",
-  "[Tue Jul 28 15:02:15 2026] You have moved and are no longer hidden!",
-  "[Tue Jul 28 15:02:15 2026] You are no longer hidden.",
   "[Tue Jul 28 15:02:15 2026] Your song ends.",
   "[Tue Jul 28 15:02:15 2026] Your melody has been interrupted!",
   "[Tue Jul 28 15:02:15 2026] A mystical path appears before you.",
@@ -2073,12 +2068,9 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] You feel a healing touch.",
   "[Tue Jul 28 15:02:15 2026] You gain party experience!",
   "[Tue Jul 28 15:02:15 2026] Your mind clouds as your concentration bleeds away.",
-  "[Tue Jul 28 15:02:15 2026] You are as quiet as a herd of running elephants.",
   "[Tue Jul 28 15:02:15 2026] This creature would take an army to defeat!",
   "[Tue Jul 28 15:02:15 2026] You have momentarily ducked away from the main combat.",
-  "[Tue Jul 28 15:02:15 2026] You stop hiding.",
   "[Tue Jul 28 15:02:15 2026] The heal within you blooms.",
-  "[Tue Jul 28 15:02:15 2026] You failed to hide yourself.",
   "[Tue Jul 28 15:02:15 2026] Your skin erupts with festering sores.",
   "[Tue Jul 28 15:02:15 2026] For a few heartbeats, further stuns will not take hold.",
   "[Tue Jul 28 15:02:15 2026] You must be standing to attack!",
@@ -2193,12 +2185,133 @@ id = "invis.fading"
 kind = "state"
 priority = 40
 # The real early-warning line invisibility gives before it actually
-# breaks -- confirmed against the reference log (9 real occurrences), and
-# distinct from "You appear." (the line for when it's already gone, not
-# tracked as its own rule yet -- nothing in this app needs it today).
+# breaks -- confirmed against the reference log (9 real occurrences).
 anchors = ["starting to appear"]
 pattern = '''^You feel yourself starting to appear\.$'''
 examples = ["[Fri Jul 31 00:20:03 2026] You feel yourself starting to appear."]
+
+[[rule]]
+id = "invis.landed.vanish"
+kind = "state"
+priority = 40
+# why: msg_cast_on_you for regular/improved Invisibility and Superior
+# Camouflage/Invisibility Cloak -- both real variants share "vanish".
+# Landed on the player regardless of who cast it (self or an ally), same
+# as any other cast-on-you line. One anchor per rule -- a rule's own
+# anchors are AND'd, so a per-branch anchor list (one per literal) makes
+# every example unreachable; each real phrase family gets its own rule.
+anchors = ["vanish"]
+pattern = '''^(?:You vanish\.|You vanish amidst the sound of whirrs and clicks\.)$'''
+examples = [
+  "[Fri Jul 31 00:20:03 2026] You vanish.",
+  "[Fri Jul 31 00:20:03 2026] You vanish amidst the sound of whirrs and clicks.",
+]
+
+[[rule]]
+id = "invis.landed.tingle"
+kind = "state"
+priority = 40
+# why: msg_cast_on_you for the undead-invis family (Invis vs Undead and its variants)
+anchors = ["skin tingle"]
+pattern = '''^You feel your skin tingle\.$'''
+examples = ["[Fri Jul 31 00:20:03 2026] You feel your skin tingle."]
+
+[[rule]]
+id = "invis.landed.fade"
+kind = "state"
+priority = 40
+# why: msg_cast_on_you for the animal-invis family
+anchors = ["image fades away"]
+pattern = '''^Part of your image fades away\.$'''
+examples = ["[Fri Jul 31 00:20:03 2026] Part of your image fades away."]
+
+[[rule]]
+id = "invis.ended.appear"
+kind = "state"
+priority = 40
+# why: msg_wears_off mirror of invis.landed.vanish -- also covers the
+# plain post-fading-warning break, not just a full spell wear-off.
+anchors = ["You appear"]
+pattern = '''^You appear\.$'''
+examples = ["[Fri Jul 31 00:20:03 2026] You appear."]
+
+[[rule]]
+id = "invis.ended.tingle"
+kind = "state"
+priority = 40
+anchors = ["stops tingling"]
+pattern = '''^Your skin stops tingling\.$'''
+examples = ["[Fri Jul 31 00:20:03 2026] Your skin stops tingling."]
+
+[[rule]]
+id = "invis.ended.fade"
+kind = "state"
+priority = 40
+anchors = ["image returns"]
+pattern = '''^Your image returns\.$'''
+examples = ["[Fri Jul 31 00:20:03 2026] Your image returns."]
+
+[[rule]]
+id = "hide.success"
+kind = "state"
+priority = 50
+anchors = ["hidden yourself from view"]
+pattern = '''^You have hidden yourself from view\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You have hidden yourself from view."]
+
+[[rule]]
+id = "hide.failure"
+kind = "state"
+priority = 50
+anchors = ["failed to hide yourself"]
+pattern = '''^You failed to hide yourself\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You failed to hide yourself."]
+
+[[rule]]
+id = "hide.broken"
+kind = "state"
+priority = 50
+# why: one anchor -- a rule's own anchors are AND'd, not OR'd, so each
+# distinct literal phrase needs its own rule (see invis.landed.vanish's
+# own doc). "stop hiding" is a deliberate stop, handled separately below.
+anchors = ["no longer hidden"]
+pattern = '''^(?:You have moved and are no longer hidden!|You are no longer hidden\.)$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You have moved and are no longer hidden!",
+  "[Tue Jul 28 15:02:15 2026] You are no longer hidden.",
+]
+
+[[rule]]
+id = "hide.stopped"
+kind = "state"
+priority = 50
+anchors = ["stop hiding"]
+pattern = '''^You stop hiding\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You stop hiding."]
+
+[[rule]]
+id = "sneak.success"
+kind = "state"
+priority = 50
+anchors = ["quiet as a cat"]
+pattern = '''^You are as quiet as a cat stalking its prey\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You are as quiet as a cat stalking its prey."]
+
+[[rule]]
+id = "sneak.failure"
+kind = "state"
+priority = 50
+anchors = ["herd of running elephants"]
+pattern = '''^You are as quiet as a herd of running elephants\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You are as quiet as a herd of running elephants."]
+
+[[rule]]
+id = "sneak.broken"
+kind = "state"
+priority = 50
+anchors = ["stop sneaking"]
+pattern = '''^You stop sneaking\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You stop sneaking."]
 
 [[rule]]
 id = "spell.resisted"

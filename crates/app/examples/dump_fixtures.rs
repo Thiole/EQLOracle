@@ -6,8 +6,8 @@
 use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
 use eqlp_app::parser::build_engine;
 use eqlp_app::{
-    aadata, character, chat, combat, debugview, gearplanner, history, inventory, monsters, npcdata,
-    overview, progression, spelldata, spelleffect, windowcap, zonedata,
+    aadata, character, chat, combat, debugview, effects, gearplanner, history, inventory, monsters,
+    npcdata, overview, progression, spelldata, spelleffect, windowcap, zonedata,
 };
 use serde_json::{json, Map, Value};
 use std::path::Path;
@@ -524,6 +524,11 @@ fn main() {
     out.insert(
         "get_live_meter".to_string(),
         json!({ "": combat::live_meter(&ing) }),
+    );
+    // why: overlay's timed-effects widget, no args
+    out.insert(
+        "get_status_effects".to_string(),
+        json!({ "": effects::status_effects(&ing) }),
     );
     // why: a zone/NPC page's own "your parsed encounters" section --
     // "Blackburrow" is a real zone id (packs/zones.json) real fights in

@@ -75,6 +75,10 @@ pub struct Preferences {
     /// widget follows the same pattern instead of inventing a new shape.
     #[serde(default = "default_overlay_opacity")]
     pub overlay_dps_meter_opacity: f64,
+    /// why: the timed-effects widget's own opacity -- see
+    /// overlay_dps_meter_opacity's own doc, same pattern
+    #[serde(default = "default_overlay_opacity")]
+    pub overlay_status_effects_opacity: f64,
     // why: no "is this widget / the overlay window currently on" field --
     // deliberately not a style preference to remember, it's live session
     // state. Caught live: an earlier version persisted the window's own
@@ -94,6 +98,7 @@ impl Default for Preferences {
             update_channel: UpdateChannel::default(),
             theme: default_theme(),
             overlay_dps_meter_opacity: default_overlay_opacity(),
+            overlay_status_effects_opacity: default_overlay_opacity(),
         }
     }
 }
@@ -149,6 +154,7 @@ mod tests {
             "this app's own identity, not an upstream preset"
         );
         assert_eq!(p.overlay_dps_meter_opacity, 0.85);
+        assert_eq!(p.overlay_status_effects_opacity, 0.85);
     }
 
     #[test]
@@ -160,6 +166,7 @@ mod tests {
             update_channel: UpdateChannel::Beta,
             theme: "claude".to_string(),
             overlay_dps_meter_opacity: 0.4,
+            overlay_status_effects_opacity: 0.6,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: Preferences = serde_json::from_str(&json).unwrap();
@@ -169,6 +176,7 @@ mod tests {
         assert_eq!(back.update_channel, UpdateChannel::Beta);
         assert_eq!(back.theme, "claude");
         assert_eq!(back.overlay_dps_meter_opacity, 0.4);
+        assert_eq!(back.overlay_status_effects_opacity, 0.6);
     }
 
     /// why: an old/partial file must still load via #[serde(default)]
@@ -181,5 +189,6 @@ mod tests {
         assert_eq!(back.update_channel, UpdateChannel::Public);
         assert_eq!(back.theme, "eqlp");
         assert_eq!(back.overlay_dps_meter_opacity, 0.85);
+        assert_eq!(back.overlay_status_effects_opacity, 0.85);
     }
 }

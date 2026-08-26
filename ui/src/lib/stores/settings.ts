@@ -31,6 +31,9 @@ export const dpsMeterEnabled = writable(false);
 /** why: this widget's own background alpha, 0.0 (invisible) to 1.0
  * (fully opaque) -- IS persisted, a real style choice worth keeping */
 export const dpsMeterOpacity = writable(0.85);
+/** why: same on/off contract as dpsMeterEnabled -- see its own doc */
+export const statusEffectsEnabled = writable(false);
+export const statusEffectsOpacity = writable(0.85);
 export const settingsLoaded = writable(false);
 
 // why: applies on every change, not just after an explicit setTheme() --
@@ -62,6 +65,7 @@ export function loadPreferences(): Promise<void> {
     updateChannel.set(prefs.update_channel);
     theme.set(prefs.theme);
     dpsMeterOpacity.set(prefs.overlay_dps_meter_opacity);
+    statusEffectsOpacity.set(prefs.overlay_status_effects_opacity);
     settingsLoaded.set(true);
   })();
   return loading;
@@ -75,6 +79,7 @@ function currentPrefs(): PreferencesDto {
     update_channel: get(updateChannel),
     theme: get(theme),
     overlay_dps_meter_opacity: get(dpsMeterOpacity),
+    overlay_status_effects_opacity: get(statusEffectsOpacity),
   };
 }
 
@@ -103,15 +108,17 @@ export async function setTheme(slug: string) {
   await api.setPreferences({ ...currentPrefs(), theme: slug }).catch(() => {});
 }
 
-/** why: NOT persisted (see dpsMeterEnabled's own doc) -- turning a
- * widget on/off also opens/closes the real overlay window itself, since
- * it's currently the only widget that can be showing in it. Throws the
- * backend's own plain-language capability reason on failure (see
- * windowcap.rs); the store still flips on optimistically but the caller
- * should show that reason rather than pretend the window opened. */
+/** why: NOT persisted (see dpsMeterEnabled's own doc) -- the real
+ * overlay window is one shared window holding every enabled widget, and
+ * the backend itself tracks which widgets are on (AppState::
+ * overlay_widgets): it opens on the first widget to enable, closes only
+ * once the last one disables. Throws the backend's own plain-language
+ * capability reason on failure (see windowcap.rs); the store still
+ * flips on optimistically but the caller should show that reason rather
+ * than pretend the window opened. */
 export async function setDpsMeterEnabled(on: boolean) {
   dpsMeterEnabled.set(on);
-  await api.setOverlayEnabled(on);
+  await api.setOverlayEnabled('dps_meter', on);
 }
 
 /** why: persists, and live-pushes to the open overlay window (a no-op
@@ -121,6 +128,19 @@ export async function setDpsMeterOpacity(v: number) {
   dpsMeterOpacity.set(v);
   void api.setOverlayOpacity('dps_meter', v);
   await api.setPreferences({ ...currentPrefs(), overlay_dps_meter_opacity: v }).catch(() => {});
+}
+
+/** why: same contract as setDpsMeterEnabled -- see its own doc */
+export async function setStatusEffectsEnabled(on: boolean) {
+  statusEffectsEnabled.set(on);
+  await api.setOverlayEnabled('status_effects', on);
+}
+
+/** why: same contract as setDpsMeterOpacity -- see its own doc */
+export async function setStatusEffectsOpacity(v: number) {
+  statusEffectsOpacity.set(v);
+  void api.setOverlayOpacity('status_effects', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_status_effects_opacity: v }).catch(() => {});
 }
 
 /** why: shared by every era-tagged Game Data category that carries a

@@ -183,6 +183,33 @@ export interface LiveMeterDto {
   incoming: EntityStateDto[];
 }
 
+export interface CharmStatusDto {
+  who: string;
+  active: boolean;
+  since_ms: number;
+}
+
+export interface InvisStatusDto {
+  active: boolean;
+  /** true = still invisible, but about to end -- the early-warning line landed */
+  fading: boolean;
+  since_ms: number;
+}
+
+export interface MomentaryStatusDto {
+  outcome: 'success' | 'failure' | 'ended';
+  since_ms: number;
+}
+
+/** why: Charm/Invisibility/Hide/Sneak -- see effects.rs's own doc. Each
+ * field null when nothing of that kind has happened yet this session. */
+export interface StatusEffectsDto {
+  charm: CharmStatusDto | null;
+  invis: InvisStatusDto | null;
+  hide: MomentaryStatusDto | null;
+  sneak: MomentaryStatusDto | null;
+}
+
 // ---------------------------------------------------------------- character
 
 export interface ClassConfigurationDto {
@@ -961,6 +988,8 @@ export interface PreferencesDto {
    * window-wide value -- 0.0 (invisible) to 1.0 (fully opaque), this
    * widget's own panel background alpha */
   overlay_dps_meter_opacity: number;
+  /** why: same pattern as overlay_dps_meter_opacity -- this widget's own panel background alpha */
+  overlay_status_effects_opacity: number;
 }
 
 export interface UpdateInfoDto {
@@ -1186,9 +1215,15 @@ export const api = {
   getWindowCapability: () => invoke<WindowCapabilityDto>('get_window_capability'),
   /** why: the DPS meter overlay's whole data source */
   getLiveMeter: () => invoke<LiveMeterDto | null>('get_live_meter'),
-  /** why: opens/closes the real floating overlay window; rejects with a
+  /** why: the timed-effects overlay's whole data source */
+  getStatusEffects: () => invoke<StatusEffectsDto>('get_status_effects'),
+  /** why: the shared overlay window opens on the first widget to enable
+   * and closes only once the last one disables; rejects with a
    * plain-language reason if the session's capability caps below click-through */
-  setOverlayEnabled: (enabled: boolean) => invoke<void>('set_overlay_enabled', { enabled }),
+  setOverlayEnabled: (widget: string, enabled: boolean) => invoke<void>('set_overlay_enabled', { widget, enabled }),
+  /** why: the overlay window's own mount -- which widgets are currently
+   * enabled, since it can't read the main window's local stores */
+  getOverlayEnabledWidgets: () => invoke<string[]>('get_overlay_enabled_widgets'),
   /** why: live-pushes to the open overlay window only -- pair with setPreferences to persist */
   setOverlayOpacity: (widget: string, opacity: number) => invoke<void>('set_overlay_opacity', { widget, opacity }),
   /** why: unlock to drag the overlay into position, lock to make it click-through again */
