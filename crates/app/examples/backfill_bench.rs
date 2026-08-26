@@ -1,13 +1,14 @@
-//! why: measures real startup backfill time, thread-count sweep
+//! why: measures real startup backfill time, thread-count x chunk-size sweep
 //! input: path to a real log
-//! output: printed timings per thread count
+//! output: printed timings per (threads, chunk_lines) combination
 //! run: cargo run -p eqlp-app --release --example backfill_bench -- <log>
 
 use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
 use eqlp_app::parser::build_engine;
 use std::time::Instant;
 
-const BACKFILL_CHUNK_LINES: usize = 100_000;
+/// why: production's own default (tail_worker.rs's BACKFILL_CHUNK_LINES)
+const DEFAULT_CHUNK_LINES: usize = 100_000;
 
 fn main() {
     let path = std::env::args()
@@ -33,24 +34,29 @@ fn main() {
     println!("available_parallelism: {available}");
 
     // why: sweep beyond the production cap to check it's still right
-    let mut candidates: Vec<usize> = vec![1, 2, 4, 8, 12, 16, 24, 32];
-    candidates.retain(|&t| t <= available * 2);
-    candidates.dedup();
+    let mut thread_candidates: Vec<usize> = vec![1, 2, 4, 8, 12, 16, 24, 32];
+    thread_candidates.retain(|&t| t <= available * 2);
+    thread_candidates.dedup();
 
-    for threads in candidates {
-        let mut ing = Ingest::default();
-        let t_backfill = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
-        let mut chunk_count = 0;
-        for chunk in lines.chunks(BACKFILL_CHUNK_LINES) {
-            backfill_lines(&mut ing, &engine, chunk, threads);
-            chunk_count += 1;
+    let chunk_candidates: Vec<usize> = vec![DEFAULT_CHUNK_LINES, 200_000];
+
+    for &chunk_lines in &chunk_candidates {
+        println!("\n-- chunk_lines={chunk_lines} --");
+        for &threads in &thread_candidates {
+            let mut ing = Ingest::default();
+            let t_backfill = Instant::now(); // clock-exempt: benchmark, measures real wall time on purpose
+            let mut chunk_count = 0;
+            for chunk in lines.chunks(chunk_lines) {
+                backfill_lines(&mut ing, &engine, chunk, threads);
+                chunk_count += 1;
+            }
+            let backfill_elapsed = t_backfill.elapsed();
+            println!(
+                "threads={threads:>2}  backfill={backfill_elapsed:>9.2?}  ({:.1} ns/line, {chunk_count} chunks)  matched={} unmatched={}",
+                backfill_elapsed.as_nanos() as f64 / lines.len() as f64,
+                ing.counts.matched,
+                ing.counts.unmatched
+            );
         }
-        let backfill_elapsed = t_backfill.elapsed();
-        println!(
-            "threads={threads:>2}  backfill={backfill_elapsed:>9.2?}  ({:.1} ns/line, {chunk_count} chunks)  matched={} unmatched={}",
-            backfill_elapsed.as_nanos() as f64 / lines.len() as f64,
-            ing.counts.matched,
-            ing.counts.unmatched
-        );
     }
 }
