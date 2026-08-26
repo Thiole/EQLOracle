@@ -1,8 +1,14 @@
 <script lang="ts">
   // why: timed-effect awareness -- Charm/Invisibility are continuous
   // states (shown as long as active, FADING is the real early warning
-  // before it ends), Hide/Sneak are one-shot attempt outcomes (flashed
-  // for FLASH_MS then cleared). Same house rules as DpsMeterWidget: flat
+  // before it ends). Hide/Sneak are one-shot attempt outcomes, but
+  // persistent like Charm now, not auto-hidden -- real bug, caught
+  // live: an 8s flash window is gone by the time anyone's actually
+  // looking at the overlay ("i just hid and sneaked and its not
+  // showing up" -- the data was real, the window was just too short to
+  // ever see). Blinks briefly on the moment itself, then settles into a
+  // plain, still-shown result until a newer attempt or a real "no
+  // longer hidden" line replaces it. Same house rules as DpsMeterWidget: flat
   // panel, no continuous CSS animation on a value -- color/text changes
   // are discrete state, not eased. Bare rows, no panel/background of its
   // own; SkillTrackerWidget's outer div owns the one shared panel for
@@ -22,15 +28,15 @@
 
   let { status, tracked }: { status: StatusEffectsDto | null; tracked: string[] } = $props();
 
-  /** why: how long a one-shot outcome (hide/sneak/invis-ended) stays
-   * visible before it's just stale news, not a real overlay-worthy fact */
+  /** why: how long invis-ended stays visible before it's just stale news
+   * -- the one row here that's still genuinely a fading flash, not a
+   * persistent result (unlike Charm/Hide/Sneak, see their own docs) */
   const FLASH_MS = 8000;
-  /** why: charm breaking is the one state worth a real blink, not just a
-   * color -- a charmed mob turning hostile mid-fight is genuinely
-   * dangerous. Blinks for this long, then settles into a plain, still
-   * red, still-shown "Broke" -- see charmRow's own doc for why it never
-   * just disappears like the others. */
-  const CHARM_BLINK_MS = 2000;
+  /** why: the moment itself is worth a real blink, not just a color --
+   * charm breaking mid-fight is dangerous, and hide/sneak succeeding or
+   * failing is the one piece of information that action even happened.
+   * Blinks for this long, then settles into a plain, still-shown result. */
+  const BLINK_MS = 2000;
 
   let nowMs = $state(Date.now());
   $effect(() => {
@@ -51,7 +57,7 @@
     // real spell-name collision this avoids; the displayed label still
     // reads "Charm", only the tracked-list identity changed
     if (c.active) return { key: 'Charmed', label: `Charm: ACTIVE (${c.who})`, tone: 'good' as const, blink: false };
-    return { key: 'Charmed', label: `Charm: Broke (${c.who})`, tone: 'bad' as const, blink: nowMs - c.since_ms < CHARM_BLINK_MS };
+    return { key: 'Charmed', label: `Charm: Broke (${c.who})`, tone: 'bad' as const, blink: nowMs - c.since_ms < BLINK_MS };
   });
 
   const invisRow = $derived.by(() => {
@@ -63,11 +69,16 @@
     return null;
   });
 
+  // why: real bug, caught live -- this used to auto-hide after FLASH_MS
+  // (8s), long gone by the time anyone actually checks the overlay
+  // ("i just hid and sneaked and its not showing up"). Now persistent
+  // like charmRow above: no recent() gate, just a blink on the moment.
   function momentaryRow(key: string, m: { outcome: 'success' | 'failure' | 'ended'; since_ms: number } | null | undefined) {
-    if (!m || !recent(m.since_ms)) return null;
-    if (m.outcome === 'success') return { key, label: `${key}: SUCCESS`, tone: 'good' as const, blink: false };
-    if (m.outcome === 'failure') return { key, label: `${key}: FAILURE`, tone: 'bad' as const, blink: false };
-    return { key, label: `${key}: ENDED`, tone: 'dim' as const, blink: false };
+    if (!m) return null;
+    const blink = nowMs - m.since_ms < BLINK_MS;
+    if (m.outcome === 'success') return { key, label: `${key}: SUCCESS`, tone: 'good' as const, blink };
+    if (m.outcome === 'failure') return { key, label: `${key}: FAILURE`, tone: 'bad' as const, blink };
+    return { key, label: `${key}: ENDED`, tone: 'dim' as const, blink };
   }
 
   const hideRow = $derived(momentaryRow('Hide', status?.hide));
@@ -84,28 +95,35 @@
   <p class="text-white/70">no active effects</p>
 {:else}
   {#each rows as r (r.label)}
-    <div class="rounded-sm px-1 font-medium {toneClass[r.tone]} {r.blink ? 'charm-broke-blink' : ''}">{r.label}</div>
+    <div class="rounded-sm px-1 font-medium {toneClass[r.tone]} {r.blink ? `status-blink status-blink-${r.tone}` : ''}">{r.label}</div>
   {/each}
 {/if}
 
 <style>
-  /* why: the one row worth a real blink, not just a color -- Spencer's
-     own ask, charm breaking mid-fight is genuinely dangerous. Hard
+  /* why: the moment itself is worth a real blink, not just a color --
+     charm breaking mid-fight, or hide/sneak's own success/failure/ended,
+     shared by every row in this file (see BLINK_MS's own doc). Hard
      on/off steps, not an eased pulse -- an alert, not a decoration.
-     Inverts (solid red panel, light text) on the "on" beat, plain red
-     text on the "off" beat -- settles into the "off" look once the
-     blink window ends (see charmRow's own doc), never mid-invert. */
-  .charm-broke-blink {
-    animation: charm-broke-flash 0.4s steps(1, end) 5;
+     Inverts (solid panel, dark text) on the "on" beat; leaves color
+     alone on the "off" beat so it settles right back into the row's own
+     toneClass color once the blink window ends, never mid-invert.
+     One class per tone -- a SUCCESS row blinks its own good color, not
+     always red the way a charm-only version could get away with. */
+  .status-blink {
+    animation: status-flash 0.4s steps(1, end) 5;
   }
-  @keyframes charm-broke-flash {
-    0%,
-    100% {
-      background-color: transparent;
-      color: var(--bad);
-    }
+  .status-blink-good {
+    --blink-color: var(--good);
+  }
+  .status-blink-bad {
+    --blink-color: var(--bad);
+  }
+  .status-blink-dim {
+    --blink-color: rgba(255, 255, 255, 0.85);
+  }
+  @keyframes status-flash {
     50% {
-      background-color: var(--bad);
+      background-color: var(--blink-color);
       color: #0a0b0d;
     }
   }

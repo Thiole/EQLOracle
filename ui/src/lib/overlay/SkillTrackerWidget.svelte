@@ -93,28 +93,24 @@
     </div>
   {/if}
 
-  {#if targetEffects?.target}
+  {#if targetEffects?.target && targetEffects.effects.length}
     <div class="flex flex-col gap-1 border-t border-white/10 pt-1.5">
       <div class="truncate font-medium text-white">Target: {targetEffects.target}</div>
-      {#if !targetEffects.effects.length}
-        <p class="text-white/50">no tracked effects</p>
-      {:else}
-        <div class="flex flex-wrap gap-2">
-          {#each targetEffects.effects as e (e.spell)}
-            {@const st = targetEffectState(e)}
-            <div class="flex flex-col items-center gap-0.5" title={e.spell}>
-              <div class="flex size-7 items-center justify-center overflow-hidden rounded-sm bg-black/40 text-[10px] font-bold tracking-wide {st.flash ? 'target-effect-blink' : 'text-white/90'}">
-                {#if e.icon}
-                  <img src={ICON_BASE + encodeURIComponent(e.icon)} alt="" class="size-full object-cover" />
-                {:else}
-                  {abbrev(e.spell)}
-                {/if}
-              </div>
-              <div class="font-mono text-[10px] tabular-nums {st.flash ? 'text-bad' : 'text-white/70'}">{st.label}</div>
+      <div class="flex flex-wrap gap-2">
+        {#each targetEffects.effects as e (e.spell)}
+          {@const st = targetEffectState(e)}
+          <div class="flex flex-col items-center gap-0.5" title={e.spell}>
+            <div class="flex size-7 items-center justify-center overflow-hidden rounded-sm bg-black/40 text-[10px] font-bold tracking-wide {st.flash ? 'target-effect-blink' : 'text-white/90'}">
+              {#if e.icon}
+                <img src={ICON_BASE + encodeURIComponent(e.icon)} alt="" class="size-full object-cover" />
+              {:else}
+                {abbrev(e.spell)}
+              {/if}
             </div>
-          {/each}
-        </div>
-      {/if}
+            <div class="font-mono text-[10px] tabular-nums {st.flash ? 'text-bad' : 'text-white/70'}">{st.label}</div>
+          </div>
+        {/each}
+      </div>
     </div>
   {/if}
 </div>
