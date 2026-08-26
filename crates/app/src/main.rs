@@ -2,8 +2,8 @@
 //!
 //! v1 scope: a docked window, a first-launch folder picker, and a live feed
 //! of parsed lines from whichever `eqlog_*.txt` the game is currently
-//! writing. No overlay -- see `FOUNDATION.md` #4, window role is a
-//! negotiated capability added later, not assumed here.
+//! writing. The overlay (`FOUNDATION.md` #4's own negotiated window-role
+//! capability) came later, gated by `windowcap::detect`, never assumed.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -12,11 +12,48 @@
 use eqlp_app::{commands, config, history, state::AppState, tail_worker};
 use tauri::Manager;
 
+/// why: GTK reads this env var lazily, at its own (first-use) init time --
+/// setting it here, before `tauri::Builder` ever touches GTK, is enough,
+/// no shell wrapper needed. "x11,wayland" prefers X11 -- on a native X11
+/// desktop that's a no-op; on Wayland it routes this app's own window
+/// through XWayland (GNOME/KDE both ship it by default), the
+/// near-universal X11-compat layer, so `always_on_top`/click-through
+/// (native Wayland can't do either, tao#1134) actually work. Falls back
+/// to "wayland" itself only if XWayland genuinely isn't there --
+/// windowcap.rs's own DISPLAY check decides whether that fallback
+/// happened, not a guess. Linux-only: the env var means nothing
+/// elsewhere, but scoped anyway to keep the "why" attached to where it matters.
+#[cfg(target_os = "linux")]
+fn prefer_x11_backend() {
+    // why: doesn't override a value the user (or a launcher) already set --
+    // someone who explicitly forced GDK_BACKEND=wayland meant that
+    if std::env::var("GDK_BACKEND").is_err() {
+        std::env::set_var("GDK_BACKEND", "x11,wayland");
+    }
+}
+
 fn main() {
+    #[cfg(target_os = "linux")]
+    prefer_x11_backend();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::new())
+        // why: caught live -- Tauri's own default is "keep the process
+        // alive as long as any window exists", which on this app means
+        // closing the main window alone leaves the whole process (and
+        // the overlay, if it's open) running invisibly in the
+        // background forever. The overlay is an auxiliary window of the
+        // main one, never the reverse -- closing main always ends the
+        // whole app, the overlay's own close is just its own close.
+        .on_window_event(|window, event| {
+            if window.label() == "main"
+                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
+            {
+                window.app_handle().exit(0);
+            }
+        })
         .setup(|app| {
             let handle = app.handle().clone();
             let state = app.state::<AppState>();
@@ -36,6 +73,12 @@ fn main() {
                 }
                 // why: dir on record but gone -- fall through to setup screen
             }
+            // why: NOT auto-reopened from a saved "was it on" flag --
+            // overlay_enabled isn't a persisted preference (see
+            // preferences.rs's own doc), same "never trust stale carried-
+            // over state" stance save_profile takes for class detection.
+            // Every launch starts with the overlay off; opacity/widget
+            // choices still carry over once it's turned back on this session.
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

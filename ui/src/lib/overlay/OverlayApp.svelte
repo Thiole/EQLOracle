@@ -2,13 +2,15 @@
   // why: the overlay window's own separate Svelte app -- a distinct
   // webview/JS realm from the main window (see overlay-main.ts), so it
   // can't share the main window's stores directly. Fetches its own
-  // initial state and listens for its own events instead.
+  // initial state and listens for its own events instead. Bare,
+  // transparent container -- each widget owns its own panel background/
+  // opacity (see DpsMeterWidget's own doc), not one shared window-wide
+  // value; more widgets stack here as they're built.
   import { api, type LiveMeterDto } from '$lib/tauri/api';
   import { listen } from '$lib/tauri/invoke';
   import DpsMeterWidget from './DpsMeterWidget.svelte';
 
-  let opacity = $state(0.85);
-  let dpsMeterOn = $state(true);
+  let dpsMeterOpacity = $state(0.85);
   let meter = $state<LiveMeterDto | null>(null);
 
   async function refresh() {
@@ -17,12 +19,13 @@
 
   $effect(() => {
     void api.getPreferences().then((p) => {
-      opacity = p.overlay_opacity;
-      dpsMeterOn = p.overlay_dps_meter;
+      dpsMeterOpacity = p.overlay_dps_meter_opacity;
     });
     void refresh();
     const unlistenTick = listen('parse-tick', () => void refresh());
-    const unlistenOpacity = listen<number>('overlay-opacity', (e) => (opacity = e.payload));
+    const unlistenOpacity = listen<{ widget: string; opacity: number }>('overlay-opacity', (e) => {
+      if (e.payload.widget === 'dps_meter') dpsMeterOpacity = e.payload.opacity;
+    });
     return () => {
       void unlistenTick.then((f) => f());
       void unlistenOpacity.then((f) => f());
@@ -30,15 +33,11 @@
   });
 </script>
 
-<!-- data-tauri-drag-region: only actually draggable while unlocked (see
-     the Overlay tab's own "reposition" toggle) -- click-through ignores
-     every pointer event, including this one, while locked. -->
-<div
-  data-tauri-drag-region
-  class="min-h-screen w-screen cursor-move p-2"
-  style:background-color="rgba(10, 11, 13, {opacity})"
->
-  {#if dpsMeterOn}
-    <DpsMeterWidget {meter} />
-  {/if}
+<!-- why: NOT data-tauri-drag-region -- a real check against this exact
+     stack (XWayland via KWin) found that move request silently doesn't
+     move the window (a resize-border drag does). set_overlay_locked
+     switches to real decorations instead while unlocked, so dragging
+     the actual title bar (every window manager supports that) repositions it. -->
+<div class="min-h-screen w-screen p-2">
+  <DpsMeterWidget {meter} opacity={dpsMeterOpacity} />
 </div>

@@ -482,12 +482,27 @@ pub fn set_overlay_enabled(app: AppHandle, enabled: bool) -> Result<(), String> 
 }
 
 /// why: live-pushes to the open overlay window -- a no-op, not an error,
-/// when it isn't open; persistence is the caller's own setPreferences call
+/// when it isn't open; persistence is the caller's own setPreferences
+/// call. `widget` names which one changed -- each overlay widget owns
+/// its own opacity, not one shared window-wide value (see
+/// preferences.rs's own overlay_dps_meter_opacity doc)
+
+#[derive(Debug, Clone, Serialize)]
+struct OverlayOpacityEvent {
+    widget: String,
+    opacity: f64,
+}
 
 #[tauri::command]
-pub fn set_overlay_opacity(app: AppHandle, opacity: f64) {
+pub fn set_overlay_opacity(app: AppHandle, widget: String, opacity: f64) {
     if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
-        let _ = w.emit("overlay-opacity", opacity.clamp(0.0, 1.0));
+        let _ = w.emit(
+            "overlay-opacity",
+            OverlayOpacityEvent {
+                widget,
+                opacity: opacity.clamp(0.0, 1.0),
+            },
+        );
     }
 }
 
@@ -495,9 +510,14 @@ pub fn set_overlay_opacity(app: AppHandle, opacity: f64) {
 /// makes the window impossible to drag into position at all, since every
 /// click passes straight to the game underneath it. Unlocking briefly
 /// (a real toggle in the Overlay tab) accepts clicks again so the panel
-/// can actually be repositioned; a no-op if the overlay isn't open, or
-/// if this session's own capability never allowed click-through to
-/// begin with (nothing to toggle back to)
+/// can be repositioned, and also turns real decorations back on -- a
+/// live check against this exact real setup (XWayland via KWin) found
+/// `data-tauri-drag-region`'s own move request silently doesn't move the
+/// window there (a resize-border drag does), so the one mechanism every
+/// window manager is guaranteed to support -- dragging a real title bar
+/// -- is what's actually used, not the borderless trick. A no-op if the
+/// overlay isn't open, or if this session's own capability never allowed
+/// click-through to begin with (nothing to toggle back to)
 
 #[tauri::command]
 pub fn set_overlay_locked(app: AppHandle, locked: bool) -> Result<(), String> {
@@ -507,6 +527,7 @@ pub fn set_overlay_locked(app: AppHandle, locked: bool) -> Result<(), String> {
     if let Some(w) = app.get_webview_window(OVERLAY_LABEL) {
         w.set_ignore_cursor_events(locked)
             .map_err(|e| e.to_string())?;
+        w.set_decorations(!locked).map_err(|e| e.to_string())?;
     }
     Ok(())
 }

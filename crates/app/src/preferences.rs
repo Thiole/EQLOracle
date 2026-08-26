@@ -24,10 +24,6 @@ fn default_overlay_opacity() -> f64 {
     0.85
 }
 
-fn default_true() -> bool {
-    true
-}
-
 /// why: which release channel this install checks for updates against --
 /// `public` = the `latest` GitHub release (main, deliberate releases
 /// only), `beta` = the `testing` release (every push to `testing`,
@@ -68,20 +64,25 @@ pub struct Preferences {
     /// never a hard error
     #[serde(default = "default_theme")]
     pub theme: String,
-    /// why: off by default -- a floating always-on-top window is an
-    /// opt-in, not something a fresh install springs on someone
-    #[serde(default)]
-    pub overlay_enabled: bool,
-    /// why: 0.0 (invisible) to 1.0 (fully opaque) -- the overlay panel's
-    /// own background alpha, not a native window-opacity call (see
-    /// windowcap.rs's own doc on why the window itself is just
-    /// `transparent: true` and content controls how see-through it reads)
+    /// why: each overlay widget owns its own opacity, not one shared
+    /// window-wide setting -- more widgets are coming (a party tracker
+    /// is the next one planned), each independently placed and
+    /// independently see-through. 0.0 (invisible) to 1.0 (fully opaque)
+    /// -- this widget's own panel background alpha, not a native
+    /// window-opacity call (see windowcap.rs's own doc on why the window
+    /// itself is just `transparent: true` and content controls how
+    /// see-through it reads). Named overlay_<widget>_opacity so the next
+    /// widget follows the same pattern instead of inventing a new shape.
     #[serde(default = "default_overlay_opacity")]
-    pub overlay_opacity: f64,
-    /// why: the only overlay widget that exists so far -- a bool, not a
-    /// list, until a second one actually exists to justify one
-    #[serde(default = "default_true")]
-    pub overlay_dps_meter: bool,
+    pub overlay_dps_meter_opacity: f64,
+    // why: no "is this widget / the overlay window currently on" field --
+    // deliberately not a style preference to remember, it's live session
+    // state. Caught live: an earlier version persisted the window's own
+    // on/off and reopened it automatically on every launch, silently
+    // trusting stale state the same way save_profile's own doc
+    // explicitly warns against for class detection. Every launch starts
+    // with every widget off; each widget's own opacity still carries
+    // over once it's turned back on.
 }
 
 impl Default for Preferences {
@@ -92,9 +93,7 @@ impl Default for Preferences {
             save_profile: false,
             update_channel: UpdateChannel::default(),
             theme: default_theme(),
-            overlay_enabled: false,
-            overlay_opacity: default_overlay_opacity(),
-            overlay_dps_meter: default_true(),
+            overlay_dps_meter_opacity: default_overlay_opacity(),
         }
     }
 }
@@ -149,15 +148,7 @@ mod tests {
             p.theme, "eqlp",
             "this app's own identity, not an upstream preset"
         );
-        assert!(
-            !p.overlay_enabled,
-            "off by default -- a floating window is opt-in"
-        );
-        assert_eq!(p.overlay_opacity, 0.85);
-        assert!(
-            p.overlay_dps_meter,
-            "the one overlay widget defaults on, gated by overlay_enabled itself"
-        );
+        assert_eq!(p.overlay_dps_meter_opacity, 0.85);
     }
 
     #[test]
@@ -168,9 +159,7 @@ mod tests {
             save_profile: true,
             update_channel: UpdateChannel::Beta,
             theme: "claude".to_string(),
-            overlay_enabled: true,
-            overlay_opacity: 0.4,
-            overlay_dps_meter: false,
+            overlay_dps_meter_opacity: 0.4,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: Preferences = serde_json::from_str(&json).unwrap();
@@ -179,9 +168,7 @@ mod tests {
         assert!(back.save_profile);
         assert_eq!(back.update_channel, UpdateChannel::Beta);
         assert_eq!(back.theme, "claude");
-        assert!(back.overlay_enabled);
-        assert_eq!(back.overlay_opacity, 0.4);
-        assert!(!back.overlay_dps_meter);
+        assert_eq!(back.overlay_dps_meter_opacity, 0.4);
     }
 
     /// why: an old/partial file must still load via #[serde(default)]
@@ -193,8 +180,6 @@ mod tests {
         assert!(!back.save_profile);
         assert_eq!(back.update_channel, UpdateChannel::Public);
         assert_eq!(back.theme, "eqlp");
-        assert!(!back.overlay_enabled);
-        assert_eq!(back.overlay_opacity, 0.85);
-        assert!(back.overlay_dps_meter);
+        assert_eq!(back.overlay_dps_meter_opacity, 0.85);
     }
 }

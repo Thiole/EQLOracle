@@ -433,7 +433,7 @@ fn main() {
     );
     // why: the real struct, not a hand-typed object -- a hand-typed one
     // already drifted once (missing 3 real fields after preferences.rs
-    // grew overlay_enabled/overlay_opacity/overlay_dps_meter, silently
+    // grew overlay_opacity/overlay_dps_meter, silently
     // NaN-ing the Overlay tab's own transparency slider in mock mode)
     out.insert(
         "get_preferences".to_string(),

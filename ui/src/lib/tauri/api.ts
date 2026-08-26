@@ -171,8 +171,10 @@ export interface WindowCapabilityDto {
 export interface LiveMeterDto {
   target: string;
   open: boolean;
-  /** why: players and assumed pets only -- see live_meter's own doc */
-  rows: EntityStateDto[];
+  /** why: players and assumed pets, ranked by their own trailing dps */
+  outgoing: EntityStateDto[];
+  /** why: the enemy side -- same trailing dps calc, so this is real incoming damage per source */
+  incoming: EntityStateDto[];
 }
 
 // ---------------------------------------------------------------- character
@@ -949,12 +951,10 @@ export interface PreferencesDto {
    * blocks -- 'eqlp' is this app's own original identity, everything
    * else is a real preset, see themes.css's own doc for where they're from */
   theme: string;
-  /** why: off by default -- a floating always-on-top window is opt-in */
-  overlay_enabled: boolean;
-  /** why: 0.0 (invisible) to 1.0 (fully opaque) -- the overlay panel's own background alpha */
-  overlay_opacity: number;
-  /** why: the one overlay widget that exists so far */
-  overlay_dps_meter: boolean;
+  /** why: each overlay widget owns its own opacity, not one shared
+   * window-wide value -- 0.0 (invisible) to 1.0 (fully opaque), this
+   * widget's own panel background alpha */
+  overlay_dps_meter_opacity: number;
 }
 
 export interface UpdateInfoDto {
@@ -1184,7 +1184,7 @@ export const api = {
    * plain-language reason if the session's capability caps below click-through */
   setOverlayEnabled: (enabled: boolean) => invoke<void>('set_overlay_enabled', { enabled }),
   /** why: live-pushes to the open overlay window only -- pair with setPreferences to persist */
-  setOverlayOpacity: (opacity: number) => invoke<void>('set_overlay_opacity', { opacity }),
+  setOverlayOpacity: (widget: string, opacity: number) => invoke<void>('set_overlay_opacity', { widget, opacity }),
   /** why: unlock to drag the overlay into position, lock to make it click-through again */
   setOverlayLocked: (locked: boolean) => invoke<void>('set_overlay_locked', { locked }),
 

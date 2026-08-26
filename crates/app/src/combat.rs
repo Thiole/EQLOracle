@@ -986,14 +986,20 @@ pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<Ent
     out
 }
 
-/// why: the overlay DPS meter's whole data source
+/// why: the overlay DPS meter's whole data source -- same split the
+/// Combat tab's own summary card shows (team output vs. what's coming
+/// back), not just a flat roster
 #[derive(Debug, Clone, Serialize)]
 pub struct LiveMeterDto {
     pub target: String,
     pub open: bool,
-    /// why: players and their assumed pets only -- an overlay meter is
-    /// about your own group's output, not a full enemy roster
-    pub rows: Vec<EntityStateDto>,
+    /// why: players and their assumed pets, ranked by their own trailing dps
+    pub outgoing: Vec<EntityStateDto>,
+    /// why: the enemy side -- `fight_state_at`'s own dps calc already
+    /// means "damage dealt BY this entity" regardless of which side it's
+    /// on, so an enemy row here is real incoming-damage-per-source, not
+    /// a separate calculation
+    pub incoming: Vec<EntityStateDto>,
 }
 
 /// why: overlay's own live poll -- most recent encounter, `fight_state_at`'s
@@ -1004,12 +1010,13 @@ pub struct LiveMeterDto {
 pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     let now = ing.now_ms();
     let latest = ing.store.encounters.iter().max_by_key(|e| e.start_ms)?;
-    let mut rows = fight_state_at(ing, latest.id.0, now);
-    rows.retain(|r| r.is_player || r.is_pet);
+    let rows = fight_state_at(ing, latest.id.0, now);
+    let (outgoing, incoming) = rows.into_iter().partition(|r| r.is_player || r.is_pet);
     Some(LiveMeterDto {
         target: ing.store.name(latest.target).to_string(),
         open: latest.is_open(),
-        rows,
+        outgoing,
+        incoming,
     })
 }
 
@@ -1200,24 +1207,32 @@ mod live_meter_tests {
     }
 
     #[test]
-    fn a_real_fight_surfaces_the_player_row_only() {
+    fn a_real_fight_splits_outgoing_from_incoming() {
         // why: "You" isn't Kind::Player until proven (a player-only chat
         // channel, or damaging a mob "You" also damaged) -- solo melee
         // alone never proves it, so a real chat line comes first
         let ing = run("[Tue Jul 28 15:00:00 2026] You tell your party, 'ready'\n\
-             [Tue Jul 28 15:01:00 2026] You hit Refugee Splitpaw for 10 points of damage.\n");
+             [Tue Jul 28 15:01:00 2026] You hit Refugee Splitpaw for 10 points of damage.\n\
+             [Tue Jul 28 15:01:01 2026] Refugee Splitpaw hits You for 4 points of damage.\n");
         let m = live_meter(&ing).expect("a real encounter should exist");
         assert_eq!(m.target, "Refugee Splitpaw");
         assert!(m.open, "no death/reset line yet -- still open");
         assert!(
-            m.rows.iter().any(|r| r.name == "You" && r.is_player),
+            m.outgoing.iter().any(|r| r.name == "You" && r.is_player),
             "{:?}",
-            m.rows
+            m.outgoing
         );
         assert!(
-            m.rows.iter().all(|r| !r.is_enemy),
-            "overlay meter is players/pets only, {:?}",
-            m.rows
+            m.outgoing.iter().all(|r| !r.is_enemy),
+            "outgoing is players/pets only, {:?}",
+            m.outgoing
+        );
+        assert!(
+            m.incoming
+                .iter()
+                .any(|r| r.name == "Refugee Splitpaw" && r.is_enemy && r.dps > 0.0),
+            "{:?}",
+            m.incoming
         );
     }
 }
