@@ -7,7 +7,7 @@ use eqlp_session::{series as bucket_series, Allegiance, Cause, Kind, State};
 use eqlp_source::Millis;
 use eqlp_store::{
     by_ability, by_actor, dps_window, flag, tag, total, AbilityId, AbilityRow, Encounter,
-    EncounterId, EventKind, Filter, Sym,
+    EncounterId, EventKind, Filter, Sym, NO_ENCOUNTER,
 };
 use serde::Serialize;
 use std::collections::HashMap;
@@ -1009,7 +1009,24 @@ pub struct LiveMeterDto {
 /// before any real encounter exists yet this session.
 pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     let now = ing.now_ms();
-    let latest = ing.store.encounters.iter().max_by_key(|e| e.start_ms)?;
+    // why: real bug, caught live -- Encounter::start_ms is when that
+    // encounter object was *opened*, not evidence anything real is still
+    // happening in it. A stray miss/attempt against an unrelated target
+    // (real case: a lone 0/0 encounter against "Consetta") can open a
+    // brand new encounter with a later start_ms than a real fight that's
+    // still actively landing damage, winning a max_by_key(start_ms) pick
+    // outright and showing an empty meter while the real fight goes on.
+    // The store is append order (chronological) -- walking backward for
+    // the last row that actually belongs to *any* encounter finds
+    // whichever one most recently had real activity, not just whichever
+    // was opened most recently. Short-circuits near-instantly in the
+    // common case (the most recent row almost always belongs to
+    // whatever's actively being fought).
+    let latest_id = (0..ing.store.len())
+        .rev()
+        .map(|i| ing.store.enc[i])
+        .find(|&e| e != NO_ENCOUNTER)?;
+    let latest = ing.store.encounter(EncounterId(latest_id))?;
     let rows = fight_state_at(ing, latest.id.0, now);
     let (outgoing, incoming) = rows.into_iter().partition(|r| r.is_player || r.is_pet);
     Some(LiveMeterDto {
@@ -1233,6 +1250,27 @@ mod live_meter_tests {
                 .any(|r| r.name == "Refugee Splitpaw" && r.is_enemy && r.dps > 0.0),
             "{:?}",
             m.incoming
+        );
+    }
+
+    /// why: real bug, caught live -- a stray hit against an unrelated
+    /// target ("Consetta") opened its own encounter with a later
+    /// start_ms than a real fight that was still actively landing
+    /// damage, and the old max_by_key(start_ms) pick chose the newer-
+    /// but-dead encounter over the real ongoing one. The real fight's
+    /// own most recent row is later than the stray encounter's only
+    /// row, which is what should decide it, not which encounter object
+    /// was opened more recently.
+    #[test]
+    fn the_encounter_with_more_recent_real_activity_wins_even_with_an_earlier_start() {
+        let ing = run("[Tue Jul 28 15:00:00 2026] You tell your party, 'ready'\n\
+             [Tue Jul 28 15:01:00 2026] You hit Innoruuk for 10 points of damage.\n\
+             [Tue Jul 28 15:02:00 2026] You hit Consetta for 3 points of damage.\n\
+             [Tue Jul 28 15:03:00 2026] You hit Innoruuk for 12 points of damage.\n");
+        let m = live_meter(&ing).expect("a real encounter should exist");
+        assert_eq!(
+            m.target, "Innoruuk",
+            "the still-active fight should win, not the more-recently-opened stray encounter"
         );
     }
 }
