@@ -171,15 +171,15 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
     let enc = combat::encounter_for(ing, target_sym);
 
     let target_name = ing.store.name(target_sym).to_string();
-    let kind = ing.encounters.entities.kind(&target_name);
     let state = ing
         .timeline
         .state_at(target_sym.0, now)
         .map(|(s, _)| s)
         .unwrap_or(State::Engaged);
-    if !Allegiance::of(kind, state).is_enemy() {
-        // why: charmed by a teammate (or otherwise no longer an enemy) --
-        // Spencer's other named clear condition
+    // why: Charmed is checked directly and first, always honored --
+    // Spencer's own named clear condition, and the one real way a
+    // fought mob legitimately becomes an ally mid-session
+    if state == State::Charmed {
         return TargetEffectsDto::default();
     }
     // why: Allegiance::of doesn't special-case Dead (a dead Unproven
@@ -187,6 +187,26 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
     // signal could still name an already-confirmed-dead entity
     if state == State::Dead {
         return TargetEffectsDto::default();
+    }
+    // why: real bug, caught live -- Entities::kind is a global, sticky,
+    // name-keyed classification (`note_shared_target`'s own doc: "same
+    // sticky-forever mechanism as chat proof"), and a real mob can get
+    // misclassified Kind::Player forever from one coincidental edge
+    // case (two mobs cross-damaging the same anchor, a reflected hit,
+    // ...) -- a real haunted chest, actively biting/bashing "You" right
+    // now, silently cleared here even though dps meter showed it fine
+    // (live_meter never checks kind at all). If this target is the
+    // OPEN encounter's own anchor -- link()'s own real, damage-verified
+    // "which side is the mob" choice, not the sticky classification --
+    // that's authoritative and the stale kind lookup is skipped
+    // entirely. Only falls back to Allegiance::of when there's no such
+    // encounter yet (the pure-debuff-cast fallback path in target_sym).
+    let confirmed_enemy_anchor = enc.is_some_and(|e| e.target == target_sym && e.is_open());
+    if !confirmed_enemy_anchor {
+        let kind = ing.encounters.entities.kind(&target_name);
+        if !Allegiance::of(kind, state).is_enemy() {
+            return TargetEffectsDto::default();
+        }
     }
 
     // why: Spencer's own ask -- "only show the highest for a skill
@@ -275,7 +295,19 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
             );
         }
     }
+    // why: real bug, caught live -- Ingest::effects is name-keyed
+    // (Sym), unbounded, whole-session history, same as the timeline/
+    // entities lookups above. A common respawning mob name ("a haunted
+    // chest", 14,764 real occurrences in one real log) means `all()`
+    // returns effects from EVERY past spawn ever fought, not just this
+    // one -- an 18-day-old Tashania observation showed up as if it
+    // were live on a mob that only spawned moments ago. Scoped to the
+    // same TARGET_STALE_MS window target_sym's own resolution already
+    // uses, so only this encounter's real activity counts.
     for p in ing.effects.all(target_sym.0) {
+        if now - p.ts > TARGET_STALE_MS {
+            continue;
+        }
         let (Some(skill), Some(source)) = (&p.skill, &p.source) else {
             continue;
         };
@@ -432,6 +464,61 @@ mod tests {
             dto.target.as_deref(),
             Some("a rat"),
             "a party member's own damage on an unrelated mob must not override what You are actually engaged with"
+        );
+    }
+
+    /// why: real bug, caught live -- "a haunted chest, only thing in
+    /// combat... it was parsing fine to dps meter" but not here.
+    /// Entities::kind is a global, sticky, name-keyed classification
+    /// (note_shared_target's own doc: "same sticky-forever mechanism as
+    /// chat proof") -- a real mob can get misclassified Kind::Player
+    /// forever from one coincidental edge (here: dealing damage to an
+    /// anchor "You" had already confirmed against something else
+    /// entirely), silently poisoning EVERY future encounter with that
+    /// same name. dps meter never checks kind at all, so it kept
+    /// working; target_effects' own Allegiance check didn't. A later,
+    /// real, separate fight where the same-named mob is the OPEN
+    /// encounter's own real damage-verified anchor overrides the stale
+    /// classification.
+    #[test]
+    fn a_sticky_misclassified_mob_still_resolves_via_its_own_open_encounter() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You hit a bat for 5 points of damage.",
+            "[Tue Jul 28 15:01:02 2026] a rat hit a bat for 3 points of damage.",
+            // why: 13s later -- past Policy::default's own 10s idle_ms,
+            // so the earlier bat encounter (and "a rat"'s membership in
+            // it) is fully expired before this real, separate fight
+            // opens a fresh one with "a rat" as its own real anchor
+            "[Tue Jul 28 15:01:15 2026] You hit a rat for 10 points of damage.",
+        ]);
+        let dto = target_effects(&ing);
+        assert_eq!(
+            dto.target.as_deref(),
+            Some("a rat"),
+            "a real open encounter's own damage-verified anchor beats a stale, sticky Kind::Player misclassification"
+        );
+    }
+
+    /// why: real bug, caught live, same haunted-chest report -- Ingest::
+    /// effects is name-keyed too, unbounded whole-session history. A
+    /// common respawning mob name accumulates effects from EVERY past
+    /// spawn ever fought; an 18-day-old real observation showed up as
+    /// if it were live on a mob that had only just spawned. Scoped to
+    /// the same staleness window target_sym's own resolution already uses.
+    #[test]
+    fn a_stale_effect_observation_from_a_much_earlier_fight_is_excluded() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You begin casting Tashania.",
+            "[Tue Jul 28 15:01:03 2026] a rat glances nervously about.",
+            // why: 10 minutes later -- a real, later, separate fight
+            // against the same-named mob
+            "[Tue Jul 28 15:11:00 2026] You hit a rat for 5 points of damage.",
+        ]);
+        let dto = target_effects(&ing);
+        assert_eq!(dto.target.as_deref(), Some("a rat"));
+        assert!(
+            dto.effects.iter().all(|e| e.spell != "Tashania"),
+            "a 10-minute-stale observation from a much earlier fight shouldn't show as if active now"
         );
     }
 
