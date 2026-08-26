@@ -25,12 +25,16 @@ fn default_overlay_opacity() -> f64 {
 }
 
 /// why: the Skill Tracker's 4 baked-in status pseudo-entries -- distinct
-/// from any real spell/ability name a track button could add (in
-/// particular "Invisible" not "Invisibility", the real spell -- that
-/// exact string is trackable on its own via Spellbook, and must never
-/// collide with "am I currently invisible" from effects.rs)
+/// from any real spell/ability name a track button could add. "Charmed"
+/// not "Charm" -- real bug, caught live: Enchanter's own level 11 spell
+/// really is named exactly "Charm", so casting it created a cooldown
+/// entry that collided with this pseudo-entry, showing a nonsensical
+/// "Charm: READY" cooldown row alongside the real "Charm: ACTIVE/Broke"
+/// status row. Same reasoning already applied to "Invisible" (not
+/// "Invisibility", also a real spell name) -- every one of these 4 must
+/// never match a name skilltracker.rs could independently learn.
 fn default_tracked_skills() -> Vec<String> {
-    ["Charm", "Invisible", "Hide", "Sneak"]
+    ["Charmed", "Invisible", "Hide", "Sneak"]
         .iter()
         .map(|s| s.to_string())
         .collect()
@@ -98,7 +102,7 @@ pub struct Preferences {
     /// both real tracked abilities/spells (added via a "track" button in
     /// Spellbook/Combat, nothing by default -- a fresh install doesn't
     /// know which skills this character even has) AND the 4 baked-in
-    /// status pseudo-entries (Charm/Invisible/Hide/Sneak), which start
+    /// status pseudo-entries (Charmed/Invisible/Hide/Sneak), which start
     /// present -- Spencer's own ask: "not always track, but on by
     /// default", i.e. real list members like anything else here, just
     /// pre-added instead of opt-in. Removable the same way any tracked
@@ -184,7 +188,7 @@ mod tests {
         assert_eq!(p.overlay_skill_tracker_opacity, 0.85);
         assert_eq!(
             p.tracked_skills,
-            vec!["Charm", "Invisible", "Hide", "Sneak"],
+            vec!["Charmed", "Invisible", "Hide", "Sneak"],
             "on by default, not opt-in like a real tracked skill -- see default_tracked_skills' own doc"
         );
     }
@@ -226,7 +230,7 @@ mod tests {
         assert_eq!(back.overlay_skill_tracker_opacity, 0.85);
         assert_eq!(
             back.tracked_skills,
-            vec!["Charm", "Invisible", "Hide", "Sneak"]
+            vec!["Charmed", "Invisible", "Hide", "Sneak"]
         );
     }
 }

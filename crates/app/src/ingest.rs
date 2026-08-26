@@ -3032,7 +3032,7 @@ fn is_roman_numeral(s: &str) -> bool {
 /// per-character rank appended only in log text, never the wiki title.
 /// Disambiguated by checking the catalog directly: full name real -> no
 /// rank; only base-after-stripping real -> observed rank.
-fn split_cast_rank(name: &str) -> (&str, Option<u8>) {
+pub(crate) fn split_cast_rank(name: &str) -> (&str, Option<u8>) {
     if crate::spelldata::spell_by_name(name).is_some() {
         return (name, None);
     }

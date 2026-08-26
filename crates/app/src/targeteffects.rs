@@ -101,19 +101,46 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
         return TargetEffectsDto::default();
     }
 
-    // why: last real observation per spell wins -- a later resist must
-    // overwrite an earlier landing (and vice versa), regardless of which
-    // of the two signal sources below happened to be scanned last
-    let mut latest: HashMap<String, (Millis, bool)> = HashMap::new();
-    let mut note = |spell: String, ts: Millis, landed: bool| {
-        latest
-            .entry(spell)
-            .and_modify(|e| {
-                if ts >= e.0 {
-                    *e = (ts, landed);
+    // why: Spencer's own ask -- "only show the highest for a skill
+    // line". A DoT/debuff line can have several real ranks (the same
+    // per-character rank system Spellbook's own toRoman/MAX_RANK picker
+    // already deals with, see ingest::split_cast_rank's own doc); once
+    // you've got the higher one, a stale lower-rank observation isn't
+    // worth its own badge. Grouped by the line's own base name -- higher
+    // rank always wins, recency only breaks a tie within the same rank
+    // (or when neither side has a resolvable rank at all).
+    struct LineObs {
+        full_name: String,
+        rank: Option<u8>,
+        ts: Millis,
+        landed: bool,
+    }
+    let mut latest: HashMap<String, LineObs> = HashMap::new();
+    let mut note = |full_name: String, ts: Millis, landed: bool| {
+        let (base, rank) = crate::ingest::split_cast_rank(&full_name);
+        let base = base.to_string();
+        let candidate = LineObs {
+            full_name,
+            rank,
+            ts,
+            landed,
+        };
+        match latest.get_mut(&base) {
+            Some(existing) => {
+                let better = match (candidate.rank, existing.rank) {
+                    (Some(r), Some(er)) => r > er || (r == er && candidate.ts >= existing.ts),
+                    (Some(_), None) => true,
+                    (None, Some(_)) => false,
+                    (None, None) => candidate.ts >= existing.ts,
+                };
+                if better {
+                    *existing = candidate;
                 }
-            })
-            .or_insert((ts, landed));
+            }
+            None => {
+                latest.insert(base, candidate);
+            }
+        }
     };
 
     if let Some(you_sym) = ing.store.names.get("You") {
@@ -146,8 +173,14 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
     }
 
     let mut effects: Vec<TargetEffectDto> = latest
-        .into_iter()
-        .filter_map(|(spell, (since_ms, landed))| {
+        .into_values()
+        .filter_map(|obs| {
+            let LineObs {
+                full_name: spell,
+                ts: since_ms,
+                landed,
+                ..
+            } = obs;
             let duration_ms = if landed {
                 duration_ms_for(&spell)
             } else {
@@ -248,6 +281,34 @@ mod tests {
         assert!(!e.landed);
         assert_eq!(e.duration_ms, None);
         assert_eq!(e.ready_at_ms, None);
+    }
+
+    /// why: Spencer's own ask -- "only show the highest for a skill
+    /// line". Real spell "Tashania" has no rank II entry of its own in
+    /// the catalog, so ingest::split_cast_rank treats "Tashania II" as
+    /// an observed rank of the same line, not a separate spell.
+    #[test]
+    fn only_the_highest_rank_of_a_spell_line_shows_not_a_stale_lower_one() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You hit a rat for 5 points of damage.",
+            "[Tue Jul 28 15:01:05 2026] a rat resisted your Tashania II!",
+            "[Tue Jul 28 15:01:10 2026] a rat resisted your Tashania!",
+        ]);
+        let dto = target_effects(&ing);
+        let tashania_rows: Vec<_> = dto
+            .effects
+            .iter()
+            .filter(|e| e.spell.starts_with("Tashania"))
+            .collect();
+        assert_eq!(
+            tashania_rows.len(),
+            1,
+            "one row for the whole Tashania line, not one per rank"
+        );
+        assert_eq!(
+            tashania_rows[0].spell, "Tashania II",
+            "the higher rank wins even though the plain-rank attempt was more recent"
+        );
     }
 
     #[test]

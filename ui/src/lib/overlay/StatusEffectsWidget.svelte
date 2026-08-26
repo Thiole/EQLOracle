@@ -9,11 +9,15 @@
   // every section.
   //
   // Each row is a real member of the same tracked_skills list any other
-  // skill/spell lives in -- "Charm"/"Invisible"/"Hide"/"Sneak" start
+  // skill/spell lives in -- "Charmed"/"Invisible"/"Hide"/"Sneak" start
   // present by default (see preferences.rs's own
   // default_tracked_skills), not hardcoded-forever the way an earlier
   // version had them; `tracked` is just that list, and a row this
   // component would otherwise show still needs its own name in it.
+  // "Charmed" not "Charm" -- real bug, caught live: a real Enchanter
+  // spell is named exactly "Charm", so a cooldown entry for that spell
+  // collided with this row's own key and showed a nonsense "Charm:
+  // READY" row alongside the real status row.
   import type { StatusEffectsDto } from '$lib/tauri/api';
 
   let { status, tracked }: { status: StatusEffectsDto | null; tracked: string[] } = $props();
@@ -43,8 +47,11 @@
   const charmRow = $derived.by(() => {
     const c = status?.charm;
     if (!c) return null;
-    if (c.active) return { key: 'Charm', label: `Charm: ACTIVE (${c.who})`, tone: 'good' as const, blink: false };
-    return { key: 'Charm', label: `Charm: Broke (${c.who})`, tone: 'bad' as const, blink: nowMs - c.since_ms < CHARM_BLINK_MS };
+    // why: key is "Charmed" not "Charm" -- see this file's own doc for the
+    // real spell-name collision this avoids; the displayed label still
+    // reads "Charm", only the tracked-list identity changed
+    if (c.active) return { key: 'Charmed', label: `Charm: ACTIVE (${c.who})`, tone: 'good' as const, blink: false };
+    return { key: 'Charmed', label: `Charm: Broke (${c.who})`, tone: 'bad' as const, blink: nowMs - c.since_ms < CHARM_BLINK_MS };
   });
 
   const invisRow = $derived.by(() => {
