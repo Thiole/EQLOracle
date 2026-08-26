@@ -823,7 +823,17 @@
 
         {#if overlayTrackSearch.trim() && overlayTrackResults.length}
           <div class="mb-2 grid grid-cols-4 gap-x-2 gap-y-0.5">
-            {#each overlayTrackResults as s (s.name)}
+            <!-- why: index-keyed, not s.name -- real bug, caught live: a
+                 search that surfaces a duplicate-named catalog entry
+                 ("Wind of Tashani" is two separate real entries, same
+                 wiki-scrape quirk searchResults' own each-block already
+                 works around above) crashed this whole block on Svelte's
+                 own duplicate-key error, silently hiding every result in
+                 the list including unrelated ones ("Tashania" wasn't
+                 findable purely because "Wind of Tashani" was also in
+                 the same result set). Fully regenerated on every
+                 search change anyway, so no per-item identity to keep. -->
+            {#each overlayTrackResults as s, i (i)}
               {@const tracked = $trackedSkills.includes(s.name)}
               <button
                 type="button"
