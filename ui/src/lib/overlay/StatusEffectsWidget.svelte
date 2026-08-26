@@ -25,6 +25,7 @@
   // collided with this row's own key and showed a nonsense "Charm:
   // READY" row alongside the real status row.
   import type { StatusEffectsDto } from '$lib/tauri/api';
+  import { logClockNowMs } from './logClock';
 
   let { status, tracked }: { status: StatusEffectsDto | null; tracked: string[] } = $props();
 
@@ -38,9 +39,14 @@
    * Blinks for this long, then settles into a plain, still-shown result. */
   const BLINK_MS = 2000;
 
-  let nowMs = $state(Date.now());
+  // why: NOT Date.now() -- see logClock.ts's own doc. since_ms here is
+  // the log's own "naive local time" clock, not a real UTC epoch;
+  // comparing against a real one would skew recent()/the blink windows
+  // by the machine's own UTC offset (real bug, same shape SkillTracker
+  // Widget's own cooldowns/target-effects countdowns had).
+  let nowMs = $state(logClockNowMs());
   $effect(() => {
-    const id = setInterval(() => (nowMs = Date.now()), 200);
+    const id = setInterval(() => (nowMs = logClockNowMs()), 200);
     return () => clearInterval(id);
   });
 

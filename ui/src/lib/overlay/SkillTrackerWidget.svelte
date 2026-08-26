@@ -24,6 +24,7 @@
   import type { StatusEffectsDto, SkillStatusDto, TargetEffectsDto } from '$lib/tauri/api';
   import { ICON_BASE } from '$lib/character/constants';
   import StatusEffectsWidget from './StatusEffectsWidget.svelte';
+  import { logClockNowMs } from './logClock';
 
   let {
     status,
@@ -41,9 +42,13 @@
     opacity: number;
   } = $props();
 
-  let nowMs = $state(Date.now());
+  // why: NOT Date.now() -- see logClock.ts's own doc. Backend since_ms/
+  // ready_at_ms are the log's own "naive local time" clock, not a real
+  // UTC epoch; comparing against a real one would skew every countdown
+  // here by the machine's own UTC offset.
+  let nowMs = $state(logClockNowMs());
   $effect(() => {
-    const id = setInterval(() => (nowMs = Date.now()), 250);
+    const id = setInterval(() => (nowMs = logClockNowMs()), 250);
     return () => clearInterval(id);
   });
 
