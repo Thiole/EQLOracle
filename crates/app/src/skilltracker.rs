@@ -349,4 +349,34 @@ mod tests {
             "15:02:00 - 15:01:03, the real Damage-confirmed landing"
         );
     }
+
+    /// why: real bug, caught live -- a debuff re-applied onto a target
+    /// that already has it never produces a Damage event or the
+    /// generic flavor-text landing at all, only "Your X spell on Y has
+    /// been overwritten." (see ingest::Action::SpellOverwritten's own
+    /// doc). That real landing must feed the recovery clock too, same
+    /// as any other confirmed landing.
+    #[test]
+    fn an_overwritten_confirmation_also_feeds_the_recovery_clock() {
+        use crate::ingest::{backfill_lines, Ingest};
+        use crate::parser::build_engine;
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You begin casting Shiftless Deeds IV.",
+            b"[Tue Jul 28 15:01:03 2026] Your Shiftless Deeds spell on a rat has been overwritten.",
+            b"[Tue Jul 28 15:02:00 2026] You begin casting Shiftless Deeds IV.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let t = ing
+            .skills
+            .get("Shiftless Deeds")
+            .expect("tracked off cast.begin");
+        assert_eq!(t.reuse_gap_ms, Some(60_000), "15:02:00 - 15:01:00");
+        assert_eq!(
+            t.recovery_gap_ms,
+            Some(57_000),
+            "15:02:00 - 15:01:03, the overwritten-confirmed landing"
+        );
+    }
 }

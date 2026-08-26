@@ -1287,6 +1287,35 @@ impl Ingest {
                     self.record_effect_ping(ts, &target, &blocker);
                 }
             }
+            Action::SpellOverwritten { spell, who } => {
+                // why: a real, unambiguous landing -- see this Action's
+                // own doc. No attribute_effect needed at all (source
+                // and spell are both named directly in the line, not
+                // inferred), same direct-push shape CastResisted's own
+                // handler already uses, just landed: true this time.
+                let you = self.sym("You").0;
+                self.classes.observe_cast(
+                    you,
+                    self.zone.index_at(ts),
+                    class_evidence_for(base_spell_name(&spell)),
+                );
+                let resolved = self.resolve_name(&who);
+                let sym = self.sym(&resolved).0;
+                self.effects.push(
+                    sym,
+                    ts,
+                    spell.clone(),
+                    Some("You".to_string()),
+                    Some(spell.clone()),
+                    true,
+                );
+                // why: also feeds Skill Tracker's own recovery-clock
+                // tracking (skilltracker.rs's own doc), same as every
+                // other real landing confirmation (record_damage's
+                // tag::SPELL branch, Heal, confirm_spell_effect)
+                let spell_sym = self.store.sym(base_spell_name(&spell)).0;
+                self.casts.confirm_landed(ts, you, spell_sym);
+            }
             Action::StateEffect { target, text } => self.record_effect_ping(ts, &target, &text),
             Action::PlayerLoc { x, y, z } => {
                 self.last_loc = Some((ts, x, y, z));
@@ -2450,6 +2479,23 @@ enum Action {
         target: String,
         blocker: Option<String>,
     },
+    /// why: "Your X spell on Y has been overwritten" -- a REAL,
+    /// unambiguous landing confirmation, always the player's own cast
+    /// (packs/eql.toml's own note: "Self-only phrasing seen so far").
+    /// Real gap, caught live: recognized as a known line shape for a
+    /// while but never dispatched to anything at all -- a debuff
+    /// re-applied onto a target that already had it (refreshing
+    /// duration) never once names itself in the generic "You slow
+    /// down."-style flavor text that pathway needs, so a spell like
+    /// Shiftless Deeds could land, over and over, and target_effects'
+    /// own panel would never see it -- "but it not showing the
+    /// shiftless deeds slow". No attribution ambiguity here at all
+    /// (unlike attribute_effect's own tier 3): spell and target are
+    /// both named directly in the line.
+    SpellOverwritten {
+        spell: String,
+        who: String,
+    },
     /// why: a named condition landing on target, fed to Effects; text is
     /// a fixed label not scraped flavor text
     StateEffect {
@@ -2801,6 +2847,10 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             spell: str_field("spell")?,
             target: "You".to_string(),
             blocker: str_field("blocker"),
+        }),
+        "state.spell_overwritten" => Some(Action::SpellOverwritten {
+            spell: str_field("spell")?,
+            who: str_field("who")?,
         }),
         "spell.pet_wore_off" => Some(Action::PetSpellWoreOff {
             spell: str_field("spell")?,

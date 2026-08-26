@@ -443,6 +443,33 @@ mod tests {
         assert_eq!(e.duration_ms, Some(660_000), "real 11-minute duration");
     }
 
+    /// why: real bug, caught live -- "but it not showing the shiftless
+    /// deeds slow". A debuff RE-applied onto a target that already has
+    /// it (refreshing duration, no fresh cast needed) never produces
+    /// the generic "You slow down."-style flavor confirmation at all --
+    /// the log instead says "Your Shiftless Deeds spell on X has been
+    /// overwritten.", a real pack rule (state.spell_overwritten) that
+    /// was recognized but never dispatched to anything before. No
+    /// preceding land line here on purpose, matching the real case
+    /// this was caught against.
+    #[test]
+    fn a_reapplied_debuff_with_only_an_overwritten_confirmation_still_shows_as_landed() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You hit a rat for 5 points of damage.",
+            "[Tue Jul 28 15:01:02 2026] You begin casting Shiftless Deeds IV.",
+            "[Tue Jul 28 15:01:05 2026] Your Shiftless Deeds spell on a rat has been overwritten.",
+        ]);
+        let dto = target_effects(&ing);
+        assert_eq!(dto.target.as_deref(), Some("a rat"));
+        let e = dto
+            .effects
+            .iter()
+            .find(|e| e.spell == "Shiftless Deeds")
+            .expect("an overwritten-only landing should still show");
+        assert!(e.landed);
+        assert_eq!(e.duration_ms, Some(150_000), "real 2min30s duration");
+    }
+
     /// why: real bug, caught live, group content -- "some mobs its not
     /// detecting as combat... it only happened when I am attacked, not
     /// when I am casting". combat::current_encounter's own "most
