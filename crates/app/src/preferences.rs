@@ -4,8 +4,27 @@
 //! not per-character (that's `profile.rs`).
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
+
+/// why: a widget's own last real window position -- Spencer's own ask:
+/// "it remembers where those windows were set in previous runs, so
+/// they dont have to be moved every time". Captured once, in
+/// commands::set_overlay_locked, at the moment a widget's window gets
+/// re-locked after being dragged -- not continuously on every move
+/// event, so a window merely nudged mid-drag but never actually
+/// re-locked doesn't half-persist. Logical (not physical) pixels --
+/// same coordinate space WebviewWindowBuilder::position/inner_size
+/// already use, so it's DPI-scale-correct on the same display without
+/// any extra conversion at read time. Backend-only: never round-tripped
+/// through PreferencesDto/the frontend at all, see set_preferences' own
+/// doc for why an unrelated setting change can't silently wipe it.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct OverlayPosition {
+    pub x: f64,
+    pub y: f64,
+}
 
 fn default_volume() -> u8 {
     100
@@ -122,6 +141,12 @@ pub struct Preferences {
     /// own "Overlay spell tracking" section.
     #[serde(default)]
     pub tracked_target_effects: Vec<String>,
+    /// why: see OverlayPosition's own doc. Keyed by widget name (same
+    /// "dps_meter"/"skill_tracker" strings commands::overlay_label
+    /// already uses), empty until a widget's been dragged and re-locked
+    /// at least once.
+    #[serde(default)]
+    pub overlay_positions: HashMap<String, OverlayPosition>,
     // why: no "is this widget / the overlay window currently on" field --
     // deliberately not a style preference to remember, it's live session
     // state. Caught live: an earlier version persisted the window's own
@@ -129,7 +154,11 @@ pub struct Preferences {
     // trusting stale state the same way save_profile's own doc
     // explicitly warns against for class detection. Every launch starts
     // with every widget off; each widget's own opacity still carries
-    // over once it's turned back on.
+    // over once it's turned back on. Spencer's own later ask made this
+    // partially moot in practice -- a single "enable ui" toggle (the
+    // main window's own convenience, see OverlaySettings.svelte) means
+    // it's back to one real action per session either way, this field
+    // still isn't the thing doing it.
 }
 
 impl Default for Preferences {
@@ -144,6 +173,7 @@ impl Default for Preferences {
             overlay_skill_tracker_opacity: default_overlay_opacity(),
             tracked_skills: default_tracked_skills(),
             tracked_target_effects: Vec::new(),
+            overlay_positions: HashMap::new(),
         }
     }
 }
@@ -209,10 +239,19 @@ mod tests {
             p.tracked_target_effects.is_empty(),
             "nothing baked in -- a per-target effect is always an opt-in pick, unlike the 4 status pseudo-entries above"
         );
+        assert!(
+            p.overlay_positions.is_empty(),
+            "no widget has a saved position until it's been dragged and re-locked at least once"
+        );
     }
 
     #[test]
     fn round_trips_through_serde() {
+        let mut overlay_positions = HashMap::new();
+        overlay_positions.insert(
+            "dps_meter".to_string(),
+            OverlayPosition { x: 12.5, y: -4.0 },
+        );
         let p = Preferences {
             volume: 42,
             era: Some("All".to_string()),
@@ -223,6 +262,7 @@ mod tests {
             overlay_skill_tracker_opacity: 0.6,
             tracked_skills: vec!["Kick".to_string(), "Backstab".to_string()],
             tracked_target_effects: vec!["Tashania".to_string()],
+            overlay_positions,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: Preferences = serde_json::from_str(&json).unwrap();
@@ -235,6 +275,11 @@ mod tests {
         assert_eq!(back.overlay_skill_tracker_opacity, 0.6);
         assert_eq!(back.tracked_skills, vec!["Kick", "Backstab"]);
         assert_eq!(back.tracked_target_effects, vec!["Tashania"]);
+        let pos = back
+            .overlay_positions
+            .get("dps_meter")
+            .expect("round-tripped");
+        assert_eq!((pos.x, pos.y), (12.5, -4.0));
     }
 
     /// why: an old/partial file must still load via #[serde(default)]
@@ -253,5 +298,6 @@ mod tests {
             vec!["Charmed", "Invisible", "Hide", "Sneak"]
         );
         assert!(back.tracked_target_effects.is_empty());
+        assert!(back.overlay_positions.is_empty());
     }
 }

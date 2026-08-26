@@ -492,16 +492,25 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
     // why: one shared overlay.html bundle for every widget -- which one
     // to render is read from the window's own label at runtime (see
     // ui's currentOverlayWidget()), not a distinct HTML entry per widget
-    let window = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("overlay.html".into()))
-        .title(format!("EQL Oracle Overlay -- {widget}"))
-        .inner_size(360.0, 240.0)
-        .transparent(true)
-        .decorations(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .shadow(false)
-        .build()
-        .map_err(|e| e.to_string())?;
+    let mut builder =
+        WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("overlay.html".into()))
+            .title(format!("EQL Oracle Overlay -- {widget}"))
+            .inner_size(360.0, 240.0)
+            .transparent(true)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .shadow(false);
+    // why: Spencer's own ask -- "remembers where those windows were set
+    // in previous runs, so they dont have to be moved every time".
+    // See preferences::OverlayPosition's own doc for where this gets
+    // captured (set_overlay_locked, below); absent until then, opening
+    // at whatever the OS/window manager's own default position is,
+    // same as always.
+    if let Some(pos) = preferences::load(&app).overlay_positions.get(&widget) {
+        builder = builder.position(pos.x, pos.y);
+    }
+    let window = builder.build().map_err(|e| e.to_string())?;
     // why: ClickThrough only -- Floating alone (never actually
     // reachable today, detect() only ever returns Docked or
     // ClickThrough, kept as its own tier for when finer Wayland
@@ -539,6 +548,17 @@ pub fn set_overlay_opacity(app: AppHandle, widget: String, opacity: f64) {
 /// own. A no-op if that widget's window isn't open, or if this
 /// session's own capability never allowed click-through to begin with
 /// (nothing to toggle back to)
+///
+/// Also where a widget's own new position gets saved -- Spencer's own
+/// ask, see preferences::OverlayPosition's own doc. Captured exactly
+/// once, right here, at the moment of RE-locking (the user's own real
+/// "I'm done positioning this" signal) -- not continuously on every
+/// move event mid-drag, so a window that was merely nudged but never
+/// actually re-locked doesn't half-persist. Logical pixels, matching
+/// WebviewWindowBuilder::position's own coordinate space exactly (see
+/// set_overlay_enabled) -- outer_position() itself returns physical
+/// pixels, converted here via the window's own real scale factor so
+/// this is correct on a HiDPI display, not just assumed 1:1.
 
 #[tauri::command]
 pub fn set_overlay_locked(app: AppHandle, widget: String, locked: bool) -> Result<(), String> {
@@ -549,6 +569,20 @@ pub fn set_overlay_locked(app: AppHandle, widget: String, locked: bool) -> Resul
         w.set_ignore_cursor_events(locked)
             .map_err(|e| e.to_string())?;
         w.set_decorations(!locked).map_err(|e| e.to_string())?;
+        if locked {
+            if let (Ok(pos), Ok(scale)) = (w.outer_position(), w.scale_factor()) {
+                let logical = pos.to_logical::<f64>(scale);
+                let mut prefs = preferences::load(&app);
+                prefs.overlay_positions.insert(
+                    widget,
+                    preferences::OverlayPosition {
+                        x: logical.x,
+                        y: logical.y,
+                    },
+                );
+                let _ = preferences::save(&app, &prefs);
+            }
+        }
     }
     Ok(())
 }
@@ -755,7 +789,16 @@ pub fn get_preferences(app: AppHandle) -> Preferences {
 }
 
 #[tauri::command]
-pub fn set_preferences(app: AppHandle, prefs: Preferences) -> Result<Preferences, String> {
+pub fn set_preferences(app: AppHandle, mut prefs: Preferences) -> Result<Preferences, String> {
+    // why: overlay_positions is backend-only -- never round-tripped
+    // through PreferencesDto/the frontend at all (see its own doc), so
+    // this call's own `prefs` never really carries it; whatever the
+    // frontend's currentPrefs() happened to send for that field (its
+    // own #[serde(default)] empty map, since the frontend doesn't know
+    // the field exists) gets overwritten here with what's actually on
+    // disk. Without this, changing something as unrelated as volume
+    // would silently wipe every saved window position.
+    prefs.overlay_positions = preferences::load(&app).overlay_positions;
     preferences::save(&app, &prefs)?;
     Ok(prefs)
 }

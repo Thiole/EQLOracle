@@ -64,6 +64,22 @@
   }
 
   const capped = $derived($windowCapability?.capability === 'docked');
+
+  // why: Spencer's own ask -- a single "enable ui" toggle for
+  // everything at once, since each widget's own window now reopens
+  // wherever it was last left (see preferences::OverlayPosition's own
+  // doc), there's nothing left to redo per-widget after the very first
+  // time each one gets positioned. Checked only when EVERY widget is
+  // on (a "select all" checkbox, not "any"); clicking it always turns
+  // every widget to the SAME new state. Deliberately not its own
+  // persisted preference -- still a real, explicit action each
+  // session (see preferences.rs's own doc on why enabled/disabled
+  // itself stays live-only), just one click covering every widget
+  // instead of several.
+  const allEnabled = $derived($dpsMeterEnabled && $skillTrackerEnabled);
+  async function onToggleAll(on: boolean) {
+    await Promise.all([onToggleDpsMeter(on), onToggleSkillTracker(on)]);
+  }
 </script>
 
 {#snippet repositionButton(widget: string)}
@@ -115,6 +131,14 @@
       {:else}
         <p class="text-[11px] text-muted-foreground">
           Each widget below is its own little window -- its own on/off, its own transparency, and its own position.
+        </p>
+        <label class="mt-2 flex items-center gap-2 text-[12px] text-foreground">
+          <Checkbox checked={allEnabled} onCheckedChange={(v: boolean) => void onToggleAll(v)} />
+          enable ui
+        </label>
+        <p class="mt-0.5 text-[11px] text-muted-foreground">
+          Turns every widget below on (or off) together. Each one reopens right where you last left it -- position is
+          remembered per widget once you've dragged and locked it in, nothing to redo here after the first time.
         </p>
       {/if}
     </CardContent>
