@@ -491,10 +491,45 @@ fn a_partial_config_that_is_a_subset_of_exactly_one_full_config_gets_merged() {
 }
 
 #[test]
-fn a_partial_config_consistent_with_two_full_configs_is_reported_unresolved() {
+fn a_partial_config_with_no_preceding_full_config_is_reported_unresolved() {
     // "Wizard" alone is a subset of both Enchanter/Magician/Wizard and
     // Enchanter/Necromancer/Wizard -- genuinely ambiguous which one that
-    // visit's incomplete evidence belongs to. Must not guess.
+    // visit's incomplete evidence belongs to. The ambiguous visit is
+    // chronologically first here (Some(0), before every full-config
+    // visit), so there's nothing earlier to carry forward from either --
+    // must not guess.
+    let mut d = Detector::default();
+    let ambiguous = Some(0);
+    for v in [V1, Some(10)] {
+        d.observe_cast(YOU, v, &w("Wizard"));
+        d.observe_cast(YOU, v, &w("Enchanter"));
+        d.observe_cast(YOU, v, &w("Magician"));
+    }
+    for v in [V2, Some(11)] {
+        d.observe_cast(YOU, v, &w("Wizard"));
+        d.observe_cast(YOU, v, &w("Enchanter"));
+        d.observe_cast(YOU, v, &w("Necromancer"));
+    }
+    d.observe_cast(YOU, ambiguous, &w("Wizard")); // Wizard already proven by now
+
+    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
+    assert_eq!(
+        resolved.iter().map(|(_, vs)| vs.len()).sum::<usize>(),
+        4,
+        "neither full config's count should have absorbed the ambiguous partial"
+    );
+    assert_eq!(unresolved, vec![ambiguous]);
+}
+
+/// why: real case, caught live -- a player's own new zone visit only cast
+/// Enchanter+Wizard, a pair shared by *every* trio they've ever played
+/// (6 different third classes across their real history). Zoning
+/// doesn't swap your active classes -- only a deliberate town visit
+/// does -- so the visit confirmed most recently before this one (not
+/// just whichever's been played the most overall) is the right default
+/// until real evidence says otherwise.
+#[test]
+fn an_ambiguous_partial_carries_forward_the_most_recently_confirmed_full_config() {
     let mut d = Detector::default();
     for v in [V1, Some(10)] {
         d.observe_cast(YOU, v, &w("Wizard"));
@@ -506,15 +541,215 @@ fn a_partial_config_consistent_with_two_full_configs_is_reported_unresolved() {
         d.observe_cast(YOU, v, &w("Enchanter"));
         d.observe_cast(YOU, v, &w("Necromancer"));
     }
-    d.observe_cast(YOU, V3, &w("Wizard")); // ambiguous partial (Wizard already proven by now)
+    // why: V3 is later than both full configs' own visits -- V2 (index 2)
+    // is the nearer of the two, so Necromancer's trio should win, not
+    // Magician's, even though Magician's trio has one more real visit
+    d.observe_cast(YOU, V3, &w("Wizard"));
+    d.observe_cast(YOU, V3, &w("Enchanter"));
+
+    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
+    assert!(
+        unresolved.is_empty(),
+        "the most recent real evidence (V2) should have broken the tie"
+    );
+    let necro = resolved
+        .iter()
+        .find(|(c, _)| c.contains(&"Necromancer".to_string()))
+        .expect("Necromancer trio should exist");
+    assert!(
+        necro.1.contains(&V3),
+        "V3 should have carried forward into the more recently confirmed config"
+    );
+    let magician = resolved
+        .iter()
+        .find(|(c, _)| c.contains(&"Magician".to_string()))
+        .expect("Magician trio should exist");
+    assert_eq!(
+        magician.1.len(),
+        2,
+        "the older config must not have absorbed it instead"
+    );
+}
+
+/// why: a naive "just pick whichever full config's own visit has the
+/// highest index" implementation would get fooled here -- Cleric/Druid/
+/// Shaman is the most recent full config chronologically, but it shares
+/// no class at all with the ambiguous visit's own {Enchanter, Wizard},
+/// so it must never even be a candidate. The real nearest *compatible*
+/// config (Necromancer's, older than Cleric/Druid/Shaman but still
+/// newer than Magician's) must win instead.
+#[test]
+fn recency_carry_forward_skips_a_more_recent_but_incompatible_config() {
+    let mut d = Detector::default();
+    for v in [V1, Some(10)] {
+        d.observe_cast(YOU, v, &w("Wizard"));
+        d.observe_cast(YOU, v, &w("Enchanter"));
+        d.observe_cast(YOU, v, &w("Magician"));
+    }
+    for v in [V2, Some(11)] {
+        d.observe_cast(YOU, v, &w("Wizard"));
+        d.observe_cast(YOU, v, &w("Enchanter"));
+        d.observe_cast(YOU, v, &w("Necromancer"));
+    }
+    // why: V3 is chronologically nearer to the ambiguous visit than
+    // either V1 or V2, but shares zero classes with {Enchanter, Wizard}
+    for v in [V3, Some(12)] {
+        d.observe_cast(YOU, v, &w("Cleric"));
+        d.observe_cast(YOU, v, &w("Druid"));
+        d.observe_cast(YOU, v, &w("Shaman"));
+    }
+    d.observe_cast(YOU, V4, &w("Wizard"));
+    d.observe_cast(YOU, V4, &w("Enchanter"));
+
+    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
+    assert!(unresolved.is_empty());
+    let necro = resolved
+        .iter()
+        .find(|(c, _)| c.contains(&"Necromancer".to_string()))
+        .expect("Necromancer trio should exist");
+    assert!(
+        necro.1.contains(&V4),
+        "the nearest *compatible* config should have won, not the merely nearest one"
+    );
+    let cleric = resolved
+        .iter()
+        .find(|(c, _)| c.contains(&"Cleric".to_string()))
+        .expect("Cleric/Druid/Shaman trio should exist");
+    assert_eq!(
+        cleric.1.len(),
+        2,
+        "an incompatible config must never absorb the ambiguous visit, however recent"
+    );
+}
+
+/// why: proves the recency search doesn't stop at the first (or
+/// second) compatible candidate it happens to enumerate -- with three
+/// real compatible candidates in play, it must still find the actual
+/// max index, not just "a" match.
+#[test]
+fn recency_carry_forward_finds_the_true_nearest_among_three_compatible_candidates() {
+    let mut d = Detector::default();
+    for v in [V1, Some(10)] {
+        d.observe_cast(YOU, v, &w("Wizard"));
+        d.observe_cast(YOU, v, &w("Enchanter"));
+        d.observe_cast(YOU, v, &w("Magician"));
+    }
+    for v in [V3, Some(11)] {
+        d.observe_cast(YOU, v, &w("Wizard"));
+        d.observe_cast(YOU, v, &w("Enchanter"));
+        d.observe_cast(YOU, v, &w("Necromancer"));
+    }
+    for v in [V2, Some(12)] {
+        d.observe_cast(YOU, v, &w("Wizard"));
+        d.observe_cast(YOU, v, &w("Enchanter"));
+        d.observe_cast(YOU, v, &w("Shadow Knight"));
+    }
+    // why: V2 < V3, so Necromancer (confirmed via V3) is the real
+    // nearest, even though Shadow Knight's config was observed first in
+    // insertion order (V2's own loop ran before V3's own second pass)
+    d.observe_cast(YOU, V5, &w("Wizard"));
+    d.observe_cast(YOU, V5, &w("Enchanter"));
+
+    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
+    assert!(unresolved.is_empty());
+    let necro = resolved
+        .iter()
+        .find(|(c, _)| c.contains(&"Necromancer".to_string()))
+        .expect("Necromancer trio should exist");
+    assert!(
+        necro.1.contains(&V5),
+        "V3 (Necromancer) is the true nearest of the three -- V2's Shadow Knight is older"
+    );
+}
+
+/// why: a visit poisoned by a real contradiction (see `narrow`'s own
+/// doc) must never carry forward, even when a perfectly compatible
+/// config was confirmed right before it -- poisoning means "we
+/// witnessed evidence that rules out every candidate for this visit
+/// specifically", a stronger disqualification than plain ambiguity.
+#[test]
+fn a_poisoned_visit_never_carries_forward_even_with_a_compatible_predecessor() {
+    let mut d = Detector::default();
+    for v in [V1, Some(10)] {
+        d.observe_cast(YOU, v, &w("Wizard"));
+        d.observe_cast(YOU, v, &w("Enchanter"));
+        d.observe_cast(YOU, v, &w("Magician"));
+    }
+    // why: confirm Enchanter+Wizard for V2 itself (2 of 3), then
+    // contradict its own narrowing with two disjoint ambiguous pools
+    d.observe_cast(YOU, V2, &w("Wizard"));
+    d.observe_cast(YOU, V2, &w("Enchanter"));
+    d.observe_cast(
+        YOU,
+        V2,
+        &["Necromancer", "Shadow Knight"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    );
+    d.observe_cast(
+        YOU,
+        V2,
+        &["Druid", "Shaman"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>(),
+    ); // shares nothing with the above -- contradiction, poisons V2
 
     let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
     assert_eq!(
-        resolved.iter().map(|(_, vs)| vs.len()).sum::<usize>(),
-        4,
-        "neither full config's count should have absorbed the ambiguous partial"
+        unresolved,
+        vec![V2],
+        "poisoned -- must stay unresolved even though Magician's trio (V1) precedes it and would otherwise fit"
     );
-    assert_eq!(unresolved, vec![V3]);
+    let magician = resolved
+        .iter()
+        .find(|(c, _)| c.contains(&"Magician".to_string()))
+        .expect("Magician trio should exist");
+    assert_eq!(magician.1.len(), 2, "V2 must not have been absorbed");
+}
+
+/// why: `ZoneVisit::None` (before the very first zone.enter line) is the
+/// minimum of `ZoneVisit`'s own Ord -- nothing can precede it, so an
+/// ambiguous visit there has no predecessor to carry forward from no
+/// matter what's confirmed later in the same log.
+#[test]
+fn an_ambiguous_none_visit_has_nothing_earlier_to_carry_forward_from() {
+    // why: needs *two* full configs, not one -- a single compatible
+    // candidate merges via the plain single-match path regardless of
+    // recency (correct, pre-existing behavior); the tie-break this test
+    // targets only engages when there's genuine ambiguity to break.
+    let mut d = Detector::default();
+    for v in [V1, Some(10)] {
+        d.observe_cast(YOU, v, &w("Wizard"));
+        d.observe_cast(YOU, v, &w("Enchanter"));
+        d.observe_cast(YOU, v, &w("Magician"));
+    }
+    for v in [V2, Some(11)] {
+        d.observe_cast(YOU, v, &w("Wizard"));
+        d.observe_cast(YOU, v, &w("Enchanter"));
+        d.observe_cast(YOU, v, &w("Necromancer"));
+    }
+    d.observe_cast(YOU, None, &w("Wizard"));
+    d.observe_cast(YOU, None, &w("Enchanter"));
+
+    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
+    assert_eq!(
+        unresolved,
+        vec![None],
+        "None is the minimum ZoneVisit -- nothing can precede it, however much real evidence follows it"
+    );
+    for name in ["Magician", "Necromancer"] {
+        let bucket = resolved
+            .iter()
+            .find(|(c, _)| c.contains(&name.to_string()))
+            .unwrap_or_else(|| panic!("{name} trio should exist"));
+        assert_eq!(
+            bucket.1.len(),
+            2,
+            "{name}'s trio must not have absorbed None"
+        );
+    }
 }
 
 #[test]

@@ -341,6 +341,21 @@ impl Detector {
             );
         }
 
+        // why: which full config each already-fully-confirmed visit
+        // belongs to -- frozen from `full` as built above, before any
+        // partial visit folds in below, so every partial visit's own
+        // recency tie-break (see `matches` handling) sees the same
+        // picture regardless of `state.by_visit`'s own HashMap iteration
+        // order. `ZoneVisit`'s derived Ord (None < Some(_), then by
+        // index) doubles as real chronological order -- visits are
+        // created in the order their own zone.enter lines are seen.
+        let mut bucket_of_visit: HashMap<ZoneVisit, usize> = HashMap::new();
+        for (i, (_, visits)) in full.iter().enumerate() {
+            for &v in visits {
+                bucket_of_visit.insert(v, i);
+            }
+        }
+
         // why: a partial visit only folds into the one full config it's
         // actually consistent with -- `poisoned` (a real contradiction
         // happened, see `narrow`'s own doc) rules out every candidate
@@ -373,7 +388,29 @@ impl Detector {
                 .collect();
             match matches.as_slice() {
                 [i] => full[*i].1.push(visit),
-                _ => unresolved.push(visit),
+                [] => unresolved.push(visit),
+                _ => {
+                    // why: real, live-confirmed case -- a zone change alone
+                    // is never a class swap in this game (that only happens
+                    // deliberately, in town), so an ambiguous visit that's
+                    // still consistent with whichever config was actually
+                    // confirmed most recently (the nearest earlier visit
+                    // that landed in a full bucket, skipping empty/still-
+                    // unresolved visits in between) carries that config
+                    // forward instead of sitting unresolved. Only among the
+                    // buckets `matches` already allows -- if the most recent
+                    // real evidence points somewhere `compatible` has ruled
+                    // out, that's a real contradiction, not a tie to break.
+                    let carried = bucket_of_visit
+                        .iter()
+                        .filter(|&(&v, bi)| v < visit && matches.contains(bi))
+                        .max_by_key(|&(&v, _)| v)
+                        .map(|(_, &bi)| bi);
+                    match carried {
+                        Some(bi) => full[bi].1.push(visit),
+                        None => unresolved.push(visit),
+                    }
+                }
             }
         }
 

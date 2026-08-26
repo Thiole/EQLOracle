@@ -46,4 +46,30 @@ fn main() {
             println!("last zone visit index {i}: start={start} next={next:?}");
         }
     }
+
+    // why: optional 3rd arg -- which bucket (full/unresolved) a specific
+    // visit index landed in, for tracing a real "why is this one visit
+    // ambiguous" report down to ground truth
+    if let Some(want) = args.next().and_then(|s| s.parse::<usize>().ok()) {
+        let sym = ing.store.names.get(&name).expect("name should exist");
+        let (resolved, unresolved) = ing.classes.visits_by_resolved_configuration(sym.0);
+        println!("\nvisit index {want}:");
+        if let Some((start, next)) = ing.zone.bounds(want) {
+            println!("  zone bounds: start={start} next={next:?}");
+        }
+        let mut found = false;
+        for (classes, visits) in &resolved {
+            if visits.contains(&Some(want)) {
+                println!("  resolved -> {classes:?}");
+                found = true;
+            }
+        }
+        if unresolved.contains(&Some(want)) {
+            println!("  unresolved");
+            found = true;
+        }
+        if !found {
+            println!("  not present in any bucket (no class evidence touched this visit at all)");
+        }
+    }
 }
