@@ -2,12 +2,17 @@
 //! "tracking should be done per target, so dots can be easily tracked
 //! per target ... a target (ex: Lord Nagafen) that shows the icons for
 //! tracked spell effects that were/tried on him, like slow with a
-//! timer." Scoped to the player's own casts against the current fight's
-//! target -- primarily combat::current_encounter (the same "most
-//! recently ACTIVE real encounter" resolution live_meter already got
-//! right, not just most recently opened), with a fallback (see
-//! target_effects' own doc) for when that damage-graph has nothing at
-//! all yet -- a pure debuff/CC cast alone never opens it.
+//! timer." Scoped to the player's OWN engagement with a target, not
+//! combat::current_encounter's own "most recently ACTIVE, whole
+//! store" resolution -- real bug, caught live, twice: a pure debuff
+//! cast never opens the damage graph at all (see target_sym's own
+//! doc), and in group content, current_encounter keeps returning
+//! whichever mob a PARTY MEMBER (not necessarily "You") is actively
+//! hitting, starving out whatever "You" are personally casting on or
+//! being attacked by -- "some mobs its not detecting... it only
+//! happened when I am attacked, not when I am casting". Resolved
+//! instead from two player-scoped signals directly (see target_sym's
+//! own doc), whichever is more recent.
 //!
 //! Two real signals feed this, both already-existing infrastructure, no
 //! new parsing:
@@ -90,33 +95,81 @@ fn duration_ms_for(spell: &str) -> Option<i64> {
     d.max_secs.map(|secs| (secs * 1000.0).round() as i64)
 }
 
-/// why: real gap in combat::current_encounter for this feature
-/// specifically, caught live against a real pull: it's damage-graph
-/// based on purpose (record_damage's own doc: "the only event kind
-/// that opens a new fight"), so a pure debuff/CC cast that never lands
-/// a single point of damage -- Tashania, a resist-decrease debuff with
-/// no damage component at all -- never opens or extends it. A
-/// support/CC character who casts on adds but doesn't personally deal
-/// damage could never get a target here, even mid-fight, even with
-/// real tracked spells actually landing. Falls back to `Ingest::
-/// effects`' own most-recent You-sourced ping, entity-agnostic --
-/// exactly the same evidence this function already reads for the
-/// "everything else" observation stream below, just used to find the
-/// target too when the damage graph has nothing.
-const FALLBACK_TARGET_WINDOW_MS: Millis = 5 * 60 * 1000;
+/// why: don't resurrect a target no one's actually still engaging --
+/// same window either signal uses
+const TARGET_STALE_MS: Millis = 5 * 60 * 1000;
+
+/// why: two real, independent player-scoped signals for "who am I
+/// currently fighting", whichever is more recent:
+/// - melee/avoided: the most recent Damage or Miss row with "You" on
+///   EITHER side -- covers being attacked (a mob's own miss/hit
+///   against you is real, unambiguous evidence of who you're fighting,
+///   even with zero casting at all) and covers you personally landing/
+///   missing a swing. A full backward scan of the store, same pattern
+///   combat::current_encounter already uses -- early-terminates near
+///   the end for any real live-tail session, so it's cheap in practice
+///   despite scanning "the whole log" in principle.
+/// - cast/effect: `Ingest::effects`' own most-recent You-sourced ping
+///   (`Effects::most_recent_by_you`) -- covers a pure debuff/CC cast
+///   that lands no damage at all (Tashania, a resist-decrease debuff),
+///   which the melee/avoided signal above can never see on its own.
+///
+/// Deliberately NOT combat::current_encounter -- its own "most recently
+/// ACTIVE, whole store" resolution is exactly right for a DPS meter,
+/// but wrong here: real bug, caught live, group content -- whichever
+/// mob a PARTY MEMBER (not necessarily "You") is actively hitting kept
+/// winning that scan, so the panel tracked the group's own current
+/// punching bag instead of whatever "You" were personally casting
+/// debuffs on or being attacked by.
+fn target_sym(ing: &Ingest, now: Millis) -> Option<Sym> {
+    let melee = ing.store.names.get("You").and_then(|you_sym| {
+        (0..ing.store.len()).rev().find_map(|i| {
+            if !matches!(ing.store.kind[i], EventKind::Damage | EventKind::Miss) {
+                return None;
+            }
+            let other = if ing.store.actor[i] == you_sym {
+                Some(ing.store.target[i])
+            } else if ing.store.target[i] == you_sym {
+                Some(ing.store.actor[i])
+            } else {
+                None
+            };
+            other.map(|sym| (sym, ing.store.ts[i]))
+        })
+    });
+    let cast = ing
+        .effects
+        .most_recent_by_you()
+        .map(|(entity, p)| (Sym(entity), p.ts));
+
+    let (sym, ts) = match (melee, cast) {
+        (Some(m), Some(c)) => {
+            if m.1 >= c.1 {
+                m
+            } else {
+                c
+            }
+        }
+        (Some(m), None) => m,
+        (None, Some(c)) => c,
+        (None, None) => return None,
+    };
+    (now - ts <= TARGET_STALE_MS).then_some(sym)
+}
 
 /// why: the overlay's own poll -- same polled-on-tick shape as
 /// combat::live_meter/effects::status_effects
 pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
     let now = ing.now_ms();
-    let primary = combat::current_encounter(ing).filter(|e| e.is_open());
-    let target_sym = match primary {
-        Some(enc) => enc.target,
-        None => match ing.effects.most_recent_by_you() {
-            Some((entity, p)) if now - p.ts <= FALLBACK_TARGET_WINDOW_MS => Sym(entity),
-            _ => return TargetEffectsDto::default(),
-        },
+    let Some(target_sym) = target_sym(ing, now) else {
+        return TargetEffectsDto::default();
     };
+    // why: the encounter (if any) THIS specific target belongs to, not
+    // combat::current_encounter's own group-wide "most recently active
+    // any" pick -- used below only to bound the DoT-tick scan, not to
+    // decide who the target is
+    let enc = combat::encounter_for(ing, target_sym);
+
     let target_name = ing.store.name(target_sym).to_string();
     let kind = ing.encounters.entities.kind(&target_name);
     let state = ing
@@ -130,10 +183,8 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
         return TargetEffectsDto::default();
     }
     // why: Allegiance::of doesn't special-case Dead (a dead Unproven
-    // mob still reads Enemy by kind alone) -- only matters for the
-    // fallback path above, where a lingering ping could still name an
-    // already-confirmed-dead entity; the primary path's own is_open()
-    // filter already rules this out for a real damage-graph fight
+    // mob still reads Enemy by kind alone) -- a lingering melee/cast
+    // signal could still name an already-confirmed-dead entity
     if state == State::Dead {
         return TargetEffectsDto::default();
     }
@@ -200,11 +251,12 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
         }
     };
 
-    // why: `primary` only, not the fallback -- a real Damage event
-    // always opens/extends the damage graph itself (record_damage's own
-    // link() call, unconditional), so if there's no real encounter here
-    // there's provably no Damage row to find either
-    if let (Some(enc), Some(you_sym)) = (primary, ing.store.names.get("You")) {
+    // why: enc, from encounter_for above -- the specific target's own
+    // encounter, not combat::current_encounter's group-wide pick. None
+    // when no real Damage event ever named this target at all (a pure
+    // debuff resolved only through the melee/cast fallback in
+    // target_sym) -- provably nothing to find here either way.
+    if let (Some(enc), Some(you_sym)) = (enc, ing.store.names.get("You")) {
         for i in enc.range() {
             if ing.store.kind[i] != EventKind::Damage
                 || ing.store.actor[i] != you_sym
@@ -330,6 +382,57 @@ mod tests {
             .find(|e| e.spell == "Tashania")
             .expect("Tashania should show even with zero damage ever exchanged");
         assert!(!e.landed);
+    }
+
+    /// why: real bug, caught live -- "when a spell lands, the timer
+    /// isnt going up, as if it landed". Tashania's own third-person
+    /// landing text ("Someone glances nervously about.") is shared
+    /// catalog-wide by 8 real rank/typo variants of the same line
+    /// (Tashan/Tashani/Tashania/Tashanian/Tashina/Wind of Tashani x2),
+    /// so spelltext.rs's own global dictionary has to drop it as
+    /// ambiguous -- but a real nearby "You begin casting Tashania"
+    /// still resolves it locally (ingest::attribute_effect's own tier
+    /// 3, extended to check msg_cast_on_other too, not just
+    /// msg_cast_on_you/wears_off).
+    #[test]
+    fn a_landing_confirmed_only_through_an_ambiguous_third_person_line_still_attributes_to_you() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You begin casting Tashania.",
+            "[Tue Jul 28 15:01:03 2026] a rat glances nervously about.",
+        ]);
+        let dto = target_effects(&ing);
+        assert_eq!(dto.target.as_deref(), Some("a rat"));
+        let e = dto
+            .effects
+            .iter()
+            .find(|e| e.spell == "Tashania")
+            .expect("a real land, even through an ambiguous line, should attribute to You");
+        assert!(e.landed);
+        assert_eq!(e.duration_ms, Some(660_000), "real 11-minute duration");
+    }
+
+    /// why: real bug, caught live, group content -- "some mobs its not
+    /// detecting as combat... it only happened when I am attacked, not
+    /// when I am casting". combat::current_encounter's own "most
+    /// recently ACTIVE, whole store" resolution kept returning whatever
+    /// mob a PARTY MEMBER was hitting, even though "You" were actually
+    /// casting on a completely different one. target_sym is
+    /// player-scoped now (melee/avoided OR cast/effect with "You" on
+    /// one side), so a groupmate's own damage on an unrelated mob must
+    /// never override it, even when it's chronologically later.
+    #[test]
+    fn a_party_members_own_damage_on_a_different_mob_doesnt_steal_the_target() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You begin casting Tashania.",
+            "[Tue Jul 28 15:01:03 2026] a rat glances nervously about.",
+            "[Tue Jul 28 15:02:00 2026] Groupmate hit a snake for 20 points of damage.",
+        ]);
+        let dto = target_effects(&ing);
+        assert_eq!(
+            dto.target.as_deref(),
+            Some("a rat"),
+            "a party member's own damage on an unrelated mob must not override what You are actually engaged with"
+        );
     }
 
     /// why: the fallback's own staleness cutoff -- a ping from ages ago

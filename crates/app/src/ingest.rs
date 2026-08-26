@@ -1982,6 +1982,21 @@ impl Ingest {
     /// it can still be a confident, unique answer even though the global
     /// dictionary couldn't give one. Every tier requires exactly one real
     /// candidate; 0 or 2+ is an honest `None`, never a guess.
+    ///
+    /// Real gap, caught live: tier 3's own candidate check used to
+    /// compare `text` against only msg_cast_on_you/msg_wears_off --
+    /// never msg_cast_on_other, the ONE message shape that actually
+    /// matters for a debuff landing on a TARGET (not on "You"). A whole
+    /// spell line sharing its own landing flavor text catalog-wide
+    /// (real: Tashan/Tashani/Tashania/Tashanian/Tashina/Wind of
+    /// Tashani all share "Someone glances nervously about.") always got
+    /// dropped by spelltext.rs's own global ambiguity check, and tier 3
+    /// never got a chance to resolve it locally the way it already does
+    /// for msg_cast_on_you -- "when a spell lands, the timer isnt going
+    /// up, as if it landed". Checked via other_tail_of's own placeholder
+    /// strip (same transform spelltext.rs's own dictionary build uses)
+    /// plus a suffix match, since `text` here still carries the real
+    /// target's own name where the catalog carries "Someone".
     fn attribute_effect(&self, ts: Millis, text: &str) -> (Option<String>, Option<String>) {
         let known_skill = if crate::spelldata::spell_by_name(text).is_some() {
             Some(text.to_string())
@@ -1999,6 +2014,11 @@ impl Ingest {
                 None => crate::spelldata::spell_by_name(&e.spell).is_some_and(|sd| {
                     sd.msg_cast_on_you.as_deref() == Some(text)
                         || sd.msg_wears_off.as_deref() == Some(text)
+                        || sd
+                            .msg_cast_on_other
+                            .as_deref()
+                            .and_then(crate::spelltext::other_tail_of)
+                            .is_some_and(|tail| text.ends_with(tail))
                 }),
             })
             .collect();

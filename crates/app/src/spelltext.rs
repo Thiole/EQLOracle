@@ -139,8 +139,13 @@ struct Dict {
 }
 
 /// why: `None` for text with no name to strip at all (rare, confirmed
-/// real: `msg_cast_on_other` == "N/A")
-fn other_tail_of(msg: &str) -> Option<&str> {
+/// real: `msg_cast_on_other` == "N/A"). pub(crate) -- ingest.rs's own
+/// attribute_effect reuses this directly (see its own doc) for spell
+/// lines this dictionary had to drop as globally ambiguous (the same
+/// text shared by several rank/typo variants of one real spell line,
+/// e.g. Tashania's own family) but which a real nearby cast can still
+/// resolve locally, the same way it already does for msg_cast_on_you.
+pub(crate) fn other_tail_of(msg: &str) -> Option<&str> {
     for p in PLACEHOLDERS {
         let Some(rest) = msg.strip_prefix(p) else {
             continue;

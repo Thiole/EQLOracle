@@ -1089,6 +1089,27 @@ pub fn current_encounter(ing: &Ingest) -> Option<&Encounter> {
     ing.store.encounter(EncounterId(latest_id))
 }
 
+/// why: Skill Tracker's target-effects section -- current_encounter's
+/// own "most recently ACTIVE, whole store" resolution is exactly right
+/// for a DPS meter, but wrong for a feature scoped to one specific
+/// entity: real bug, caught live, group content -- whichever mob a
+/// party member (not necessarily "You") is actively hitting keeps
+/// winning current_encounter's own backward scan, starving out the
+/// mob "You" are actually casting debuffs on. This scans the same way
+/// but filtered to rows that actually name `target_sym` (either side),
+/// so it finds that entity's own most recent encounter regardless of
+/// what the rest of the group is doing.
+pub fn encounter_for(ing: &Ingest, target_sym: Sym) -> Option<&Encounter> {
+    let id = (0..ing.store.len())
+        .rev()
+        .find(|&i| {
+            ing.store.enc[i] != NO_ENCOUNTER
+                && (ing.store.actor[i] == target_sym || ing.store.target[i] == target_sym)
+        })
+        .map(|i| ing.store.enc[i])?;
+    ing.store.encounter(EncounterId(id))
+}
+
 /// why: overlay's own live poll -- most recent encounter, `fight_state_at`'s
 /// own trailing INSPECT_WINDOW_MS dps (already a rolling snapshot, not
 /// cumulative, so a fight that ended minutes ago self-corrects to 0 dps
