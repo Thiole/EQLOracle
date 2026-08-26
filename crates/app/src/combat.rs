@@ -94,6 +94,10 @@ pub struct CombatSummaryDto {
     pub abilities: Vec<AbilityRowDto>,
     /// why: separate from abilities -- see CastRowDto
     pub casts: Vec<CastRowDto>,
+    /// why: healing landed on the target during the selection -- offsets
+    /// team damage, worth surfacing separately rather than folding into
+    /// total_damage where it'd misread as team output
+    pub enemy_heal: u64,
 }
 
 fn zone_visit_of(ing: &Ingest, start_ms: Millis) -> Option<usize> {
@@ -583,6 +587,7 @@ pub fn summarize(
 
     let mut duration_ms: Millis = 0;
     let mut enemy_damage = 0u64;
+    let mut enemy_heal = 0u64;
     let mut merged: HashMap<eqlp_store::AbilityId, AbilityRow> = HashMap::new();
     // why: one dps reading per fight, averaged not pooled -- see CombatSummaryDto::dps
     let mut per_fight_dps: Vec<f64> = Vec::new();
@@ -600,6 +605,15 @@ pub fn summarize(
         let fight_enemy: u64 = enemy_rows.iter().map(|r| r.total).sum();
         enemy_damage += fight_enemy;
         per_fight_enemy_dps.push(fight_enemy as f64 / fight_secs);
+        // why: heals landing ON the target, whoever cast them -- self-heal
+        // or an ally healing it, either way it's damage the team didn't
+        // actually make stick
+        enemy_heal += total(
+            &ing.store,
+            &Filter::encounter(id)
+                .kind(EventKind::Heal)
+                .target(enc.target),
+        );
 
         if let Some(sym) = actor_sym {
             // why: one specific ally, own rows only -- never their own target
@@ -682,6 +696,7 @@ pub fn summarize(
         enemy_dps: mean(&per_fight_enemy_dps),
         abilities,
         casts: cast_rows(ing, &ids, actor_sym),
+        enemy_heal,
     }
 }
 
@@ -698,6 +713,13 @@ pub struct AllyDto {
     pub crit_pct: f64,
     pub dps: f64,
     pub pct: f64,
+    /// why: None (not 0%) when this ally never threw a melee-avoidable
+    /// swing -- a pure caster has nothing to report here, distinct from
+    /// "landed everything"
+    pub hit_pct: Option<f64>,
+    /// why: None when this ally never cast a resistable spell, same
+    /// reasoning as hit_pct
+    pub resist_pct: Option<f64>,
 }
 
 /// why: Combat module's primary view, damage dealers sorted descending.
@@ -741,6 +763,39 @@ pub fn list_allies(
         }
     }
 
+    // why: melee-avoided swings (Miss kind) and cast outcomes (Cast kind)
+    // are separate event kinds from landed Damage, see EventKind's own
+    // doc -- only rolled up for syms already known to be allies above, no
+    // point tracking a mob's own casts/misses here
+    let mut avoided: HashMap<Sym, u64> = HashMap::new();
+    let mut casts: HashMap<Sym, (u64, u64)> = HashMap::new(); // (attempts, resisted)
+    for &id in &ids {
+        let Some(enc) = ing.store.encounter(id) else {
+            continue;
+        };
+        for (sym, _amt, n, _crits) in
+            by_actor(&ing.store, &Filter::encounter(id).kind(EventKind::Miss))
+        {
+            if acc.contains_key(&sym) {
+                *avoided.entry(sym).or_insert(0) += n;
+            }
+        }
+        for i in enc.range() {
+            if ing.store.enc[i] != id.0 || ing.store.kind[i] != EventKind::Cast {
+                continue;
+            }
+            let actor = ing.store.actor[i];
+            if actor == enc.target || !acc.contains_key(&actor) {
+                continue; // the mob's own casts, or a non-ally, not "the team"
+            }
+            let e = casts.entry(actor).or_insert((0, 0));
+            e.0 += 1;
+            if ing.store.flags[i] & flag::CAST_RESISTED != 0 {
+                e.1 += 1;
+            }
+        }
+    }
+
     let duration_ms: Millis = ids
         .iter()
         .filter_map(|&id| ing.store.encounter(id))
@@ -771,6 +826,14 @@ pub fn list_allies(
                 } else {
                     0.0
                 },
+                hit_pct: {
+                    let attempts = hits + avoided.get(&sym).copied().unwrap_or(0);
+                    (attempts > 0).then(|| 100.0 * hits as f64 / attempts as f64)
+                },
+                resist_pct: casts
+                    .get(&sym)
+                    .filter(|&&(attempts, _)| attempts > 0)
+                    .map(|&(attempts, resisted)| 100.0 * resisted as f64 / attempts as f64),
                 name,
             }
         })
@@ -1656,6 +1719,75 @@ mod ability_mitigation_dto_tests {
         assert_eq!(
             punch.dodged, 0,
             "the target's own dodged swing belongs to them, not the team"
+        );
+    }
+}
+
+/// why: real ask -- a copy-out report needs accuracy/resist/enemy-heal
+/// alongside totals, not just what AllyTable already showed
+#[cfg(test)]
+mod ally_report_tests {
+    use super::*;
+    use crate::ingest::backfill_lines;
+    use crate::parser::build_engine;
+
+    fn run(lines: &[&str]) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let bytes: Vec<&[u8]> = lines.iter().map(|l| l.as_bytes()).collect();
+        backfill_lines(&mut ing, &engine, &bytes, 1);
+        ing
+    }
+
+    #[test]
+    fn a_landed_hit_and_a_blocked_swing_average_to_fifty_percent_hit_rate() {
+        let ing = run(&[
+            // why: proves "You" as Kind::Player -- Unproven defaults to
+            // Enemy allegiance (see Allegiance::of), so list_allies would
+            // otherwise skip "You" entirely
+            "[Tue Jul 28 15:00:00 2026] You tell your party, 'ready'",
+            "[Tue Jul 28 15:01:00 2026] You punch a target for 5 points of damage.",
+            "[Tue Jul 28 15:01:01 2026] You try to punch a target, but a target blocks!",
+        ]);
+        let allies = list_allies(&ing, None, None);
+        let you = allies
+            .iter()
+            .find(|a| a.name == "You")
+            .expect("You should be an ally row");
+        assert_eq!(you.hit_pct, Some(50.0));
+        assert_eq!(
+            you.resist_pct, None,
+            "no casts at all -- must stay None, not 0%"
+        );
+    }
+
+    #[test]
+    fn a_resisted_cast_and_a_landed_cast_average_to_fifty_percent_resist_rate() {
+        let ing = run(&[
+            "[Tue Jul 28 15:00:00 2026] You tell your party, 'ready'",
+            "[Tue Jul 28 15:01:00 2026] You begin casting Lifetap.",
+            "[Tue Jul 28 15:01:02 2026] You hit a target for 10 points of magic damage by Lifetap.",
+            "[Tue Jul 28 15:01:03 2026] You begin casting Lifetap.",
+            "[Tue Jul 28 15:01:05 2026] a target resisted your Lifetap!",
+        ]);
+        let allies = list_allies(&ing, None, None);
+        let you = allies
+            .iter()
+            .find(|a| a.name == "You")
+            .expect("You should be an ally row");
+        assert_eq!(you.resist_pct, Some(50.0));
+    }
+
+    #[test]
+    fn a_self_heal_on_the_target_reaches_the_summary_as_enemy_heal() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You punch a target for 5 points of damage.",
+            "[Tue Jul 28 15:01:01 2026] a target healed itself for 20 hit points by Lifetap.",
+        ]);
+        let summary = summarize(&ing, None, None, None);
+        assert_eq!(
+            summary.enemy_heal, 20,
+            "healing landed on the target, not folded into total_damage"
         );
     }
 }

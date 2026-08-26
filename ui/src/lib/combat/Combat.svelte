@@ -1,9 +1,12 @@
 <script lang="ts">
+  import { fade } from 'svelte/transition';
   import * as Select from '$lib/components/ui/select';
   import { Card, CardContent } from '$lib/components/ui/card';
+  import CopyIcon from '@lucide/svelte/icons/copy';
   import AllyTable from './AllyTable.svelte';
   import HistoryPane from './HistoryPane.svelte';
   import FightTimelineChart from './FightTimelineChart.svelte';
+  import { buildCombatReport } from './report';
   import {
     zoneVisits,
     encounters,
@@ -138,6 +141,29 @@
         ]
       : [],
   );
+
+  // ---------------------------------------------------------------- copy report
+  //
+  // why: same target/tag logic encLabel already derives -- null id means
+  // aggregate (no current-fight target to name), a real id looks the
+  // encounter up for its target and kill/wipe/reset/ongoing tag.
+  let copyNote = $state<{ x: number; y: number; text: string } | null>(null);
+  let copyNoteTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function copyReport(event: MouseEvent) {
+    if (!$summary) return;
+    const e = $selectedEncounterId === null ? null : $encounters.find((e) => e.id === $selectedEncounterId);
+    const tag = e ? (e.open ? 'ongoing' : e.slain ? 'kill' : e.wiped ? 'wipe' : 'reset') : null;
+    const report = buildCombatReport({ target: e?.target ?? null, tag, fightCount: $summary.fight_count }, $summary, $allies);
+    try {
+      await navigator.clipboard.writeText(report);
+    } catch {
+      return; // clipboard denied -- nothing copied, no notification to show for it
+    }
+    clearTimeout(copyNoteTimer);
+    copyNote = { x: event.clientX, y: event.clientY, text: 'report copied to clipboard' };
+    copyNoteTimer = setTimeout(() => (copyNote = null), 1400);
+  }
 </script>
 
 <div class="flex flex-col gap-4 p-4">
@@ -199,13 +225,24 @@
   </div>
 
   {#if stats.length}
-    <div class="flex divide-x divide-border rounded-sm border border-border bg-card">
-      {#each stats as s (s.label)}
-        <div class="flex-1 px-4 py-2.5">
-          <div class="stat-figure {s.tone}">{s.value}</div>
-          <div class="stat-label mt-0.5">{s.label}</div>
-        </div>
-      {/each}
+    <div class="flex items-stretch gap-2">
+      <div class="flex flex-1 divide-x divide-border rounded-sm border border-border bg-card">
+        {#each stats as s (s.label)}
+          <div class="flex-1 px-4 py-2.5">
+            <div class="stat-figure {s.tone}">{s.value}</div>
+            <div class="stat-label mt-0.5">{s.label}</div>
+          </div>
+        {/each}
+      </div>
+      <button
+        type="button"
+        class="flex shrink-0 items-center gap-1.5 self-center rounded-md border border-border px-2.5 py-1.5 text-[11px] text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+        title="Copy a one-line report of this selection, ready to paste in-game -- fight, team total/dps, top allies"
+        onclick={copyReport}
+      >
+        <CopyIcon class="size-3" />
+        copy report
+      </button>
     </div>
   {/if}
 
@@ -225,3 +262,13 @@
     </Card>
   {/if}
 </div>
+
+{#if copyNote}
+  <div
+    class="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-full rounded-md border border-border bg-card px-2 py-1 text-[11px] text-foreground shadow-md"
+    style="left: {copyNote.x}px; top: {copyNote.y - 10}px;"
+    transition:fade={{ duration: 150 }}
+  >
+    {copyNote.text}
+  </div>
+{/if}

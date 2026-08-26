@@ -99,6 +99,8 @@ export interface CombatSummaryDto {
   enemy_dps: number;
   abilities: AbilityRowDto[];
   casts: CastRowDto[];
+  /** Healing landed on the target during the selection. */
+  enemy_heal: number;
 }
 
 export interface AllyDto {
@@ -111,6 +113,10 @@ export interface AllyDto {
   crit_pct: number;
   dps: number;
   pct: number;
+  /** null when this ally never threw a melee-avoidable swing. */
+  hit_pct: number | null;
+  /** null when this ally never cast a resistable spell. */
+  resist_pct: number | null;
 }
 
 export interface EntitySeriesDto {
