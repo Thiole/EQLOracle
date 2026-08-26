@@ -66,42 +66,44 @@
     </CardContent>
   </Card>
 
-  {#if !capped}
-    <Card class="rounded-sm">
-      <CardContent class="px-3 py-2.5">
-        <h2 class="panel-title mb-1.5">DPS meter</h2>
-        <label class="flex items-center gap-2 text-[12px] text-foreground">
-          <Checkbox checked={$dpsMeterEnabled} onCheckedChange={(v: boolean) => void onToggleDpsMeter(v)} />
-          players and assumed pets, rolling recent-fight damage
-        </label>
-        {#if enableError}
-          <p class="mt-1 text-[11px] text-bad">{enableError}</p>
-        {/if}
+  <Card class="rounded-sm">
+    <CardContent class="px-3 py-2.5">
+      <h2 class="panel-title mb-1.5">DPS meter</h2>
+      <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
+        <Checkbox checked={$dpsMeterEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleDpsMeter(v)} />
+        players and assumed pets, rolling recent-fight damage
+      </label>
+      {#if capped}
+        <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
+      {/if}
+      {#if enableError}
+        <p class="mt-1 text-[11px] text-bad">{enableError}</p>
+      {/if}
 
-        <div class="mt-2.5 flex items-center gap-3">
-          <input
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.05"
-            value={$dpsMeterOpacity}
-            oninput={(e) => void setDpsMeterOpacity(+e.currentTarget.value)}
-            class="h-1.5 max-w-64 flex-1 accent-primary"
-          />
-          <span class="w-10 shrink-0 text-right text-[12px] tabular-nums text-foreground">{Math.round($dpsMeterOpacity * 100)}%</span>
-          <!-- why: a real alpha-preview checker, not just a number -- lets you see
-               how see-through the panel will actually read before it's on screen -->
-          <div
-            class="h-8 w-16 shrink-0 rounded-sm border border-border"
-            style="background-image: repeating-conic-gradient(#3a3d42 0% 25%, #26282c 0% 50%); background-size: 8px 8px;"
-          >
-            <div class="size-full rounded-[3px]" style:background-color="rgba(10, 11, 13, {$dpsMeterOpacity})"></div>
-          </div>
+      <div class="mt-2.5 flex items-center gap-3 {capped ? 'opacity-40' : ''}">
+        <input
+          type="range"
+          min="0.1"
+          max="1"
+          step="0.05"
+          value={$dpsMeterOpacity}
+          disabled={capped}
+          oninput={(e) => void setDpsMeterOpacity(+e.currentTarget.value)}
+          class="h-1.5 max-w-64 flex-1 accent-primary"
+        />
+        <span class="w-10 shrink-0 text-right text-[12px] tabular-nums text-foreground">{Math.round($dpsMeterOpacity * 100)}%</span>
+        <!-- why: a real alpha-preview checker, not just a number -- lets you see
+             how see-through the panel will actually read before it's on screen -->
+        <div
+          class="h-8 w-16 shrink-0 rounded-sm border border-border"
+          style="background-image: repeating-conic-gradient(#3a3d42 0% 25%, #26282c 0% 50%); background-size: 8px 8px;"
+        >
+          <div class="size-full rounded-[3px]" style:background-color="rgba(10, 11, 13, {$dpsMeterOpacity})"></div>
         </div>
-        <p class="mt-1 text-[11px] text-muted-foreground">How see-through this widget's own panel reads over the game.</p>
-      </CardContent>
-    </Card>
-  {/if}
+      </div>
+      <p class="mt-1 text-[11px] text-muted-foreground">How see-through this widget's own panel reads over the game.</p>
+    </CardContent>
+  </Card>
 
   <Card class="rounded-sm border-dashed">
     <CardContent class="px-3 py-2.5">
