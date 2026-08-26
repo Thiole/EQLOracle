@@ -32,6 +32,9 @@
 
   let enableError = $state<string | null>(null);
   let skillTrackerError = $state<string | null>(null);
+  // why: which tracked-cooldown row is highlighted -- a real listbox
+  // selection, separate from removal (its own × per row)
+  let selectedSkill = $state<string | null>(null);
   // why: each widget's own window starts locked (click-through) --
   // matches every widget window's own real default at open
   let locked = $state<Record<string, boolean>>({ dps_meter: true, skill_tracker: true });
@@ -147,9 +150,7 @@
         <Checkbox checked={$skillTrackerEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleSkillTracker(v)} />
         enable
       </label>
-      <p class="mt-0.5 text-[11px] text-muted-foreground">
-        Charm, invisibility, hide, and sneak (always shown), plus the cooldowns and target effects below.
-      </p>
+      <p class="mt-0.5 text-[11px] text-muted-foreground">Charm, invisibility, hide, and sneak always show; cooldowns below are yours to pick.</p>
       {#if capped}
         <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
       {/if}
@@ -162,33 +163,44 @@
 
       <div class="mt-2.5">
         <p class="text-[11px] text-muted-foreground">
-          Cooldowns tracked (estimated from your own real reuse gaps) -- track a spell or ability from Spellbook or
-          Combat's own ability breakdown to add one here.
+          tracked cooldowns <span class="text-muted-foreground/70">(track one from Spellbook or Combat's own ability breakdown)</span>
         </p>
-        {#if !$trackedSkills.length}
-          <p class="mt-1 text-[11px] text-muted-foreground italic">Nothing tracked yet.</p>
-        {:else}
-          <div class="mt-1.5 flex flex-wrap gap-1.5">
+        <div role="listbox" aria-label="Tracked cooldowns" class="mt-1 max-h-32 overflow-y-auto rounded-sm border border-border">
+          {#if !$trackedSkills.length}
+            <p class="px-2 py-3 text-center text-[11px] text-muted-foreground italic">Nothing tracked yet.</p>
+          {:else}
             {#each $trackedSkills as skill (skill)}
-              <span class="flex items-center gap-1 rounded-full border border-border bg-muted/40 py-0.5 pr-1 pl-2 text-[11px] text-foreground">
-                {skill}
+              <div
+                role="option"
+                aria-selected={selectedSkill === skill}
+                tabindex="0"
+                class="flex items-center justify-between gap-2 border-b border-border/50 px-2 py-1 text-[12px] last:border-b-0 {selectedSkill ===
+                skill
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-foreground hover:bg-muted/40'}"
+                onclick={() => (selectedSkill = selectedSkill === skill ? null : skill)}
+                onkeydown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') selectedSkill = selectedSkill === skill ? null : skill;
+                }}
+              >
+                <span class="truncate">{skill}</span>
                 <button
                   type="button"
-                  class="rounded-full p-0.5 text-muted-foreground hover:bg-bad/20 hover:text-bad"
+                  class="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:bg-bad/20 hover:text-bad"
                   title="Stop tracking {skill}"
-                  onclick={() => void toggleTrackedSkill(skill)}
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    void toggleTrackedSkill(skill);
+                  }}
                 >
                   <XIcon class="size-3" />
                 </button>
-              </span>
+              </div>
             {/each}
-          </div>
-        {/if}
+          {/if}
+        </div>
       </div>
-      <p class="mt-2 text-[11px] text-muted-foreground">
-        Target effects (DoTs, debuffs you've cast on your own current target) track automatically -- no need to track
-        those individually.
-      </p>
+      <p class="mt-2 text-[11px] text-muted-foreground">Target effects track automatically -- no picker needed.</p>
 
       {@render alphaPreview($skillTrackerOpacity, (v) => void setSkillTrackerOpacity(v), capped)}
     </CardContent>
