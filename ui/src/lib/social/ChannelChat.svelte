@@ -25,7 +25,11 @@
     return `${last.who}: ${last.text}`;
   }
 
-  const active = $derived(messagesFor($activeChannel));
+  // why: newest-first for display -- the backend hands back oldest-first (real log order)
+  const active = $derived.by(() => {
+    const msgs = messagesFor($activeChannel);
+    return msgs ? [...msgs].reverse() : null;
+  });
 </script>
 
 <div class="flex gap-3">
