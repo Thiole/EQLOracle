@@ -36,10 +36,12 @@ export const dpsMeterOpacity = writable(0.85);
  * cooldowns, target effects) -- one widget, one window, one toggle. */
 export const skillTrackerEnabled = writable(false);
 export const skillTrackerOpacity = writable(0.85);
-/** why: which skilltracker::TRACKED_SKILLS to show in the Skill
- * Tracker's own cooldowns section -- IS persisted, a real content
- * choice (which skills this character even has), unlike the on/off
- * above. Empty until the user opts specific skills in. */
+/** why: any ability/spell the player has "track"ed for the Skill
+ * Tracker's own cooldowns section -- not a fixed list, populated by a
+ * real "track" action wherever a spell/ability shows up (Spellbook,
+ * Combat's ability rows, or the Skill Tracker's own settings card).
+ * IS persisted, a real content choice, unlike the on/off above. Empty
+ * until the user tracks something. */
 export const trackedSkills = writable<string[]>([]);
 export const settingsLoaded = writable(false);
 
@@ -158,6 +160,16 @@ export async function setSkillTrackerOpacity(v: number) {
 export async function setTrackedSkills(skills: string[]) {
   trackedSkills.set(skills);
   await api.setPreferences({ ...currentPrefs(), tracked_skills: skills }).catch(() => {});
+}
+
+/** why: the one call every real "track" button uses -- Spellbook's own
+ * spell rows, Combat's ability rows, and the Skill Tracker's own
+ * settings card (removal only, there) all just need "is this one
+ * tracked, flip it", not the whole list */
+export async function toggleTrackedSkill(name: string) {
+  const current = get(trackedSkills);
+  const next = current.includes(name) ? current.filter((s) => s !== name) : [...current, name];
+  await setTrackedSkills(next);
 }
 
 /** why: shared by every era-tagged Game Data category that carries a

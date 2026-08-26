@@ -5,12 +5,13 @@
   //    no picker (StatusEffectsWidget's own rows, unchanged logic).
   // 2. skill cooldowns (Kick/Bash/...) -- only the ones picked in
   //    Settings, "select skills to track".
-  // 3. target effects -- "Target: <name>" header, one badge+timer per
-  //    tracked spell effect on it. No real spell-icon art is bundled in
-  //    this app (spelldata's own `icon` field is just a wiki filename,
-  //    nothing to render) -- a compact 2-letter badge stands in for
-  //    "icon" instead of plain text-only rows.
+  // 3. target effects -- "Target: <name>" header, one icon+timer per
+  //    tracked spell effect on it. Real spell-icon art (same assets
+  //    SpellbookBuilder already renders, see ICON_BASE) when the backend
+  //    resolved one; a compact 2-letter badge falls back for anything
+  //    unrecognized.
   import type { StatusEffectsDto, SkillStatusDto, TargetEffectsDto } from '$lib/tauri/api';
+  import { ICON_BASE } from '$lib/character/constants';
   import StatusEffectsWidget from './StatusEffectsWidget.svelte';
 
   let {
@@ -100,8 +101,12 @@
           {#each targetEffects.effects as e (e.spell)}
             {@const st = targetEffectState(e)}
             <div class="flex flex-col items-center gap-0.5" title={e.spell}>
-              <div class="flex size-7 items-center justify-center rounded-sm bg-black/40 text-[10px] font-bold tracking-wide {st.flash ? 'target-effect-blink' : 'text-white/90'}">
-                {abbrev(e.spell)}
+              <div class="flex size-7 items-center justify-center overflow-hidden rounded-sm bg-black/40 text-[10px] font-bold tracking-wide {st.flash ? 'target-effect-blink' : 'text-white/90'}">
+                {#if e.icon}
+                  <img src={ICON_BASE + encodeURIComponent(e.icon)} alt="" class="size-full object-cover" />
+                {:else}
+                  {abbrev(e.spell)}
+                {/if}
               </div>
               <div class="font-mono text-[10px] tabular-nums {st.flash ? 'text-bad' : 'text-white/70'}">{st.label}</div>
             </div>

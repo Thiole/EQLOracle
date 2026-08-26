@@ -1,6 +1,8 @@
 <script lang="ts">
   import * as Table from '$lib/components/ui/table';
   import { allies, expandedAlly, allySummary, toggleAlly } from '$lib/stores/combat';
+  import { trackedSkills, toggleTrackedSkill } from '$lib/stores/settings';
+  import TargetIcon from '@lucide/svelte/icons/target';
 </script>
 
 {#if $allies.length === 0}
@@ -42,8 +44,27 @@
                       {#each $allySummary.abilities as ab (ab.ability)}
                         {@const avoided = ab.missed + ab.blocked + ab.dodged + ab.parried}
                         {@const attempts = ab.hits + avoided}
-                        <tr class="border-b border-border/50">
-                          <td class="py-0.5">{ab.ability}</td>
+                        <tr class="group border-b border-border/50">
+                          <td class="py-0.5">
+                            <span class="inline-flex items-center gap-1">
+                              {ab.ability}
+                              <!-- why: "track" from wherever an ability shows up
+                                   -- Spencer's own ask; adds/removes it from the
+                                   Skill Tracker overlay's own cooldowns section -->
+                              <button
+                                type="button"
+                                class="rounded-sm p-0.5 {$trackedSkills.includes(ab.ability)
+                                  ? 'text-primary'
+                                  : 'text-muted-foreground opacity-0 group-hover:opacity-100'}"
+                                title={$trackedSkills.includes(ab.ability)
+                                  ? `Stop tracking ${ab.ability}`
+                                  : `Track ${ab.ability} in the Skill Tracker overlay`}
+                                onclick={() => void toggleTrackedSkill(ab.ability)}
+                              >
+                                <TargetIcon class="size-3" />
+                              </button>
+                            </span>
+                          </td>
                           <td class="py-0.5 text-right tabular-nums">{ab.total.toLocaleString()}</td>
                           <td class="py-0.5 text-right tabular-nums text-muted-foreground"
                             >{ab.hits}x{avoided > 0 ? `/${attempts}` : ''}</td

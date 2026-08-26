@@ -226,6 +226,10 @@ export interface SkillStatusDto {
 /** why: Skill Tracker's target-effects section -- see targeteffects.rs's own doc */
 export interface TargetEffectDto {
   spell: string;
+  /** why: the wiki scrape's own icon filename -- real assets are bundled
+   * at /planner/icons (see character/constants.ts's own ICON_BASE), null
+   * for an unrecognized spell name */
+  icon: string | null;
   /** why: false when the most recent real observation was a resisted cast, not a landing */
   landed: boolean;
   since_ms: number;
@@ -1022,8 +1026,9 @@ export interface PreferencesDto {
    * of the Skill Tracker's own sections (status effects, cooldowns,
    * target effects), one window, one panel, one alpha */
   overlay_skill_tracker_opacity: number;
-  /** why: which skilltracker::TRACKED_SKILLS to actually show in the
-   * Skill Tracker's own cooldowns section -- empty until the user picks */
+  /** why: any ability/spell name the player has "track"ed (Spellbook,
+   * Combat's ability rows, or the Skill Tracker's own settings card) --
+   * not a fixed list, empty until the user tracks something */
   tracked_skills: string[];
 }
 

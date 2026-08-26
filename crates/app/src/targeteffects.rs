@@ -39,6 +39,10 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize)]
 pub struct TargetEffectDto {
     pub spell: String,
+    /// why: the wiki scrape's own icon filename (packs/spells.json) --
+    /// real assets are bundled at ui/public/planner/icons, same ones
+    /// SpellbookBuilder already renders; None for an unrecognized name
+    pub icon: Option<String>,
     /// why: false when the most recent real observation was a resisted
     /// cast, not a landing -- flashed at 0:00 client-side
     pub landed: bool,
@@ -153,8 +157,10 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
                 return None; // landed but no known duration -- nothing to time
             }
             let ready_at_ms = duration_ms.map(|d| since_ms + d);
+            let icon = spelldata::spell_by_name(&spell).and_then(|s| s.icon.clone());
             Some(TargetEffectDto {
                 spell,
+                icon,
                 landed,
                 since_ms,
                 duration_ms,

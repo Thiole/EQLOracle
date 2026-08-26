@@ -1180,6 +1180,12 @@ impl Ingest {
                 let caster = self.sym(&who);
                 self.clear_dead_if_acting(ts, caster);
                 let base = base_spell_name(&spell);
+                // why: Skill Tracker's own-cooldowns section -- spells are
+                // observed off cast.begin, not any Damage event they might
+                // also produce (see skilltracker.rs's own doc for why)
+                if who == "You" {
+                    crate::skilltracker::observe_skill_use(&mut self.skills, ts, base, true);
+                }
                 let spell_sym = self.store.sym(base).0;
                 self.casts.begin(ts, caster.0, spell_sym);
                 // why: every real caster, pets included -- attribute_effect's
@@ -1456,10 +1462,11 @@ impl Ingest {
         let t = self.sym(dst);
         self.note_shared_target(ts, enc, src, t);
         self.clear_dead_if_acting(ts, a);
-        // why: a landed real special attack -- see skilltracker.rs's own
-        // doc for why only these named abilities (not every weapon swing)
-        // are worth tracking
-        if src.eq_ignore_ascii_case("you") {
+        // why: melee only -- a spell's own use is observed off cast.begin
+        // instead (see Action::Cast's own handling), never both, or a
+        // damage spell's own cast and its landing would count as two
+        // separate "uses" milliseconds apart and corrupt the reuse gap
+        if src.eq_ignore_ascii_case("you") && tags & tag::SPELL == 0 {
             crate::skilltracker::observe_skill_use(&mut self.skills, ts, ability, true);
         }
         let ab = self.store.ability_id(ability, tags);

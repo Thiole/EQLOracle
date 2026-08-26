@@ -8,6 +8,7 @@
   // positioned.
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Checkbox } from '$lib/components/ui/checkbox';
+  import XIcon from '@lucide/svelte/icons/x';
   import { api } from '$lib/tauri/api';
   import {
     dpsMeterEnabled,
@@ -19,15 +20,10 @@
     setSkillTrackerEnabled,
     setSkillTrackerOpacity,
     trackedSkills,
-    setTrackedSkills,
+    toggleTrackedSkill,
     loadPreferences,
   } from '$lib/stores/settings';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
-
-  // why: mirrors skilltracker.rs's own TRACKED_SKILLS -- kept in sync by
-  // hand, same as the update-channel public/beta pair elsewhere in
-  // Settings; a fixed list this small isn't worth a round trip to fetch.
-  const TRACKABLE_SKILLS = ['Kick', 'Bash', 'Backstab', 'Frenzy', 'Smite', 'Reave'];
 
   $effect(() => {
     void loadPreferences();
@@ -58,12 +54,6 @@
     } catch (e) {
       skillTrackerError = e instanceof Error ? e.message : String(e);
     }
-  }
-
-  function onToggleTrackedSkill(skill: string, on: boolean) {
-    const current = $trackedSkills;
-    const next = on ? [...current, skill] : current.filter((s) => s !== skill);
-    void setTrackedSkills(next);
   }
 
   async function toggleLocked(widget: string) {
@@ -171,23 +161,33 @@
       {/if}
 
       <div class="mt-2.5">
-        <p class="text-[11px] text-muted-foreground">Cooldowns to show (estimated from your own real reuse gaps):</p>
-        <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-          {#each TRACKABLE_SKILLS as skill (skill)}
-            <label class="flex items-center gap-1.5 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
-              <Checkbox
-                checked={$trackedSkills.includes(skill)}
-                disabled={capped}
-                onCheckedChange={(v: boolean) => onToggleTrackedSkill(skill, v)}
-              />
-              {skill}
-            </label>
-          {/each}
-        </div>
+        <p class="text-[11px] text-muted-foreground">
+          Cooldowns tracked (estimated from your own real reuse gaps) -- track a spell or ability from Spellbook or
+          Combat's own ability breakdown to add one here.
+        </p>
+        {#if !$trackedSkills.length}
+          <p class="mt-1 text-[11px] text-muted-foreground italic">Nothing tracked yet.</p>
+        {:else}
+          <div class="mt-1.5 flex flex-wrap gap-1.5">
+            {#each $trackedSkills as skill (skill)}
+              <span class="flex items-center gap-1 rounded-full border border-border bg-muted/40 py-0.5 pr-1 pl-2 text-[11px] text-foreground">
+                {skill}
+                <button
+                  type="button"
+                  class="rounded-full p-0.5 text-muted-foreground hover:bg-bad/20 hover:text-bad"
+                  title="Stop tracking {skill}"
+                  onclick={() => void toggleTrackedSkill(skill)}
+                >
+                  <XIcon class="size-3" />
+                </button>
+              </span>
+            {/each}
+          </div>
+        {/if}
       </div>
       <p class="mt-2 text-[11px] text-muted-foreground">
-        Target effects (DoTs, debuffs you've cast) track automatically against whatever you're currently fighting -- no
-        picker needed there.
+        Target effects (DoTs, debuffs you've cast on your own current target) track automatically -- no need to track
+        those individually.
       </p>
 
       {@render alphaPreview($skillTrackerOpacity, (v) => void setSkillTrackerOpacity(v), capped)}

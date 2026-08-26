@@ -14,6 +14,8 @@
   import DpsSuggest from './DpsSuggest.svelte';
   import { api, type UiFileInfoDto, type SpellDto, type DamageSpellDto, type SpellbookFileDto } from '$lib/tauri/api';
   import { status } from '$lib/stores/status';
+  import { trackedSkills, toggleTrackedSkill } from '$lib/stores/settings';
+  import TargetIcon from '@lucide/svelte/icons/target';
 
   // why: a real loadout holds up to 14 spells -- 8 base slots plus up to
   // 6 more unlocked by the Mnemonic Retention AA (1 extra slot per AA
@@ -754,22 +756,37 @@
                list is fully regenerated on every filter/sort change
                anyway, so there's no per-item identity worth preserving. -->
           {#each searchResults as s, i (i)}
-            <button
-              type="button"
-              draggable="true"
-              ondragstart={(e) => onDragStart(e, s.name)}
-              onclick={() => placeInArmedSlot(s.name)}
-              class="flex items-center gap-1 rounded-sm px-1 py-0.5 text-left text-[10px] leading-tight text-foreground hover:bg-accent active:cursor-grabbing"
-              title={s.name}
-            >
-              {#if s.icon}
-                <img src={ICON_BASE + encodeURIComponent(s.icon)} alt="" class="size-4 shrink-0 rounded-[2px] border border-border bg-muted/20" />
-              {:else}
-                <span class="size-4 shrink-0 rounded-[2px] border border-dashed border-border"></span>
-              {/if}
-              <span class="truncate">{s.name}</span>
-              {#if s.badge}<span class="shrink-0 text-muted-foreground">({s.badge})</span>{/if}
-            </button>
+            <div class="group flex items-center gap-0.5 rounded-sm text-[10px] leading-tight hover:bg-accent">
+              <button
+                type="button"
+                draggable="true"
+                ondragstart={(e) => onDragStart(e, s.name)}
+                onclick={() => placeInArmedSlot(s.name)}
+                class="flex min-w-0 flex-1 items-center gap-1 px-1 py-0.5 text-left text-foreground active:cursor-grabbing"
+                title={s.name}
+              >
+                {#if s.icon}
+                  <img src={ICON_BASE + encodeURIComponent(s.icon)} alt="" class="size-4 shrink-0 rounded-[2px] border border-border bg-muted/20" />
+                {:else}
+                  <span class="size-4 shrink-0 rounded-[2px] border border-dashed border-border"></span>
+                {/if}
+                <span class="truncate">{s.name}</span>
+                {#if s.badge}<span class="shrink-0 text-muted-foreground">({s.badge})</span>{/if}
+              </button>
+              <!-- why: "track" from wherever a spell shows up -- Spencer's own
+                   ask; adds/removes it from the Skill Tracker overlay's own
+                   cooldowns section (see stores/settings.ts's own doc) -->
+              <button
+                type="button"
+                class="shrink-0 rounded-sm p-0.5 {$trackedSkills.includes(s.name)
+                  ? 'text-primary'
+                  : 'text-muted-foreground opacity-0 group-hover:opacity-100'}"
+                title={$trackedSkills.includes(s.name) ? `Stop tracking ${s.name}` : `Track ${s.name} in the Skill Tracker overlay`}
+                onclick={() => void toggleTrackedSkill(s.name)}
+              >
+                <TargetIcon class="size-3" />
+              </button>
+            </div>
           {/each}
         </div>
       {:else}

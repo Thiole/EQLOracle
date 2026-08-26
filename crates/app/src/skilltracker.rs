@@ -1,33 +1,37 @@
-//! why: the overlay's Skill Tracker widget -- Spencer's ask: track a
-//! chosen set of combat skills, flag when each is estimated ready again,
-//! and whether the most recent attempt landed. Scoped to the real
-//! discrete special attacks (own reuse timer, not just a per-weapon swing
-//! verb) -- Kick/Bash/Backstab/Frenzy/Smite/Reave all already flow
-//! through the normal Damage/Miss pipeline as their own named ability
-//! (see `ingest::canonical_melee_ability`), unlike Slash/Crush/Pierce/
-//! Hit/Cleave/Punch/... which are just which verb a given weapon type
-//! uses for an ordinary swing, not a specific skill with its own timer.
+//! why: the overlay's Skill Tracker widget -- Spencer's ask: pick any
+//! ability or spell to track (a real "track" action wherever one shows
+//! up in the app -- Spellbook, Combat's ability rows, ...), flag when
+//! each is estimated ready again, and whether the most recent attempt
+//! landed. Not restricted to a curated list -- which ones actually show
+//! in the overlay is the frontend's own `tracked_skills` preference,
+//! populated by those track buttons; this module tracks every real
+//! ability use unconditionally, cheap either way (bounded by how many
+//! distinct abilities one character actually uses, not a fixed set).
 //!
 //! No hardcoded reuse-timer table -- this is a custom server, official
 //! wiki numbers (already level/AA-modified anyway) aren't trustworthy
 //! here. Instead the reuse interval is estimated empirically: the
 //! smallest real gap ever observed between two of the player's own
-//! uses of that skill. A skill's true reuse timer is a hard floor nothing
-//! can beat, so the smallest observed gap is the best available lower
-//! bound, and only ever improves (shrinks toward truth) as more real
-//! uses are seen -- same "trust the log over a wiki number" stance this
-//! app takes everywhere else (spell resist types, class detection, ...).
+//! uses of that ability. A skill's true reuse timer is a hard floor
+//! nothing can beat, so the smallest observed gap is the best available
+//! lower bound, and only ever improves (shrinks toward truth) as more
+//! real uses are seen -- same "trust the log over a wiki number" stance
+//! this app takes everywhere else (spell resist types, class detection, ...).
+//!
+//! Two real triggers feed this, picked to never double-count the same
+//! real action twice:
+//! - Melee abilities (Kick/Bash/Backstab/... and ordinary weapon swings
+//!   alike): observed off Damage/Miss events, landed vs avoided is real.
+//! - Spells: observed off cast.begin instead of any Damage event a
+//!   damage spell might also produce -- a cast has no useful outcome
+//!   yet at that instant, so `landed` is just `true` there (this
+//!   module's own "last outcome" field isn't meaningful for spells,
+//!   the target-effects section is where a resisted spell cast shows
+//!   up for real).
 
 use crate::ingest::Ingest;
 use eqlp_source::Millis;
 use serde::Serialize;
-
-/// why: the real discrete special attacks with their own reuse timer --
-/// see this module's own doc for why ordinary swing verbs don't belong
-/// here. Selectable in Settings; skill_status reports whichever of these
-/// the player has actually used at least once, regardless of selection --
-/// cheap either way, the picker only controls what the overlay *shows*.
-pub const TRACKED_SKILLS: &[&str] = &["Kick", "Bash", "Backstab", "Frenzy", "Smite", "Reave"];
 
 #[derive(Debug, Clone, Copy)]
 pub struct SkillTrack {
@@ -59,18 +63,16 @@ impl SkillTrack {
     }
 }
 
-/// why: called from record_damage (landed=true) and record_avoided
-/// (landed=false) -- both already resolve the real actor name and
-/// canonical ability name before this, so no re-parsing here
+/// why: called from record_damage (melee only, landed=true),
+/// record_avoided (landed=false), and Action::Cast's own handler
+/// (spells, landed=true -- see this module's own doc for why melee and
+/// spells use different triggers)
 pub fn observe_skill_use(
     skills: &mut std::collections::HashMap<String, SkillTrack>,
     ts: Millis,
     ability: &str,
     landed: bool,
 ) {
-    if !TRACKED_SKILLS.contains(&ability) {
-        return;
-    }
     match skills.get_mut(ability) {
         Some(t) => t.observe(ts, landed),
         None => {
@@ -94,25 +96,24 @@ pub struct SkillStatusDto {
 }
 
 /// why: the overlay's own poll -- same polled-on-tick shape as
-/// combat::live_meter/effects::status_effects. Every skill the player
+/// combat::live_meter/effects::status_effects. Every ability the player
 /// has ever used at least once, regardless of which the user picked to
-/// display -- see TRACKED_SKILLS' own doc for why filtering is the
-/// frontend's job, not this query's.
+/// display -- see this module's own doc for why filtering which ones
+/// actually show is the frontend's job, not this query's.
 pub fn skill_status(ing: &Ingest) -> Vec<SkillStatusDto> {
     let now = ing.now_ms();
-    TRACKED_SKILLS
+    ing.skills
         .iter()
-        .filter_map(|&skill| {
-            let t = ing.skills.get(skill)?;
+        .map(|(skill, t)| {
             let ready_at = t.min_gap_ms.map(|g| t.last_used_ms + g);
-            Some(SkillStatusDto {
-                skill: skill.to_string(),
+            SkillStatusDto {
+                skill: skill.clone(),
                 last_outcome: if t.last_landed { "landed" } else { "avoided" },
                 last_used_ms: t.last_used_ms,
                 estimated_interval_ms: t.min_gap_ms,
                 ready: ready_at.map(|r| now >= r),
                 remaining_ms: ready_at.map(|r| (r - now).max(0)),
-            })
+            }
         })
         .collect()
 }
@@ -153,10 +154,34 @@ mod tests {
         assert_eq!(t.min_gap_ms, Some(2000));
     }
 
+    /// why: real change this turn -- Spencer's ask generalized tracking
+    /// off a curated 6-skill list to "anything with a track button",
+    /// including plain weapon-swing verbs if the user picks one
     #[test]
-    fn an_untracked_ability_is_ignored() {
+    fn any_ability_can_be_tracked_not_just_a_curated_list() {
         let mut skills = HashMap::new();
         observe_skill_use(&mut skills, 1000, "Slash", true);
-        assert!(skills.is_empty());
+        assert!(skills.contains_key("Slash"));
+    }
+
+    /// why: real change this turn -- a non-damage spell (no Damage event
+    /// at all) must still be trackable, observed off cast.begin instead
+    #[test]
+    fn a_real_spell_cast_is_tracked_off_cast_begin_not_just_melee() {
+        use crate::ingest::{backfill_lines, Ingest};
+        use crate::parser::build_engine;
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You begin casting Spirit of Wolf.",
+            b"[Tue Jul 28 15:05:00 2026] You begin casting Spirit of Wolf.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let statuses = skill_status(&ing);
+        let s = statuses
+            .iter()
+            .find(|s| s.skill == "Spirit of Wolf")
+            .expect("a self-buff with no damage event should still be tracked");
+        assert_eq!(s.estimated_interval_ms, Some(240_000));
     }
 }
