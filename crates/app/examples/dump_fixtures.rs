@@ -6,7 +6,7 @@
 use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
 use eqlp_app::parser::build_engine;
 use eqlp_app::{
-    aadata, character, combat, debugview, gearplanner, history, inventory, monsters, npcdata,
+    aadata, character, chat, combat, debugview, gearplanner, history, inventory, monsters, npcdata,
     overview, progression, spelldata, spelleffect, zonedata,
 };
 use serde_json::{json, Map, Value};
@@ -493,6 +493,30 @@ fn main() {
     out.insert(
         "get_session".to_string(),
         json!({ "": overview::session(&ing) }),
+    );
+    // why: Social tab's 3 shared channels + PM player list/history --
+    // "Kaeus" is a real guild-chat speaker in the reference log; no real
+    // PM ever appears in this particular slice, so get_pm_history's own
+    // fixture is an honest empty list, not a fabricated one
+    out.insert(
+        "get_guild_chat".to_string(),
+        json!({ "": chat::guild_chat(&ing) }),
+    );
+    out.insert(
+        "get_party_chat".to_string(),
+        json!({ "": chat::party_chat(&ing) }),
+    );
+    out.insert(
+        "get_raid_chat".to_string(),
+        json!({ "": chat::raid_chat(&ing) }),
+    );
+    out.insert(
+        "list_pm_threads".to_string(),
+        json!({ "": chat::pm_threads(&ing) }),
+    );
+    out.insert(
+        "get_pm_history".to_string(),
+        json!({ "player=Kaeus": chat::pm_history(&ing, "Kaeus") }),
     );
     // why: a zone/NPC page's own "your parsed encounters" section --
     // "Blackburrow" is a real zone id (packs/zones.json) real fights in

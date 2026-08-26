@@ -11,6 +11,7 @@
   import Info from '$lib/shell/Info.svelte';
   import GameData from '$lib/gamedata/GameData.svelte';
   import LootHistory from '$lib/monsters/LootHistory.svelte';
+  import Social from '$lib/social/Social.svelte';
   import Maps from '$lib/maps/Maps.svelte';
   import Settings from '$lib/settings/Settings.svelte';
   import InventoryDumpBanner from '$lib/shell/InventoryDumpBanner.svelte';
@@ -57,6 +58,8 @@
             <Combat />
           {:else if $activeModule === 'monsters'}
             <LootHistory />
+          {:else if $activeModule === 'social'}
+            <Social />
           {:else if $activeModule === 'character'}
             <Character />
           {:else if $activeModule === 'endgame'}

@@ -117,6 +117,8 @@ function keyFor(cmd: string, args: Record<string, unknown> | undefined): string 
       return `item=${norm(a.item)}`;
     case 'get_mob_stats':
       return `mobName=${norm(a.mobName)}`;
+    case 'get_pm_history':
+      return `player=${norm(a.player)}`;
     case 'list_zone_encounters':
       return `zoneId=${norm(a.zoneId)}&limit=${norm(a.limit)}`;
     case 'list_mob_encounters':

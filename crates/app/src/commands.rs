@@ -4,6 +4,7 @@
 
 use crate::aadata;
 use crate::character::{self, CharacterEstimateDto};
+use crate::chat::{self, ChatMessageDto, PmThreadDto};
 use crate::combat::{
     self, AllyDto, ClassConfigurationsDto, CombatSummaryDto, EncounterDetailDto, EncounterDto,
     EntityStateDto, FightTimelineDto, ZoneEncounterDto, ZoneVisitDto,
@@ -381,6 +382,41 @@ pub fn get_damage_spells(state: State<AppState>, assume_max_rank: bool) -> Vec<D
 #[tauri::command]
 pub fn list_mobs(state: State<AppState>) -> Vec<MobDto> {
     monsters::list_mobs(&state.ingest.lock().unwrap())
+}
+
+/// why: Social tab's Guild sub-channel
+
+#[tauri::command]
+pub fn get_guild_chat(state: State<AppState>) -> Vec<ChatMessageDto> {
+    chat::guild_chat(&state.ingest.lock().unwrap())
+}
+
+/// why: Social tab's Party sub-channel
+
+#[tauri::command]
+pub fn get_party_chat(state: State<AppState>) -> Vec<ChatMessageDto> {
+    chat::party_chat(&state.ingest.lock().unwrap())
+}
+
+/// why: Social tab's Raid sub-channel
+
+#[tauri::command]
+pub fn get_raid_chat(state: State<AppState>) -> Vec<ChatMessageDto> {
+    chat::raid_chat(&state.ingest.lock().unwrap())
+}
+
+/// why: Social tab's PM player list, most-recent-message first
+
+#[tauri::command]
+pub fn list_pm_threads(state: State<AppState>) -> Vec<PmThreadDto> {
+    chat::pm_threads(&state.ingest.lock().unwrap())
+}
+
+/// why: one PM thread's whole history, oldest first
+
+#[tauri::command]
+pub fn get_pm_history(state: State<AppState>, player: String) -> Vec<ChatMessageDto> {
+    chat::pm_history(&state.ingest.lock().unwrap(), &player)
 }
 
 /// why: Game Data's Zones tab, 117 zones small enough to ship whole

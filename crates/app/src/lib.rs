@@ -5,6 +5,7 @@
 pub mod aadata;
 pub mod achievements;
 pub mod character;
+pub mod chat;
 pub mod classdata;
 pub mod combat;
 pub mod commands;

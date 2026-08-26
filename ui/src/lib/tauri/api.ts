@@ -887,6 +887,22 @@ export interface MobDto {
   avg_xp_pct: number | null;
 }
 
+// -------------------------------------------------------------------- chat
+
+export interface ChatMessageDto {
+  ts_ms: number;
+  /** why: the real sender -- "You" for the player's own outgoing line */
+  who: string;
+  text: string;
+}
+
+export interface PmThreadDto {
+  /** why: the other side of the conversation, regardless of who sent the most recent line */
+  player: string;
+  last_ts_ms: number;
+  last_text: string;
+}
+
 // ---------------------------------------------------------------- preferences
 
 export interface EraOptionsDto {
@@ -1135,6 +1151,16 @@ export const api = {
 
   /** why: every mob type fought this session, grouped -- the Loot History tab's whole data source */
   listMobs: () => invoke<MobDto[]>('list_mobs'),
+
+  /** why: Social tab's 3 shared channels */
+  getGuildChat: () => invoke<ChatMessageDto[]>('get_guild_chat'),
+  getPartyChat: () => invoke<ChatMessageDto[]>('get_party_chat'),
+  getRaidChat: () => invoke<ChatMessageDto[]>('get_raid_chat'),
+
+  /** why: Social tab's PM player list, most-recent-message first */
+  listPmThreads: () => invoke<PmThreadDto[]>('list_pm_threads'),
+  /** why: one PM thread's whole history, oldest first */
+  getPmHistory: (player: string) => invoke<ChatMessageDto[]>('get_pm_history', { player }),
 
   /** why: a zone page's "your parsed encounters here" section */
   listZoneEncounters: (zoneId: string, limit: number | null = null) =>

@@ -362,6 +362,73 @@ impl Effects {
     }
 }
 
+/// why: one chat line, whichever channel it landed in
+#[derive(Debug, Clone)]
+pub struct ChatMessage {
+    pub ts: Millis,
+    /// why: the real sender -- "You" for the player's own outgoing line,
+    /// same convention combat rows already use for src/dst
+    pub who: String,
+    pub text: String,
+}
+
+/// why: Guild/Party/Raid are shared channels, no partner to key on;
+/// Pm's `with` always names the *other* side regardless of direction --
+/// "X tells you" and "You told X" both key on X, so a PM thread reads
+/// as one real conversation instead of splitting by who sent which line
+#[derive(Debug, Clone)]
+pub enum ChatChannel {
+    Guild,
+    Party,
+    Raid,
+    Pm { with: String },
+}
+
+/// why: kept whole-session like Store, not windowed like Effects -- chat
+/// is meant to be browsed, not just checked "recently"
+#[derive(Debug, Clone, Default)]
+pub struct ChatLog {
+    guild: Vec<ChatMessage>,
+    party: Vec<ChatMessage>,
+    raid: Vec<ChatMessage>,
+    /// why: keyed by the other party's name -- see ChatChannel::Pm's own doc
+    pm: HashMap<String, Vec<ChatMessage>>,
+}
+
+impl ChatLog {
+    pub fn push(&mut self, ts: Millis, who: String, channel: ChatChannel, text: String) {
+        let msg = ChatMessage { ts, who, text };
+        match channel {
+            ChatChannel::Guild => self.guild.push(msg),
+            ChatChannel::Party => self.party.push(msg),
+            ChatChannel::Raid => self.raid.push(msg),
+            ChatChannel::Pm { with } => self.pm.entry(with).or_default().push(msg),
+        }
+    }
+
+    pub fn guild(&self) -> &[ChatMessage] {
+        &self.guild
+    }
+    pub fn party(&self) -> &[ChatMessage] {
+        &self.party
+    }
+    pub fn raid(&self) -> &[ChatMessage] {
+        &self.raid
+    }
+    /// why: empty slice for an unknown/never-messaged player, not an error
+    pub fn pm_history(&self, player: &str) -> &[ChatMessage] {
+        self.pm.get(player).map(Vec::as_slice).unwrap_or(&[])
+    }
+    /// why: one row per real PM partner, caller sorts by its own criteria
+    /// (most-recent-first for the player list) -- this just hands back
+    /// the raw facts: name plus that thread's own last message
+    pub fn pm_threads(&self) -> impl Iterator<Item = (&str, &ChatMessage)> {
+        self.pm
+            .iter()
+            .filter_map(|(name, msgs)| msgs.last().map(|m| (name.as_str(), m)))
+    }
+}
+
 /// why: one real "X began casting Y" sighting, kept just long enough to
 /// explain a later landing/wears-off line -- see `Ingest::attribute_effect`.
 #[derive(Debug, Clone)]
@@ -620,6 +687,8 @@ pub struct Ingest {
     pub levels: Levels,
     /// why: recognized buff landings on "You", separate log from timeline/State
     pub effects: Effects,
+    /// why: Guild/Party/Raid/PM message history -- the Social tab's whole data source
+    pub chat: ChatLog,
     /// why: private -- attribute_effect's own scratch data, nothing outside this file reads it directly
     recent_casts: RecentCasts,
     /// why: most recent /loc reading, raw coordinate order the line
@@ -721,6 +790,7 @@ impl Default for Ingest {
             classes: ClassDetector::default(),
             levels: Levels::default(),
             effects: Effects::default(),
+            chat: ChatLog::default(),
             recent_casts: RecentCasts::default(),
             last_loc: None,
             last_teleport_cast: None,
@@ -1180,6 +1250,12 @@ impl Ingest {
                 );
             }
             Action::PlayerProof { who } => self.encounters.entities.note_player_channel(&who),
+            Action::ChatMessage { who, channel, text } => {
+                // why: same real-player evidence PlayerProof gave every
+                // one of these channels before ChatMessage replaced it
+                self.encounters.entities.note_player_channel(&who);
+                self.chat.push(ts, who, channel, text);
+            }
             Action::QuickBuff { who } => self.note_quickbuff(ts, &who),
             Action::Mez { who } => {
                 let sym = self.sym(&who);
@@ -2205,6 +2281,13 @@ enum Action {
     PlayerProof {
         who: String,
     },
+    /// why: Guild/Party/Raid/PM only -- says/shouts/auctions/OOC excluded,
+    /// same real-player-channel filter `PlayerProof` already applies
+    ChatMessage {
+        who: String,
+        channel: ChatChannel,
+        text: String,
+    },
     /// `ability.quickbuff`: "<Name> activates Quick Buff." -- opens a
     /// short window (`Ingest::note_quickbuff`) during which unmatched
     /// lines get checked against the buff-landing-message dictionary. See
@@ -2619,17 +2702,33 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "chat.directed" => {
             // why: only provably player-to-player channels -- says/shouts/auctions excluded, NPCs use says too
             let (who, chan) = (str_field("who")?, str_field("chan")?);
-            let player_only = matches!(
-                chan.as_str(),
-                "tells you"
-                    | "tells the guild"
-                    | "tells the group"
-                    | "tell your party"
-                    | "tell the guild"
-                    | "tell the group"
-            );
-            player_only.then_some(Action::PlayerProof { who })
+            let channel = match chan.as_str() {
+                "tells you" => Some(ChatChannel::Pm { with: who.clone() }),
+                "tells the guild" | "tell the guild" => Some(ChatChannel::Guild),
+                "tells the group" | "tell your party" | "tell the group" => {
+                    Some(ChatChannel::Party)
+                }
+                "tells the raid" | "tell your raid" => Some(ChatChannel::Raid),
+                _ => None,
+            };
+            match channel {
+                // why: still proves who's a real player even when the
+                // channel itself isn't one Social tracks (kept for
+                // parity with the old player_only behavior)
+                None => None,
+                Some(channel) => {
+                    let text = str_field("text")?;
+                    Some(Action::ChatMessage { who, channel, text })
+                }
+            }
         }
+        "chat.tell_sent" => Some(Action::ChatMessage {
+            who: "You".to_string(),
+            channel: ChatChannel::Pm {
+                with: str_field("who")?,
+            },
+            text: str_field("text")?,
+        }),
         _ => None,
     }
 }
@@ -4107,6 +4206,89 @@ mod stance_evidence_tests {
             !configured.contains(&"Berserker".to_string()),
             "{configured:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod chat_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    fn run(lines: &[&[u8]]) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        backfill_lines(&mut ing, &engine, lines, 1);
+        ing
+    }
+
+    #[test]
+    fn guild_party_and_raid_chat_land_in_their_own_channels() {
+        let ing = run(&[
+            b"[Tue Jul 28 17:09:40 2026] Kaeus tells the guild, 'hi'",
+            b"[Wed Jul 29 17:07:48 2026] You tell your party, 'incoming'",
+            b"[Wed Aug 05 21:44:57 2026] Mits tells the raid, 'I'm down for D0-D4'",
+        ]);
+        assert_eq!(ing.chat.guild().len(), 1);
+        assert_eq!(ing.chat.guild()[0].who, "Kaeus");
+        assert_eq!(ing.chat.guild()[0].text, "hi");
+        assert_eq!(ing.chat.party().len(), 1);
+        assert_eq!(ing.chat.party()[0].who, "You");
+        assert_eq!(ing.chat.raid().len(), 1);
+        assert_eq!(ing.chat.raid()[0].who, "Mits");
+    }
+
+    /// why: real gap found live -- 422 real "tells the raid" lines in the
+    /// reference log matched no rule at all before chat.directed's own
+    /// `chan` alternation grew a raid phrasing
+    #[test]
+    fn raid_chat_is_not_dropped_as_unmatched() {
+        let ing = run(&[
+            b"[Wed Aug 05 21:44:57 2026] Mits tells the raid, 'yo'",
+            b"[Wed Aug 05 21:45:11 2026] You tell your raid, 'yo!'",
+        ]);
+        assert_eq!(ing.chat.raid().len(), 2);
+    }
+
+    /// why: an incoming and an outgoing PM with the same real player must
+    /// land in the *same* thread, not two separate ones -- ChatChannel::Pm
+    /// keys on the other side regardless of who sent which line
+    #[test]
+    fn incoming_and_outgoing_pms_with_the_same_player_share_one_thread() {
+        let ing = run(&[
+            b"[Thu Jul 30 18:04:38 2026] Kaeus tells you, 'busy right now'",
+            b"[Thu Jul 30 22:47:34 2026] You told Kaeus, 'no worries'",
+        ]);
+        let history = ing.chat.pm_history("Kaeus");
+        assert_eq!(history.len(), 2, "{history:?}");
+        assert_eq!(history[0].who, "Kaeus");
+        assert_eq!(history[0].text, "busy right now");
+        assert_eq!(history[1].who, "You");
+        assert_eq!(history[1].text, "no worries");
+    }
+
+    #[test]
+    fn pm_threads_reports_one_row_per_real_partner() {
+        let ing = run(&[
+            b"[Thu Jul 30 18:04:38 2026] Kaeus tells you, 'hi'",
+            b"[Thu Jul 30 18:05:00 2026] Opticon tells you, 'yo'",
+        ]);
+        let mut names: Vec<&str> = ing.chat.pm_threads().map(|(name, _)| name).collect();
+        names.sort();
+        assert_eq!(names, vec!["Kaeus", "Opticon"]);
+    }
+
+    /// why: says/shouts/auctions/OOC are real chat too, but not player-to-
+    /// player Social channels -- must not leak into any of the 4 buckets
+    #[test]
+    fn say_and_auction_do_not_land_in_any_social_channel() {
+        let ing = run(&[
+            b"[Tue Jul 28 15:02:15 2026] You say, 'send'",
+            b"[Tue Jul 28 15:02:15 2026] Biscuits auctions, 'wtb thumper +4'",
+        ]);
+        assert!(ing.chat.guild().is_empty());
+        assert!(ing.chat.party().is_empty());
+        assert!(ing.chat.raid().is_empty());
+        assert_eq!(ing.chat.pm_threads().count(), 0);
     }
 }
 
