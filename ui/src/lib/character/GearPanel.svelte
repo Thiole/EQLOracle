@@ -17,11 +17,12 @@
     isTwoHandItem,
     refreshEstimate,
   } from '$lib/stores/character';
-  import { effectiveEra } from '$lib/stores/settings';
+  import { effectiveEra, trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
   import { DOLL_ROWS, ICON_BASE, WEIGHT_GROUPS, SLOT_LABELS } from './constants';
   import { api, type ScoredItemDto, type ItemDto } from '$lib/tauri/api';
   import GdLinkList from '$lib/gamedata/GdLinkList.svelte';
   import GdZoneOrMobLink from '$lib/gamedata/GdZoneOrMobLink.svelte';
+  import BellIcon from '@lucide/svelte/icons/bell';
 
   const TOP_N = 6;
 
@@ -279,37 +280,61 @@
   }
 </script>
 
+{#snippet dropWatchBell(name: string)}
+  <!-- why: Drop Watch's own entry point on an unowned gear piece -- see
+       dropwatch.rs's doc and SkyQuests.svelte's own doc for why solid
+       fill in the theme's own yes/no colors, sized to actually read at
+       a glance. A sibling button, never nested inside this row's own
+       <button> -- invalid HTML, and its own click would fire pickAlt too. -->
+  {@const tracked = $trackedDropItems.includes(name)}
+  <button
+    type="button"
+    class="mt-0.5 flex size-3.5 shrink-0 items-center justify-center rounded-full border {tracked
+      ? 'border-good bg-good text-background'
+      : 'border-bad bg-bad text-background'}"
+    title={tracked ? `Stop tracking ${name} in the Drop Watch overlay` : `Track ${name} in the Drop Watch overlay`}
+    onclick={() => void toggleTrackedDropItem(name)}
+  >
+    <BellIcon class="size-2.5" />
+  </button>
+{/snippet}
+
 {#snippet altRow(it: ScoredItemDto, top: boolean, light: boolean)}
   {@const icon = iconUrl(it.icon)}
   {@const active = stickyItem?.id === it.id}
-  <button
-    type="button"
-    class="flex w-full items-start gap-2 rounded-sm text-left transition-colors hover:bg-muted/40 {light ? 'px-1.5 py-0.5' : 'px-1.5 py-1'} {active
-      ? 'bg-muted/40 outline outline-primary'
-      : ''}"
-    onclick={() => pickAlt(expandedSlot!, it)}
-    onmouseenter={() => hoverItem(it)}
-    onmouseleave={() => hoverItem(null)}
-  >
-    {#if icon}
-      <img src={icon} alt="" loading="lazy" class="{light ? 'size-5' : 'size-6'} shrink-0 rounded-sm border border-border bg-muted/20" />
-    {:else}
-      <div class="{light ? 'size-5' : 'size-6'} shrink-0 rounded-sm border border-border bg-muted/20"></div>
+  <div class="flex items-start gap-1">
+    {#if it.owned === 0}
+      {@render dropWatchBell(it.name)}
     {/if}
-    <div class="min-w-0 flex-1">
-      <div class="flex items-center gap-2">
-        <span class="min-w-0 flex-1 truncate {light ? 'text-[11px] text-muted-foreground' : 'text-[12px]'}"
-          >{top ? '★ ' : ''}{it.name}{#if it.tier > 0}<span class="text-good"> +{it.tier}</span>{/if}</span
-        >
-        {#if it.owned > 0}<span class="shrink-0 text-[10px] text-good">×{it.owned}</span>{/if}
-        <span class="shrink-0 text-[11px] tabular-nums text-muted-foreground">{it.score.toFixed(1)}</span>
-      </div>
-      {#if !light}
-        {#if it.source}<div class="truncate text-[10px] text-brand-soft">{it.source}</div>{/if}
-        <div class="truncate text-[10px] text-primary">{statSummary(it)}</div>
+    <button
+      type="button"
+      class="flex min-w-0 flex-1 items-start gap-2 rounded-sm text-left transition-colors hover:bg-muted/40 {light ? 'px-1.5 py-0.5' : 'px-1.5 py-1'} {active
+        ? 'bg-muted/40 outline outline-primary'
+        : ''}"
+      onclick={() => pickAlt(expandedSlot!, it)}
+      onmouseenter={() => hoverItem(it)}
+      onmouseleave={() => hoverItem(null)}
+    >
+      {#if icon}
+        <img src={icon} alt="" loading="lazy" class="{light ? 'size-5' : 'size-6'} shrink-0 rounded-sm border border-border bg-muted/20" />
+      {:else}
+        <div class="{light ? 'size-5' : 'size-6'} shrink-0 rounded-sm border border-border bg-muted/20"></div>
       {/if}
-    </div>
-  </button>
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2">
+          <span class="min-w-0 flex-1 truncate {light ? 'text-[11px] text-muted-foreground' : 'text-[12px]'}"
+            >{top ? '★ ' : ''}{it.name}{#if it.tier > 0}<span class="text-good"> +{it.tier}</span>{/if}</span
+          >
+          {#if it.owned > 0}<span class="shrink-0 text-[10px] text-good">×{it.owned}</span>{/if}
+          <span class="shrink-0 text-[11px] tabular-nums text-muted-foreground">{it.score.toFixed(1)}</span>
+        </div>
+        {#if !light}
+          {#if it.source}<div class="truncate text-[10px] text-brand-soft">{it.source}</div>{/if}
+          <div class="truncate text-[10px] text-primary">{statSummary(it)}</div>
+        {/if}
+      </div>
+    </button>
+  </div>
 {/snippet}
 
 <div class="flex flex-col gap-3">
@@ -446,20 +471,25 @@
                     {#if open}
                       <div class="mt-0.5 ml-4 flex flex-col gap-0.5">
                         {#each entries as e (e.key)}
-                          <button
-                            type="button"
-                            class="flex items-center gap-1.5 rounded-sm text-left text-[11px] hover:bg-muted/40"
-                            onclick={() => (stickyItem = e.item)}
-                            onmouseenter={() => hoverItem(e.item)}
-                            onmouseleave={() => hoverItem(null)}
-                          >
-                            <span
-                              class="size-[5px] shrink-0 rounded-full {e.owned ? 'bg-good' : 'bg-muted-foreground/40'}"
-                              title={e.owned ? 'owned' : 'not owned yet'}
-                            ></span>
-                            <span class="text-muted-foreground">{e.slotLabel}</span>
-                            <span class="truncate">{e.item.name}</span>
-                          </button>
+                          <div class="flex items-center gap-1">
+                            {#if !e.owned}
+                              {@render dropWatchBell(e.item.name)}
+                            {/if}
+                            <button
+                              type="button"
+                              class="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm text-left text-[11px] hover:bg-muted/40"
+                              onclick={() => (stickyItem = e.item)}
+                              onmouseenter={() => hoverItem(e.item)}
+                              onmouseleave={() => hoverItem(null)}
+                            >
+                              <span
+                                class="size-[5px] shrink-0 rounded-full {e.owned ? 'bg-good' : 'bg-muted-foreground/40'}"
+                                title={e.owned ? 'owned' : 'not owned yet'}
+                              ></span>
+                              <span class="text-muted-foreground">{e.slotLabel}</span>
+                              <span class="truncate">{e.item.name}</span>
+                            </button>
+                          </div>
                         {/each}
                       </div>
                     {/if}
