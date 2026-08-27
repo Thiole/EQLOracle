@@ -43,6 +43,20 @@ fn default_overlay_opacity() -> f64 {
     0.85
 }
 
+/// why: Spencer's own ask -- "2 options, total opacity (non text), and
+/// everything ... half faded out, text only, etc". overlay_<widget>_
+/// opacity above is background-only (a plain rgba alpha on the panel,
+/// text stays fully readable no matter how see-through the panel is --
+/// "text only" is just cranking that one toward 0). This is the OTHER
+/// one: a real CSS `opacity` on the widget's whole outer element, so
+/// text/icons fade right along with everything else -- "half faded
+/// out" as a whole, not just the panel behind it. Fully opaque by
+/// default (1.0) -- a fresh install shouldn't LOOK any different than
+/// before this existed, it's an extra knob, not a new default look.
+fn default_overall_opacity() -> f64 {
+    1.0
+}
+
 /// why: the Skill Tracker's 4 baked-in status pseudo-entries -- distinct
 /// from any real spell/ability name a track button could add. "Charmed"
 /// not "Charm" -- real bug, caught live: Enchanter's own level 11 spell
@@ -110,6 +124,11 @@ pub struct Preferences {
     /// widget follows the same pattern instead of inventing a new shape.
     #[serde(default = "default_overlay_opacity")]
     pub overlay_dps_meter_opacity: f64,
+    /// why: see default_overall_opacity's own doc -- the SEPARATE
+    /// "everything" fade, not the panel-only one above. 1.0 (fully
+    /// opaque) by default.
+    #[serde(default = "default_overall_opacity")]
+    pub overlay_dps_meter_overall_opacity: f64,
     /// why: the Skill Tracker widget's own opacity -- see
     /// overlay_dps_meter_opacity's own doc, same pattern. Covers all
     /// three of its sections (status effects, skill cooldowns, target
@@ -117,6 +136,10 @@ pub struct Preferences {
     /// overlay widget here.
     #[serde(default = "default_overlay_opacity")]
     pub overlay_skill_tracker_opacity: f64,
+    /// why: see overlay_dps_meter_overall_opacity's own doc -- same
+    /// "everything" fade, this widget's own.
+    #[serde(default = "default_overall_opacity")]
+    pub overlay_skill_tracker_overall_opacity: f64,
     /// why: which entries actually show in the Skill Tracker overlay --
     /// both real tracked abilities/spells (added via a "track" button in
     /// Spellbook/Combat, nothing by default -- a fresh install doesn't
@@ -170,7 +193,9 @@ impl Default for Preferences {
             update_channel: UpdateChannel::default(),
             theme: default_theme(),
             overlay_dps_meter_opacity: default_overlay_opacity(),
+            overlay_dps_meter_overall_opacity: default_overall_opacity(),
             overlay_skill_tracker_opacity: default_overlay_opacity(),
+            overlay_skill_tracker_overall_opacity: default_overall_opacity(),
             tracked_skills: default_tracked_skills(),
             tracked_target_effects: Vec::new(),
             overlay_positions: HashMap::new(),
@@ -229,7 +254,9 @@ mod tests {
             "this app's own identity, not an upstream preset"
         );
         assert_eq!(p.overlay_dps_meter_opacity, 0.85);
+        assert_eq!(p.overlay_dps_meter_overall_opacity, 1.0);
         assert_eq!(p.overlay_skill_tracker_opacity, 0.85);
+        assert_eq!(p.overlay_skill_tracker_overall_opacity, 1.0);
         assert_eq!(
             p.tracked_skills,
             vec!["Charmed", "Invisible", "Hide", "Sneak"],
@@ -259,7 +286,9 @@ mod tests {
             update_channel: UpdateChannel::Beta,
             theme: "claude".to_string(),
             overlay_dps_meter_opacity: 0.4,
+            overlay_dps_meter_overall_opacity: 0.7,
             overlay_skill_tracker_opacity: 0.6,
+            overlay_skill_tracker_overall_opacity: 0.9,
             tracked_skills: vec!["Kick".to_string(), "Backstab".to_string()],
             tracked_target_effects: vec!["Tashania".to_string()],
             overlay_positions,
@@ -272,7 +301,9 @@ mod tests {
         assert_eq!(back.update_channel, UpdateChannel::Beta);
         assert_eq!(back.theme, "claude");
         assert_eq!(back.overlay_dps_meter_opacity, 0.4);
+        assert_eq!(back.overlay_dps_meter_overall_opacity, 0.7);
         assert_eq!(back.overlay_skill_tracker_opacity, 0.6);
+        assert_eq!(back.overlay_skill_tracker_overall_opacity, 0.9);
         assert_eq!(back.tracked_skills, vec!["Kick", "Backstab"]);
         assert_eq!(back.tracked_target_effects, vec!["Tashania"]);
         let pos = back
@@ -292,7 +323,9 @@ mod tests {
         assert_eq!(back.update_channel, UpdateChannel::Public);
         assert_eq!(back.theme, "eqlp");
         assert_eq!(back.overlay_dps_meter_opacity, 0.85);
+        assert_eq!(back.overlay_dps_meter_overall_opacity, 1.0);
         assert_eq!(back.overlay_skill_tracker_opacity, 0.85);
+        assert_eq!(back.overlay_skill_tracker_overall_opacity, 1.0);
         assert_eq!(
             back.tracked_skills,
             vec!["Charmed", "Invisible", "Hide", "Sneak"]

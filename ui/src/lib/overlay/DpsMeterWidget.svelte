@@ -10,8 +10,17 @@
 
   // why: this widget's own panel background alpha -- each overlay widget
   // owns its own opacity, not one shared window-wide value (see
-  // OverlayApp.svelte's own doc)
-  let { meter, opacity }: { meter: LiveMeterDto | null; opacity: number } = $props();
+  // OverlayApp.svelte's own doc). overallOpacity is the SEPARATE
+  // "everything" fade (Spencer's own ask: "2 options, total opacity
+  // (non text), and everything") -- a real CSS opacity on the whole
+  // widget below, so text/icons fade right along with the panel
+  // instead of staying fully readable no matter how see-through the
+  // background is.
+  let {
+    meter,
+    opacity,
+    overallOpacity,
+  }: { meter: LiveMeterDto | null; opacity: number; overallOpacity: number } = $props();
 
   function total(rows: EntityStateDto[]): number {
     return rows.reduce((n, r) => n + r.dps, 0);
@@ -35,7 +44,11 @@
   {/each}
 {/snippet}
 
-<div class="flex flex-col gap-1.5 rounded-md p-2 text-[12px]" style:background-color="rgba(10, 11, 13, {opacity})">
+<div
+  class="flex flex-col gap-1.5 rounded-md p-2 text-[12px]"
+  style:background-color="rgba(10, 11, 13, {opacity})"
+  style:opacity={overallOpacity}
+>
   {#if !meter || (!meter.outgoing.length && !meter.incoming.length)}
     <p class="text-white/70">no active fight</p>
   {:else}

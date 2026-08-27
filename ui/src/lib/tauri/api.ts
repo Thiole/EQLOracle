@@ -1019,12 +1019,22 @@ export interface PreferencesDto {
   theme: string;
   /** why: each overlay widget owns its own opacity, not one shared
    * window-wide value -- 0.0 (invisible) to 1.0 (fully opaque), this
-   * widget's own panel background alpha */
+   * widget's own panel background alpha. NOT the same as
+   * overlay_dps_meter_overall_opacity below -- this one never touches
+   * text/icons, just the panel behind them. */
   overlay_dps_meter_opacity: number;
+  /** why: the SEPARATE "everything" fade -- a real CSS opacity on the
+   * widget's whole outer element, so text/icons fade right along with
+   * the panel instead of staying fully readable no matter how
+   * see-through the background is. 1.0 (fully opaque) by default. */
+  overlay_dps_meter_overall_opacity: number;
   /** why: same pattern as overlay_dps_meter_opacity -- covers all three
    * of the Skill Tracker's own sections (status effects, cooldowns,
    * target effects), one window, one panel, one alpha */
   overlay_skill_tracker_opacity: number;
+  /** why: see overlay_dps_meter_overall_opacity's own doc -- same
+   * "everything" fade, this widget's own */
+  overlay_skill_tracker_overall_opacity: number;
   /** why: any ability/spell name the player has "track"ed for the
    * cooldowns section (Combat's ability rows, or the Skill Tracker's
    * own settings card) -- not a fixed list, empty until the user
@@ -1274,6 +1284,9 @@ export const api = {
   setOverlayEnabled: (widget: string, enabled: boolean) => invoke<void>('set_overlay_enabled', { widget, enabled }),
   /** why: live-pushes to that widget's own open window only -- pair with setPreferences to persist */
   setOverlayOpacity: (widget: string, opacity: number) => invoke<void>('set_overlay_opacity', { widget, opacity }),
+  /** why: the SEPARATE "everything" fade -- same live-push/persist split as setOverlayOpacity above */
+  setOverlayOverallOpacity: (widget: string, opacity: number) =>
+    invoke<void>('set_overlay_overall_opacity', { widget, opacity }),
   /** why: unlock to drag that widget's own window into position, lock to make it click-through again */
   setOverlayLocked: (widget: string, locked: boolean) => invoke<void>('set_overlay_locked', { widget, locked }),
 

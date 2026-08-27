@@ -14,10 +14,14 @@
     dpsMeterOpacity,
     setDpsMeterEnabled,
     setDpsMeterOpacity,
+    dpsMeterOverallOpacity,
+    setDpsMeterOverallOpacity,
     skillTrackerEnabled,
     skillTrackerOpacity,
     setSkillTrackerEnabled,
     setSkillTrackerOpacity,
+    skillTrackerOverallOpacity,
+    setSkillTrackerOverallOpacity,
     trackedSkills,
     toggleTrackedSkill,
     trackedTargetEffects,
@@ -92,8 +96,25 @@
   </button>
 {/snippet}
 
-{#snippet alphaPreview(opacity: number, onInput: (v: number) => void, disabled: boolean)}
-  <div class="mt-2.5 flex items-center gap-3 {disabled ? 'opacity-40' : ''}">
+<!-- why: Spencer's own ask -- "2 options, total opacity (non text),
+     and everything. this way you can make it half faded out, text
+     only, etc". Two independent sliders per widget now, same snippet
+     reused for both, differing only in label/description and which
+     preview swatch style fits what each one actually does:
+     "background" only fades the panel behind everything (crank it
+     toward 0 for a text-only look, text/icons always stay fully
+     readable), "everything" is a real CSS opacity on the whole widget
+     -- text and icons fade right along with it too. -->
+{#snippet alphaPreview(
+  opacity: number,
+  onInput: (v: number) => void,
+  disabled: boolean,
+  label: string,
+  description: string,
+  fadesText: boolean,
+)}
+  <p class="mt-2.5 text-[11px] text-muted-foreground">{label}</p>
+  <div class="mt-1 flex items-center gap-3 {disabled ? 'opacity-40' : ''}">
     <input
       type="range"
       min="0.1"
@@ -106,15 +127,26 @@
     />
     <span class="w-10 shrink-0 text-right text-[12px] tabular-nums text-foreground">{Math.round(opacity * 100)}%</span>
     <!-- why: a real alpha-preview checker, not just a number -- lets you see
-         how see-through the panel will actually read before it's on screen -->
+         how see-through it'll actually read before it's on screen. The
+         "everything" version previews on real sample text, since that's
+         the whole point of that slider -- the "background" version keeps
+         text out of its own swatch on purpose, since that opacity never touches it. -->
     <div
-      class="h-8 w-16 shrink-0 rounded-sm border border-border"
+      class="flex h-8 w-16 shrink-0 items-center justify-center rounded-sm border border-border"
       style="background-image: repeating-conic-gradient(#3a3d42 0% 25%, #26282c 0% 50%); background-size: 8px 8px;"
     >
-      <div class="size-full rounded-[3px]" style:background-color="rgba(10, 11, 13, {opacity})"></div>
+      <div
+        class="flex size-full items-center justify-center rounded-[3px]"
+        style:background-color="rgba(10, 11, 13, {fadesText ? 1 : opacity})"
+        style:opacity={fadesText ? opacity : 1}
+      >
+        {#if fadesText}
+          <span class="text-[9px] font-medium text-white">abc</span>
+        {/if}
+      </div>
     </div>
   </div>
-  <p class="mt-1 text-[11px] text-muted-foreground">How see-through this widget's own panel reads over the game.</p>
+  <p class="mt-1 text-[11px] text-muted-foreground">{description}</p>
 {/snippet}
 
 <div class="flex flex-col gap-3 p-3">
@@ -162,7 +194,22 @@
         {@render repositionButton('dps_meter')}
       {/if}
 
-      {@render alphaPreview($dpsMeterOpacity, (v) => void setDpsMeterOpacity(v), capped)}
+      {@render alphaPreview(
+        $dpsMeterOpacity,
+        (v) => void setDpsMeterOpacity(v),
+        capped,
+        'background opacity',
+        'How see-through the panel behind everything reads -- text and numbers stay fully readable no matter how low this goes.',
+        false,
+      )}
+      {@render alphaPreview(
+        $dpsMeterOverallOpacity,
+        (v) => void setDpsMeterOverallOpacity(v),
+        capped,
+        'everything',
+        'Fades the whole widget together -- text and numbers included, not just the panel behind them.',
+        true,
+      )}
     </CardContent>
   </Card>
 
@@ -211,7 +258,22 @@
         </div>
       </div>
 
-      {@render alphaPreview($skillTrackerOpacity, (v) => void setSkillTrackerOpacity(v), capped)}
+      {@render alphaPreview(
+        $skillTrackerOpacity,
+        (v) => void setSkillTrackerOpacity(v),
+        capped,
+        'background opacity',
+        'How see-through the panel behind everything reads -- text and icons stay fully readable no matter how low this goes.',
+        false,
+      )}
+      {@render alphaPreview(
+        $skillTrackerOverallOpacity,
+        (v) => void setSkillTrackerOverallOpacity(v),
+        capped,
+        'everything',
+        'Fades the whole widget together -- text and icons included, not just the panel behind them.',
+        true,
+      )}
     </CardContent>
   </Card>
 

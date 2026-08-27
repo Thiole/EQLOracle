@@ -534,6 +534,17 @@ pub fn set_overlay_opacity(app: AppHandle, widget: String, opacity: f64) {
     }
 }
 
+/// why: Spencer's own ask -- the SEPARATE "everything" fade (see
+/// preferences::default_overall_opacity's own doc), same live-push/
+/// persistence split as set_overlay_opacity above, just its own event
+/// name so the overlay window can tell the two apart.
+#[tauri::command]
+pub fn set_overlay_overall_opacity(app: AppHandle, widget: String, opacity: f64) {
+    if let Some(w) = app.get_webview_window(&overlay_label(&widget)) {
+        let _ = w.emit("overlay-overall-opacity", opacity.clamp(0.0, 1.0));
+    }
+}
+
 /// why: click-through (locked, the default -- see set_overlay_enabled)
 /// makes the window impossible to drag into position at all, since every
 /// click passes straight to the game underneath it. Unlocking briefly

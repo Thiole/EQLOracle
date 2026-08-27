@@ -33,6 +33,7 @@
     trackedTargetEffectNames,
     targetEffects,
     opacity,
+    overallOpacity,
   }: {
     status: StatusEffectsDto | null;
     skills: SkillStatusDto[];
@@ -40,6 +41,11 @@
     trackedTargetEffectNames: string[];
     targetEffects: TargetEffectsDto | null;
     opacity: number;
+    // why: the SEPARATE "everything" fade -- see DpsMeterWidget.svelte's
+    // own doc, same idea, applied to this widget's own outer element
+    // (covers all three sections -- status effects, cooldowns, target
+    // effects -- since none of them own a panel of their own)
+    overallOpacity: number;
   } = $props();
 
   // why: NOT Date.now() -- see logClock.ts's own doc. Backend since_ms/
@@ -118,7 +124,11 @@
   const toneClass = { good: 'text-good', warn: 'text-caution' } as const;
 </script>
 
-<div class="flex flex-col gap-1.5 rounded-md p-2 text-[12px]" style:background-color="rgba(10, 11, 13, {opacity})">
+<div
+  class="flex flex-col gap-1.5 rounded-md p-2 text-[12px]"
+  style:background-color="rgba(10, 11, 13, {opacity})"
+  style:opacity={overallOpacity}
+>
   <StatusEffectsWidget {status} tracked={trackedSkillNames} />
 
   {#if visibleSkills.length}

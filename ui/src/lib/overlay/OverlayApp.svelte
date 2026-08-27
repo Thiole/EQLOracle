@@ -16,6 +16,9 @@
   const widget = currentOverlayWidget();
 
   let opacity = $state(0.85);
+  // why: the SEPARATE "everything" fade -- see PreferencesDto's own doc
+  // on overlay_dps_meter_overall_opacity. 1.0 (fully opaque) by default.
+  let overallOpacity = $state(1.0);
   let trackedSkillNames = $state<string[]>([]);
   let trackedTargetEffectNames = $state<string[]>([]);
   let meter = $state<LiveMeterDto | null>(null);
@@ -25,9 +28,12 @@
 
   async function refreshPrefs() {
     const p = await api.getPreferences();
-    if (widget === 'dps_meter') opacity = p.overlay_dps_meter_opacity;
-    else if (widget === 'skill_tracker') {
+    if (widget === 'dps_meter') {
+      opacity = p.overlay_dps_meter_opacity;
+      overallOpacity = p.overlay_dps_meter_overall_opacity;
+    } else if (widget === 'skill_tracker') {
       opacity = p.overlay_skill_tracker_opacity;
+      overallOpacity = p.overlay_skill_tracker_overall_opacity;
       // why: re-read every tick, not just on mount -- picking a
       // different skill to track in Settings while this window is
       // already open should show up without needing to reopen it, and
@@ -57,9 +63,11 @@
       void refresh();
     });
     const unlistenOpacity = listen<number>('overlay-opacity', (e) => (opacity = e.payload));
+    const unlistenOverallOpacity = listen<number>('overlay-overall-opacity', (e) => (overallOpacity = e.payload));
     return () => {
       void unlistenTick.then((f) => f());
       void unlistenOpacity.then((f) => f());
+      void unlistenOverallOpacity.then((f) => f());
     };
   });
 </script>
@@ -71,8 +79,16 @@
      the actual title bar (every window manager supports that) repositions it. -->
 <div class="min-h-screen w-screen p-2">
   {#if widget === 'dps_meter'}
-    <DpsMeterWidget {meter} {opacity} />
+    <DpsMeterWidget {meter} {opacity} {overallOpacity} />
   {:else if widget === 'skill_tracker'}
-    <SkillTrackerWidget {status} {skills} {trackedSkillNames} {trackedTargetEffectNames} {targetEffects} {opacity} />
+    <SkillTrackerWidget
+      {status}
+      {skills}
+      {trackedSkillNames}
+      {trackedTargetEffectNames}
+      {targetEffects}
+      {opacity}
+      {overallOpacity}
+    />
   {/if}
 </div>

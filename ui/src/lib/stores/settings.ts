@@ -31,11 +31,17 @@ export const dpsMeterEnabled = writable(false);
 /** why: this widget's own background alpha, 0.0 (invisible) to 1.0
  * (fully opaque) -- IS persisted, a real style choice worth keeping */
 export const dpsMeterOpacity = writable(0.85);
+/** why: the SEPARATE "everything" fade -- see PreferencesDto's own doc
+ * on overlay_dps_meter_overall_opacity. 1.0 (fully opaque) by default. */
+export const dpsMeterOverallOpacity = writable(1.0);
 /** why: same on/off contract as dpsMeterEnabled -- see its own doc.
  * Covers all three of the Skill Tracker's own sections (status effects,
  * cooldowns, target effects) -- one widget, one window, one toggle. */
 export const skillTrackerEnabled = writable(false);
 export const skillTrackerOpacity = writable(0.85);
+/** why: see dpsMeterOverallOpacity's own doc -- same "everything" fade,
+ * this widget's own */
+export const skillTrackerOverallOpacity = writable(1.0);
 /** why: any ability/spell the player has "track"ed for the Skill
  * Tracker's own cooldowns section -- not a fixed list, populated by a
  * real "track" action wherever a spell/ability shows up (Combat's
@@ -82,7 +88,9 @@ export function loadPreferences(): Promise<void> {
     updateChannel.set(prefs.update_channel);
     theme.set(prefs.theme);
     dpsMeterOpacity.set(prefs.overlay_dps_meter_opacity);
+    dpsMeterOverallOpacity.set(prefs.overlay_dps_meter_overall_opacity);
     skillTrackerOpacity.set(prefs.overlay_skill_tracker_opacity);
+    skillTrackerOverallOpacity.set(prefs.overlay_skill_tracker_overall_opacity);
     trackedSkills.set(prefs.tracked_skills);
     trackedTargetEffects.set(prefs.tracked_target_effects);
     settingsLoaded.set(true);
@@ -98,7 +106,9 @@ function currentPrefs(): PreferencesDto {
     update_channel: get(updateChannel),
     theme: get(theme),
     overlay_dps_meter_opacity: get(dpsMeterOpacity),
+    overlay_dps_meter_overall_opacity: get(dpsMeterOverallOpacity),
     overlay_skill_tracker_opacity: get(skillTrackerOpacity),
+    overlay_skill_tracker_overall_opacity: get(skillTrackerOverallOpacity),
     tracked_skills: get(trackedSkills),
     tracked_target_effects: get(trackedTargetEffects),
   };
@@ -149,6 +159,13 @@ export async function setDpsMeterOpacity(v: number) {
   await api.setPreferences({ ...currentPrefs(), overlay_dps_meter_opacity: v }).catch(() => {});
 }
 
+/** why: the SEPARATE "everything" fade -- same live-push/persist split as setDpsMeterOpacity above */
+export async function setDpsMeterOverallOpacity(v: number) {
+  dpsMeterOverallOpacity.set(v);
+  void api.setOverlayOverallOpacity('dps_meter', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_dps_meter_overall_opacity: v }).catch(() => {});
+}
+
 /** why: same contract as setDpsMeterEnabled -- see its own doc */
 export async function setSkillTrackerEnabled(on: boolean) {
   skillTrackerEnabled.set(on);
@@ -160,6 +177,15 @@ export async function setSkillTrackerOpacity(v: number) {
   skillTrackerOpacity.set(v);
   void api.setOverlayOpacity('skill_tracker', v);
   await api.setPreferences({ ...currentPrefs(), overlay_skill_tracker_opacity: v }).catch(() => {});
+}
+
+/** why: see setDpsMeterOverallOpacity's own doc -- same "everything" fade, this widget's own */
+export async function setSkillTrackerOverallOpacity(v: number) {
+  skillTrackerOverallOpacity.set(v);
+  void api.setOverlayOverallOpacity('skill_tracker', v);
+  await api
+    .setPreferences({ ...currentPrefs(), overlay_skill_tracker_overall_opacity: v })
+    .catch(() => {});
 }
 
 /** why: which cooldown skills show in the Skill Tracker's own section --
