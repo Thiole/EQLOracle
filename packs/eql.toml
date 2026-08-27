@@ -1136,15 +1136,21 @@ anchors = ["You receive"]
 # "9 platinum 5 gold 7 silver" here, vs "2 platinum, 5 gold, 7 silver and
 # 2 copper" on an auto-sell -- which is exactly why parsing the list's
 # internal structure is left to Ingest::parse_currency_copper rather than
-# encoded into this pattern).
-pattern = '''^You receive (?P<amount>.+?) from .+ for .+\.$'''
+# encoded into this pattern). `item` is optional: a bulk sell phrases as
+# "for the contents of your bag." with no single item name at all
+# (confirmed against the real log, 460 real vendor-sell lines, no
+# comma-joined multi-item case seen) -- the alternation falls back to
+# matching anything so the line still parses for its currency alone.
+pattern = '''^You receive (?P<amount>.+?) from .+ for (?:the (?P<item>.+?)\(s\)|.+)\.$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] You receive 9 platinum 5 gold 7 silver from Klok Koglin for the Gold Malachite Bracelet(s).",
   "[Tue Jul 28 15:02:15 2026] You receive 70 platinum 2 gold from Canarie for the Golden Star Ruby Ring(s).",
   "[Tue Jul 28 15:02:15 2026] You receive 185 platinum from Klok Koglin for the Fire Emerald Platinum Ring(s).",
+  "[Tue Jul 28 15:02:15 2026] You receive 12 platinum from Canarie for the contents of your bag.",
 ]
 [rule.fields]
 amount = { from = "amount", as = "str" }
+item = { from = "item", as = "str" }
 
 [[rule]]
 id = "money.received_plain"

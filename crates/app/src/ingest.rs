@@ -787,6 +787,12 @@ pub struct Ingest {
     pending_turnin: Option<PendingTurnIn>,
     /// why: every genuinely confirmed turn-in this session, in order
     pub turn_ins: Vec<ConfirmedTurnIn>,
+    /// why: Sky Quests' own reward-ownership inference -- see
+    /// skyquests.rs's doc. Names of items confirmed destroyed or sold to
+    /// a vendor this session (tier-stripped, lowercased -- same fold
+    /// confirmed_by_turnin uses), so a quest reward with no loot line of
+    /// its own isn't assumed still owned once it's provably gone.
+    pub disposed_items: std::collections::HashSet<String>,
     /// why: overlay's Skill Tracker widget -- see skilltracker.rs's own doc
     pub skills: std::collections::HashMap<String, crate::skilltracker::SkillTrack>,
     /// why: every AA rank purchase this session, see AaLog
@@ -878,6 +884,7 @@ impl Default for Ingest {
             sneak: None,
             pending_turnin: None,
             turn_ins: Vec::new(),
+            disposed_items: std::collections::HashSet::new(),
             skills: std::collections::HashMap::new(),
             aa: AaLog::default(),
             spellbook: SpellLog::default(),
@@ -1522,7 +1529,13 @@ impl Ingest {
                     }
                 }
             }
-            Action::Currency { source, text } => self.record_currency(ts, &source, &text),
+            Action::Currency { source, text, item } => {
+                self.record_currency(ts, &source, &text);
+                if let Some(name) = item {
+                    self.note_disposed(&name);
+                }
+            }
+            Action::Destroyed { item } => self.note_disposed(&item),
             Action::AfkOn => self.afk_state = true,
             Action::AfkOff => {
                 self.afk_state = false;
@@ -1823,6 +1836,14 @@ impl Ingest {
             NO_ENCOUNTER,
             tier,
         );
+    }
+
+    /// why: Sky Quests' own reward-ownership inference -- see
+    /// skyquests.rs's doc. Folded the same way confirmed_by_turnin
+    /// matches items, so both sides of that comparison agree.
+    fn note_disposed(&mut self, item: &str) {
+        let (base, _tier) = crate::inventory::strip_tier(item);
+        self.disposed_items.insert(base.to_ascii_lowercase());
     }
 
     /// why: best-effort EncounterId, not NO_ENCOUNTER -- the kill has
@@ -2665,10 +2686,18 @@ enum Action {
         pct: f64,
     },
     /// why: from money.corpse or money.vendor_sell; loot.self.direct's
-    /// auto-sell case goes through Loot's sold_for instead -- one line, two real facts
+    /// auto-sell case goes through Loot's sold_for instead -- one line, two real facts.
+    /// `item` is the item sold, vendor_sell only -- None for money.corpse
+    /// and for a vendor's bulk "contents of your bag" sale (no single name)
     Currency {
         source: String,
         text: String,
+        item: Option<String>,
+    },
+    /// why: Sky Quests' own reward-ownership inference -- see
+    /// skyquests.rs's doc. A destroyed item can no longer be assumed owned.
+    Destroyed {
+        item: String,
     },
     /// why: no fields, the line carries only the fact + timestamp, both apply already has
     AfkOn,
@@ -3069,10 +3098,15 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "money.corpse" => Some(Action::Currency {
             source: "corpse".to_string(),
             text: str_field("amount")?,
+            item: None,
         }),
         "money.vendor_sell" => Some(Action::Currency {
             source: "vendor".to_string(),
             text: str_field("amount")?,
+            item: str_field("item"),
+        }),
+        "craft.destroyed" => Some(Action::Destroyed {
+            item: str_field("item")?,
         }),
         "afk.on" => Some(Action::AfkOn),
         "afk.off" => Some(Action::AfkOff),
@@ -3883,6 +3917,27 @@ mod currency_tests {
         // Real line, eqlog_Manipulator_rivervale.txt (Klok Koglin trade).
         let ing = run("[Tue Jul 28 15:02:15 2026] You receive 9 platinum 5 gold 7 silver from Klok Koglin for the Gold Malachite Bracelet(s).\n");
         assert_eq!(currency_rows(&ing), vec![(9570, "vendor".to_string())]);
+    }
+
+    #[test]
+    fn a_vendor_sale_records_the_item_name_as_disposed() {
+        let ing = run("[Tue Jul 28 15:02:15 2026] You receive 9 platinum 5 gold 7 silver from Klok Koglin for the Gold Malachite Bracelet(s).\n");
+        assert!(ing.disposed_items.contains("gold malachite bracelet"));
+    }
+
+    #[test]
+    fn a_bulk_bag_sale_still_records_currency_with_no_item_to_dispose() {
+        // Real shape: a bulk sell names no single item.
+        let ing =
+            run("[Tue Jul 28 15:02:15 2026] You receive 12 platinum from Canarie for the contents of your bag.\n");
+        assert_eq!(currency_rows(&ing), vec![(12000, "vendor".to_string())]);
+        assert!(ing.disposed_items.is_empty());
+    }
+
+    #[test]
+    fn destroying_an_item_records_it_as_disposed_tier_stripped() {
+        let ing = run("[Tue Jul 28 15:02:15 2026] You successfully destroyed 1 Raw-Hide Wristbands +2.\n");
+        assert!(ing.disposed_items.contains("raw-hide wristbands"));
     }
 
     #[test]

@@ -19,6 +19,14 @@
 //! (`Ingest::turn_ins`, see `confirmed_by_turnin`) -- the achievement
 //! dump is only ever as fresh as the last `/outputfile`, so the live
 //! signal shows a real turn-in immediately instead of waiting on that.
+//!
+//! Primary Class Unlocks' `currently_owned` additionally applies
+//! `infer_reward_owned`: a reward is granted with no loot line and no
+//! trade-offer-back line at all, so a stale dump reading 0/unknown gets
+//! raised to "at least 1" once the quest is confirmed complete and the
+//! reward's never been destroyed or vendor-sold since
+//! (`Ingest::disposed_items`) -- never overrides a dump that already
+//! shows it owned, never claims a reward that's provably gone.
 
 use crate::ingest::Ingest;
 use crate::inventory;
@@ -286,6 +294,32 @@ fn completed_status(ach: Option<bool>, live: bool) -> Option<bool> {
     }
 }
 
+/// why: a quest reward is granted with no loot line and no "offered
+/// you" line at all (confirmed against the real log) -- an inventory
+/// dump is the only direct signal, and it's only ever a stale snapshot.
+/// If the dump already shows it owned, trust that. Otherwise: the quest
+/// completing IS the acquisition event, so if it's confirmed complete
+/// and never destroyed/vendor-sold since (Ingest::disposed_items),
+/// assume it's sitting somewhere -- raises an unknown/0 dump reading to
+/// "at least 1", never claims ownership for a reward provably gone.
+fn infer_reward_owned(
+    ing: &Ingest,
+    name: &str,
+    dump_owned: Option<u32>,
+    completed: Option<bool>,
+) -> Option<u32> {
+    if dump_owned.is_some_and(|n| n > 0) {
+        return dump_owned;
+    }
+    let (base, _tier) = inventory::strip_tier(name);
+    let disposed = ing.disposed_items.contains(&base.to_ascii_lowercase());
+    if completed == Some(true) && !disposed {
+        Some(1)
+    } else {
+        dump_owned
+    }
+}
+
 /// why: "Sky - Quests" tab's source -- every material turn-in, full detail
 pub fn list_quests(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClassDto> {
     let ctx = build_context(ing, base_dir);
@@ -362,27 +396,25 @@ pub fn list_class_unlocks(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClass
                             source: qi.source.clone(),
                         }))
                         .collect();
+                    let completed = completed_status(
+                        ctx.achievements.as_ref().and_then(|a| {
+                            a.is_complete(&format!("Obtain {}", achievement_reward_name(reward)))
+                        }),
+                        confirmed_by_turnin(
+                            ing,
+                            c.quest_giver.as_deref(),
+                            q.rune.as_deref(),
+                            &q.items,
+                        ),
+                    );
                     Some(SkyRewardDto {
-                        name: it.item,
+                        name: it.item.clone(),
                         quest: q.quest.clone(),
                         ever_looted: it.ever_looted,
                         looted_count: it.looted_count,
-                        currently_owned: it.currently_owned,
+                        currently_owned: infer_reward_owned(ing, &it.item, it.currently_owned, completed),
                         sold_without_keeping: it.sold_without_keeping,
-                        completed: completed_status(
-                            ctx.achievements.as_ref().and_then(|a| {
-                                a.is_complete(&format!(
-                                    "Obtain {}",
-                                    achievement_reward_name(reward)
-                                ))
-                            }),
-                            confirmed_by_turnin(
-                                ing,
-                                c.quest_giver.as_deref(),
-                                q.rune.as_deref(),
-                                &q.items,
-                            ),
-                        ),
+                        completed,
                         materials,
                     })
                 })
@@ -560,5 +592,40 @@ mod tests {
             .find(|r| r.name == "Mantle of the Songweaver")
             .expect("Mantle of the Songweaver");
         assert_eq!(mantle.completed, Some(true));
+        assert_eq!(
+            mantle.currently_owned,
+            Some(1),
+            "no loot line grants a reward, no dump exists either -- \
+             completion itself is the only acquisition signal"
+        );
+    }
+
+    /// why: a reward confirmed complete but since destroyed must NOT
+    /// read as owned -- completion alone can't override real disposal
+    #[test]
+    fn a_completed_rewards_ownership_is_not_assumed_once_its_been_destroyed() {
+        let mut ing = Ingest::default();
+        ing.turn_ins.push(crate::ingest::ConfirmedTurnIn {
+            ts: 0,
+            who: "Cilin Spellsinger".to_string(),
+            items: vec![
+                ("Wind Rune Kala".to_string(), 1),
+                ("Light Woolen Mantle".to_string(), 1),
+            ],
+        });
+        ing.disposed_items.insert("mantle of the songweaver".to_string());
+
+        let unlocks = list_class_unlocks(&ing, None);
+        let bard = unlocks.iter().find(|c| c.class == "Bard").expect("Bard");
+        let mantle = bard
+            .rewards
+            .iter()
+            .find(|r| r.name == "Mantle of the Songweaver")
+            .expect("Mantle of the Songweaver");
+        assert_eq!(mantle.completed, Some(true), "completion is unaffected");
+        assert_eq!(
+            mantle.currently_owned, None,
+            "destroyed -- no dump exists to say otherwise, so still unknown, never assumed owned"
+        );
     }
 }
