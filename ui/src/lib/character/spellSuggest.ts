@@ -542,25 +542,40 @@ export function simulateRotation(candidates: DamageSpellDto[], windowSecs: numbe
   const sequence: DamageSpellDto[] = [];
   let totalDamage = 0;
   let t = 0;
+  // why: Spencer's own estimate -- weaving between two DIFFERENT spells
+  // isn't actually the zero-gap back-to-back casting the sim used to
+  // assume once one of them is off its own reuse. Roughly half of
+  // whatever was just cast's own recast_time is still a real minimum
+  // before ANY next cast (his own words: "just estimating the
+  // difference between weaving spells of different cast times ...
+  // seems like a fair real life estimate", not something measured off
+  // real log timestamps -- a plain half multiplier, not a separately-
+  // tuned constant). A single scalar floor, not per-spell -- it's the
+  // caster that's still mid-recovery, not the specific spell; that
+  // spell's own FULL reuse is still tracked separately via
+  // nextAvailable, this only ever adds a floor on top, never relaxes it.
+  let gcdFloor = 0;
 
   while (t < windowSecs) {
+    const cursor = Math.max(t, gcdFloor);
     const ready = pool.filter(
-      (s) => (nextAvailable.get(s.name) ?? 0) <= t && t + s.casting_time <= windowSecs,
+      (s) => (nextAvailable.get(s.name) ?? 0) <= cursor && cursor + s.casting_time <= windowSecs,
     );
     if (ready.length === 0) {
-      const future = pool.filter((s) => t + s.casting_time <= windowSecs);
+      const future = pool.filter((s) => cursor + s.casting_time <= windowSecs);
       if (future.length === 0) break;
-      const nextT = Math.min(...future.map((s) => nextAvailable.get(s.name) ?? 0));
-      if (nextT <= t) break; // defensive -- should be unreachable, avoids ever looping in place
+      const nextT = Math.max(cursor, Math.min(...future.map((s) => nextAvailable.get(s.name) ?? 0)));
+      if (nextT <= cursor) break; // defensive -- should be unreachable, avoids ever looping in place
       t = nextT;
       continue;
     }
     const best = ready.reduce((a, b) =>
-      (realizedValueAt(b, t, windowSecs) > realizedValueAt(a, t, windowSecs) ? b : a),
+      (realizedValueAt(b, cursor, windowSecs) > realizedValueAt(a, cursor, windowSecs) ? b : a),
     );
-    const castStart = t;
+    const castStart = cursor;
     sequence.push(best);
     t = castStart + best.casting_time;
+    gcdFloor = t + best.recast_time / 2;
     totalDamage += scheduleDamage(best, castStart, t, windowSecs);
     // why: total_damage / dps_with_reuse == cycle_secs (casting + recast,
     // or duration for a DoT) -- already-shipped fields, no new backend data
