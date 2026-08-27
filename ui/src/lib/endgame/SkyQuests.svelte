@@ -50,35 +50,37 @@
     return q.completed === true ? Number.POSITIVE_INFINITY : questMissingItems(q);
   }
 
-  // why: a class's own aggregate -- total items still missing across
-  // every one of its quests (a done quest naturally contributes 0, same
-  // as an in-hand one would), so a class close to a full clear ranks
-  // above one that's barely started. This is a real count, unlike
-  // `questSortKey`'s own `Infinity` sentinel, which only exists to
-  // control display order.
-  function classStillNeeded(c: SkyClassDto): number {
-    return c.quests.reduce((sum, q) => sum + questMissingItems(q), 0);
-  }
+  // why: player correction -- Primary Class Unlocks bundles by class
+  // because a class only unlocks once its whole quest set is done, a
+  // real grouping. Plain Sky Quests has no such grouping: each one is
+  // its own independent turn-in, and bundling them by class buried
+  // "what's ready right now" inside 16 separate cards you had to open
+  // one at a time. Flattened to one quest per card instead, class kept
+  // only as a small label on the card, not a container.
+  type FlatQuest = TurnInDto & { class: string; questGiver: string | null };
+
+  const flatQuests = $derived.by((): FlatQuest[] | null => {
+    if (!classes) return null;
+    return classes.flatMap((c) => c.quests.map((q) => ({ ...q, class: c.class, questGiver: c.quest_giver })));
+  });
 
   // why: default is "closest to turn in", A-Z demoted to the alternate
-  // option and to its own tie-break within it -- same as the Unlocks
-  // tab, asked directly to match.
+  // option -- same as the Unlocks tab, asked directly to match. Quest
+  // names are themselves "<Class> Test of <X>", so sorting by name
+  // alone already reads class-grouped in A-Z mode, no separate class key needed.
   type SortMode = 'alpha' | 'closest';
   let sortBy = $state<SortMode>('closest');
   const SORT_LABELS: Record<SortMode, string> = { alpha: 'A-Z', closest: 'Closest to turn in' };
 
-  const sortedClasses = $derived.by((): SkyClassDto[] | null => {
-    if (!classes) return null;
-    // why: quests within each class card always sort nearest-first (done
-    // ones demoted to the bottom, out of the way), regardless of the
-    // class-level mode -- an actionable, nearly-done quest buried under
-    // a pile of already-turned-in ones would defeat the point.
-    const withSortedQuests = classes.map((c) => ({
-      ...c,
-      quests: [...c.quests].sort((a, b) => questSortKey(a) - questSortKey(b) || a.quest.localeCompare(b.quest)),
-    }));
-    if (sortBy === 'alpha') return withSortedQuests;
-    return withSortedQuests.sort((a, b) => classStillNeeded(a) - classStillNeeded(b) || a.class.localeCompare(b.class));
+  const sortedQuests = $derived.by((): FlatQuest[] | null => {
+    if (!flatQuests) return null;
+    const sorted = [...flatQuests];
+    if (sortBy === 'alpha') {
+      sorted.sort((a, b) => a.quest.localeCompare(b.quest));
+    } else {
+      sorted.sort((a, b) => questSortKey(a) - questSortKey(b) || a.quest.localeCompare(b.quest));
+    }
+    return sorted;
   });
 </script>
 
@@ -119,35 +121,27 @@
         </Select.Root>
       </label>
     </div>
-    <div class="flex flex-wrap gap-3">
-      {#each sortedClasses ?? [] as c (c.class)}
-        <Card class="min-w-80 flex-1 rounded-sm">
-          <CardContent class="px-3 py-2.5">
-            <div class="mb-1.5 flex items-baseline gap-2">
-              <h2 class="panel-title">{c.class}</h2>
-              {#if c.quest_giver}<span class="text-[11px] text-muted-foreground">{c.quest_giver}</span>{/if}
+    <div class="flex flex-wrap gap-2">
+      {#each sortedQuests ?? [] as q (q.class + '::' + q.quest)}
+        <Card class="min-w-72 flex-1 rounded-sm">
+          <CardContent class="px-3 py-2 pb-2.5">
+            <div class="mb-0.5 flex items-baseline justify-between gap-2">
+              <span class="text-[12px] font-medium text-foreground">{q.quest}</span>
+              {#if q.completed === true}
+                <span class="shrink-0 text-[10px] text-good">done · {q.reward}</span>
+              {:else if q.completed === false}
+                <span class="shrink-0 text-[10px] text-muted-foreground">open · {q.reward}</span>
+              {:else}
+                <span class="shrink-0 text-[10px] text-muted-foreground">? · {q.reward}</span>
+              {/if}
             </div>
-
-            <div class="flex flex-col divide-y divide-border">
-              {#each c.quests as q (q.quest)}
-                <div class="flex flex-col gap-1 py-1.5 first:pt-0 last:pb-0">
-                  <div class="flex items-baseline justify-between gap-2">
-                    <span class="text-[12px] font-medium text-foreground">{q.quest}</span>
-                    {#if q.completed === true}
-                      <span class="text-[10px] text-good">done · {q.reward}</span>
-                    {:else if q.completed === false}
-                      <span class="text-[10px] text-muted-foreground">open · {q.reward}</span>
-                    {:else}
-                      <span class="text-[10px] text-muted-foreground">? · {q.reward}</span>
-                    {/if}
-                  </div>
-                  <div class="flex flex-wrap gap-1">
-                    {#if q.rune}{@render itemChip(q.rune)}{/if}
-                    {#each q.items as it (it.item)}
-                      {@render itemChip(it)}
-                    {/each}
-                  </div>
-                </div>
+            <div class="mb-1.5 text-[10px] text-muted-foreground">
+              {q.class}{#if q.questGiver} · {q.questGiver}{/if}
+            </div>
+            <div class="flex flex-wrap gap-1">
+              {#if q.rune}{@render itemChip(q.rune)}{/if}
+              {#each q.items as it (it.item)}
+                {@render itemChip(it)}
               {/each}
             </div>
           </CardContent>
