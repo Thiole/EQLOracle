@@ -36,7 +36,9 @@
   style:text-shadow="0 1px 2px rgba(0, 0, 0, 0.9), 0 0px 4px rgba(0, 0, 0, 0.6)"
 >
   {#if !trackedNames.length}
-    <p class="text-muted-foreground">Nothing tracked yet.</p>
+    <!-- why: only shown while genuinely empty -- points at the bell
+         icon once, doesn't repeat itself once something's tracked -->
+    <p class="text-muted-foreground">Nothing tracked yet -- click the bell on an item in Sky Quests.</p>
   {:else if !matches.length}
     <p class="text-muted-foreground">no tracked drops nearby</p>
   {:else}

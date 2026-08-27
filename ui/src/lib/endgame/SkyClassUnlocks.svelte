@@ -2,7 +2,7 @@
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
   import * as Select from '$lib/components/ui/select';
-  import TargetIcon from '@lucide/svelte/icons/target';
+  import BellIcon from '@lucide/svelte/icons/bell';
   import { api, type SkyClassUnlockDto, type SkyRewardDto } from '$lib/tauri/api';
   import { trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
 
@@ -111,17 +111,28 @@
         from <span class="font-medium">{r.quest}</span>:
         {#each r.materials as m, i (m.item)}
           {@const tracked = $trackedDropItems.includes(m.item)}
-          <span class="group inline-flex items-center gap-0.5">
+          {@const trackable = !m.item.startsWith('Wind Rune ')}
+          <span class="inline-flex items-center gap-0.5">
             {i > 0 ? ',' : ''}
-            {m.item}{#if m.source}<span class="opacity-70"> ({m.source})</span>{/if}
+            <!-- why: leading, before the material name -- its own visual
+                 slot rather than one more element trailing after the
+                 text. Runes skipped -- see SkyQuests.svelte's own doc,
+                 same reasoning. Solid fill in the theme's own yes/no
+                 colors, not just a color swap -- on/off must be
+                 unmistakable at this size. -->
+            {#if trackable}
             <button
               type="button"
-              class="rounded-sm {tracked ? 'text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}"
+              class="flex size-4 shrink-0 items-center justify-center rounded-full border {tracked
+                ? 'border-good bg-good text-background'
+                : 'border-bad bg-bad text-background'}"
               title={tracked ? `Stop tracking ${m.item} in the Drop Watch overlay` : `Track ${m.item} in the Drop Watch overlay`}
               onclick={() => void toggleTrackedDropItem(m.item)}
             >
-              <TargetIcon class="size-3" />
+              <BellIcon class="size-3" />
             </button>
+            {/if}
+            {m.item}{#if m.source}<span class="opacity-70"> ({m.source})</span>{/if}
           </span>
         {/each}
       </p>

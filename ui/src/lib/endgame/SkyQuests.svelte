@@ -2,7 +2,7 @@
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
   import * as Select from '$lib/components/ui/select';
-  import TargetIcon from '@lucide/svelte/icons/target';
+  import BellIcon from '@lucide/svelte/icons/bell';
   import { api, type SkyClassDto, type TurnInDto, type TurnInItemDto } from '$lib/tauri/api';
   import { trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
 
@@ -89,21 +89,37 @@
 {#snippet itemChip(it: TurnInItemDto)}
   {@const status = itemStatus(it)}
   {@const tracked = $trackedDropItems.includes(it.item)}
-  <span class="group inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] {status.classes}" title="{it.item}{it.source ? ` (${it.source})` : ''} -- {status.label}">
-    {it.item}
-    <span class="opacity-80">· {status.label}</span>
-    <!-- why: Drop Watch's own entry point -- see dropwatch.rs's doc.
-         Always visible, not hover-reveal -- unlike AllyTable's ability
-         track button (an established feature), nobody knows this one
-         exists yet; invisible-until-hover is undiscoverable for that. -->
-    <button
-      type="button"
-      class="rounded-sm {tracked ? 'text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}"
-      title={tracked ? `Stop tracking ${it.item} in the Drop Watch overlay` : `Track ${it.item} in the Drop Watch overlay`}
-      onclick={() => void toggleTrackedDropItem(it.item)}
-    >
-      <TargetIcon class="size-3" />
-    </button>
+  {@const trackable = !it.item.startsWith('Wind Rune ')}
+  <!-- why: Drop Watch's own entry point -- see dropwatch.rs's doc. Runes
+       aren't mob drops (no wiki drop data for any of them, checked) --
+       no bell on those, nothing Drop Watch could ever match anyway.
+       Leading badge overlapping the chip's own border (not one more
+       inline element crammed after the status text) -- its own visual
+       slot, not competing with the chip's text for room. A bell
+       (get-notified), not the target icon AllyTable's ability tracker
+       uses -- same glyph on an unrelated feature reads as "no idea what
+       this does". Always visible, not hover-reveal -- nobody knows this
+       feature exists yet. Solid fill in the theme's own yes/no colors
+       (good/bad, not literal red/green -- some themes don't use those
+       hues for it) -- on/off must be unmistakable at this size, a
+       color/outline swap this subtle wasn't. -->
+  <span class="relative inline-flex">
+    {#if trackable}
+      <button
+        type="button"
+        class="absolute -top-2 -left-2 z-10 flex size-4 items-center justify-center rounded-full border {tracked
+          ? 'border-good bg-good text-background'
+          : 'border-bad bg-bad text-background'}"
+        title={tracked ? `Stop tracking ${it.item} in the Drop Watch overlay` : `Track ${it.item} in the Drop Watch overlay`}
+        onclick={() => void toggleTrackedDropItem(it.item)}
+      >
+        <BellIcon class="size-3" />
+      </button>
+    {/if}
+    <span class="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] {status.classes}" title="{it.item}{it.source ? ` (${it.source})` : ''} -- {status.label}">
+      {it.item}
+      <span class="opacity-80">· {status.label}</span>
+    </span>
   </span>
 {/snippet}
 
@@ -153,7 +169,7 @@
             <div class="mb-1.5 text-[10px] text-muted-foreground">
               {q.class}{#if q.questGiver} · {q.questGiver}{/if}
             </div>
-            <div class="flex flex-wrap gap-1">
+            <div class="flex flex-wrap gap-1.5 pt-2 pl-2">
               {#if q.rune}{@render itemChip(q.rune)}{/if}
               {#each q.items as it (it.item)}
                 {@render itemChip(it)}
