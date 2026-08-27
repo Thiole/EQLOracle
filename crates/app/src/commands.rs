@@ -449,6 +449,14 @@ pub fn get_skill_status(state: State<AppState>) -> Vec<crate::skilltracker::Skil
     crate::skilltracker::skill_status(&state.ingest.lock().unwrap())
 }
 
+/// why: Drop Watch widget -- see dropwatch.rs's own doc. Unfiltered
+/// (every currently-relevant mob's full known drop list); the frontend
+/// intersects against tracked_drop_items, same split get_skill_status uses.
+#[tauri::command]
+pub fn get_drop_watch(state: State<AppState>) -> Vec<crate::dropwatch::DropWatchRowDto> {
+    crate::dropwatch::drop_watch(&state.ingest.lock().unwrap())
+}
+
 /// why: Skill Tracker widget's target-effects section -- see targeteffects.rs's own doc
 #[tauri::command]
 pub fn get_target_effects(state: State<AppState>) -> crate::targeteffects::TargetEffectsDto {

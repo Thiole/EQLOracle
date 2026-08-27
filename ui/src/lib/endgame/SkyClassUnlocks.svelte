@@ -2,7 +2,9 @@
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
   import * as Select from '$lib/components/ui/select';
+  import TargetIcon from '@lucide/svelte/icons/target';
   import { api, type SkyClassUnlockDto, type SkyRewardDto } from '$lib/tauri/api';
+  import { trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
 
   let classes = $state<SkyClassUnlockDto[] | null>(null);
   let error = $state<string | null>(null);
@@ -102,10 +104,26 @@
       <!-- why: asked directly -- a reward that isn't sitting in hand yet
            has to say where it actually comes from, not just a bare
            quest name: which quest, which materials, which mob/island
-           each one drops from. -->
-      <p class="text-[10px] opacity-80">
+           each one drops from. Each material is its own Drop Watch
+           track button (see dropwatch.rs's doc) -- the runes here
+           mostly aren't mob drops at all, but the drop items are. -->
+      <p class="flex flex-wrap items-center gap-x-1 text-[10px] opacity-80">
         from <span class="font-medium">{r.quest}</span>:
-        {#each r.materials as m, i (m.item)}{i > 0 ? ', ' : ' '}{m.item}{#if m.source}<span class="opacity-70"> ({m.source})</span>{/if}{/each}
+        {#each r.materials as m, i (m.item)}
+          {@const tracked = $trackedDropItems.includes(m.item)}
+          <span class="group inline-flex items-center gap-0.5">
+            {i > 0 ? ',' : ''}
+            {m.item}{#if m.source}<span class="opacity-70"> ({m.source})</span>{/if}
+            <button
+              type="button"
+              class="rounded-sm {tracked ? '' : 'opacity-0 group-hover:opacity-100'}"
+              title={tracked ? `Stop tracking ${m.item} in the Drop Watch overlay` : `Track ${m.item} in the Drop Watch overlay`}
+              onclick={() => void toggleTrackedDropItem(m.item)}
+            >
+              <TargetIcon class="size-3" />
+            </button>
+          </span>
+        {/each}
       </p>
     {/if}
   </div>

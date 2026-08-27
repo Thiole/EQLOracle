@@ -2,7 +2,9 @@
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
   import * as Select from '$lib/components/ui/select';
+  import TargetIcon from '@lucide/svelte/icons/target';
   import { api, type SkyClassDto, type TurnInDto, type TurnInItemDto } from '$lib/tauri/api';
+  import { trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
 
   let classes = $state<SkyClassDto[] | null>(null);
   let error = $state<string | null>(null);
@@ -86,9 +88,21 @@
 
 {#snippet itemChip(it: TurnInItemDto)}
   {@const status = itemStatus(it)}
-  <span class="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] {status.classes}" title="{it.item}{it.source ? ` (${it.source})` : ''} -- {status.label}">
+  {@const tracked = $trackedDropItems.includes(it.item)}
+  <span class="group inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] {status.classes}" title="{it.item}{it.source ? ` (${it.source})` : ''} -- {status.label}">
     {it.item}
     <span class="opacity-80">· {status.label}</span>
+    <!-- why: Drop Watch's own entry point -- see dropwatch.rs's doc.
+         Always visible once tracked, hover-reveal otherwise, same
+         convention AllyTable's own ability-track button uses. -->
+    <button
+      type="button"
+      class="rounded-sm {tracked ? '' : 'opacity-0 group-hover:opacity-100'}"
+      title={tracked ? `Stop tracking ${it.item} in the Drop Watch overlay` : `Track ${it.item} in the Drop Watch overlay`}
+      onclick={() => void toggleTrackedDropItem(it.item)}
+    >
+      <TargetIcon class="size-3" />
+    </button>
   </span>
 {/snippet}
 

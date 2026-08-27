@@ -254,6 +254,13 @@ export interface TargetEffectsDto {
   effects: TargetEffectDto[];
 }
 
+export interface DropWatchRowDto {
+  mob: string;
+  /** why: this mob's full known drop list, unfiltered -- intersect with
+   * tracked_drop_items client-side, same split get_skill_status uses */
+  drops: string[];
+}
+
 // ---------------------------------------------------------------- character
 
 export interface ClassConfigurationDto {
@@ -1058,6 +1065,17 @@ export interface PreferencesDto {
    * by default -- nothing baked in here, unlike tracked_skills' 4
    * status pseudo-entries. */
   tracked_target_effects: string[];
+  /** why: same pattern as overlay_dps_meter_opacity -- see dropwatch.rs's
+   * own doc for what this widget shows */
+  overlay_drop_watch_opacity: number;
+  /** why: see overlay_dps_meter_overall_opacity's own doc -- same
+   * "everything" fade, this widget's own */
+  overlay_drop_watch_overall_opacity: number;
+  /** why: item names the player wants a heads-up on when currently
+   * fighting a mob known to drop one -- entry points are Sky Quests'
+   * material chips and Primary Class Unlocks' reward materials. Empty by
+   * default -- nothing baked in. */
+  tracked_drop_items: string[];
 }
 
 export interface UpdateInfoDto {
@@ -1291,6 +1309,9 @@ export const api = {
   getSkillStatus: () => invoke<SkillStatusDto[]>('get_skill_status'),
   /** why: the Skill Tracker's target-effects section data source */
   getTargetEffects: () => invoke<TargetEffectsDto>('get_target_effects'),
+  /** why: Drop Watch widget -- see dropwatch.rs's own doc. Unfiltered,
+   * frontend intersects with tracked_drop_items same as skill status. */
+  getDropWatch: () => invoke<DropWatchRowDto[]>('get_drop_watch'),
   /** why: each widget is its own real OS window -- opens/closes just that
    * one; rejects with a plain-language reason if the session's
    * capability caps below click-through */

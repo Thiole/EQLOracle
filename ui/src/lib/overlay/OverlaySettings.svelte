@@ -26,6 +26,14 @@
     toggleTrackedSkill,
     trackedTargetEffects,
     toggleTrackedTargetEffect,
+    dropWatchEnabled,
+    dropWatchOpacity,
+    setDropWatchEnabled,
+    setDropWatchOpacity,
+    dropWatchOverallOpacity,
+    setDropWatchOverallOpacity,
+    trackedDropItems,
+    toggleTrackedDropItem,
     loadPreferences,
   } from '$lib/stores/settings';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
@@ -38,9 +46,10 @@
 
   let enableError = $state<string | null>(null);
   let skillTrackerError = $state<string | null>(null);
+  let dropWatchError = $state<string | null>(null);
   // why: each widget's own window starts locked (click-through) --
   // matches every widget window's own real default at open
-  let locked = $state<Record<string, boolean>>({ dps_meter: true, skill_tracker: true });
+  let locked = $state<Record<string, boolean>>({ dps_meter: true, skill_tracker: true, drop_watch: true });
 
   async function onToggleDpsMeter(on: boolean) {
     enableError = null;
@@ -62,6 +71,16 @@
     }
   }
 
+  async function onToggleDropWatch(on: boolean) {
+    dropWatchError = null;
+    try {
+      await setDropWatchEnabled(on);
+      locked.drop_watch = true;
+    } catch (e) {
+      dropWatchError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   async function toggleLocked(widget: string) {
     locked[widget] = !locked[widget];
     await api.setOverlayLocked(widget, locked[widget]).catch(() => {});
@@ -76,9 +95,9 @@
   // to the same new state. Not its own persisted preference -- stays a
   // live, explicit action each session (see preferences.rs's doc on
   // why enabled/disabled stays live-only).
-  const allEnabled = $derived($dpsMeterEnabled && $skillTrackerEnabled);
+  const allEnabled = $derived($dpsMeterEnabled && $skillTrackerEnabled && $dropWatchEnabled);
   async function onToggleAll(on: boolean) {
-    await Promise.all([onToggleDpsMeter(on), onToggleSkillTracker(on)]);
+    await Promise.all([onToggleDpsMeter(on), onToggleSkillTracker(on), onToggleDropWatch(on)]);
   }
 </script>
 
@@ -269,10 +288,57 @@
     </CardContent>
   </Card>
 
-  <Card class="rounded-sm border-dashed">
+  <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
-      <h2 class="panel-title mb-1.5 text-muted-foreground">more widgets</h2>
-      <p class="text-[11px] text-muted-foreground">More overlay widgets land here as their own cards as they're built.</p>
+      <h2 class="panel-title mb-1.5">drop watch</h2>
+      <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
+        <Checkbox checked={$dropWatchEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleDropWatch(v)} />
+        enable
+      </label>
+      <p class="mt-0.5 text-[11px] text-muted-foreground">
+        A heads-up when you're fighting a mob known to drop something you're tracking -- not everything you're in combat
+        with, just a match.
+      </p>
+      {#if capped}
+        <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
+      {/if}
+      {#if dropWatchError}
+        <p class="mt-1 text-[11px] text-bad">{dropWatchError}</p>
+      {/if}
+      {#if $dropWatchEnabled && !capped}
+        {@render repositionButton('drop_watch')}
+      {/if}
+
+      <div class="mt-2.5">
+        <p class="text-[11px] text-muted-foreground">
+          tracked drops <span class="text-muted-foreground/70">(add an item from Sky Quests or Primary Class Unlocks)</span>
+        </p>
+        <div class="mt-1">
+          <TrackedSkillsList
+            items={$trackedDropItems}
+            onRemove={(name) => void toggleTrackedDropItem(name)}
+            ariaLabel="Tracked drops"
+            emptyLabel="Nothing tracked yet."
+          />
+        </div>
+      </div>
+
+      {@render alphaPreview(
+        $dropWatchOpacity,
+        (v) => void setDropWatchOpacity(v),
+        capped,
+        'background opacity',
+        'How see-through the panel behind everything reads -- text stays fully readable no matter how low this goes.',
+        false,
+      )}
+      {@render alphaPreview(
+        $dropWatchOverallOpacity,
+        (v) => void setDropWatchOverallOpacity(v),
+        capped,
+        'everything',
+        'Fades the whole widget together -- text included, not just the panel behind it.',
+        true,
+      )}
     </CardContent>
   </Card>
 </div>

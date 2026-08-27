@@ -7,11 +7,19 @@
   // exactly the one widget its own window's label names (via
   // currentOverlayWidget) -- not a container stacking several widgets,
   // that's the whole point of the per-window split.
-  import { api, type LiveMeterDto, type StatusEffectsDto, type SkillStatusDto, type TargetEffectsDto } from '$lib/tauri/api';
+  import {
+    api,
+    type LiveMeterDto,
+    type StatusEffectsDto,
+    type SkillStatusDto,
+    type TargetEffectsDto,
+    type DropWatchRowDto,
+  } from '$lib/tauri/api';
   import { listen } from '$lib/tauri/invoke';
   import { currentOverlayWidget } from '$lib/tauri/window';
   import DpsMeterWidget from './DpsMeterWidget.svelte';
   import SkillTrackerWidget from './SkillTrackerWidget.svelte';
+  import DropWatchWidget from './DropWatchWidget.svelte';
 
   const widget = currentOverlayWidget();
 
@@ -21,10 +29,12 @@
   let overallOpacity = $state(1.0);
   let trackedSkillNames = $state<string[]>([]);
   let trackedTargetEffectNames = $state<string[]>([]);
+  let trackedDropNames = $state<string[]>([]);
   let meter = $state<LiveMeterDto | null>(null);
   let status = $state<StatusEffectsDto | null>(null);
   let skills = $state<SkillStatusDto[]>([]);
   let targetEffects = $state<TargetEffectsDto | null>(null);
+  let dropRows = $state<DropWatchRowDto[]>([]);
 
   async function refreshPrefs() {
     const p = await api.getPreferences();
@@ -51,6 +61,10 @@
       // alongside the data poll is cheap either way
       trackedSkillNames = p.tracked_skills;
       trackedTargetEffectNames = p.tracked_target_effects;
+    } else if (widget === 'drop_watch') {
+      opacity = p.overlay_drop_watch_opacity;
+      overallOpacity = p.overlay_drop_watch_overall_opacity;
+      trackedDropNames = p.tracked_drop_items;
     }
   }
 
@@ -62,6 +76,8 @@
       status = s;
       skills = sk;
       targetEffects = te;
+    } else if (widget === 'drop_watch') {
+      dropRows = await api.getDropWatch();
     }
   }
 
@@ -100,5 +116,7 @@
       {opacity}
       {overallOpacity}
     />
+  {:else if widget === 'drop_watch'}
+    <DropWatchWidget rows={dropRows} trackedNames={trackedDropNames} {opacity} {overallOpacity} />
   {/if}
 </div>

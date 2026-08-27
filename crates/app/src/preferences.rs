@@ -130,6 +130,15 @@ pub struct Preferences {
     /// "everything" fade, this widget's own.
     #[serde(default = "default_overall_opacity")]
     pub overlay_skill_tracker_overall_opacity: f64,
+    /// why: the Drop Watch widget's own opacity -- see
+    /// overlay_dps_meter_opacity's own doc, same pattern. See
+    /// dropwatch.rs's own doc for what this widget shows.
+    #[serde(default = "default_overlay_opacity")]
+    pub overlay_drop_watch_opacity: f64,
+    /// why: see overlay_dps_meter_overall_opacity's own doc -- same
+    /// "everything" fade, this widget's own.
+    #[serde(default = "default_overall_opacity")]
+    pub overlay_drop_watch_overall_opacity: f64,
     /// why: which entries show in the Skill Tracker overlay -- real
     /// tracked abilities/spells (added via a "track" button, none by
     /// default) plus the 4 baked-in status pseudo-entries (Charmed/
@@ -144,6 +153,13 @@ pub struct Preferences {
     /// spell tracking" section.
     #[serde(default)]
     pub tracked_target_effects: Vec<String>,
+    /// why: item names the player wants a heads-up on when currently
+    /// fighting a mob known to drop one -- see dropwatch.rs's own doc.
+    /// Empty by default; entry points are Sky Quests' own material chips
+    /// and Primary Class Unlocks' reward materials, same "track" shape
+    /// as tracked_skills/tracked_target_effects.
+    #[serde(default)]
+    pub tracked_drop_items: Vec<String>,
     /// why: see OverlayPosition's own doc. Keyed by widget name (same
     /// "dps_meter"/"skill_tracker" strings commands::overlay_label
     /// already uses), empty until a widget's been dragged and re-locked
@@ -170,8 +186,11 @@ impl Default for Preferences {
             overlay_dps_meter_overall_opacity: default_overall_opacity(),
             overlay_skill_tracker_opacity: default_overlay_opacity(),
             overlay_skill_tracker_overall_opacity: default_overall_opacity(),
+            overlay_drop_watch_opacity: default_overlay_opacity(),
+            overlay_drop_watch_overall_opacity: default_overall_opacity(),
             tracked_skills: default_tracked_skills(),
             tracked_target_effects: Vec::new(),
+            tracked_drop_items: Vec::new(),
             overlay_positions: HashMap::new(),
         }
     }
@@ -240,6 +259,12 @@ mod tests {
             p.tracked_target_effects.is_empty(),
             "nothing baked in -- a per-target effect is always an opt-in pick, unlike the 4 status pseudo-entries above"
         );
+        assert_eq!(p.overlay_drop_watch_opacity, 0.85);
+        assert_eq!(p.overlay_drop_watch_overall_opacity, 1.0);
+        assert!(
+            p.tracked_drop_items.is_empty(),
+            "nothing baked in -- always an opt-in pick"
+        );
         assert!(
             p.overlay_positions.is_empty(),
             "no widget has a saved position until it's been dragged and re-locked at least once"
@@ -263,8 +288,11 @@ mod tests {
             overlay_dps_meter_overall_opacity: 0.7,
             overlay_skill_tracker_opacity: 0.6,
             overlay_skill_tracker_overall_opacity: 0.9,
+            overlay_drop_watch_opacity: 0.5,
+            overlay_drop_watch_overall_opacity: 0.8,
             tracked_skills: vec!["Kick".to_string(), "Backstab".to_string()],
             tracked_target_effects: vec!["Tashania".to_string()],
+            tracked_drop_items: vec!["Light Woolen Mask".to_string()],
             overlay_positions,
         };
         let json = serde_json::to_string(&p).unwrap();
@@ -278,8 +306,11 @@ mod tests {
         assert_eq!(back.overlay_dps_meter_overall_opacity, 0.7);
         assert_eq!(back.overlay_skill_tracker_opacity, 0.6);
         assert_eq!(back.overlay_skill_tracker_overall_opacity, 0.9);
+        assert_eq!(back.overlay_drop_watch_opacity, 0.5);
+        assert_eq!(back.overlay_drop_watch_overall_opacity, 0.8);
         assert_eq!(back.tracked_skills, vec!["Kick", "Backstab"]);
         assert_eq!(back.tracked_target_effects, vec!["Tashania"]);
+        assert_eq!(back.tracked_drop_items, vec!["Light Woolen Mask"]);
         let pos = back
             .overlay_positions
             .get("dps_meter")
@@ -300,11 +331,14 @@ mod tests {
         assert_eq!(back.overlay_dps_meter_overall_opacity, 1.0);
         assert_eq!(back.overlay_skill_tracker_opacity, 0.85);
         assert_eq!(back.overlay_skill_tracker_overall_opacity, 1.0);
+        assert_eq!(back.overlay_drop_watch_opacity, 0.85);
+        assert_eq!(back.overlay_drop_watch_overall_opacity, 1.0);
         assert_eq!(
             back.tracked_skills,
             vec!["Charmed", "Invisible", "Hide", "Sneak"]
         );
         assert!(back.tracked_target_effects.is_empty());
+        assert!(back.tracked_drop_items.is_empty());
         assert!(back.overlay_positions.is_empty());
     }
 }

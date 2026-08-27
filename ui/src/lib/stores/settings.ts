@@ -55,6 +55,15 @@ export const trackedSkills = writable<string[]>([]);
  * target (landed? duration left?), never its own cooldown/READY row.
  * Empty by default -- nothing baked in. */
 export const trackedTargetEffects = writable<string[]>([]);
+/** why: same on/off contract as dpsMeterEnabled -- see its own doc */
+export const dropWatchEnabled = writable(false);
+export const dropWatchOpacity = writable(0.85);
+/** why: see dpsMeterOverallOpacity's own doc -- same "everything" fade, this widget's own */
+export const dropWatchOverallOpacity = writable(1.0);
+/** why: item names to watch for -- see PreferencesDto.tracked_drop_items's
+ * own doc. Entry points are Sky Quests' material chips and Primary Class
+ * Unlocks' reward materials. */
+export const trackedDropItems = writable<string[]>([]);
 export const settingsLoaded = writable(false);
 
 // why: applies on every change, not just after an explicit setTheme() --
@@ -91,6 +100,9 @@ export function loadPreferences(): Promise<void> {
     skillTrackerOverallOpacity.set(prefs.overlay_skill_tracker_overall_opacity);
     trackedSkills.set(prefs.tracked_skills);
     trackedTargetEffects.set(prefs.tracked_target_effects);
+    dropWatchOpacity.set(prefs.overlay_drop_watch_opacity);
+    dropWatchOverallOpacity.set(prefs.overlay_drop_watch_overall_opacity);
+    trackedDropItems.set(prefs.tracked_drop_items);
     settingsLoaded.set(true);
   })();
   return loading;
@@ -109,6 +121,9 @@ function currentPrefs(): PreferencesDto {
     overlay_skill_tracker_overall_opacity: get(skillTrackerOverallOpacity),
     tracked_skills: get(trackedSkills),
     tracked_target_effects: get(trackedTargetEffects),
+    overlay_drop_watch_opacity: get(dropWatchOpacity),
+    overlay_drop_watch_overall_opacity: get(dropWatchOverallOpacity),
+    tracked_drop_items: get(trackedDropItems),
   };
 }
 
@@ -220,6 +235,44 @@ export async function toggleTrackedTargetEffect(name: string) {
   const current = get(trackedTargetEffects);
   const next = current.includes(name) ? current.filter((s) => s !== name) : [...current, name];
   await setTrackedTargetEffects(next);
+}
+
+/** why: same contract as setDpsMeterEnabled -- see its own doc */
+export async function setDropWatchEnabled(on: boolean) {
+  dropWatchEnabled.set(on);
+  await api.setOverlayEnabled('drop_watch', on);
+}
+
+/** why: same contract as setDpsMeterOpacity -- see its own doc */
+export async function setDropWatchOpacity(v: number) {
+  dropWatchOpacity.set(v);
+  void api.setOverlayOpacity('drop_watch', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_drop_watch_opacity: v }).catch(() => {});
+}
+
+/** why: see setDpsMeterOverallOpacity's own doc -- same "everything" fade, this widget's own */
+export async function setDropWatchOverallOpacity(v: number) {
+  dropWatchOverallOpacity.set(v);
+  void api.setOverlayOverallOpacity('drop_watch', v);
+  await api
+    .setPreferences({ ...currentPrefs(), overlay_drop_watch_overall_opacity: v })
+    .catch(() => {});
+}
+
+/** why: which items show a heads-up in the Drop Watch overlay -- IS
+ * persisted, same as setTrackedSkills */
+export async function setTrackedDropItems(items: string[]) {
+  trackedDropItems.set(items);
+  await api.setPreferences({ ...currentPrefs(), tracked_drop_items: items }).catch(() => {});
+}
+
+/** why: the one call every "track this drop" button uses -- Sky Quests'
+ * material chips and Primary Class Unlocks' reward materials -- same
+ * "is this one tracked, flip it" shape as toggleTrackedSkill */
+export async function toggleTrackedDropItem(name: string) {
+  const current = get(trackedDropItems);
+  const next = current.includes(name) ? current.filter((s) => s !== name) : [...current, name];
+  await setTrackedDropItems(next);
 }
 
 /** why: shared by every era-tagged Game Data category that carries a

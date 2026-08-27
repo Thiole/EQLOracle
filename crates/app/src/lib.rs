@@ -12,6 +12,7 @@ pub mod commands;
 pub mod config;
 pub mod debugview;
 pub mod dpscalc;
+pub mod dropwatch;
 pub mod effects;
 pub mod flavordata;
 pub mod gearplanner;
