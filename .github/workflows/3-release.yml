@@ -83,6 +83,57 @@ jobs:
             echo "name=Testing build" >> "$GITHUB_OUTPUT"
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           fi
+          # why: real bug, caught live -- tauri.conf.json's own
+          # plugins.updater.endpoints is a single hardcoded URL (the
+          # `latest` tag), so every build, testing included, shipped
+          # with an updater that only ever checked the main channel's
+          # manifest. A testing build's own "check for updates" could
+          # never see a fresh testing push -- it was always comparing
+          # against whatever `latest` last published, which is only
+          # ever main. Each channel now gets its own endpoint, merged
+          # over the base config at build time (see the tauri-action
+          # step's own --config override below), matching the tag this
+          # exact build is about to be published under.
+          echo "endpoint=https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name == 'main' && 'latest' || 'testing' }}/latest.json" >> "$GITHUB_OUTPUT"
+          # why: real bug, caught live, the actual one blocking Spencer's
+          # own "check for updates" click -- tauri_plugin_updater's
+          # default comparator (this app registers no custom one, see
+          # updater.rs) is a strict `release.version > current_version`,
+          # nothing else, no pub_date fallback. tauri.conf.json's own
+          # version never gets bumped by hand for a rolling testing
+          # build, so every testing publish still says "0.1.0", forever
+          # equal to whatever's already installed -- the endpoint fix
+          # above was necessary but not sufficient, this is the other
+          # half. Only the testing channel gets a synthetic version here
+          # -- main's version is a deliberate human decision each real
+          # release, left alone. run_number always increases across this
+          # workflow file's own runs, so each testing build reliably
+          # outranks the one before it; a plain patch bump (0.1.<n>), not
+          # a prerelease suffix on the same base -- semver ranks ANY
+          # prerelease of 0.1.0 BELOW plain 0.1.0 itself, which would
+          # have made this fix actively worse than doing nothing.
+          if [ "${{ github.ref_name }}" != "main" ]; then
+            echo "version=0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # why: a file, not an inline --config JSON string -- avoids relying
+      # on how tauri-action's own `args` gets shell-split across two
+      # different runner OSes for a value full of quotes/braces/colons.
+      # tauri v2's own --config accepts a path, deep-merged over
+      # tauri.conf.json -- only overrides the endpoints array (and, on
+      # the testing channel only, version -- see the step above), the
+      # pubkey and everything else still comes from the base config.
+      - name: Write channel-specific updater config
+        shell: bash
+        run: |
+          version_field=""
+          if [ -n "${{ steps.channel.outputs.version }}" ]; then
+            version_field="\"version\":\"${{ steps.channel.outputs.version }}\","
+          fi
+          printf '{%s"plugins":{"updater":{"endpoints":["%s"]}}}' \
+            "$version_field" "${{ steps.channel.outputs.endpoint }}" \
+            > "${{ github.workspace }}/updater-channel.conf.json"
+          cat "${{ github.workspace }}/updater-channel.conf.json"
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -91,6 +142,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: crates/app
+          args: --config ${{ github.workspace }}/updater-channel.conf.json
           tagName: ${{ steps.channel.outputs.tag }}
           releaseName: ${{ steps.channel.outputs.name }}
           releaseBody: |
