@@ -211,14 +211,27 @@ export async function scrubTo(tsMs: number) {
   stateAt.set({ tsMs, entities: await api.getFightStateAt(enc, tsMs) });
 }
 
-async function refreshSelection() {
+/** why: `preserveScrub` -- a user-picked timeline scrub point (`stateAt`,
+ * see scrubTo's own doc) names a fixed, already-past `tsMs`; the data at
+ * that instant never changes, so there's nothing to refetch, only a
+ * reason NOT to blow it away. Real bug, caught live: onCombatTick's own
+ * periodic re-poll while still watching the SAME open fight called this
+ * unconditionally, clearing a just-picked scrub point a few seconds
+ * after clicking it -- "selecting a point on the fight timeline loads
+ * the data below it, but after a few seconds it goes away". Defaults to
+ * clearing (false) for every call site that's an actual selection
+ * change (a different zone/encounter, or Current Fight re-armed) --
+ * that scrub point really is stale then, it belongs to whatever fight
+ * was showing before. Only onCombatTick's own "still the same fight,
+ * just a live refresh" paths pass true. */
+async function refreshSelection(preserveScrub = false) {
   const zv = get(selectedZoneVisit);
   const enc = get(selectedEncounterId);
   const [s, a] = await Promise.all([api.getCombatSummary(zv, enc, null), api.listAllies(zv, enc)]);
   summary.set(s);
   allies.set(a ?? []); // defensive -- invoke<T>()'s type is an assertion, not a guarantee
   timeline.set(enc != null ? await api.getFightTimeline(enc) : null);
-  stateAt.set(null);
+  if (!preserveScrub) stateAt.set(null);
   const expanded = get(expandedAlly);
   if (expanded) allySummary.set(await api.getCombatSummary(zv, enc, expanded));
 }
@@ -236,11 +249,14 @@ export async function onCombatTick() {
     // starting is exactly the case this mode exists to follow, not just
     // "keep refreshing the one already selected".
     const id = mostRecentEncounterId(get(encounters));
-    if (id !== get(selectedEncounterId)) {
+    const changedFight = id !== get(selectedEncounterId);
+    if (changedFight) {
       selectedEncounterId.set(id);
       historyTarget.set(id !== null ? (get(encounters).find((e) => e.id === id)?.target ?? null) : null);
     }
-    await refreshSelection();
+    // why: preserve a scrub point unless this tick actually moved to a
+    // different fight -- see refreshSelection's own doc
+    await refreshSelection(!changedFight);
     return;
   }
 
@@ -249,5 +265,7 @@ export async function onCombatTick() {
     const current = get(encounters).find((e) => e.id === enc);
     if (!current?.open) return;
   }
-  await refreshSelection();
+  // why: same fight throughout this branch -- selectedEncounterId never
+  // changes here, only a live poll of its still-open data
+  await refreshSelection(true);
 }
