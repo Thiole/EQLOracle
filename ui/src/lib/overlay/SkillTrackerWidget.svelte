@@ -1,26 +1,21 @@
 <script lang="ts">
-  // why: combined overlay widget, three sections in one window/panel --
-  // Spencer's own spec:
+  // why: combined overlay widget, three sections in one window/panel:
   // 1. status effects (Charm/Invis/Hide/Sneak) -- real members of the
   //    same tracked_skills list as any other skill, just on by default
-  //    (see preferences.rs's own default_tracked_skills) instead of
-  //    opt-in, and removable the same way.
+  //    (see preferences.rs's default_tracked_skills), removable the
+  //    same way.
   // 2. skill cooldowns (Kick/Bash/...) -- only the ones picked in
   //    Settings, "select skills to track".
   // 3. target effects -- "Target: <name>" header, one icon+timer per
   //    tracked spell effect on it. Real spell-icon art (same assets
-  //    SpellbookBuilder already renders, see ICON_BASE) when the backend
-  //    resolved one; a compact 2-letter badge falls back for anything
-  //    unrecognized. Player-selected, but its own SEPARATE
-  //    trackedTargetEffectNames list, not trackedSkillNames -- Spencer's
-  //    correction, twice: first "should be player selected, not auto
-  //    selected", then "dont do spell tracking for 'ready' ... maybe we
-  //    need a separate list for 'per target'". A spell tracked here
-  //    never gets its own cooldown row in section 2, only ever shows up
-  //    against the current target. The backend still observes
-  //    everything (so a spell added mid-fight shows its real history
-  //    immediately, not just future casts); only what's rendered here
-  //    is opt-in.
+  //    SpellbookBuilder renders, see ICON_BASE) when the backend
+  //    resolved one; a compact 2-letter badge falls back otherwise.
+  //    Player-selected, its own SEPARATE trackedTargetEffectNames list,
+  //    not trackedSkillNames -- a spell tracked here never gets its own
+  //    cooldown row in section 2, only shows against the current
+  //    target. The backend still observes everything (a spell added
+  //    mid-fight shows its real history immediately); only what's
+  //    rendered here is opt-in.
   import type { StatusEffectsDto, SkillStatusDto, TargetEffectsDto } from '$lib/tauri/api';
   import { ICON_BASE } from '$lib/character/constants';
   import StatusEffectsWidget from './StatusEffectsWidget.svelte';
@@ -110,22 +105,17 @@
     return name.slice(0, 2).toUpperCase();
   }
 
-  /** why: Spencer's own ask -- flash a warning BEFORE a still-running
-   * effect's real countdown hits zero, not just once it already has.
-   * 10s: long enough to actually notice and react (reapply a slow,
-   * back off a target you were relying on a DoT to finish), short
-   * enough it only fires once the effect is genuinely about to lapse. */
+  /** why: flash a warning BEFORE a countdown hits zero, not just after.
+   * 10s: long enough to react (reapply a slow, back off a DoT target),
+   * short enough it only fires once genuinely about to lapse. */
   const EXPIRE_WARN_MS = 10_000;
 
-  /** why: Spencer's own spec for the real states a target effect can be in --
-   * failed/resisted: flash (hard invert), 0:00. landed and timed out (no
-   * wear-off confirmation exists for most of these -- see targeteffects.rs's
-   * own doc): flash (hard invert), 0:00, but keep showing it, not drop it,
-   * until the target itself clears. landed, still running, but inside
-   * EXPIRE_WARN_MS of its own deadline: a live countdown PLUS a milder
-   * outline-only warning flash -- still alive, worth noticing, not yet the
-   * same "it's actually over" state the hard invert means. landed and
-   * comfortably running: just a live countdown. */
+  /** why: states a target effect can be in -- failed/resisted: flash
+   * (hard invert), 0:00. landed and timed out (no wear-off confirmation
+   * for most of these -- see targeteffects.rs's doc): flash, 0:00, but
+   * keep showing it until the target clears. landed, running, inside
+   * EXPIRE_WARN_MS: live countdown plus a milder outline-only warning
+   * flash. landed and comfortably running: just a live countdown. */
   function targetEffectState(e: { landed: boolean; ready_at_ms: number | null }) {
     if (!e.landed) return { label: '0:00', flash: true, expiring: false };
     if (e.ready_at_ms !== null && nowMs >= e.ready_at_ms) return { label: '0:00', flash: true, expiring: false };
@@ -139,19 +129,15 @@
   const toneClass = { good: 'text-good', warn: 'text-caution' } as const;
 </script>
 
-<!-- why: Spencer's own ask -- "make text a bit darker/bolder by
-     default, so if only background is removed, its more readable".
-     Bolder base weight + a dark shadow, inherited by every section
-     below (status effects, cooldowns, target effects alike, none of
-     them own a panel of their own) -- text stays legible against
-     whatever's actually behind it once background opacity goes to 0,
-     not just this panel's own dark fill. Same treatment as
-     DpsMeterWidget's own outer div.
+<!-- why: bolder base weight + a dark shadow, inherited by every
+     section below (status effects, cooldowns, target effects alike) --
+     text stays legible against whatever's behind it once background
+     opacity goes to 0, not just this panel's fill. Same treatment as
+     DpsMeterWidget's outer div.
 
-     Panel background is the theme's own --background now (Spencer's
-     own ask: "ui overlay theme should match") -- see DpsMeterWidget's
-     own doc on why color-mix, not a literal rgba(), is what lets a
-     THEME color still take a variable alpha. -->
+     Panel background is the theme's own --background, not a fixed
+     value -- see DpsMeterWidget's doc on why color-mix, not a literal
+     rgba(), lets a THEME color still take a variable alpha. -->
 <div
   class="flex flex-col gap-1.5 rounded-md p-2 text-[12px] font-semibold"
   style:background-color="color-mix(in srgb, var(--background) {opacity * 100}%, transparent)"
@@ -223,12 +209,10 @@
     }
   }
 
-  /* why: Spencer's own ask -- "flash in inverted colors a square around
-     the buff" for an effect about to run out, DISTINCT from the hard
-     target-effect-blink above (that one means "already over" -- a full
-     background invert). This one's still alive, just running low: a
-     pulsing outline ring around the badge, not a background invert, so
-     the two states never look the same at a glance. */
+  /* why: distinct from the hard target-effect-blink above ("already
+     over" -- full background invert). Still alive, just running low: a
+     pulsing outline ring, not a background invert, so the two states
+     never look the same at a glance. */
   .target-effect-expiring {
     animation: target-effect-expiring-flash 0.5s steps(1, end) infinite;
   }
@@ -239,9 +223,8 @@
     }
   }
 
-  /* why: same idea applied to the "Target: <name>" header -- Spencer's own
-     ask: "maybe the name of target too". A plain color toggle here, not an
-     outline (there's no fixed-size box around free-flowing text to ring). */
+  /* why: same idea applied to the "Target: <name>" header -- a plain
+     color toggle, not an outline (no fixed-size box to ring). */
   .target-name-expiring {
     animation: target-name-expiring-flash 0.5s steps(1, end) infinite;
   }

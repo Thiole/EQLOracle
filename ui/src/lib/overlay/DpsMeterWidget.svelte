@@ -8,14 +8,12 @@
   // calc on both sides, just grouped by which side of the fight it's on.
   import type { EntityStateDto, LiveMeterDto } from '$lib/tauri/api';
 
-  // why: this widget's own panel background alpha -- each overlay widget
+  // why: this widget's panel background alpha -- each overlay widget
   // owns its own opacity, not one shared window-wide value (see
-  // OverlayApp.svelte's own doc). overallOpacity is the SEPARATE
-  // "everything" fade (Spencer's own ask: "2 options, total opacity
-  // (non text), and everything") -- a real CSS opacity on the whole
-  // widget below, so text/icons fade right along with the panel
-  // instead of staying fully readable no matter how see-through the
-  // background is.
+  // OverlayApp.svelte's doc). overallOpacity is the SEPARATE
+  // "everything" fade -- a CSS opacity on the whole widget, so
+  // text/icons fade with the panel instead of staying fully readable
+  // no matter how see-through the background is.
   let {
     meter,
     opacity,
@@ -44,20 +42,15 @@
   {/each}
 {/snippet}
 
-<!-- why: Spencer's own ask -- "make text a bit darker/bolder by
-     default, so if only background is removed, its more readable".
-     Bolder base weight + a dark shadow (inherited by every span below,
-     nothing per-row to touch) means text stays legible against
-     whatever's behind it even at background opacity 0 -- the game
-     itself, not this panel's own dark fill. Reduces or removes cleanly
-     for anyone who'd rather have it thinner (each row's own text color
-     still wins for anything that already sets font-bold/font-mono).
+<!-- why: bolder base weight + a dark shadow (inherited by every span
+     below) keeps text legible against whatever's behind it even at
+     background opacity 0 -- the game itself, not this panel's fill.
+     Each row's own text color still wins for font-bold/font-mono.
 
-     Panel background is the theme's own --background now (Spencer's
-     own ask: "ui overlay theme should match"), not a fixed rgb triple
-     -- color-mix against transparent is what makes a THEME color still
-     take a variable alpha, the same thing a literal rgba() did for the
-     one fixed color this used to always be. -->
+     Panel background is the theme's own --background now, not a fixed
+     rgb triple -- color-mix against transparent lets a THEME color
+     still take a variable alpha, same as rgba() did for the one fixed
+     color this used to always be. -->
 <div
   class="flex flex-col gap-1.5 rounded-md p-2 text-[12px] font-semibold"
   style:background-color="color-mix(in srgb, var(--background) {opacity * 100}%, transparent)"

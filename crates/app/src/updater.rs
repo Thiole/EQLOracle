@@ -30,9 +30,8 @@ fn endpoint_for(channel: UpdateChannel) -> String {
     )
 }
 
-/// why: Spencer's own ask -- the update prompt should link to the real
-/// GitHub release/changelog, not just show the notes text inline with
-/// nowhere to actually go read more
+/// why: the update prompt should link to the real GitHub release/
+/// changelog, not just show notes text with nowhere to read more
 fn release_url_for(channel: UpdateChannel) -> String {
     format!(
         "https://github.com/Thiole/EQLOracle/releases/tag/{}",
@@ -46,8 +45,7 @@ pub struct UpdateInfoDto {
     pub current_version: String,
     /// why: release body text, whatever the channel's own release notes say
     pub notes: Option<String>,
-    /// why: Spencer's own ask -- a real link to the GitHub release page,
-    /// not just the notes text with nowhere to click through to
+    /// why: a real link to the GitHub release page, not just notes text
     pub release_url: String,
 }
 
@@ -104,22 +102,17 @@ pub async fn check_for_update(
     Ok(dto)
 }
 
-/// why: Spencer's own real bug reports, twice -- see install_pending_update's
-/// own doc for why clearing WebKitGTK's cache DURING the old process's own
-/// shutdown was itself the actual race (its WebKit subprocesses -- WebProcess/
-/// NetworkProcess/GPU, separate OS processes, not just threads -- still fully
-/// alive and holding open handles into exactly the directories being
-/// deleted). Run once per real app start instead, from the fresh process's
-/// own setup(), before any window/webview of its own has been created yet --
-/// nothing else alive to race with. Gated on a real version comparison (a
-/// plain marker file, not a preference -- this isn't user-facing state, just
-/// bookkeeping) so an ordinary launch with nothing new installed never
-/// touches a perfectly good cache; only a version that's actually different
-/// from the last real launch -- an in-app update, or Spencer swapping in a
-/// new build by hand -- clears it. Same underlying staleness this was always
-/// about: WebKitGTK's own cache is keyed by app identifier, not app version,
-/// so a hashed-asset-filename mismatch between what's cached and what THIS
-/// build actually ships is exactly what a version change here means.
+/// why: see install_pending_update's doc for why clearing WebKitGTK's
+/// cache DURING the old process's shutdown was itself a race (its
+/// WebProcess/NetworkProcess/GPU subprocesses still alive, holding open
+/// handles into the directories being deleted). Run once per app start
+/// instead, from the fresh process's setup(), before any window/webview
+/// exists -- nothing else alive to race with. Gated on a version
+/// comparison (plain marker file, not a preference -- bookkeeping, not
+/// user-facing) so an ordinary launch never touches a good cache; only
+/// a version different from the last launch clears it. WebKitGTK's
+/// cache is keyed by app identifier, not app version, so a hashed-
+/// asset-filename mismatch is exactly what a version change here means.
 #[cfg(target_os = "linux")]
 pub fn clear_stale_webview_cache_if_needed(app: &AppHandle) {
     let Ok(data_dir) = app.path().app_data_dir() else {
@@ -155,22 +148,17 @@ pub async fn install_pending_update(
         .download_and_install(|_, _| {}, || {})
         .await
         .map_err(|e| e.to_string())?;
-    // why: real bug, caught TWICE live -- clearing WebKitGTK's own cache
-    // used to happen right here, before restart, in the OLD process --
-    // while its own WebKit subprocesses (WebProcess/NetworkProcess/GPU,
-    // separate OS processes, not just threads) were still fully alive
-    // and actively holding open handles into exactly the directories
-    // being deleted. Spencer's own follow-up report -- a SECOND white
-    // page, this time on the plain local binary, not even the AppImage
-    // path the first fix targeted, and "not frozen, the update pipeline
-    // just broke" (a live-but-blank webview, not a hang) -- doesn't fit
-    // a stale-cache-alone explanation a second time; it fits a race
-    // between the dying old process's own WebKit subprocesses and the
-    // freshly-restarted one's own fresh subprocesses fighting over the
-    // same cache directory an instant after `rm -rf` pulled it out from
-    // under the still-running old ones. See app_startup's own
-    // clear_stale_webview_cache -- moved to run once, at the START of
-    // the NEXT process's own setup(), before any webview/window of its
-    // own has been created at all, nothing else alive to race with.
+    // why: real bug, caught twice -- clearing WebKitGTK's cache used to
+    // happen right here, before restart, in the OLD process, while its
+    // WebProcess/NetworkProcess/GPU subprocesses were still alive
+    // holding open handles into the directories being deleted (a
+    // second real report: a live-but-blank webview, not a hang, on the
+    // plain binary, not just the AppImage path the first fix targeted).
+    // Fits a race between the dying process's subprocesses and the
+    // freshly-restarted one's fighting over the same cache directory
+    // right after `rm -rf` pulls it out from under the old one. See
+    // app_startup's clear_stale_webview_cache -- moved to run once, at
+    // the start of the NEXT process's setup(), before any webview
+    // exists, nothing else alive to race with.
     app.restart();
 }

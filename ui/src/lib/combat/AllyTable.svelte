@@ -48,9 +48,9 @@
                           <td class="py-0.5">
                             <span class="inline-flex items-center gap-1">
                               {ab.ability}
-                              <!-- why: "track" from wherever an ability shows up
-                                   -- Spencer's own ask; adds/removes it from the
-                                   Skill Tracker overlay's own cooldowns section -->
+                              <!-- why: "track" from wherever an ability shows up;
+                                   adds/removes it from the Skill Tracker
+                                   overlay's cooldowns section -->
                               <button
                                 type="button"
                                 class="rounded-sm p-0.5 {$trackedSkills.includes(ab.ability)

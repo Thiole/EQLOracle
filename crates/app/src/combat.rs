@@ -1124,27 +1124,14 @@ pub fn encounter_for(ing: &Ingest, target_sym: Sym) -> Option<&Encounter> {
     ing.store.encounter(EncounterId(id))
 }
 
-/// why: wider than INSPECT_WINDOW_MS -- Spencer's own ask: "average of
-/// last 15 seconds (not whole encounter)". The Combat tab's own
-/// timeline-scrub feature (fight_state_at/INSPECT_WINDOW_MS) stays a
-/// tight 6s "right now" snapshot at a point the user picked by hand;
-/// the overlay is glanced at mid-fight, a wider window reads less jumpy.
+/// why: wider than INSPECT_WINDOW_MS -- overlay wants a rolling average,
+/// not the tight 6s scrub snapshot fight_state_at uses for manual scrubbing.
 const LIVE_METER_ROLLING_WINDOW_MS: Millis = 15_000;
 
-/// why: overlay's own live poll -- most recent encounter. While the
-/// fight's still open, a rolling LIVE_METER_ROLLING_WINDOW_MS snapshot
-/// at "now" (self-corrects toward 0 in a lull, same idea
-/// fight_state_at's own doc used to describe here). Once it's closed,
-/// pointed at the fight's own end with a window spanning its *entire*
-/// duration instead -- Spencer's own ask: "when fight ends, itll show
-/// dps graph for the whole fight, not just the last bit". Without this
-/// the old single-window-at-now call would just keep sampling forward
-/// past end_ms, finding no more damage in range and decaying to 0
-/// within one window of the fight actually ending -- exactly the "last
-/// bit" instead of the real average he wanted to read afterward. Frozen
-/// at end_ms rather than "now", so it doesn't itself decay further the
-/// longer the closed fight's summary stays on screen. None before any
-/// real encounter exists yet this session.
+/// why: overlay's live poll. Open fight -> rolling window at "now"
+/// (self-corrects in a lull). Closed fight -> window frozen at end_ms
+/// spanning the whole fight, so the summary doesn't decay to 0 after the
+/// fight ends. None before any encounter exists yet this session.
 pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     let now = ing.now_ms();
     let latest = current_encounter(ing)?;

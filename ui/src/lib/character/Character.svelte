@@ -15,13 +15,11 @@
 </script>
 
 <div class="flex flex-col gap-3 p-3">
-  <!-- why: Spencer's own order -- Spellbook (the planning tool) sits
-       next to Gear, ahead of AA. The old "Known Spells" tab (this
-       session's own scribe/memorize evidence) moved to Game Data's own
-       Spells tab as a column instead -- it's about the catalog, not
-       something to plan, so it fits better linked to the entries it's
-       actually about. Styled as separate nav-menu buttons to match
-       Endgame/Game Data (see `TAB_TRIGGER_CLASS`'s own doc). -->
+  <!-- why: Spellbook (planning tool) sits next to Gear, ahead of AA.
+       "Known Spells" (scribe/memorize evidence) moved to Game Data's
+       Spells tab as a column -- it's about the catalog, not planning.
+       Styled as separate nav-menu buttons to match Endgame/Game Data
+       (see `TAB_TRIGGER_CLASS`'s doc). -->
   <Tabs.Root bind:value={sub}>
     <Tabs.List class={TAB_LIST_CLASS}>
       <Tabs.Trigger value="sheet" class={TAB_TRIGGER_CLASS}>Character</Tabs.Trigger>

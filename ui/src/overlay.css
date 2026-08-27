@@ -13,16 +13,14 @@
   font-display: swap;
 }
 
-/* why: the Tauri window itself is `transparent: true` -- html/body must
-   stay transparent too, or a painted background here defeats the whole
-   feature. Deliberately NOT reusing app.css's own `body { @apply
-   bg-background }` rule -- that's the one difference from app.css that
-   actually matters. themes.css IS imported now (Spencer's own ask: "ui
-   overlay theme should match") -- OverlayApp.svelte's own doc has where
-   `data-theme` actually gets applied, same attribute-on-<html> mechanism
-   app.css's own themed pages already use, just driven independently
-   here since this is a separate window/JS realm that can't share the
-   main window's own theme.subscribe side effect. */
+/* why: the Tauri window is `transparent: true` -- html/body must stay
+   transparent too, or a painted background here defeats the feature.
+   Deliberately NOT reusing app.css's `body { @apply bg-background }`
+   rule -- the one real difference from app.css. themes.css IS
+   imported -- OverlayApp.svelte's doc has where `data-theme` gets
+   applied, same attribute-on-<html> mechanism app.css's themed pages
+   use, driven independently since this is a separate window/JS realm
+   that can't share the main window's theme.subscribe side effect. */
 @layer base {
   html,
   body {

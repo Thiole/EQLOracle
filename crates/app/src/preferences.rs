@@ -8,18 +8,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
-/// why: a widget's own last real window position -- Spencer's own ask:
-/// "it remembers where those windows were set in previous runs, so
-/// they dont have to be moved every time". Captured once, in
-/// commands::set_overlay_locked, at the moment a widget's window gets
-/// re-locked after being dragged -- not continuously on every move
-/// event, so a window merely nudged mid-drag but never actually
-/// re-locked doesn't half-persist. Logical (not physical) pixels --
-/// same coordinate space WebviewWindowBuilder::position/inner_size
-/// already use, so it's DPI-scale-correct on the same display without
-/// any extra conversion at read time. Backend-only: never round-tripped
-/// through PreferencesDto/the frontend at all, see set_preferences' own
-/// doc for why an unrelated setting change can't silently wipe it.
+/// why: a widget's last window position. Captured once, in
+/// commands::set_overlay_locked, at the moment it's re-locked after
+/// being dragged -- a mid-drag nudge that's never re-locked doesn't
+/// half-persist. Logical pixels, same space as WebviewWindowBuilder::
+/// position/inner_size, DPI-correct with no extra conversion. Backend-
+/// only: never round-tripped through PreferencesDto, see
+/// set_preferences' doc for why an unrelated change can't wipe it.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct OverlayPosition {
     pub x: f64,
@@ -43,16 +38,11 @@ fn default_overlay_opacity() -> f64 {
     0.85
 }
 
-/// why: Spencer's own ask -- "2 options, total opacity (non text), and
-/// everything ... half faded out, text only, etc". overlay_<widget>_
-/// opacity above is background-only (a plain rgba alpha on the panel,
-/// text stays fully readable no matter how see-through the panel is --
-/// "text only" is just cranking that one toward 0). This is the OTHER
-/// one: a real CSS `opacity` on the widget's whole outer element, so
-/// text/icons fade right along with everything else -- "half faded
-/// out" as a whole, not just the panel behind it. Fully opaque by
-/// default (1.0) -- a fresh install shouldn't LOOK any different than
-/// before this existed, it's an extra knob, not a new default look.
+/// why: the second opacity knob. overlay_<widget>_opacity above is
+/// background-only (rgba alpha on the panel; text stays fully
+/// readable). This is a CSS `opacity` on the whole outer element, so
+/// text/icons fade with everything else. Defaults fully opaque (1.0) --
+/// an extra knob, not a new default look.
 fn default_overall_opacity() -> f64 {
     1.0
 }
@@ -140,28 +130,18 @@ pub struct Preferences {
     /// "everything" fade, this widget's own.
     #[serde(default = "default_overall_opacity")]
     pub overlay_skill_tracker_overall_opacity: f64,
-    /// why: which entries actually show in the Skill Tracker overlay --
-    /// both real tracked abilities/spells (added via a "track" button in
-    /// Spellbook/Combat, nothing by default -- a fresh install doesn't
-    /// know which skills this character even has) AND the 4 baked-in
-    /// status pseudo-entries (Charmed/Invisible/Hide/Sneak), which start
-    /// present -- Spencer's own ask: "not always track, but on by
-    /// default", i.e. real list members like anything else here, just
-    /// pre-added instead of opt-in. Removable the same way any tracked
-    /// skill is (the overlay's own listbox).
+    /// why: which entries show in the Skill Tracker overlay -- real
+    /// tracked abilities/spells (added via a "track" button, none by
+    /// default) plus the 4 baked-in status pseudo-entries (Charmed/
+    /// Invisible/Hide/Sneak), which start present -- pre-added rather
+    /// than opt-in. Removable the same way any tracked skill is.
     #[serde(default = "default_tracked_skills")]
     pub tracked_skills: Vec<String>,
-    /// why: a separate list from tracked_skills -- Spencer's own
-    /// correction: "dont do spell tracking for 'ready' ... maybe we
-    /// need a separate list for 'per target', not a tracking effect
-    /// like charm etc since thats not a per target thing". A DoT/debuff
-    /// added here shows up ONLY in the target-effects section (landed?
-    /// how much duration left?), never as its own cooldown/READY row --
-    /// Combat's own ability breakdown is still the place to track
-    /// something for reuse timing. Empty by default -- unlike
-    /// tracked_skills, nothing here is baked in (a status effect isn't
-    /// a per-target thing at all). Only real entry point is Spellbook's
-    /// own "Overlay spell tracking" section.
+    /// why: separate from tracked_skills -- a target effect isn't a
+    /// cooldown/READY row, it only shows in the target-effects section
+    /// (landed? duration left?). Empty by default, unlike tracked_skills
+    /// (nothing here is baked in). Entry point is Spellbook's "Overlay
+    /// spell tracking" section.
     #[serde(default)]
     pub tracked_target_effects: Vec<String>,
     /// why: see OverlayPosition's own doc. Keyed by widget name (same
@@ -170,18 +150,12 @@ pub struct Preferences {
     /// at least once.
     #[serde(default)]
     pub overlay_positions: HashMap<String, OverlayPosition>,
-    // why: no "is this widget / the overlay window currently on" field --
-    // deliberately not a style preference to remember, it's live session
-    // state. Caught live: an earlier version persisted the window's own
-    // on/off and reopened it automatically on every launch, silently
-    // trusting stale state the same way save_profile's own doc
-    // explicitly warns against for class detection. Every launch starts
-    // with every widget off; each widget's own opacity still carries
-    // over once it's turned back on. Spencer's own later ask made this
-    // partially moot in practice -- a single "enable ui" toggle (the
-    // main window's own convenience, see OverlaySettings.svelte) means
-    // it's back to one real action per session either way, this field
-    // still isn't the thing doing it.
+    // why: no "is this widget currently on" field -- live session state,
+    // not a style preference. An earlier version persisted on/off and
+    // reopened widgets automatically, trusting stale state the same way
+    // save_profile's doc warns against for class detection. Every
+    // launch starts with every widget off; opacity still carries over
+    // once turned back on.
 }
 
 impl Default for Preferences {

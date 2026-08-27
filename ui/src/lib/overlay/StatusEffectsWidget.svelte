@@ -53,9 +53,8 @@
   const recent = (sinceMs: number) => nowMs - sinceMs < FLASH_MS;
 
   // why: unlike every other row here, this one is deliberately NOT
-  // time-gated to disappear -- Spencer's own ask: "maintain the line"
-  // once it breaks, don't let it quietly vanish after FLASH_MS the way
-  // hide/sneak do. It stays Broke until a new charm actually lands.
+  // time-gated to disappear once it breaks, unlike hide/sneak. It
+  // stays Broke until a new charm actually lands.
   const charmRow = $derived.by(() => {
     const c = status?.charm;
     if (!c) return null;
@@ -115,10 +114,8 @@
      toneClass color once the blink window ends, never mid-invert.
      One class per tone -- a SUCCESS row blinks its own good color, not
      always red the way a charm-only version could get away with.
-     --blink-color and the inverted text are theme tokens now (Spencer's
-     own ask: "ui overlay theme should match") -- dim's own blink used to
-     be a raw near-white rgba(), the inverted text a raw near-black hex;
-     both are the theme's own --foreground/--background now instead. */
+     --blink-color and the inverted text are theme tokens, not raw
+     rgba()/hex values, so overlay theme matches the main window. */
   .status-blink {
     animation: status-flash 0.4s steps(1, end) 5;
   }

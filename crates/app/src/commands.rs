@@ -501,12 +501,9 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
             .always_on_top(true)
             .skip_taskbar(true)
             .shadow(false);
-    // why: Spencer's own ask -- "remembers where those windows were set
-    // in previous runs, so they dont have to be moved every time".
-    // See preferences::OverlayPosition's own doc for where this gets
-    // captured (set_overlay_locked, below); absent until then, opening
-    // at whatever the OS/window manager's own default position is,
-    // same as always.
+    // why: restore a widget's last saved position -- see
+    // preferences::OverlayPosition's doc (captured in set_overlay_locked
+    // below); absent until then, opens at the OS default position.
     if let Some(pos) = preferences::load(&app).overlay_positions.get(&widget) {
         builder = builder.position(pos.x, pos.y);
     }
@@ -534,10 +531,10 @@ pub fn set_overlay_opacity(app: AppHandle, widget: String, opacity: f64) {
     }
 }
 
-/// why: Spencer's own ask -- the SEPARATE "everything" fade (see
-/// preferences::default_overall_opacity's own doc), same live-push/
-/// persistence split as set_overlay_opacity above, just its own event
-/// name so the overlay window can tell the two apart.
+/// why: the SEPARATE "everything" fade (see
+/// preferences::default_overall_opacity's doc) -- same live-push/
+/// persistence split as set_overlay_opacity, its own event name so the
+/// overlay window can tell the two apart.
 #[tauri::command]
 pub fn set_overlay_overall_opacity(app: AppHandle, widget: String, opacity: f64) {
     if let Some(w) = app.get_webview_window(&overlay_label(&widget)) {
@@ -545,31 +542,17 @@ pub fn set_overlay_overall_opacity(app: AppHandle, widget: String, opacity: f64)
     }
 }
 
-/// why: click-through (locked, the default -- see set_overlay_enabled)
-/// makes the window impossible to drag into position at all, since every
-/// click passes straight to the game underneath it. Unlocking briefly
-/// (a real toggle in the Overlay tab) accepts clicks again so the panel
-/// can be repositioned, and also turns real decorations back on -- a
-/// live check against this exact real setup (XWayland via KWin) found
-/// `data-tauri-drag-region`'s own move request silently doesn't move the
-/// window there (a resize-border drag does), so the one mechanism every
-/// window manager is guaranteed to support -- dragging a real title bar
-/// -- is what's actually used, not the borderless trick. Per-widget,
-/// same as everything else here -- each window is repositioned on its
-/// own. A no-op if that widget's window isn't open, or if this
-/// session's own capability never allowed click-through to begin with
-/// (nothing to toggle back to)
+/// why: click-through (locked, default) blocks dragging since every
+/// click passes to the game underneath. Unlocking turns real decorations
+/// back on so a title-bar drag works (XWayland/KWin: the borderless
+/// drag-region trick doesn't move the window there). No-op if the
+/// widget's window isn't open, or this session never had click-through.
 ///
-/// Also where a widget's own new position gets saved -- Spencer's own
-/// ask, see preferences::OverlayPosition's own doc. Captured exactly
-/// once, right here, at the moment of RE-locking (the user's own real
-/// "I'm done positioning this" signal) -- not continuously on every
-/// move event mid-drag, so a window that was merely nudged but never
-/// actually re-locked doesn't half-persist. Logical pixels, matching
-/// WebviewWindowBuilder::position's own coordinate space exactly (see
-/// set_overlay_enabled) -- outer_position() itself returns physical
-/// pixels, converted here via the window's own real scale factor so
-/// this is correct on a HiDPI display, not just assumed 1:1.
+/// Also saves the widget's new position (preferences::OverlayPosition)
+/// at the moment of re-locking, not continuously mid-drag -- a nudge
+/// that's never re-locked shouldn't half-persist. Logical pixels:
+/// outer_position() returns physical pixels, converted via the window's
+/// scale factor for HiDPI correctness.
 
 #[tauri::command]
 pub fn set_overlay_locked(app: AppHandle, widget: String, locked: bool) -> Result<(), String> {
@@ -831,16 +814,10 @@ pub async fn install_pending_update(
     updater::install_pending_update(app, state).await
 }
 
-/// why: Info page's own ask -- Spencer: "i menu should show current
-/// version information". Same source check_for_update's own
-/// current_version already reads (app.package_info().version), exposed
-/// standalone here since that command only ever runs a real check
-/// against GitHub -- showing what's installed shouldn't need a network
-/// round trip at all, and this app's own convention is a real backend
-/// command through invoke() (mockable, consistent), not a raw
-/// @tauri-apps/api/app::getVersion() call from the frontend (see
-/// invoke.ts's own doc on why api.ts never imports @tauri-apps/api
-/// directly).
+/// why: Info page's own version display -- same source
+/// check_for_update's current_version reads, exposed standalone so
+/// showing it doesn't need a network round trip. Backend command through
+/// invoke(), not a raw @tauri-apps/api call (see invoke.ts's doc).
 #[tauri::command]
 pub fn get_app_version(app: AppHandle) -> String {
     app.package_info().version.to_string()

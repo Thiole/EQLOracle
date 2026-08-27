@@ -795,20 +795,17 @@
     </CardContent>
   </Card>
 
-  <!-- why: Spencer's own ask -- a dedicated section to build the Skill
-       Tracker overlay's own per-target tracked list, instead of a small
-       icon scattered through the search grid above. Search finds a
-       spell, clicking a result tracks it; TrackedSkillsList (shared with
-       Overlay settings) shows and removes what's already tracked.
-       Correction, twice over: "dont do spell tracking for 'ready' ...
-       this is for making sure the spells land" -- a spell tracked here
-       is about the current TARGET (landed? how much duration left?),
-       never its own cooldown row (Combat's own ability breakdown is
-       still where reuse timing lives). Writes to its own separate
+  <!-- why: dedicated section to build the Skill Tracker overlay's
+       per-target tracked list, instead of a small icon in the search
+       grid above. Search finds a spell, clicking a result tracks it;
+       TrackedSkillsList (shared with Overlay settings) shows/removes
+       what's tracked. A spell tracked here is about the current TARGET
+       (landed? duration left?), never its own cooldown row (Combat's
+       ability breakdown is where reuse timing lives). Writes to its own
        trackedTargetEffects, not the cooldowns section's trackedSkills --
-       see stores/settings.ts's own doc for why they're split. A real
-       "profile" to hot-swap between different tracked sets is the
-       planned next step here, not built yet -- this is the single set
+       see stores/settings.ts's doc for why they're split. A "profile"
+       to hot-swap between tracked sets is the planned next step, not
+       built yet -- this is the single set
        every profile would eventually fork from. -->
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">

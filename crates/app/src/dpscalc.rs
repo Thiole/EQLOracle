@@ -2,38 +2,25 @@
 //! Parses each spell's `slots` effect text (151 real DoT candidates,
 //! never hand-curated) into a hit amount + shape, layers observed rank on top.
 //!
-//! - **Nuke damage scales +10%/rank tier of base**, not the wiki's
-//!   stated 6% compounding (self-flagged unreliable there) -- measured
-//!   directly: Ice Comet's rank climbed 4->9->10 in one 19s burst,
-//!   (1321.7-834.9)/808 base/6 tiers = 10.04% of base per tier. Cast
-//!   time/mana stay at catalog values, never independently checked.
-//! - **A DoT's per-tick damage does NOT scale with rank at all**, per
-//!   direct correction -- only a one-time "on cast" component (if any)
-//!   gets the verified rate, since that's mechanically a hit not a tick.
-//!   Cast time/mana/duration still scale, per wiki DoT-category rates
-//!   (unverified, labeled distinctly from the one measured number).
-//! - DoT tick interval assumed `TICK_SECS` (6s), genre-standard, not confirmed here.
-//! - **A multi-wave AE nuke (Frost Storm + ~24 siblings) follows the
-//!   DoT rule on reuse, the nuke rule on damage** -- per direct
-//!   correction, it's not independent (recasting extends/resets it) but
-//!   every wave fully scales with rank like a first hit. Recast floors
-//!   at casting time (a stated estimate, no wiki "safe to recast"
-//!   field), not the catalog's short `recast_time` which real log
-//!   evidence shows can't actually fire fresh volleys.
-//! - **A DoT's duration already IS its "no reuse" cadence** -- per
-//!   direct correction, `dps_ignoring_reuse` must not divide the whole
-//!   multi-tick lifetime by casting time (double-counts ticks that land
-//!   regardless of what's cast next). See `DamageSpellDto::dps_ignoring_reuse`.
-//! - **Every number here is an average that already folds in AA crits**,
-//!   not a per-hit simulation -- Spencer's own call: model the average
-//!   hit going up by chance*bonus, not real per-swing variance. Direct-
-//!   damage spells (Fury of Magic's crit chance, Destructive Fury's crit
-//!   damage) and DoTs (Critical Affliction, Destructive Cascade) use
-//!   separate real AAs with separate, larger numbers for DoTs -- see
-//!   `crit_multiplier`'s own doc. Only counts an AA the character has
-//!   actually confirmed-purchased this session (`Ingest::aa`), same as
-//!   every other real-evidence rule in this app; a rank never bought
-//!   contributes exactly 0%, not an assumed cap.
+//! - Nuke damage scales +10%/rank tier of base (measured: Ice Comet
+//!   rank 4->9->10, 10.04%/tier), not the wiki's unreliable 6% compounding.
+//!   Cast time/mana stay at catalog values.
+//! - A DoT's per-tick damage does NOT scale with rank; only a one-time
+//!   "on cast" component does. Duration/cast time/mana still scale per
+//!   wiki DoT-category rates (unverified, labeled separately).
+//! - DoT tick interval assumed `TICK_SECS` (6s), unconfirmed.
+//! - A multi-wave AE nuke (Frost Storm + ~24 siblings) follows the DoT
+//!   rule on reuse (recasting extends/resets it), the nuke rule on
+//!   damage (every wave scales with rank). Recast floors at casting
+//!   time, not the catalog's `recast_time` (too short to actually fire).
+//! - A DoT's duration IS its reuse cadence -- `dps_ignoring_reuse` must
+//!   not divide the whole multi-tick lifetime by casting time. See
+//!   `DamageSpellDto::dps_ignoring_reuse`.
+//! - Every number is an average that folds in AA crits, not a per-hit
+//!   simulation. Direct-damage AAs (crit chance) and DoT AAs (crit
+//!   damage) use separate rates -- see `crit_multiplier`'s doc. Only
+//!   counts an AA actually confirmed-purchased this session
+//!   (`Ingest::aa`); a rank never bought contributes 0%.
 
 use crate::spelldata::{self, Spell, SpellClass};
 use regex::Regex;

@@ -28,16 +28,13 @@
 
   async function refreshPrefs() {
     const p = await api.getPreferences();
-    // why: Spencer's own ask -- "ui overlay theme should match". Same
-    // attribute-on-<html> mechanism app.css's own themed pages already
-    // use (see overlay.css's own doc for why themes.css is imported
-    // here now too) -- this window is a separate JS realm from the
-    // main one, so it can't share stores/settings.ts's own
-    // theme.subscribe side effect, it has to apply the same thing
-    // independently. Re-applied every refreshPrefs() poll (cheap, an
-    // attribute write Svelte/the browser no-ops if it's unchanged), so
-    // switching themes in Settings while this window is already open
-    // takes effect without needing to reopen it.
+    // why: overlay theme should match the main window. Same
+    // attribute-on-<html> mechanism app.css's themed pages use (see
+    // overlay.css's doc for the themes.css import) -- this window is a
+    // separate JS realm, can't share stores/settings.ts's
+    // theme.subscribe, applies it independently. Re-applied every
+    // refreshPrefs() poll (cheap, no-op if unchanged), so a theme
+    // switch in Settings takes effect without reopening this window.
     if (typeof document !== 'undefined') {
       document.documentElement.dataset.theme = p.theme;
     }

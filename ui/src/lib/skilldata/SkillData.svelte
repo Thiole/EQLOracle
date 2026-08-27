@@ -1,24 +1,18 @@
 <script lang="ts">
-  // why: Spencer's own ask -- "a Skill data tab that has a table of skill
-  // estimation data based on AAs, focus buffs, etc. so when you apply a
-  // debuff, you can estimate how much damage itll do, or how long itll be".
+  // why: skill estimation table -- AA/focus effect on reuse, duration,
+  // and damage, so applying a debuff shows how much it'll do or how
+  // long it'll last.
   //
-  // No new AA/focus modeling here -- there's no real data source for that
-  // in this app yet, and a fabricated table of plausible-looking numbers
-  // not backed by anything real would be worse than not having one (see
-  // this app's own house rule: trust the log, not a guess). What this tab
-  // DOES do is surface data that already, quietly, accounts for AAs/
-  // focus/gear/upgrades without modeling any of them individually:
-  // skilltracker.rs's own reuse/recovery timers are learned empirically
-  // off the player's own real casts (the smallest gap ever actually
-  // observed), not a hardcoded wiki number -- so a haste item, a reuse-
-  // reduction AA, or a spell rank upgrade already shows up here as a
-  // shorter learned timer, automatically, the moment it's been used
-  // twice. Joined against the two other real, already-computed sources
-  // the rest of the app already ships: known duration (Spellbook, wiki-
-  // scraped) and known damage/dps (the DPS Suggest calculator's own
-  // rank-adjusted numbers) -- one real reference table, three real
-  // sources, nothing invented.
+  // No new AA/focus modeling -- no real data source for that yet, and a
+  // fabricated table of plausible numbers would be worse than none
+  // (trust the log, not a guess). This tab surfaces data that already
+  // accounts for AAs/focus/gear without modeling them individually:
+  // skilltracker.rs's reuse/recovery timers are learned empirically off
+  // real casts (smallest gap observed), not a hardcoded wiki number --
+  // a haste item or reuse AA already shows up as a shorter learned
+  // timer once used twice. Joined against two other real sources: known
+  // duration (Spellbook, wiki-scraped) and known damage/dps (DPS
+  // Suggest's rank-adjusted numbers) -- nothing invented.
   import { onMount } from 'svelte';
   import { api, type SkillStatusDto, type SpellbookEntryDto, type DamageSpellDto } from '$lib/tauri/api';
   import { ICON_BASE } from '$lib/character/constants';

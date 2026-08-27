@@ -1,52 +1,35 @@
-//! why: Skill Tracker's target-effects section -- Spencer's own ask:
-//! "tracking should be done per target, so dots can be easily tracked
-//! per target ... a target (ex: Lord Nagafen) that shows the icons for
-//! tracked spell effects that were/tried on him, like slow with a
-//! timer." Scoped to the player's OWN engagement with a target, not
-//! combat::current_encounter's own "most recently ACTIVE, whole
-//! store" resolution -- real bug, caught live, twice: a pure debuff
-//! cast never opens the damage graph at all (see target_sym's own
-//! doc), and in group content, current_encounter keeps returning
-//! whichever mob a PARTY MEMBER (not necessarily "You") is actively
-//! hitting, starving out whatever "You" are personally casting on or
-//! being attacked by -- "some mobs its not detecting... it only
-//! happened when I am attacked, not when I am casting". Resolved
-//! instead from two player-scoped signals directly (see target_sym's
-//! own doc), whichever is more recent.
+//! why: Skill Tracker's target-effects section -- per-target DoT/debuff
+//! tracking (icons + timer for what's landed/been tried on the current
+//! target). Scoped to the player's OWN engagement with a target, not
+//! combat::current_encounter's "most recently active, whole store"
+//! resolution -- real bug, caught live, twice: a pure debuff cast never
+//! opens the damage graph (see target_sym's doc), and in group content
+//! current_encounter kept returning whichever mob a PARTY MEMBER (not
+//! necessarily "You") was hitting, starving out what "You" personally
+//! cast on. Resolved instead from two player-scoped signals directly
+//! (see target_sym's doc), whichever is more recent.
 //!
-//! Two real signals feed this, both already-existing infrastructure, no
-//! new parsing:
-//! - DoT ticks: real Damage events, actor "You", tag::SPELL, targeted at
-//!   the current mob -- the same stream combat.rs already reads for
-//!   everything else.
+//! Two signals feed this, both existing infrastructure, no new parsing:
+//! - DoT ticks: Damage events, actor "You", tag::SPELL, targeted at the
+//!   current mob -- same stream combat.rs reads for everything else.
 //! - Everything else (debuff landings, resisted attempts): `Ingest::effects`,
 //!   the per-entity ping history `attribute_effect`/`record_effect_ping`
-//!   already builds for RecentEffectDto -- unbounded, already real,
-//!   already attributes source+skill best-effort. A resisted cast now
-//!   pushes here too (see ingest.rs's own CastResisted handling) so a
-//!   failed attempt shows up right alongside a landed one.
+//!   already builds for RecentEffectDto. A resisted cast pushes here too
+//!   (see ingest.rs's CastResisted handling).
 //!
-//! Duration comes from spelleffect::effects_for's own wiki-scraped
-//! SpellDuration, by real spell name -- same data source
-//! spelleffect.rs already ships to the frontend elsewhere. No wear-off
-//! confirmation exists for most of these (Effects' own doc: "recency,
-//! not a live still active claim"), so a timer reaching zero doesn't
-//! mean gone for certain -- the frontend flashes it instead of dropping
-//! it, until the target itself clears.
+//! Duration comes from spelleffect::effects_for's wiki-scraped
+//! SpellDuration. No wear-off confirmation exists for most of these
+//! (Effects' doc: "recency, not a live still active claim"), so a timer
+//! reaching zero doesn't mean gone for certain -- the frontend flashes
+//! it instead of dropping it, until the target itself clears.
 //!
-//! Observation here stays unfiltered -- every real DoT/debuff the
-//! player lands or attempts on the target, not just tracked ones --
-//! so a spell added to the tracked list mid-fight shows its real
-//! history immediately. Spencer's correction (twice, now): which of
-//! those get DISPLAYED is player-selected, but a SEPARATE list from
-//! skill_status/cooldowns' own tracked_skills -- "dont do spell
-//! tracking for 'ready' ... maybe we need a separate list for 'per
-//! target', not a tracking effect like charm etc since thats not a
-//! per target thing". preferences.rs's own tracked_target_effects,
-//! not tracked_skills; a spell added there never gets its own
-//! cooldown/READY row, only ever shows up here. That filter lives
-//! client-side (SkillTrackerWidget.svelte), same split as skill_status/
-//! cooldowns already has, just against the other list now.
+//! Observation stays unfiltered -- every DoT/debuff the player lands or
+//! attempts, not just tracked ones -- so a spell added mid-fight shows
+//! its real history immediately. Which ones DISPLAY is player-selected,
+//! via a list separate from skill_status/cooldowns' tracked_skills:
+//! preferences.rs's tracked_target_effects. A spell added there never
+//! gets its own cooldown/READY row, only shows up here. That filter
+//! lives client-side (SkillTrackerWidget.svelte).
 
 use crate::combat;
 use crate::ingest::Ingest;
@@ -176,8 +159,7 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
         .state_at(target_sym.0, now)
         .map(|(s, _)| s)
         .unwrap_or(State::Engaged);
-    // why: Charmed is checked directly and first, always honored --
-    // Spencer's own named clear condition, and the one real way a
+    // why: Charmed checked first, always honored -- the one real way a
     // fought mob legitimately becomes an ally mid-session
     if state == State::Charmed {
         return TargetEffectsDto::default();
@@ -209,30 +191,23 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
         }
     }
 
-    // why: Spencer's own ask -- "only show the highest for a skill
-    // line". A DoT/debuff line can have several real ranks (the same
-    // per-character rank system Spellbook's own toRoman/MAX_RANK picker
-    // already deals with, see ingest::split_cast_rank's own doc); once
-    // you've got the higher one, a stale lower-rank observation isn't
-    // worth its own badge. Grouped by the line's own base name -- higher
-    // rank always wins, recency only breaks a tie within the same rank
-    // (or when neither side has a resolvable rank at all).
+    // why: only show the highest rank for a skill line (same rank
+    // system Spellbook's toRoman/MAX_RANK deals with, see
+    // ingest::split_cast_rank's doc). Grouped by base name -- higher
+    // rank wins, recency only breaks a tie within the same rank.
     //
-    // Real bug, caught live against Spencer's own log ("Wandering
-    // Mind"): a resisted cast keeps its rank suffix verbatim in the log
-    // text ("resisted your Wandering Mind VI!"), but a LANDED cast is
-    // only ever attributed through recent_casts, which is already
-    // base_spell_name-stripped before it gets here -- so a landed
-    // observation can never carry a resolvable rank, even when the real
-    // cast was rank VI. Under rank-only comparison that landed
-    // observation's `None` read as "known lower rank" and could never
-    // beat an earlier resisted `Some(6)`, so a later real landing was
-    // silently ignored and the panel stayed stuck on a stale resist
-    // forever. Landed status is checked first now: a fresh landing is
-    // real confirmed state and always supersedes an older failure
-    // regardless of rank; a later failed *re*-attempt never erases a
-    // landing that already happened. Rank only decides ties between two
-    // observations of the same landed-ness.
+    // Real bug: a resisted cast keeps its rank suffix in the log text
+    // ("resisted your Wandering Mind VI!"), but a LANDED cast is
+    // attributed through recent_casts, already base_spell_name-stripped
+    // -- so a landed observation can never carry a resolvable rank.
+    // Under rank-only comparison its `None` read as "known lower rank"
+    // and could never beat an earlier resisted `Some(6)`, so a later
+    // real landing was silently ignored and the panel stuck on a stale
+    // resist forever. Landed status is checked first now: a fresh
+    // landing always supersedes an older failure regardless of rank; a
+    // later failed re-attempt never erases a landing that happened.
+    // Rank only decides ties between two observations of the same
+    // landed-ness.
     struct LineObs {
         full_name: String,
         rank: Option<u8>,
@@ -391,14 +366,11 @@ mod tests {
         assert!(dto.effects.is_empty());
     }
 
-    /// why: real bug, caught live against Spencer's own log -- a pure
-    /// debuff/CC cast with no damage component at all (real "Tashania",
-    /// a resist-decrease debuff) never opens or extends
-    /// combat::current_encounter (damage-graph only, by design). A
-    /// support/CC character casting on a mob but never personally
-    /// dealing damage used to get no target at all, ever -- "im not
-    /// seeing a target pop up in the overlay". Zero Damage events
-    /// anywhere in this scenario, on purpose.
+    /// why: real bug -- a pure debuff/CC cast with no damage component
+    /// (real "Tashania", a resist-decrease debuff) never opens or
+    /// extends combat::current_encounter (damage-graph only, by
+    /// design). A support/CC character never personally dealing damage
+    /// used to get no target at all, ever. Zero Damage events on purpose.
     #[test]
     fn a_pure_debuff_with_no_damage_at_all_still_resolves_a_target() {
         let ing = run(&["[Tue Jul 28 15:01:00 2026] a rat resisted your Tashania!"]);
@@ -613,10 +585,9 @@ mod tests {
         assert_eq!(e.ready_at_ms, None);
     }
 
-    /// why: Spencer's own ask -- "only show the highest for a skill
-    /// line". Real spell "Tashania" has no rank II entry of its own in
-    /// the catalog, so ingest::split_cast_rank treats "Tashania II" as
-    /// an observed rank of the same line, not a separate spell.
+    /// why: only show the highest rank for a skill line. "Tashania" has
+    /// no rank II entry in the catalog, so ingest::split_cast_rank
+    /// treats "Tashania II" as an observed rank of the same line.
     #[test]
     fn only_the_highest_rank_of_a_spell_line_shows_not_a_stale_lower_one() {
         let ing = run(&[
@@ -641,14 +612,12 @@ mod tests {
         );
     }
 
-    /// why: real bug, caught live against Spencer's own log -- a
-    /// resisted "Wandering Mind VI" (rank text survives in a resist
-    /// line) followed, minutes later, by a real successful land
-    /// (attributed generically via recent_casts, which never carries a
-    /// rank suffix) used to get stuck showing the stale resist forever,
-    /// because the landed observation's unresolvable rank read as
-    /// "known lower" under rank-only comparison. A fresh landing must
-    /// always supersede an older failure.
+    /// why: real bug -- a resisted "Wandering Mind VI" (rank text
+    /// survives in the resist line) followed by a successful land
+    /// (attributed via recent_casts, no rank suffix) used to get stuck
+    /// showing the stale resist, since the landed observation's
+    /// unresolvable rank read as "known lower" under rank-only
+    /// comparison. A fresh landing must always supersede an older failure.
     #[test]
     fn a_later_land_beats_an_earlier_resist_even_when_its_own_rank_is_unknown() {
         let ing = run(&[
@@ -687,8 +656,8 @@ mod tests {
         assert!(dto.effects.is_empty());
     }
 
-    /// why: Spencer's other named clear condition -- a teammate's charm
-    /// flips the target's own allegiance to ally, no longer "the enemy"
+    /// why: a teammate's charm flips the target's allegiance to ally,
+    /// no longer "the enemy"
     #[test]
     fn a_target_charmed_by_a_teammate_clears_the_panel() {
         let ing = run(&[

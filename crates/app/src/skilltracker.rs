@@ -1,12 +1,10 @@
-//! why: the overlay's Skill Tracker widget -- Spencer's ask: pick any
-//! ability or spell to track (a real "track" action wherever one shows
-//! up in the app -- Spellbook, Combat's ability rows, ...), flag when
-//! each is estimated ready again, and whether the most recent attempt
-//! landed. Not restricted to a curated list -- which ones actually show
-//! in the overlay is the frontend's own `tracked_skills` preference,
-//! populated by those track buttons; this module tracks every real
-//! ability use unconditionally, cheap either way (bounded by how many
-//! distinct abilities one character actually uses, not a fixed set).
+//! why: the overlay's Skill Tracker widget -- pick any ability or spell
+//! to track (a "track" button wherever one shows up -- Spellbook,
+//! Combat's ability rows), flag when it's estimated ready again, and
+//! whether the last attempt landed. Not a curated list -- which ones
+//! show in the overlay is the frontend's `tracked_skills` preference;
+//! this module tracks every real ability use unconditionally (bounded
+//! by how many distinct abilities one character actually uses).
 //!
 //! No hardcoded reuse-timer table -- this is a custom server, official
 //! wiki numbers (already level/AA-modified anyway) aren't trustworthy
@@ -29,21 +27,16 @@
 //!   the target-effects section is where a resisted spell cast shows
 //!   up for real).
 //!
-//! Spencer's own correction: this used to estimate readiness off that
-//! single attempt-to-attempt gap alone (`reuse`). Real mechanic on this
-//! server -- "when a spell lands, it goes on cooldown, the cooldown is
-//! a recovery timer ... uses whichever is longer": a *second*, separate
-//! signal, `recovery`, measured from a confirmed LANDING (not the
-//! attempt) to the next attempt. Fed off the same `CastResolver::
-//! confirm_landed` timestamp ingest.rs already resolves for the Cast
-//! row/CombatSummaryDto pathway (Damage/Heal/a spelltext-matched
-//! landing line) -- real, already-existing infrastructure, no new
-//! parsing. Reuse alone can't be trusted as the whole story: it's fed
-//! by every attempt including resists/misses, which don't carry the
-//! same lockout a real landing does, so a fast resisted-then-recast
-//! sample can make reuse look shorter than the real minimum. Final
-//! readiness is whichever of the two (independently tracked, from
-//! their own anchors) clears later -- never the optimistic one.
+//! Real mechanic on this server: cooldown and recovery timer, whichever
+//! is longer. This used to estimate readiness off attempt-to-attempt gap
+//! alone (`reuse`); a *second* signal, `recovery`, is measured from a
+//! confirmed LANDING (not the attempt) to the next attempt -- fed off
+//! the same `CastResolver::confirm_landed` timestamp ingest.rs already
+//! resolves, no new parsing. Reuse alone isn't trustworthy: it's fed by
+//! every attempt including resists/misses, which don't carry the same
+//! lockout a real landing does, so a fast resisted-then-recast sample
+//! can make reuse look shorter than the real minimum. Final readiness
+//! is whichever of the two clears later -- never the optimistic one.
 
 use crate::ingest::Ingest;
 use eqlp_source::Millis;
@@ -168,15 +161,12 @@ pub struct SkillStatusDto {
     /// at all yet (a single attempt, nothing landed).
     pub ready_at_ms: Option<Millis>,
     /// why: the raw learned interval behind ready_at_ms, not just the
-    /// resolved live deadline -- the Skill Data tab's own ask (Spencer:
-    /// "a table of skill estimation data") wants the actual timer
-    /// LENGTH, which stays meaningful long after last_used_ms is stale,
-    /// unlike ready_at_ms alone. Smallest gap ever observed between two
-    /// real attempts -- see this module's own top-level doc for why
-    /// that's this server's only trustworthy source (no hardcoded wiki
-    /// table), and why that same empirical basis already reflects AA/
-    /// haste/gear/upgrades without needing to model any of them
-    /// separately: it's measured off the player's own real casts.
+    /// resolved deadline -- the Skill Data tab wants the actual timer
+    /// LENGTH, meaningful long after last_used_ms is stale. Smallest gap
+    /// ever observed between two real attempts -- see this module's
+    /// top-level doc for why that's the only trustworthy source here (no
+    /// hardcoded wiki table); already reflects AA/haste/gear since it's
+    /// measured off the player's own real casts.
     pub reuse_gap_ms: Option<i64>,
     /// why: the recovery-anchor counterpart to reuse_gap_ms -- see
     /// SkillTrack::ready_at's own doc for why landing-to-next-attempt is
@@ -260,13 +250,11 @@ mod tests {
         );
     }
 
-    /// why: Spencer's own correction -- "the cooldown is a recovery
-    /// timer ... uses whichever is longer". Tested directly against the
-    /// resolved struct rather than a call sequence -- a landing can
-    /// legitimately confirm after a later attempt already fired (a
-    /// slow-to-confirm landing line arriving after a quick subsequent
-    /// resisted retry), so last_landed_ms > last_used_ms is a real state,
-    /// not just a hypothetical -- see the doc on SkillTrack::ready_at.
+    /// why: cooldown vs. recovery timer, whichever is longer. Tested
+    /// against the resolved struct, not a call sequence -- a landing can
+    /// confirm after a later attempt already fired (slow landing line
+    /// after a quick resisted retry), so last_landed_ms > last_used_ms
+    /// is a real state -- see the doc on SkillTrack::ready_at.
     #[test]
     fn ready_at_uses_whichever_of_reuse_or_recovery_clears_later() {
         let recovery_wins = SkillTrack {
@@ -299,9 +287,8 @@ mod tests {
         assert!(!skills.contains_key("Nothing Tracked"));
     }
 
-    /// why: real change this turn -- Spencer's ask generalized tracking
-    /// off a curated 6-skill list to "anything with a track button",
-    /// including plain weapon-swing verbs if the user picks one
+    /// why: tracking generalized off a curated 6-skill list to "anything
+    /// with a track button", including plain weapon-swing verbs
     #[test]
     fn any_ability_can_be_tracked_not_just_a_curated_list() {
         let mut skills = HashMap::new();

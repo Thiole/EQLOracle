@@ -542,18 +542,13 @@ export function simulateRotation(candidates: DamageSpellDto[], windowSecs: numbe
   const sequence: DamageSpellDto[] = [];
   let totalDamage = 0;
   let t = 0;
-  // why: Spencer's own estimate -- weaving between two DIFFERENT spells
-  // isn't actually the zero-gap back-to-back casting the sim used to
-  // assume once one of them is off its own reuse. Roughly half of
-  // whatever was just cast's own recast_time is still a real minimum
-  // before ANY next cast (his own words: "just estimating the
-  // difference between weaving spells of different cast times ...
-  // seems like a fair real life estimate", not something measured off
-  // real log timestamps -- a plain half multiplier, not a separately-
-  // tuned constant). A single scalar floor, not per-spell -- it's the
-  // caster that's still mid-recovery, not the specific spell; that
-  // spell's own FULL reuse is still tracked separately via
-  // nextAvailable, this only ever adds a floor on top, never relaxes it.
+  // why: weaving between two DIFFERENT spells isn't zero-gap
+  // back-to-back once one is off its own reuse -- roughly half of the
+  // just-cast spell's recast_time is a real minimum before any next
+  // cast (an estimate, not measured off log timestamps). A single
+  // scalar floor, not per-spell: the caster is mid-recovery, not the
+  // specific spell; each spell's FULL reuse is still tracked separately
+  // via nextAvailable, this only adds a floor on top.
   let gcdFloor = 0;
 
   while (t < windowSecs) {

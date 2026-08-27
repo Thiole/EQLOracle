@@ -69,17 +69,13 @@
 
   const capped = $derived($windowCapability?.capability === 'docked');
 
-  // why: Spencer's own ask -- a single "enable ui" toggle for
-  // everything at once, since each widget's own window now reopens
-  // wherever it was last left (see preferences::OverlayPosition's own
-  // doc), there's nothing left to redo per-widget after the very first
-  // time each one gets positioned. Checked only when EVERY widget is
-  // on (a "select all" checkbox, not "any"); clicking it always turns
-  // every widget to the SAME new state. Deliberately not its own
-  // persisted preference -- still a real, explicit action each
-  // session (see preferences.rs's own doc on why enabled/disabled
-  // itself stays live-only), just one click covering every widget
-  // instead of several.
+  // why: single "enable ui" toggle for everything at once, since each
+  // widget reopens wherever it was last positioned (see
+  // preferences::OverlayPosition's doc). Checked only when EVERY widget
+  // is on ("select all", not "any"); clicking always sets every widget
+  // to the same new state. Not its own persisted preference -- stays a
+  // live, explicit action each session (see preferences.rs's doc on
+  // why enabled/disabled stays live-only).
   const allEnabled = $derived($dpsMeterEnabled && $skillTrackerEnabled);
   async function onToggleAll(on: boolean) {
     await Promise.all([onToggleDpsMeter(on), onToggleSkillTracker(on)]);
@@ -96,15 +92,11 @@
   </button>
 {/snippet}
 
-<!-- why: Spencer's own ask -- "2 options, total opacity (non text),
-     and everything. this way you can make it half faded out, text
-     only, etc". Two independent sliders per widget now, same snippet
-     reused for both, differing only in label/description and which
-     preview swatch style fits what each one actually does:
-     "background" only fades the panel behind everything (crank it
-     toward 0 for a text-only look, text/icons always stay fully
-     readable), "everything" is a real CSS opacity on the whole widget
-     -- text and icons fade right along with it too. -->
+<!-- why: two independent opacity sliders per widget, same snippet
+     reused for both, differing only in label/description and preview
+     swatch style: "background" only fades the panel (text/icons stay
+     fully readable), "everything" is a CSS opacity on the whole widget
+     -- text and icons fade with it too. -->
 {#snippet alphaPreview(
   opacity: number,
   onInput: (v: number) => void,

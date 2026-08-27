@@ -4,14 +4,13 @@
   import { api } from '$lib/tauri/api';
   import { updateChannel, loadPreferences } from '$lib/stores/settings';
 
-  // why: Spencer's own ask -- "i menu should show current version
-  // information". A real backend command (see commands::get_app_version's
-  // own doc for why not a raw @tauri-apps/api/app::getVersion() call),
-  // no network round trip -- unlike checkForUpdate, this is just what's
-  // actually installed right now. updateChannel is shown alongside it --
-  // a bare "0.1.34" means nothing without knowing it's a Beta build's
-  // own rolling build-number scheme, not a real semver release (see
-  // 3-release.yml's own doc on why only the testing channel gets that).
+  // why: Info menu shows current version. Backend command (see
+  // commands::get_app_version's doc for why not a raw
+  // @tauri-apps/api/app::getVersion() call), no network round trip --
+  // just what's actually installed. updateChannel is shown alongside
+  // it -- "0.1.34" alone means nothing without knowing it's a Beta
+  // build's rolling build number, not a real semver release (see
+  // 3-release.yml's doc on why only the testing channel gets that).
   let version = $state<string | null>(null);
   onMount(() => {
     void loadPreferences();

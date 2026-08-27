@@ -1,9 +1,8 @@
-// why: Spencer's own manual ranking of "which member of a spell line is
-// actually best" -- the suggestion engine's default (-level, see
-// spellSuggest.ts's priorityRank) gets this wrong for lines where a
-// later, higher-level member isn't actually the better pick for every
-// purpose. No way to infer that generically from the scraped wiki data,
-// so this is a manual override instead of a guess.
+// why: manual ranking of "which member of a spell line is actually
+// best" -- the suggestion engine's default (-level, see
+// spellSuggest.ts's priorityRank) gets this wrong where a later,
+// higher-level member isn't the better pick for every purpose. No way
+// to infer that generically from scraped wiki data.
 import { writable, get } from 'svelte/store';
 import { activeModule } from './shell';
 import { membersOfLine } from '../character/spellSuggest';
@@ -34,13 +33,13 @@ function trySave(key: string, v: unknown) {
 export const spellLineOverrides = writable<Record<string, string[]>>(loadJson(OVERRIDES_KEY, {}));
 spellLineOverrides.subscribe((v) => trySave(OVERRIDES_KEY, v));
 
-/** why: real, manually-asserted "these overwrite each other" links --
- * spell name -> the target line's key. Never auto-detected (see
- * effectiveLineKey's own doc for why: the real stacking-group data
- * doesn't cover most lines, and guessing by similar effect risks a
- * false merge like Tash/Malosi, two genuinely separate resist-decrease
- * debuffs). Spencer's own real game knowledge (a class's Slow overwrites
- * another class's, say) is the only trustworthy source for this. */
+/** why: manually-asserted "these overwrite each other" links -- spell
+ * name -> the target line's key. Never auto-detected (see
+ * effectiveLineKey's doc: the real stacking-group data doesn't cover
+ * most lines, and guessing by similar effect risks a false merge like
+ * Tash/Malosi, two genuinely separate resist-decrease debuffs). Real
+ * game knowledge (a class's Slow overwrites another's) is the only
+ * trustworthy source for this. */
 export const spellLineCustomMembership = writable<Record<string, string>>(loadJson(MEMBERSHIP_KEY, {}));
 spellLineCustomMembership.subscribe((v) => trySave(MEMBERSHIP_KEY, v));
 

@@ -50,12 +50,10 @@ export const skillTrackerOverallOpacity = writable(1.0);
  * until the user tracks something. Not per-target -- see
  * trackedTargetEffects below for that. */
 export const trackedSkills = writable<string[]>([]);
-/** why: a separate list from trackedSkills -- Spencer's own
- * correction: "dont do spell tracking for 'ready' ... maybe we need a
- * separate list for 'per target'". A spell added here (Spellbook's own
- * "Overlay spell tracking" section, the only real entry point) shows
- * up ONLY against the current target (landed? duration left?), never
- * its own cooldown/READY row. Empty by default -- nothing baked in. */
+/** why: separate from trackedSkills -- a spell added here (Spellbook's
+ * "Overlay spell tracking" section) shows up ONLY against the current
+ * target (landed? duration left?), never its own cooldown/READY row.
+ * Empty by default -- nothing baked in. */
 export const trackedTargetEffects = writable<string[]>([]);
 export const settingsLoaded = writable(false);
 

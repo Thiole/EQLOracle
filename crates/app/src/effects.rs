@@ -148,10 +148,9 @@ mod tests {
         assert!(!dto.charm.expect("still tracked, now inactive").active);
     }
 
-    /// why: Spencer's own ask -- a charmed pet never follows you across a
-    /// zone line, and this break is often silent (no "worn off" line at
-    /// all), so zoning must clear it unconditionally rather than waiting
-    /// for a confirmation that may never come
+    /// why: a charmed pet never follows across a zone line, and the
+    /// break is often silent (no "worn off" line) -- zoning must clear
+    /// it unconditionally, not wait for a confirmation that may never come
     #[test]
     fn zoning_breaks_an_active_charm_even_with_no_explicit_break_line() {
         let ing = run(&[
@@ -182,13 +181,9 @@ mod tests {
         );
     }
 
-    /// why: Spencer's own ask -- "when you charm something, and you see no
-    /// indication of charm ending, but you see outward combat on a
-    /// similarly named mob, that means its a new target". A charmed pet
-    /// can never legitimately land a hit on "You" -- that alone is real
-    /// proof the charm already broke (silently, no worn-off line, same
-    /// shape zoning's own break can take), whether it's the same mob's
-    /// charm actually having expired or a fresh mob reusing the same name.
+    /// why: a charmed pet can never legitimately land a hit on "You" --
+    /// that alone proves the charm already broke silently (no worn-off
+    /// line), whether it expired or a fresh mob reused the same name.
     #[test]
     fn a_charmed_name_attacking_you_breaks_the_charm_with_no_worn_off_line() {
         let ing = run(&[
