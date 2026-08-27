@@ -171,6 +171,7 @@ fn main() {
             commands::set_preferences,
             commands::check_for_update,
             commands::install_pending_update,
+            commands::get_app_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running eqlp-app");

@@ -1381,6 +1381,11 @@ export const api = {
    * process exits first), only on failure. */
   installPendingUpdate: () => invoke<void>('install_pending_update'),
 
+  /** why: what's actually installed right now -- no network round trip,
+   * unlike checkForUpdate (a real check against GitHub). Info page's
+   * own "current version information" ask. */
+  getAppVersion: () => invoke<string>('get_app_version'),
+
   // -------------------------------------------------------------- history
 
   getMobHistory: (target: string, confirmedOnly: boolean) =>

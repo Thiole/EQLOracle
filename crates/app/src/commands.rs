@@ -831,6 +831,21 @@ pub async fn install_pending_update(
     updater::install_pending_update(app, state).await
 }
 
+/// why: Info page's own ask -- Spencer: "i menu should show current
+/// version information". Same source check_for_update's own
+/// current_version already reads (app.package_info().version), exposed
+/// standalone here since that command only ever runs a real check
+/// against GitHub -- showing what's installed shouldn't need a network
+/// round trip at all, and this app's own convention is a real backend
+/// command through invoke() (mockable, consistent), not a raw
+/// @tauri-apps/api/app::getVersion() call from the frontend (see
+/// invoke.ts's own doc on why api.ts never imports @tauri-apps/api
+/// directly).
+#[tauri::command]
+pub fn get_app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 /// why: feeds the Gear Planner's mana weighting; None mostly means "same
 /// level the whole file", not "unknown"
 #[tauri::command]

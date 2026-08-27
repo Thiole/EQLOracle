@@ -50,6 +50,12 @@ fn main() {
         }}),
     );
 
+    // ---- get_app_version: hand-built, no AppHandle needed -- the real
+    // command reads app.package_info().version (CI's own --config
+    // override at build time, see 3-release.yml's own doc), nothing this
+    // standalone example has access to
+    out.insert("get_app_version".to_string(), json!({ "": "0.1.0" }));
+
     // ---- list_zone_visits ----
     let visits = combat::list_zone_visits(&ing);
     out.insert("list_zone_visits".to_string(), json!({ "": visits }));
