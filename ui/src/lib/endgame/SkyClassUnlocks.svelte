@@ -116,7 +116,7 @@
             {m.item}{#if m.source}<span class="opacity-70"> ({m.source})</span>{/if}
             <button
               type="button"
-              class="rounded-sm {tracked ? '' : 'opacity-0 group-hover:opacity-100'}"
+              class="rounded-sm {tracked ? 'text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}"
               title={tracked ? `Stop tracking ${m.item} in the Drop Watch overlay` : `Track ${m.item} in the Drop Watch overlay`}
               onclick={() => void toggleTrackedDropItem(m.item)}
             >

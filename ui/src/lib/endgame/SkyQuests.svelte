@@ -93,11 +93,12 @@
     {it.item}
     <span class="opacity-80">· {status.label}</span>
     <!-- why: Drop Watch's own entry point -- see dropwatch.rs's doc.
-         Always visible once tracked, hover-reveal otherwise, same
-         convention AllyTable's own ability-track button uses. -->
+         Always visible, not hover-reveal -- unlike AllyTable's ability
+         track button (an established feature), nobody knows this one
+         exists yet; invisible-until-hover is undiscoverable for that. -->
     <button
       type="button"
-      class="rounded-sm {tracked ? '' : 'opacity-0 group-hover:opacity-100'}"
+      class="rounded-sm {tracked ? 'text-primary' : 'text-muted-foreground/50 hover:text-muted-foreground'}"
       title={tracked ? `Stop tracking ${it.item} in the Drop Watch overlay` : `Track ${it.item} in the Drop Watch overlay`}
       onclick={() => void toggleTrackedDropItem(it.item)}
     >
