@@ -44,10 +44,19 @@
   {/each}
 {/snippet}
 
+<!-- why: Spencer's own ask -- "make text a bit darker/bolder by
+     default, so if only background is removed, its more readable".
+     Bolder base weight + a dark shadow (inherited by every span below,
+     nothing per-row to touch) means text stays legible against
+     whatever's behind it even at background opacity 0 -- the game
+     itself, not this panel's own dark fill. Reduces or removes cleanly
+     for anyone who'd rather have it thinner (each row's own text color
+     still wins for anything that already sets font-bold/font-mono). -->
 <div
-  class="flex flex-col gap-1.5 rounded-md p-2 text-[12px]"
+  class="flex flex-col gap-1.5 rounded-md p-2 text-[12px] font-semibold"
   style:background-color="rgba(10, 11, 13, {opacity})"
   style:opacity={overallOpacity}
+  style:text-shadow="0 1px 2px rgba(0, 0, 0, 0.9), 0 0px 4px rgba(0, 0, 0, 0.6)"
 >
   {#if !meter || (!meter.outgoing.length && !meter.incoming.length)}
     <p class="text-white/70">no active fight</p>

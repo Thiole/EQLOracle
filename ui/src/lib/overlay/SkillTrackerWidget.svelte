@@ -124,10 +124,19 @@
   const toneClass = { good: 'text-good', warn: 'text-caution' } as const;
 </script>
 
+<!-- why: Spencer's own ask -- "make text a bit darker/bolder by
+     default, so if only background is removed, its more readable".
+     Bolder base weight + a dark shadow, inherited by every section
+     below (status effects, cooldowns, target effects alike, none of
+     them own a panel of their own) -- text stays legible against
+     whatever's actually behind it once background opacity goes to 0,
+     not just this panel's own dark fill. Same treatment as
+     DpsMeterWidget's own outer div. -->
 <div
-  class="flex flex-col gap-1.5 rounded-md p-2 text-[12px]"
+  class="flex flex-col gap-1.5 rounded-md p-2 text-[12px] font-semibold"
   style:background-color="rgba(10, 11, 13, {opacity})"
   style:opacity={overallOpacity}
+  style:text-shadow="0 1px 2px rgba(0, 0, 0, 0.9), 0 0px 4px rgba(0, 0, 0, 0.6)"
 >
   <StatusEffectsWidget {status} tracked={trackedSkillNames} />
 
