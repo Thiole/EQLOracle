@@ -80,18 +80,13 @@ pub async fn check_for_update(
     // actual persistent .AppImage file the user downloaded and launches
     // -- an ephemeral, almost certainly read-only path that gets torn
     // down the moment this process exits. install_appimage's own
-    // std::fs::write targets THAT path, not the real file -- writing
-    // new bytes into the currently-executing binary's own live,
-    // about-to-unmount FUSE image is exactly the kind of undefined
-    // behavior that could leave a half-written asset bundle behind:
-    // enough of the native Rust binary survives to report the new
-    // version number, but the embedded frontend assets it serves come
-    // up blank. $APPIMAGE is the real fix -- every genuine type2
-    // AppImage runtime sets it to the actual outer file's own absolute
-    // path before ever execing into the mount, so it's exactly the
-    // extract_path this crate should have used already. Only overridden
-    // when actually present (running as a real AppImage) -- a .deb/.rpm
-    // install's own current_exe() is already correct, nothing to fix there.
+    // std::fs::write targets THAT path, not the real file. $APPIMAGE is
+    // the real fix -- every genuine type2 AppImage runtime sets it to
+    // the actual outer file's own absolute path before ever execing
+    // into the mount, so it's exactly the extract_path this crate
+    // should have used already. Only overridden when actually present
+    // (running as a real AppImage) -- a .deb/.rpm install's own
+    // current_exe() is already correct, nothing to fix there.
     #[cfg(target_os = "linux")]
     if let Ok(appimage) = std::env::var("APPIMAGE") {
         builder = builder.executable_path(appimage);
@@ -109,36 +104,41 @@ pub async fn check_for_update(
     Ok(dto)
 }
 
-/// why: real bug, caught live -- an install-and-restart froze on a
-/// blank white window. WebKitGTK's own disk cache (~/.local/share/
-/// com.eqlp.oracle/{WebKitCache,CacheStorage}) is keyed by app
-/// identifier, not by app version -- it survives the binary swap
-/// underneath it untouched. The just-installed build's index.html
-/// references freshly-hashed JS/CSS filenames (every build's own
-/// content hash changes); a cached response for the OLD build's
-/// index.html (or its asset requests) can still be served after
-/// restart, pointing at filenames that don't exist in the new bundle
-/// at all -- the page loads, the script never does, nothing ever
-/// mounts. This app's own dev loop has had to clear this by hand
-/// before every local relaunch all along (same two directories); a
-/// real end-user update needs the same treatment automatically, not
-/// left to whoever hits the bug to figure out from scratch. Linux/
-/// WebKitGTK-specific -- Windows' WebView2 doesn't share this failure
-/// mode the same way, and app_data_dir() layout differs there anyway.
-/// Best-effort: a failed clear (dir missing, permissions) must never
-/// block the restart the update itself already succeeded at.
+/// why: Spencer's own real bug reports, twice -- see install_pending_update's
+/// own doc for why clearing WebKitGTK's cache DURING the old process's own
+/// shutdown was itself the actual race (its WebKit subprocesses -- WebProcess/
+/// NetworkProcess/GPU, separate OS processes, not just threads -- still fully
+/// alive and holding open handles into exactly the directories being
+/// deleted). Run once per real app start instead, from the fresh process's
+/// own setup(), before any window/webview of its own has been created yet --
+/// nothing else alive to race with. Gated on a real version comparison (a
+/// plain marker file, not a preference -- this isn't user-facing state, just
+/// bookkeeping) so an ordinary launch with nothing new installed never
+/// touches a perfectly good cache; only a version that's actually different
+/// from the last real launch -- an in-app update, or Spencer swapping in a
+/// new build by hand -- clears it. Same underlying staleness this was always
+/// about: WebKitGTK's own cache is keyed by app identifier, not app version,
+/// so a hashed-asset-filename mismatch between what's cached and what THIS
+/// build actually ships is exactly what a version change here means.
 #[cfg(target_os = "linux")]
-fn clear_webview_cache(app: &AppHandle) {
+pub fn clear_stale_webview_cache_if_needed(app: &AppHandle) {
     let Ok(data_dir) = app.path().app_data_dir() else {
         return;
     };
+    let marker = data_dir.join(".last_run_version");
+    let current = app.package_info().version.to_string();
+    if std::fs::read_to_string(&marker).ok().as_deref() == Some(current.as_str()) {
+        return;
+    }
     for sub in ["WebKitCache", "CacheStorage"] {
         let _ = std::fs::remove_dir_all(data_dir.join(sub));
     }
+    let _ = std::fs::create_dir_all(&data_dir);
+    let _ = std::fs::write(&marker, &current);
 }
 
 #[cfg(not(target_os = "linux"))]
-fn clear_webview_cache(_app: &AppHandle) {}
+pub fn clear_stale_webview_cache_if_needed(_app: &AppHandle) {}
 
 /// why: consumes whatever check_for_update last found -- an explicit
 /// error (not a silent no-op) if the frontend calls this without a real
@@ -155,6 +155,22 @@ pub async fn install_pending_update(
         .download_and_install(|_, _| {}, || {})
         .await
         .map_err(|e| e.to_string())?;
-    clear_webview_cache(&app);
+    // why: real bug, caught TWICE live -- clearing WebKitGTK's own cache
+    // used to happen right here, before restart, in the OLD process --
+    // while its own WebKit subprocesses (WebProcess/NetworkProcess/GPU,
+    // separate OS processes, not just threads) were still fully alive
+    // and actively holding open handles into exactly the directories
+    // being deleted. Spencer's own follow-up report -- a SECOND white
+    // page, this time on the plain local binary, not even the AppImage
+    // path the first fix targeted, and "not frozen, the update pipeline
+    // just broke" (a live-but-blank webview, not a hang) -- doesn't fit
+    // a stale-cache-alone explanation a second time; it fits a race
+    // between the dying old process's own WebKit subprocesses and the
+    // freshly-restarted one's own fresh subprocesses fighting over the
+    // same cache directory an instant after `rm -rf` pulled it out from
+    // under the still-running old ones. See app_startup's own
+    // clear_stale_webview_cache -- moved to run once, at the START of
+    // the NEXT process's own setup(), before any webview/window of its
+    // own has been created at all, nothing else alive to race with.
     app.restart();
 }

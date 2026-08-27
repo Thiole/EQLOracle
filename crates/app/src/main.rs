@@ -9,7 +9,7 @@
 
 // why: modules live in lib.rs -- a bin-side `mod ingest;` here would
 // silently produce a second, incompatible `Ingest` type
-use eqlp_app::{commands, config, history, state::AppState, tail_worker};
+use eqlp_app::{commands, config, history, state::AppState, tail_worker, updater};
 use tauri::Manager;
 
 /// why: GTK reads this env var lazily, at its own (first-use) init time --
@@ -57,6 +57,12 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             let state = app.state::<AppState>();
+            // why: before anything else, and before this process's own
+            // window/webview exist at all -- see updater::
+            // clear_stale_webview_cache_if_needed's own doc for why this
+            // specific timing (not during the OLD process's own restart,
+            // a real, twice-reported bug) is what actually makes it safe
+            updater::clear_stale_webview_cache_if_needed(&handle);
             // why: every start parses clean, history doesn't survive a restart
             history::reset(&handle);
             if let Some(cfg) = config::load(&handle) {
