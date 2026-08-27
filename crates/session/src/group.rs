@@ -40,16 +40,21 @@
 //!   itself be a recognized beneficial buff-flavor line, not an
 //!   arbitrary spell-name landing.
 //!
-//! **Real, permanent limit, not a bug to keep chasing**: a group/raid
-//! buff and shared-target damage both also land on/come from a
-//! currently-charmed pet under a real party member's control, and the
-//! game gives no signal distinguishing that from a real human member for
-//! either purpose -- confirmed directly in the reference log (a
-//! charm-mob camp in The Ruins of Old Guk, group-wide buffs landing on
-//! Keber/Kenobtik in the exact same burst as the log's own real
-//! groupmates). No amount of log-only heuristics closes this; it's
-//! stated here so a future session doesn't re-open the investigation
-//! expecting a fixable bug. Real, separately fixable gap found along the
+//! **A currently-charmed pet under a real party member's control counts
+//! too, deliberately** -- neither channel excludes charm state.
+//! Confirmed directly in the reference log (a charm-mob camp in The
+//! Ruins of Old Guk, group-wide buffs landing on Keber/Kenobtik in the
+//! exact same burst as the log's own real groupmates): while charmed,
+//! it really is attacking the same targets and receiving the same buffs
+//! as the rest of the group, so it really is "with them" for as long as
+//! that holds -- excluding it would just be wrong, not more careful. An
+//! earlier version of this tracker's own predecessor (the one-shot
+//! permanent promotion this replaced) DID need a charm guard, because a
+//! temporary ally becoming a PERMANENT one was the actual bug; that
+//! constraint doesn't carry over here, since nothing this tracker grants
+//! is permanent -- once the charm actually ends, the pet simply stops
+//! co-occurring with the group and decays back out within `GROUP_TTL_MS`
+//! on its own, no special-casing required. Real, separately fixable gap found along the
 //! way and deliberately NOT fixed here (scope creep beyond this
 //! feature): a Magician/Necromancer summoned pet with its own unique
 //! flavor name (bridged to its owner via `Ingest`'s pending_summons/

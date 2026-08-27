@@ -1656,7 +1656,8 @@ impl Ingest {
     /// moment "You" confirms the fight, sweep back over everyone who
     /// already hit the anchor; after that, every future hit reinforces
     /// inline. Never reinforces the anchor hitting itself (reflected
-    /// shield) or a currently charmed actor (would outlive the charm).
+    /// shield) -- a currently charmed actor IS reinforced now, see
+    /// `promote_party_member`'s own doc for why that's no longer a bug.
     fn note_shared_target(&mut self, ts: Millis, enc: EncounterId, src: &str, dst_sym: Sym) {
         let Some(anchor) = self.store.encounter(enc).map(|e| e.target) else {
             return;
@@ -1683,23 +1684,27 @@ impl Ingest {
         }
     }
 
-    /// why: shared guard, never reinforces a currently charmed entity --
-    /// a temporary ally (charm, time-scoped via State::Charmed) must
-    /// never feed evidence toward a real-groupmate belief.
-    /// plausible_player_name catches generic "a "/"an " mob names for
-    /// free; is_known_npc_name catches proper-noun-named ones
+    /// why: a currently-charmed actor is deliberately NOT excluded here
+    /// (an earlier version of this guard did, back when a hit promoted
+    /// permanently -- correct then, since a temporary charm ally must
+    /// never become a permanent one). GroupTracker's own promotion isn't
+    /// permanent anymore: a charmed pet attacking the same target as
+    /// "You" really is fighting alongside you for as long as the charm
+    /// holds, and once it ends (dies, breaks, gets recast on something
+    /// else) it simply stops co-occurring and decays back out within
+    /// GROUP_TTL_MS on its own -- exactly the "amorphous, not
+    /// guaranteed" behavior this tracker is for, not a bug to guard
+    /// against. plausible_player_name catches generic "a "/"an " mob
+    /// names for free; is_known_npc_name catches proper-noun-named ones
     /// plausible_player_name can't (real bug, caught against the
     /// reference log: a recurring Plane of Hate raid miniboss,
     /// "Innoruuk`s Chosen", racked up 8 real gap-separated sessions of
     /// shared-target evidence -- indistinguishable from a real recurring
     /// raid regular by co-occurrence alone; wiki lookup is what actually
-    /// tells them apart). Neither guard is the main defense anymore
-    /// though -- GroupTracker's own session-count gate carries the real
-    /// weight, see its module doc.
+    /// tells them apart). Neither guard is the main defense though --
+    /// GroupTracker's own session-count gate carries the real weight,
+    /// see its module doc.
     fn promote_party_member(&mut self, sym: Sym, ts: Millis) {
-        if matches!(self.timeline.state_at(sym.0, ts), Some((State::Charmed, _))) {
-            return;
-        }
         let name = self.store.name(sym).to_string();
         if !plausible_player_name(&name) || crate::npcdata::is_known_npc_name(&name) {
             return;
@@ -2237,17 +2242,16 @@ impl Ingest {
         // This is what actually separates a real Quick Buff group-cast
         // burst from ambient, unrelated same-text coincidence.
         //
-        // Same defensive filters the weak channel uses, charm guard
-        // included -- a related real leak: EQ's group buffs really do
-        // land on a player's own currently-charmed pet (a legitimate
-        // temporary ally, per Allegiance::of's own charm flip), and a
-        // Quick Buff burst landing on one is a real, corroborated buff --
-        // just not evidence the CHARM TARGET itself is a person, which
-        // is what GroupTracker is trying to answer.
+        // Same defensive filters the weak channel uses -- deliberately
+        // NOT a charm-state guard: EQ's group buffs really do land on a
+        // player's own currently-charmed pet exactly like a real
+        // groupmate, and that's correct evidence, not noise -- see
+        // `promote_party_member`'s own doc for why excluding charm no
+        // longer serves the purpose it used to now that nothing here is
+        // permanent.
         if !resolved.eq_ignore_ascii_case("you")
             && plausible_player_name(&resolved)
             && !crate::npcdata::is_known_npc_name(&resolved)
-            && !matches!(self.timeline.state_at(sym, ts), Some((State::Charmed, _)))
             && !crate::flavordata::classes_for_flavor(text).is_empty()
         {
             if let Some(&activated_ms) = self.pending_quickbuff.get("You") {
