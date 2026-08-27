@@ -476,6 +476,20 @@
         <Card class="rounded-sm">
           <CardContent class="px-3 py-2.5">
             <h2 class="panel-title mb-1.5">item preview</h2>
+            <!-- why: real bug, caught live -- "jitters around when you mouse
+                 over certain things ... it pushes it to another item". This
+                 card's own height used to track whatever was hovered (an
+                 empty placeholder line vs. a fully exalted item's icon/
+                 stats/upgrade row/exalt sockets/zones), and the
+                 alternatives list right below it (same column, plain
+                 stacked flow) shifted up or down every time. Hovering a
+                 row in THAT list moved the row out from under the cursor
+                 mid-hover, which fired a new onmouseenter on whatever
+                 landed there, which resized the preview again -- a
+                 feedback loop, not a one-off flicker. Fixed height +
+                 internal scroll: this card's own box never moves the
+                 layout around it again, regardless of what's previewed. -->
+            <div class="h-[26rem] overflow-y-auto pr-1">
             {#if !displayedPreview}
               <p class="text-[12px] text-muted-foreground">Hover or click a slot to preview an item here.</p>
             {:else}
@@ -639,6 +653,7 @@
                 <div class="mt-1.5 text-[11px] text-brand-soft">{item.source}</div>
               {/if}
             {/if}
+            </div>
           </CardContent>
         </Card>
 
