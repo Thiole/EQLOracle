@@ -64,12 +64,39 @@ pub async fn check_for_update(
     let url = endpoint_for(channel)
         .parse()
         .map_err(|e: url::ParseError| e.to_string())?;
-    let updater = app
+    let mut builder = app
         .updater_builder()
         .endpoints(vec![url])
-        .map_err(|e| e.to_string())?
-        .build()
         .map_err(|e| e.to_string())?;
+    // why: real bug, caught live -- a SECOND install froze white after a
+    // FIRST install's own WebKitGTK-cache-clear fix already shipped, so
+    // clearing that cache alone wasn't the whole story. tauri-plugin-
+    // updater's own extract_path resolution on Linux is bare
+    // current_exe() (confirmed straight off its source, no AppImage
+    // special-casing at all) -- for a real running AppImage that's
+    // /proc/self/exe, which resolves through the FUSE mount squashfs
+    // extracts itself into (confirmed live: readlink on a real running
+    // instance showed /tmp/.mount_eqlp-XXXXXX/usr/bin/eqlp-app), NOT the
+    // actual persistent .AppImage file the user downloaded and launches
+    // -- an ephemeral, almost certainly read-only path that gets torn
+    // down the moment this process exits. install_appimage's own
+    // std::fs::write targets THAT path, not the real file -- writing
+    // new bytes into the currently-executing binary's own live,
+    // about-to-unmount FUSE image is exactly the kind of undefined
+    // behavior that could leave a half-written asset bundle behind:
+    // enough of the native Rust binary survives to report the new
+    // version number, but the embedded frontend assets it serves come
+    // up blank. $APPIMAGE is the real fix -- every genuine type2
+    // AppImage runtime sets it to the actual outer file's own absolute
+    // path before ever execing into the mount, so it's exactly the
+    // extract_path this crate should have used already. Only overridden
+    // when actually present (running as a real AppImage) -- a .deb/.rpm
+    // install's own current_exe() is already correct, nothing to fix there.
+    #[cfg(target_os = "linux")]
+    if let Ok(appimage) = std::env::var("APPIMAGE") {
+        builder = builder.executable_path(appimage);
+    }
+    let updater = builder.build().map_err(|e| e.to_string())?;
     let found = updater.check().await.map_err(|e| e.to_string())?;
 
     let dto = found.as_ref().map(|u| UpdateInfoDto {
