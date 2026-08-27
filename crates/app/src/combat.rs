@@ -747,7 +747,7 @@ pub fn list_allies(
         }
         for (sym, dmg, hits, crits) in by_actor(&ing.store, &Filter::encounter(id).damage()) {
             let name = ing.store.name(sym);
-            let kind = ing.encounters.entities.kind(name);
+            let kind = ing.effective_kind(name, now);
             let state = ing
                 .timeline
                 .state_at(sym.0, now)
@@ -808,7 +808,7 @@ pub fn list_allies(
         .into_iter()
         .map(|(sym, (dmg, hits, crits))| {
             let name = ing.store.name(sym).to_string();
-            let kind = ing.encounters.entities.kind(&name);
+            let kind = ing.effective_kind(&name, now);
             AllyDto {
                 is_player: kind == Kind::Player,
                 is_pet: kind == Kind::Pet,
@@ -952,7 +952,7 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
         let buckets = bucket_series(&ts, &amt, start, end, bucket_ms);
         buckets_len = buckets_len.max(buckets.len());
         let total: u64 = amt.iter().sum();
-        let kind = ing.encounters.entities.kind(name);
+        let kind = ing.effective_kind(name, end);
         // why: as of the fight's end -- a query, not a stored flag; a still-charmed mob reads as ally
         let state = ing
             .timeline
@@ -1014,7 +1014,7 @@ fn fight_state_at_windowed(
     let mut out: Vec<EntityStateDto> = entities
         .into_iter()
         .map(|name| {
-            let kind = ing.encounters.entities.kind(&name);
+            let kind = ing.effective_kind(&name, ts_ms);
             let sym = ing.store.names.get(&name);
             let (state, observed) = sym
                 .and_then(|s| ing.timeline.state_at(s.0, ts_ms))

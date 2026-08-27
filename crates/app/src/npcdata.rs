@@ -73,6 +73,20 @@ pub fn npcs() -> &'static [Npc] {
     .as_slice()
 }
 
+/// why: O(1) known-NPC check for a hot path (checked per shared-target
+/// damage event during backfill) -- raiding.rs's own find_npc does a
+/// linear scan over all 6,532 entries, fine for its low-frequency
+/// curated lookups, far too costly at backfill scale here. Case-folded
+/// whole-string (not eqlp_session::fold_key's first-char-only scheme --
+/// that's not visible outside eqlp_session, and a plain full lowercase
+/// is the simpler, sufficient answer for a wiki-name identity check).
+pub fn is_known_npc_name(name: &str) -> bool {
+    static NAMES: OnceLock<std::collections::HashSet<String>> = OnceLock::new();
+    NAMES
+        .get_or_init(|| npcs().iter().map(|n| n.name.to_lowercase()).collect())
+        .contains(&name.to_lowercase())
+}
+
 /// why: parses free-text spawn notation into real points; descriptive
 /// text ("Various", "Need Info") yields none. `%` weighting dropped --
 /// multiple spawns render as multiple equal markers.

@@ -93,11 +93,6 @@ impl Entities {
         self.promote_to_player(name);
     }
 
-    /// why: damaging the same mob as "You" is stronger proof than chat
-    pub fn note_shared_target(&mut self, name: &str) {
-        self.promote_to_player(name);
-    }
-
     fn promote_to_player(&mut self, name: &str) {
         let key = fold_key(name);
         self.note_seen(&key, name);

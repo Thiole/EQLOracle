@@ -13,8 +13,8 @@ use eqlp_core::event::Match;
 use eqlp_core::shape::{ShapeMode, Shaper};
 use eqlp_core::{field, Engine, Outcome};
 use eqlp_session::{
-    Allegiance, Builder, CastOutcome, CastResolver, ClassDetector, EncId, Kind, Policy, Spans,
-    State, Timeline,
+    Allegiance, Builder, CastOutcome, CastResolver, ClassDetector, EncId, GroupTracker, Kind,
+    Policy, Spans, State, Timeline,
 };
 use eqlp_source::{Clock, Millis, VirtualClock};
 use eqlp_store::{
@@ -715,6 +715,11 @@ pub struct ConfirmedTurnIn {
 pub struct Ingest {
     pub store: Store,
     pub encounters: Builder,
+    /// why: dynamic, decaying belief layered on top of Entities' own
+    /// permanent Kind -- see eqlp_session::group's own doc for why. pub
+    /// like `classes`/`levels` alongside it -- direct querying is the
+    /// established pattern for these session-derived subsystems
+    pub groups: GroupTracker,
     pub zone: Spans,
     /// why: raw label -> wiki zone, resolved once per distinct label not per query
     wiki_zone_cache: HashMap<Sym, Option<&'static str>>,
@@ -858,6 +863,7 @@ impl Default for Ingest {
         Ingest {
             store: Store::default(),
             encounters: Builder::new(Policy::default()),
+            groups: GroupTracker::default(),
             zone: Spans::default(),
             wiki_zone_cache: HashMap::new(),
             loot_cursor: HashMap::new(),
@@ -1639,13 +1645,18 @@ impl Ingest {
         self.drain_closed();
     }
 
-    /// why: "same mob damage as me" proves party membership, stronger and
-    /// more common than chat evidence -- promotes via note_shared_target,
-    /// same sticky-forever mechanism as chat proof. Two paths: the moment
-    /// "You" confirms the fight, sweep back over everyone who already hit
-    /// the anchor; after that, every future hit promotes inline. Never
-    /// promotes the anchor hitting itself (reflected shield) or a currently
-    /// charmed actor (would outlive the charm).
+    /// why: "same mob damage as me" is real evidence of party membership,
+    /// but -- unlike chat proof -- not reliable enough on its own to
+    /// promote permanently: measured against a real 245MB reference log,
+    /// a one-shot shared hit promoted 371 distinct names to permanent
+    /// Kind::Player, the overwhelming majority proper-noun-named charm
+    /// mobs and recurring raid trash, not real players (see
+    /// eqlp_session::group's own doc). Reinforces the dynamic
+    /// GroupTracker instead -- see `promote_party_member`. Two paths: the
+    /// moment "You" confirms the fight, sweep back over everyone who
+    /// already hit the anchor; after that, every future hit reinforces
+    /// inline. Never reinforces the anchor hitting itself (reflected
+    /// shield) or a currently charmed actor (would outlive the charm).
     fn note_shared_target(&mut self, ts: Millis, enc: EncounterId, src: &str, dst_sym: Sym) {
         let Some(anchor) = self.store.encounter(enc).map(|e| e.target) else {
             return;
@@ -1672,22 +1683,44 @@ impl Ingest {
         }
     }
 
-    /// why: shared guard, never promotes a currently charmed entity -- a
-    /// temporary ally (charm, time-scoped via State::Charmed) must never
-    /// become a permanent one (chat proof / shared-target proof). Real
-    /// bug, caught live: a mob damaging an already-confirmed anchor "You"
-    /// (cross-tangled mobs, cleave splash) got permanently promoted,
-    /// poisoning every later encounter with that name. Guarded with
-    /// plausible_player_name so an obviously-a-mob name can't qualify.
+    /// why: shared guard, never reinforces a currently charmed entity --
+    /// a temporary ally (charm, time-scoped via State::Charmed) must
+    /// never feed evidence toward a real-groupmate belief.
+    /// plausible_player_name catches generic "a "/"an " mob names for
+    /// free; is_known_npc_name catches proper-noun-named ones
+    /// plausible_player_name can't (real bug, caught against the
+    /// reference log: a recurring Plane of Hate raid miniboss,
+    /// "Innoruuk`s Chosen", racked up 8 real gap-separated sessions of
+    /// shared-target evidence -- indistinguishable from a real recurring
+    /// raid regular by co-occurrence alone; wiki lookup is what actually
+    /// tells them apart). Neither guard is the main defense anymore
+    /// though -- GroupTracker's own session-count gate carries the real
+    /// weight, see its module doc.
     fn promote_party_member(&mut self, sym: Sym, ts: Millis) {
         if matches!(self.timeline.state_at(sym.0, ts), Some((State::Charmed, _))) {
             return;
         }
         let name = self.store.name(sym).to_string();
-        if !plausible_player_name(&name) {
+        if !plausible_player_name(&name) || crate::npcdata::is_known_npc_name(&name) {
             return;
         }
-        self.encounters.entities.note_shared_target(&name);
+        self.groups.reinforce_weak(&name, ts);
+    }
+
+    /// why: layers GroupTracker's dynamic, decaying belief on top of
+    /// Entities' own permanent Kind -- for callers asking "is this
+    /// currently one of my allies", not "has this name ever been proven
+    /// any kind of ally". Never upgrades an already-Player/Pet kind
+    /// (nothing to add) and deliberately never touches "You" itself (no
+    /// reinforcement call ever names the log owner, matches
+    /// promote_party_member's own anchor-exclusion).
+    pub(crate) fn effective_kind(&self, name: &str, ts: Millis) -> Kind {
+        let kind = self.encounters.entities.kind(name);
+        if kind == Kind::Unproven && self.groups.currently_grouped(name, ts) {
+            Kind::Player
+        } else {
+            kind
+        }
     }
 
     fn record_heal(&mut self, ts: Millis, src: &str, dst: &str, ability: &str, amount: u64) {
@@ -2180,6 +2213,56 @@ impl Ingest {
         self.effects
             .push(sym, ts, text.to_string(), source, skill, true);
 
+        // why: strong group evidence -- a landing on someone else while
+        // "You" have an open Quick Buff window is suggestive, but alone
+        // also matches two real false positives, both caught
+        // empirically against the reference log, not guessed:
+        // (1) an unrelated effect coincidentally landing on a nearby MOB
+        // within the same 5s window ("a goblin warrior" -- fixed by the
+        // text-corroboration requirement below.
+        // (2) the corroboration requirement itself was too loose the
+        // first time: `text` equality alone let a widely-shared, common
+        // self-cast spell (real example: "Center", a self-heal 326
+        // distinct entities in the reference log all cast independently
+        // -- real players AND real "cleric-type" mob NPCs alike) count
+        // as "corroboration" purely by chance landing on both "You" and
+        // some unrelated mob within a few seconds, somewhere across 240
+        // real Quick Buff activations in a multi-day log. Fixed by
+        // requiring `text` itself to be a recognized BENEFICIAL buff
+        // flavor line (`classes_for_flavor` non-empty) -- exactly what
+        // `third_person_flavor`/`verb_conjugated_flavor` already
+        // guarantee for their own return value, but NOT what
+        // `confirm_spell_effect`'s bare spell-name landings (a
+        // completely different shape of evidence, e.g. "Center") carry.
+        // This is what actually separates a real Quick Buff group-cast
+        // burst from ambient, unrelated same-text coincidence.
+        //
+        // Same defensive filters the weak channel uses, charm guard
+        // included -- a related real leak: EQ's group buffs really do
+        // land on a player's own currently-charmed pet (a legitimate
+        // temporary ally, per Allegiance::of's own charm flip), and a
+        // Quick Buff burst landing on one is a real, corroborated buff --
+        // just not evidence the CHARM TARGET itself is a person, which
+        // is what GroupTracker is trying to answer.
+        if !resolved.eq_ignore_ascii_case("you")
+            && plausible_player_name(&resolved)
+            && !crate::npcdata::is_known_npc_name(&resolved)
+            && !matches!(self.timeline.state_at(sym, ts), Some((State::Charmed, _)))
+            && !crate::flavordata::classes_for_flavor(text).is_empty()
+        {
+            if let Some(&activated_ms) = self.pending_quickbuff.get("You") {
+                let you_sym = self.store.names.get("You").map(|s| s.0);
+                let corroborated = you_sym.is_some_and(|y| {
+                    self.recent_flavor_landings.iter().any(|(t, e, txt)| {
+                        *e == y && txt == text && (ts - *t).abs() <= GROUP_CAST_WINDOW_MS
+                    })
+                });
+                if ts - activated_ms <= QUICKBUFF_WINDOW_MS && corroborated {
+                    self.groups.reinforce_strong(&resolved, ts);
+                }
+            }
+        }
+
         // why: cancel -- disproves a pending entry via a group cast (other
         // entity) or a pulsing buff (same entity again); ts != p.ts excludes self-cancel
         self.pending_quickbuff_evidence.retain(|p| {
@@ -2336,7 +2419,7 @@ impl Ingest {
         let kind = if name.eq_ignore_ascii_case("you") {
             Kind::Player
         } else {
-            self.encounters.entities.kind(name)
+            self.effective_kind(name, ts)
         };
         // why: read-only, never interns -- an ally check must never
         // itself create identity; no Sym yet defaults correctly to Engaged
@@ -3448,17 +3531,58 @@ mod party_promotion_tests {
         assert_eq!(ing.encounters.entities.kind("a rat"), Kind::Unproven);
     }
 
-    /// why: the same heuristic must still work for its own real,
-    /// intended purpose -- a genuine, silently-present party member
-    /// (never spoken on a player channel) still gets recognized as one
-    /// through the exact same shared-target-damage evidence
+    /// why: real bug, measured against a 245MB reference log -- a single
+    /// shared hit used to promote to permanent Kind::Player immediately;
+    /// 371 distinct names got promoted that way in that log, the large
+    /// majority proper-noun-named charm mobs and recurring raid trash
+    /// (82% of them never recurred in a second, gap-separated session at
+    /// all). Now requires GroupTracker's own MIN_SESSIONS gate -- see
+    /// eqlp_session::group's own doc. Kind itself is untouched by this
+    /// path at all now; effective_kind still reads Unproven too, since
+    /// one session isn't enough evidence yet either way.
     #[test]
-    fn a_real_silent_party_member_still_gets_promoted() {
+    fn a_single_shared_hit_no_longer_promotes_alone() {
         let ing = run(&[
             "[Tue Jul 28 15:01:00 2026] You hit a bat for 5 points of damage.",
             "[Tue Jul 28 15:01:02 2026] Groupmate hit a bat for 3 points of damage.",
         ]);
-        assert_eq!(ing.encounters.entities.kind("Groupmate"), Kind::Player);
+        assert_eq!(ing.encounters.entities.kind("Groupmate"), Kind::Unproven);
+        assert_eq!(
+            ing.effective_kind("Groupmate", ing.now_ms()),
+            Kind::Unproven
+        );
+    }
+
+    /// why: the real, intended purpose still works -- a genuine,
+    /// silently-present party member (never spoken on a player channel)
+    /// is recognized dynamically once the same shared-target evidence
+    /// recurs across a second real, gap-separated session -- the gate a
+    /// one-afternoon farming neighbor or recurring charm mob essentially
+    /// never crosses (see the real-log measurement above). Kind itself
+    /// (Entities' own permanent classification) deliberately still
+    /// never changes -- only effective_kind, GroupTracker's dynamic
+    /// layer on top of it, does.
+    #[test]
+    fn a_real_silent_party_member_is_recognized_after_min_sessions() {
+        // why: 5 occasions, 3h apart (past SESSION_GAP_MS's 2h) -- each a
+        // real distinct session, a fresh mob every time so no single
+        // encounter is being re-read
+        let mut lines = Vec::new();
+        for hour in 0..eqlp_session::group::MIN_SESSIONS {
+            lines.push(format!(
+                "[Tue Jul 28 {:02}:00:00 2026] You hit a mob{hour} for 5 points of damage.",
+                hour * 3
+            ));
+            lines.push(format!(
+                "[Tue Jul 28 {:02}:00:02 2026] Groupmate hit a mob{hour} for 3 points of damage.",
+                hour * 3
+            ));
+        }
+        let refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+        let ing = run(&refs);
+        assert_eq!(ing.encounters.entities.kind("Groupmate"), Kind::Unproven);
+        let last_ts = ing.now_ms();
+        assert_eq!(ing.effective_kind("Groupmate", last_ts), Kind::Player);
     }
 }
 
@@ -3936,7 +4060,9 @@ mod currency_tests {
 
     #[test]
     fn destroying_an_item_records_it_as_disposed_tier_stripped() {
-        let ing = run("[Tue Jul 28 15:02:15 2026] You successfully destroyed 1 Raw-Hide Wristbands +2.\n");
+        let ing = run(
+            "[Tue Jul 28 15:02:15 2026] You successfully destroyed 1 Raw-Hide Wristbands +2.\n",
+        );
         assert!(ing.disposed_items.contains("raw-hide wristbands"));
     }
 
