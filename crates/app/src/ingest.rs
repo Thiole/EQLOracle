@@ -1529,6 +1529,27 @@ impl Ingest {
         amount: u64,
         flags: Flags,
     ) {
+        // why: Spencer's own ask -- "when you charm something, and you see
+        // no indication of charm ending, but you see outward combat on a
+        // similarly named mob, that means its a new target". A charmed pet
+        // can attack enemies all session without a break line ever needing
+        // to fire, but it can never legitimately land a hit on "You" --
+        // that alone is real proof the charm is already gone (naturally
+        // expired, a fresh backfire, or a new mob reusing the same name
+        // after the old one died), the same effective signal
+        // Action::Recovered's own explicit break line gives, just inferred
+        // here from real combat instead of waiting on one that may never
+        // come. Same two-part clear Action::Recovered does -- self.charm
+        // AND the timeline, so target_effects' own State::Charmed check
+        // agrees immediately too.
+        if let Some(c) = &mut self.charm {
+            if c.active && c.who.eq_ignore_ascii_case(src) && dst.eq_ignore_ascii_case("you") {
+                c.active = false;
+                c.since_ms = ts;
+                let sym = self.sym(src);
+                self.timeline.observed(ts, sym.0, State::Engaged);
+            }
+        }
         let enc = self.link(ts, src, dst);
         let a = self.sym(src);
         let t = self.sym(dst);

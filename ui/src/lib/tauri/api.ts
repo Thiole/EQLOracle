@@ -220,6 +220,17 @@ export interface SkillStatusDto {
    * between polls (same shape as TargetEffectDto's own ready_at_ms).
    * null only when there's no data to estimate from at all yet. */
   ready_at_ms: number | null;
+  /** why: the raw learned interval behind ready_at_ms -- see
+   * skilltracker.rs's own doc on why the smallest observed real gap is
+   * this server's only trustworthy reuse-timer source, and why that's
+   * already AA/haste/gear-upgrade-aware without modeling any of them
+   * separately: it's measured off the player's own real casts. null
+   * until a second real attempt exists to measure a gap from. */
+  reuse_gap_ms: number | null;
+  /** why: the recovery-anchor counterpart -- landing-to-next-attempt,
+   * tracked independently of reuse_gap_ms (see SkillTrack::ready_at's
+   * own doc). null until a landing AND a later attempt both exist. */
+  recovery_gap_ms: number | null;
 }
 
 /** why: Skill Tracker's target-effects section -- see targeteffects.rs's own doc */

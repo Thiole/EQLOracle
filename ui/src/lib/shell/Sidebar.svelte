@@ -19,6 +19,7 @@
     { id: 'character', label: 'Character', enabled: true },
     { id: 'endgame', label: 'Endgame', enabled: true },
     { id: 'gamedata', label: 'Game Data', enabled: true },
+    { id: 'skilldata', label: 'Skill Data', enabled: true },
     { id: 'maps', label: 'Maps', enabled: true },
     { id: 'overlay', label: 'Overlay', enabled: true },
   ];

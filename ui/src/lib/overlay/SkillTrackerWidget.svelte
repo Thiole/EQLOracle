@@ -110,15 +110,30 @@
     return name.slice(0, 2).toUpperCase();
   }
 
-  /** why: Spencer's own spec for the three real states a target effect can be in --
-   * failed/resisted: flash, 0:00. landed and timed out (no wear-off confirmation exists
-   * for most of these -- see targeteffects.rs's own doc): flash, 0:00, but keep showing it,
-   * not drop it, until the target itself clears. landed and still running: a live countdown. */
+  /** why: Spencer's own ask -- flash a warning BEFORE a still-running
+   * effect's real countdown hits zero, not just once it already has.
+   * 10s: long enough to actually notice and react (reapply a slow,
+   * back off a target you were relying on a DoT to finish), short
+   * enough it only fires once the effect is genuinely about to lapse. */
+  const EXPIRE_WARN_MS = 10_000;
+
+  /** why: Spencer's own spec for the real states a target effect can be in --
+   * failed/resisted: flash (hard invert), 0:00. landed and timed out (no
+   * wear-off confirmation exists for most of these -- see targeteffects.rs's
+   * own doc): flash (hard invert), 0:00, but keep showing it, not drop it,
+   * until the target itself clears. landed, still running, but inside
+   * EXPIRE_WARN_MS of its own deadline: a live countdown PLUS a milder
+   * outline-only warning flash -- still alive, worth noticing, not yet the
+   * same "it's actually over" state the hard invert means. landed and
+   * comfortably running: just a live countdown. */
   function targetEffectState(e: { landed: boolean; ready_at_ms: number | null }) {
-    if (!e.landed) return { label: '0:00', flash: true };
-    if (e.ready_at_ms !== null && nowMs >= e.ready_at_ms) return { label: '0:00', flash: true };
-    if (e.ready_at_ms !== null) return { label: fmtCountdown(e.ready_at_ms - nowMs), flash: false };
-    return { label: '', flash: false };
+    if (!e.landed) return { label: '0:00', flash: true, expiring: false };
+    if (e.ready_at_ms !== null && nowMs >= e.ready_at_ms) return { label: '0:00', flash: true, expiring: false };
+    if (e.ready_at_ms !== null) {
+      const remaining = e.ready_at_ms - nowMs;
+      return { label: fmtCountdown(remaining), flash: false, expiring: remaining <= EXPIRE_WARN_MS };
+    }
+    return { label: '', flash: false, expiring: false };
   }
 
   const toneClass = { good: 'text-good', warn: 'text-caution' } as const;
@@ -155,20 +170,27 @@
   {/if}
 
   {#if targetEffects?.target && visibleTargetEffects.length}
+    {@const anyExpiring = visibleTargetEffects.some((e) => targetEffectState(e).expiring)}
     <div class="flex flex-col gap-1 border-t border-foreground/10 pt-1.5">
-      <div class="truncate font-medium text-foreground">Target: {targetEffects.target}</div>
+      <div class="truncate font-medium {anyExpiring ? 'target-name-expiring text-caution' : 'text-foreground'}">Target: {targetEffects.target}</div>
       <div class="flex flex-wrap gap-2">
         {#each visibleTargetEffects as e (e.spell)}
           {@const st = targetEffectState(e)}
           <div class="flex flex-col items-center gap-0.5" title={e.spell}>
-            <div class="flex size-7 items-center justify-center overflow-hidden rounded-sm bg-background/60 text-[10px] font-bold tracking-wide {st.flash ? 'target-effect-blink' : 'text-foreground/90'}">
+            <div
+              class="flex size-7 items-center justify-center overflow-hidden rounded-sm bg-background/60 text-[10px] font-bold tracking-wide {st.flash
+                ? 'target-effect-blink'
+                : st.expiring
+                  ? 'target-effect-expiring text-foreground/90'
+                  : 'text-foreground/90'}"
+            >
               {#if e.icon}
                 <img src={ICON_BASE + encodeURIComponent(e.icon)} alt="" class="size-full object-cover" />
               {:else}
                 {abbrev(e.spell)}
               {/if}
             </div>
-            <div class="font-mono text-[10px] tabular-nums {st.flash ? 'text-bad' : 'text-muted-foreground'}">{st.label}</div>
+            <div class="font-mono text-[10px] tabular-nums {st.flash ? 'text-bad' : st.expiring ? 'text-caution' : 'text-muted-foreground'}">{st.label}</div>
           </div>
         {/each}
       </div>
@@ -198,6 +220,34 @@
     50% {
       background-color: var(--bad);
       color: var(--background);
+    }
+  }
+
+  /* why: Spencer's own ask -- "flash in inverted colors a square around
+     the buff" for an effect about to run out, DISTINCT from the hard
+     target-effect-blink above (that one means "already over" -- a full
+     background invert). This one's still alive, just running low: a
+     pulsing outline ring around the badge, not a background invert, so
+     the two states never look the same at a glance. */
+  .target-effect-expiring {
+    animation: target-effect-expiring-flash 0.5s steps(1, end) infinite;
+  }
+  @keyframes target-effect-expiring-flash {
+    50% {
+      outline: 2px solid var(--caution);
+      outline-offset: 1px;
+    }
+  }
+
+  /* why: same idea applied to the "Target: <name>" header -- Spencer's own
+     ask: "maybe the name of target too". A plain color toggle here, not an
+     outline (there's no fixed-size box around free-flowing text to ring). */
+  .target-name-expiring {
+    animation: target-name-expiring-flash 0.5s steps(1, end) infinite;
+  }
+  @keyframes target-name-expiring-flash {
+    50% {
+      opacity: 0.55;
     }
   }
 </style>

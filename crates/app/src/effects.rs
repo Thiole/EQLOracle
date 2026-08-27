@@ -182,6 +182,42 @@ mod tests {
         );
     }
 
+    /// why: Spencer's own ask -- "when you charm something, and you see no
+    /// indication of charm ending, but you see outward combat on a
+    /// similarly named mob, that means its a new target". A charmed pet
+    /// can never legitimately land a hit on "You" -- that alone is real
+    /// proof the charm already broke (silently, no worn-off line, same
+    /// shape zoning's own break can take), whether it's the same mob's
+    /// charm actually having expired or a fresh mob reusing the same name.
+    #[test]
+    fn a_charmed_name_attacking_you_breaks_the_charm_with_no_worn_off_line() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
+            "[Tue Jul 28 15:01:05 2026] an abhorrent hits You for 4 points of damage.",
+        ]);
+        let dto = status_effects(&ing);
+        assert!(
+            !dto.charm.expect("still tracked, now inactive").active,
+            "the charmed name hitting You is proof the charm already broke"
+        );
+    }
+
+    /// why: the flip side of the test above -- a charmed pet doing exactly
+    /// what it's supposed to (hitting something that ISN'T you) must never
+    /// be mistaken for evidence of a break
+    #[test]
+    fn a_charmed_pet_attacking_something_else_does_not_break_the_charm() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
+            "[Tue Jul 28 15:01:05 2026] an abhorrent hits a rat for 4 points of damage.",
+        ]);
+        let dto = status_effects(&ing);
+        assert!(
+            dto.charm.expect("still tracked").active,
+            "a charmed pet fighting on your behalf must not clear its own charm"
+        );
+    }
+
     #[test]
     fn invis_lands_then_warns_then_ends() {
         let ing = run(&["[Tue Jul 28 15:01:00 2026] You vanish."]);

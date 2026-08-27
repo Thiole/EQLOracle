@@ -6,9 +6,9 @@
 use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
 use eqlp_app::parser::build_engine;
 use eqlp_app::{
-    aadata, character, chat, combat, debugview, effects, gearplanner, history, inventory, monsters,
-    npcdata, overview, progression, skilltracker, spelldata, spelleffect, targeteffects, windowcap,
-    zonedata,
+    aadata, character, chat, combat, debugview, dpscalc, effects, gearplanner, history, inventory,
+    monsters, npcdata, overview, progression, skilltracker, spelldata, spelleffect, targeteffects,
+    windowcap, zonedata,
 };
 use serde_json::{json, Map, Value};
 use std::path::Path;
@@ -205,6 +205,13 @@ fn main() {
         json!({ "": progression::spellbook(&ing) }),
     );
     out.insert("list_aa".to_string(), json!({ "": aadata::aas() }));
+    // why: same assumeMaxRank=true the frontend's own SkillData tab calls
+    // with -- mock.ts's own keyFor has no explicit case for this command
+    // (falls through to the default "" key), so this single entry covers it
+    out.insert(
+        "get_damage_spells".to_string(),
+        json!({ "": dpscalc::list_damage_spells(&ing, true) }),
+    );
 
     // why: one real representative race/classes/levels combo, not exhaustive
     let (classes, levels): (Vec<String>, Vec<u8>) = match cfgs.configurations.first() {

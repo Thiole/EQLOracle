@@ -167,6 +167,21 @@ pub struct SkillStatusDto {
     /// between polls. None only when there's no data to estimate from
     /// at all yet (a single attempt, nothing landed).
     pub ready_at_ms: Option<Millis>,
+    /// why: the raw learned interval behind ready_at_ms, not just the
+    /// resolved live deadline -- the Skill Data tab's own ask (Spencer:
+    /// "a table of skill estimation data") wants the actual timer
+    /// LENGTH, which stays meaningful long after last_used_ms is stale,
+    /// unlike ready_at_ms alone. Smallest gap ever observed between two
+    /// real attempts -- see this module's own top-level doc for why
+    /// that's this server's only trustworthy source (no hardcoded wiki
+    /// table), and why that same empirical basis already reflects AA/
+    /// haste/gear/upgrades without needing to model any of them
+    /// separately: it's measured off the player's own real casts.
+    pub reuse_gap_ms: Option<i64>,
+    /// why: the recovery-anchor counterpart to reuse_gap_ms -- see
+    /// SkillTrack::ready_at's own doc for why landing-to-next-attempt is
+    /// tracked completely separately from attempt-to-attempt
+    pub recovery_gap_ms: Option<i64>,
 }
 
 /// why: the overlay's own poll -- same polled-on-tick shape as
@@ -182,6 +197,8 @@ pub fn skill_status(ing: &Ingest) -> Vec<SkillStatusDto> {
             last_outcome: if t.last_landed { "landed" } else { "avoided" },
             last_used_ms: t.last_used_ms,
             ready_at_ms: t.ready_at(),
+            reuse_gap_ms: t.reuse_gap_ms,
+            recovery_gap_ms: t.recovery_gap_ms,
         })
         .collect()
 }

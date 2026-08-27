@@ -984,6 +984,20 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
 
 /// why: what clicking a timeline point shows -- every entity, state, and a snapshot DPS
 pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<EntityStateDto> {
+    fight_state_at_windowed(ing, encounter_id, ts_ms, INSPECT_WINDOW_MS)
+}
+
+/// why: fight_state_at's own real body, window size pulled out -- the
+/// overlay's own live_meter needs a wider rolling window than the
+/// Combat tab's timeline-scrub feature does (see live_meter's own doc),
+/// and needs to point that same window at the fight's own end once it's
+/// closed rather than "now". Same dps calc either way, just parameterized.
+fn fight_state_at_windowed(
+    ing: &Ingest,
+    encounter_id: u32,
+    ts_ms: Millis,
+    window_ms: Millis,
+) -> Vec<EntityStateDto> {
     let id = EncounterId(encounter_id);
     // why: same as fight_timeline -- resolved through inferred pet ownership, de-duplicated
     let mut entities: Vec<String> = ing
@@ -1012,7 +1026,7 @@ pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<Ent
                         &ing.store,
                         &Filter::encounter(id).damage().by(s),
                         ts_ms,
-                        INSPECT_WINDOW_MS,
+                        window_ms,
                     )
                 })
                 .unwrap_or(0.0);
@@ -1110,15 +1124,37 @@ pub fn encounter_for(ing: &Ingest, target_sym: Sym) -> Option<&Encounter> {
     ing.store.encounter(EncounterId(id))
 }
 
-/// why: overlay's own live poll -- most recent encounter, `fight_state_at`'s
-/// own trailing INSPECT_WINDOW_MS dps (already a rolling snapshot, not
-/// cumulative, so a fight that ended minutes ago self-corrects to 0 dps
-/// rather than needing its own separate staleness cutoff here). None
-/// before any real encounter exists yet this session.
+/// why: wider than INSPECT_WINDOW_MS -- Spencer's own ask: "average of
+/// last 15 seconds (not whole encounter)". The Combat tab's own
+/// timeline-scrub feature (fight_state_at/INSPECT_WINDOW_MS) stays a
+/// tight 6s "right now" snapshot at a point the user picked by hand;
+/// the overlay is glanced at mid-fight, a wider window reads less jumpy.
+const LIVE_METER_ROLLING_WINDOW_MS: Millis = 15_000;
+
+/// why: overlay's own live poll -- most recent encounter. While the
+/// fight's still open, a rolling LIVE_METER_ROLLING_WINDOW_MS snapshot
+/// at "now" (self-corrects toward 0 in a lull, same idea
+/// fight_state_at's own doc used to describe here). Once it's closed,
+/// pointed at the fight's own end with a window spanning its *entire*
+/// duration instead -- Spencer's own ask: "when fight ends, itll show
+/// dps graph for the whole fight, not just the last bit". Without this
+/// the old single-window-at-now call would just keep sampling forward
+/// past end_ms, finding no more damage in range and decaying to 0
+/// within one window of the fight actually ending -- exactly the "last
+/// bit" instead of the real average he wanted to read afterward. Frozen
+/// at end_ms rather than "now", so it doesn't itself decay further the
+/// longer the closed fight's summary stays on screen. None before any
+/// real encounter exists yet this session.
 pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     let now = ing.now_ms();
     let latest = current_encounter(ing)?;
-    let rows = fight_state_at(ing, latest.id.0, now);
+    let rows = if latest.is_open() {
+        fight_state_at_windowed(ing, latest.id.0, now, LIVE_METER_ROLLING_WINDOW_MS)
+    } else {
+        let end = latest.end_ms.unwrap_or(now).max(latest.start_ms);
+        let whole_fight_ms = (end - latest.start_ms).max(1);
+        fight_state_at_windowed(ing, latest.id.0, end, whole_fight_ms)
+    };
     let (outgoing, incoming) = rows.into_iter().partition(|r| r.is_player || r.is_pet);
     Some(LiveMeterDto {
         target: ing.store.name(latest.target).to_string(),
