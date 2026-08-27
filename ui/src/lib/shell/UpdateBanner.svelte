@@ -10,6 +10,14 @@
     <div class="rounded-sm border border-primary/40 bg-card px-3 py-2.5 text-[12px] shadow-lg">
       <p class="mb-1">
         <span class="text-primary">Update available</span> -- v{$availableUpdate.current_version} → v{$availableUpdate.version}.
+        <a
+          class="text-brand-soft hover:text-primary hover:underline"
+          href={$availableUpdate.release_url}
+          target="_blank"
+          rel="noopener"
+        >
+          View on GitHub ↗
+        </a>
       </p>
       {#if $availableUpdate.notes}
         <p class="mb-2 max-h-24 overflow-y-auto whitespace-pre-line text-[11px] text-muted-foreground">

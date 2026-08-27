@@ -1065,6 +1065,8 @@ export interface UpdateInfoDto {
   current_version: string;
   /** why: the release's own body text, whatever that channel's notes say -- may be empty */
   notes: string | null;
+  /** why: a real link to the GitHub release page for this channel, so the update prompt can link out to the changelog instead of just showing notes inline */
+  release_url: string;
 }
 
 // ---------------------------------------------------------------- history
