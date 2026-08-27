@@ -457,6 +457,17 @@ pub fn get_drop_watch(state: State<AppState>) -> Vec<crate::dropwatch::DropWatch
     crate::dropwatch::drop_watch(&state.ingest.lock().unwrap())
 }
 
+/// why: Drop Watch's "you just got one, remove it?" prompt -- see
+/// TrackedLootDto's own doc. `items` is whatever the frontend is
+/// currently tracking, one call covers all of them.
+#[tauri::command]
+pub fn get_tracked_loot_status(
+    state: State<AppState>,
+    items: Vec<String>,
+) -> Vec<crate::dropwatch::TrackedLootDto> {
+    crate::dropwatch::loot_status(&state.ingest.lock().unwrap(), &items)
+}
+
 /// why: Skill Tracker widget's target-effects section -- see targeteffects.rs's own doc
 #[tauri::command]
 pub fn get_target_effects(state: State<AppState>) -> crate::targeteffects::TargetEffectsDto {

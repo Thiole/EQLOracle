@@ -18,6 +18,7 @@
   import Settings from '$lib/settings/Settings.svelte';
   import InventoryDumpBanner from '$lib/shell/InventoryDumpBanner.svelte';
   import UpdateBanner from '$lib/shell/UpdateBanner.svelte';
+  import DropWatchLootBanner from '$lib/shell/DropWatchLootBanner.svelte';
   import { status, refreshStatus } from '$lib/stores/status';
   import { loadPreferences } from '$lib/stores/settings';
   import { loadGameDataModule } from '$lib/stores/gamedata';
@@ -86,5 +87,6 @@
     </div>
     <InventoryDumpBanner />
     <UpdateBanner />
+    <DropWatchLootBanner />
   {/if}
 </div>

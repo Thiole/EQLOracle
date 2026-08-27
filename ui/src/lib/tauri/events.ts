@@ -7,6 +7,7 @@ import { onInventoryDumpDetected } from '../stores/character';
 import { refreshLastLocation, refreshZoneContext } from '../stores/maps';
 import { refreshRaidRows } from '../stores/raiding';
 import { onChatTick } from '../stores/chat';
+import { pollTrackedLoot } from '../stores/dropWatchLoot';
 
 interface RecentLine {
   kind: string;
@@ -33,6 +34,7 @@ export async function initTauriEvents() {
     void refreshZoneContext();
     void refreshRaidRows();
     onChatTick();
+    void pollTrackedLoot();
   });
 
   await listen<string>('parse-error', (e) => {

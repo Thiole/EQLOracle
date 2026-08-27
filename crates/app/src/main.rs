@@ -117,6 +117,7 @@ fn main() {
             commands::get_skill_status,
             commands::get_target_effects,
             commands::get_drop_watch,
+            commands::get_tracked_loot_status,
             commands::set_overlay_enabled,
             commands::set_overlay_opacity,
             commands::set_overlay_overall_opacity,

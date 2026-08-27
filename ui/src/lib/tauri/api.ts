@@ -261,6 +261,12 @@ export interface DropWatchRowDto {
   drops: string[];
 }
 
+export interface TrackedLootDto {
+  item: string;
+  count: number;
+  last_looted_ms: number;
+}
+
 // ---------------------------------------------------------------- character
 
 export interface ClassConfigurationDto {
@@ -1076,6 +1082,11 @@ export interface PreferencesDto {
    * material chips and Primary Class Unlocks' reward materials. Empty by
    * default -- nothing baked in. */
   tracked_drop_items: string[];
+  /** why: baseline count already prompted-about (or auto-dismissed) per
+   * tracked item -- a fresh loot past this count is a new prompt, an
+   * already-accounted-for one isn't. Persisted so a restart doesn't
+   * re-prompt about the same old loot line. */
+  tracked_drop_seen_counts: Record<string, number>;
 }
 
 export interface UpdateInfoDto {
@@ -1312,6 +1323,9 @@ export const api = {
   /** why: Drop Watch widget -- see dropwatch.rs's own doc. Unfiltered,
    * frontend intersects with tracked_drop_items same as skill status. */
   getDropWatch: () => invoke<DropWatchRowDto[]>('get_drop_watch'),
+  /** why: Drop Watch's "you just got one, remove it?" prompt -- see
+   * TrackedLootDto's own doc. One call covers every currently-tracked name. */
+  getTrackedLootStatus: (items: string[]) => invoke<TrackedLootDto[]>('get_tracked_loot_status', { items }),
   /** why: each widget is its own real OS window -- opens/closes just that
    * one; rejects with a plain-language reason if the session's
    * capability caps below click-through */

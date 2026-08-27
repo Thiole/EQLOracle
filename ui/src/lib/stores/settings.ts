@@ -5,7 +5,7 @@
 // not just Settings itself, which is why this lives here rather than as
 // local component state in Settings.svelte.
 import { writable, derived, get } from 'svelte/store';
-import { api, type PreferencesDto } from '../tauri/api';
+import { api, type PreferencesDto, type TrackedLootDto } from '../tauri/api';
 
 export const volume = writable(100);
 /** why: the raw saved preference -- null means "no explicit choice yet",
@@ -64,6 +64,9 @@ export const dropWatchOverallOpacity = writable(1.0);
  * own doc. Entry points are Sky Quests' material chips and Primary Class
  * Unlocks' reward materials. */
 export const trackedDropItems = writable<string[]>([]);
+/** why: see PreferencesDto.tracked_drop_seen_counts's own doc -- the
+ * "remove from Drop Watch?" prompt's own baseline, not a display value */
+export const trackedDropSeenCounts = writable<Record<string, number>>({});
 export const settingsLoaded = writable(false);
 
 // why: applies on every change, not just after an explicit setTheme() --
@@ -103,6 +106,7 @@ export function loadPreferences(): Promise<void> {
     dropWatchOpacity.set(prefs.overlay_drop_watch_opacity);
     dropWatchOverallOpacity.set(prefs.overlay_drop_watch_overall_opacity);
     trackedDropItems.set(prefs.tracked_drop_items);
+    trackedDropSeenCounts.set(prefs.tracked_drop_seen_counts);
     settingsLoaded.set(true);
   })();
   return loading;
@@ -124,6 +128,7 @@ function currentPrefs(): PreferencesDto {
     overlay_drop_watch_opacity: get(dropWatchOpacity),
     overlay_drop_watch_overall_opacity: get(dropWatchOverallOpacity),
     tracked_drop_items: get(trackedDropItems),
+    tracked_drop_seen_counts: get(trackedDropSeenCounts),
   };
 }
 
@@ -266,13 +271,28 @@ export async function setTrackedDropItems(items: string[]) {
   await api.setPreferences({ ...currentPrefs(), tracked_drop_items: items }).catch(() => {});
 }
 
+/** why: the "remove from Drop Watch?" prompt's own baseline -- see
+ * PreferencesDto.tracked_drop_seen_counts's own doc */
+export async function setTrackedDropSeenCounts(counts: Record<string, number>) {
+  trackedDropSeenCounts.set(counts);
+  await api.setPreferences({ ...currentPrefs(), tracked_drop_seen_counts: counts }).catch(() => {});
+}
+
 /** why: the one call every "track this drop" button uses -- Sky Quests'
- * material chips and Primary Class Unlocks' reward materials -- same
- * "is this one tracked, flip it" shape as toggleTrackedSkill */
+ * material chips, Primary Class Unlocks' reward materials, and Gear
+ * Planner's own unowned items -- same "is this one tracked, flip it"
+ * shape as toggleTrackedSkill. Newly tracking something seeds its
+ * prompt baseline to whatever's already been looted so far -- tracking
+ * an item you already have shouldn't immediately prompt to remove it. */
 export async function toggleTrackedDropItem(name: string) {
   const current = get(trackedDropItems);
-  const next = current.includes(name) ? current.filter((s) => s !== name) : [...current, name];
+  const adding = !current.includes(name);
+  const next = adding ? [...current, name] : current.filter((s) => s !== name);
   await setTrackedDropItems(next);
+  if (adding) {
+    const [existing] = await api.getTrackedLootStatus([name]).catch(() => [] as TrackedLootDto[]);
+    await setTrackedDropSeenCounts({ ...get(trackedDropSeenCounts), [name]: existing?.count ?? 0 });
+  }
 }
 
 /** why: shared by every era-tagged Game Data category that carries a

@@ -160,6 +160,17 @@ pub struct Preferences {
     /// as tracked_skills/tracked_target_effects.
     #[serde(default)]
     pub tracked_drop_items: Vec<String>,
+    /// why: how many of each tracked item were already accounted for the
+    /// last time its "remove from Drop Watch?" prompt was shown or
+    /// auto-dismissed (dropwatch.rs's own `TrackedLootDto.count`, not a
+    /// timestamp -- a fresh loot after a decline is still a fresh prompt).
+    /// Persisted, not session-only: without this, restarting the app
+    /// would re-backfill the same old loot line and prompt about an item
+    /// gotten days ago all over again. Seeded to the real current count
+    /// the moment an item is newly tracked, so tracking something you
+    /// already have doesn't immediately prompt either.
+    #[serde(default)]
+    pub tracked_drop_seen_counts: HashMap<String, u64>,
     /// why: see OverlayPosition's own doc. Keyed by widget name (same
     /// "dps_meter"/"skill_tracker" strings commands::overlay_label
     /// already uses), empty until a widget's been dragged and re-locked
@@ -191,6 +202,7 @@ impl Default for Preferences {
             tracked_skills: default_tracked_skills(),
             tracked_target_effects: Vec::new(),
             tracked_drop_items: Vec::new(),
+            tracked_drop_seen_counts: HashMap::new(),
             overlay_positions: HashMap::new(),
         }
     }
@@ -266,6 +278,10 @@ mod tests {
             "nothing baked in -- always an opt-in pick"
         );
         assert!(
+            p.tracked_drop_seen_counts.is_empty(),
+            "no baseline recorded until something's actually tracked"
+        );
+        assert!(
             p.overlay_positions.is_empty(),
             "no widget has a saved position until it's been dragged and re-locked at least once"
         );
@@ -278,6 +294,8 @@ mod tests {
             "dps_meter".to_string(),
             OverlayPosition { x: 12.5, y: -4.0 },
         );
+        let mut tracked_drop_seen_counts = HashMap::new();
+        tracked_drop_seen_counts.insert("Light Woolen Mask".to_string(), 2u64);
         let p = Preferences {
             volume: 42,
             era: Some("All".to_string()),
@@ -293,6 +311,7 @@ mod tests {
             tracked_skills: vec!["Kick".to_string(), "Backstab".to_string()],
             tracked_target_effects: vec!["Tashania".to_string()],
             tracked_drop_items: vec!["Light Woolen Mask".to_string()],
+            tracked_drop_seen_counts,
             overlay_positions,
         };
         let json = serde_json::to_string(&p).unwrap();
@@ -311,6 +330,10 @@ mod tests {
         assert_eq!(back.tracked_skills, vec!["Kick", "Backstab"]);
         assert_eq!(back.tracked_target_effects, vec!["Tashania"]);
         assert_eq!(back.tracked_drop_items, vec!["Light Woolen Mask"]);
+        assert_eq!(
+            back.tracked_drop_seen_counts.get("Light Woolen Mask"),
+            Some(&2)
+        );
         let pos = back
             .overlay_positions
             .get("dps_meter")
@@ -339,6 +362,7 @@ mod tests {
         );
         assert!(back.tracked_target_effects.is_empty());
         assert!(back.tracked_drop_items.is_empty());
+        assert!(back.tracked_drop_seen_counts.is_empty());
         assert!(back.overlay_positions.is_empty());
     }
 }
