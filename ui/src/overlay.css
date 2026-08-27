@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import './tokens.css';
+@import './themes.css';
 
 /* why: self-hosted variable font, same as app.css's own -- duplicated
    (not shared via an import) only because it's this small; the tokens
@@ -16,8 +17,12 @@
    stay transparent too, or a painted background here defeats the whole
    feature. Deliberately NOT reusing app.css's own `body { @apply
    bg-background }` rule -- that's the one difference from app.css that
-   actually matters. No theme import either: the overlay doesn't theme-
-   switch in v1, just the base "eqlp" tokens tokens.css already sets. */
+   actually matters. themes.css IS imported now (Spencer's own ask: "ui
+   overlay theme should match") -- OverlayApp.svelte's own doc has where
+   `data-theme` actually gets applied, same attribute-on-<html> mechanism
+   app.css's own themed pages already use, just driven independently
+   here since this is a separate window/JS realm that can't share the
+   main window's own theme.subscribe side effect. */
 @layer base {
   html,
   body {

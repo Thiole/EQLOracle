@@ -131,17 +131,22 @@
      them own a panel of their own) -- text stays legible against
      whatever's actually behind it once background opacity goes to 0,
      not just this panel's own dark fill. Same treatment as
-     DpsMeterWidget's own outer div. -->
+     DpsMeterWidget's own outer div.
+
+     Panel background is the theme's own --background now (Spencer's
+     own ask: "ui overlay theme should match") -- see DpsMeterWidget's
+     own doc on why color-mix, not a literal rgba(), is what lets a
+     THEME color still take a variable alpha. -->
 <div
   class="flex flex-col gap-1.5 rounded-md p-2 text-[12px] font-semibold"
-  style:background-color="rgba(10, 11, 13, {opacity})"
+  style:background-color="color-mix(in srgb, var(--background) {opacity * 100}%, transparent)"
   style:opacity={overallOpacity}
   style:text-shadow="0 1px 2px rgba(0, 0, 0, 0.9), 0 0px 4px rgba(0, 0, 0, 0.6)"
 >
   <StatusEffectsWidget {status} tracked={trackedSkillNames} />
 
   {#if visibleSkills.length}
-    <div class="flex flex-col gap-0.5 border-t border-white/10 pt-1.5">
+    <div class="flex flex-col gap-0.5 border-t border-foreground/10 pt-1.5">
       {#each visibleSkills as s (s.skill)}
         {@const row = skillRow(s)}
         <div class="font-medium {toneClass[row.tone]}">{row.text}</div>
@@ -150,20 +155,20 @@
   {/if}
 
   {#if targetEffects?.target && visibleTargetEffects.length}
-    <div class="flex flex-col gap-1 border-t border-white/10 pt-1.5">
-      <div class="truncate font-medium text-white">Target: {targetEffects.target}</div>
+    <div class="flex flex-col gap-1 border-t border-foreground/10 pt-1.5">
+      <div class="truncate font-medium text-foreground">Target: {targetEffects.target}</div>
       <div class="flex flex-wrap gap-2">
         {#each visibleTargetEffects as e (e.spell)}
           {@const st = targetEffectState(e)}
           <div class="flex flex-col items-center gap-0.5" title={e.spell}>
-            <div class="flex size-7 items-center justify-center overflow-hidden rounded-sm bg-black/40 text-[10px] font-bold tracking-wide {st.flash ? 'target-effect-blink' : 'text-white/90'}">
+            <div class="flex size-7 items-center justify-center overflow-hidden rounded-sm bg-background/60 text-[10px] font-bold tracking-wide {st.flash ? 'target-effect-blink' : 'text-foreground/90'}">
               {#if e.icon}
                 <img src={ICON_BASE + encodeURIComponent(e.icon)} alt="" class="size-full object-cover" />
               {:else}
                 {abbrev(e.spell)}
               {/if}
             </div>
-            <div class="font-mono text-[10px] tabular-nums {st.flash ? 'text-bad' : 'text-white/70'}">{st.label}</div>
+            <div class="font-mono text-[10px] tabular-nums {st.flash ? 'text-bad' : 'text-muted-foreground'}">{st.label}</div>
           </div>
         {/each}
       </div>
@@ -174,19 +179,25 @@
 <style>
   /* why: same hard on/off blink as StatusEffectsWidget's own charm-broke
      alert -- a failed/resisted cast or an uncertain-expired timer both
-     get the same real attention-grabbing treatment, not a color alone */
+     get the same real attention-grabbing treatment, not a color alone.
+     "off" state is the theme's own --background at a fixed alpha (was a
+     literal rgba(0,0,0,0.4)); "on" state's text is the theme's own
+     --background too, not a hardcoded near-black -- --bad is a bright
+     semantic color across every theme here so a theme background
+     reliably reads dark enough against it either way, and this way
+     nothing in the flash is a raw color the theme doesn't own. */
   .target-effect-blink {
     animation: target-effect-flash 0.4s steps(1, end) infinite;
   }
   @keyframes target-effect-flash {
     0%,
     100% {
-      background-color: rgba(0, 0, 0, 0.4);
+      background-color: color-mix(in srgb, var(--background) 40%, transparent);
       color: var(--bad);
     }
     50% {
       background-color: var(--bad);
-      color: #0a0b0d;
+      color: var(--background);
     }
   }
 </style>

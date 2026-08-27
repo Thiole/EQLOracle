@@ -34,11 +34,11 @@
 {#snippet meterRows(rows: EntityStateDto[], barClass: string)}
   {@const max = maxOf(rows)}
   {#each rows as r (r.name)}
-    <div class="relative overflow-hidden rounded-sm bg-black/30">
+    <div class="relative overflow-hidden rounded-sm bg-foreground/10">
       <div class="absolute inset-y-0 left-0 {barClass}" style:width="{(r.dps / max) * 100}%"></div>
       <div class="relative flex items-center justify-between gap-2 px-1.5 py-0.5">
-        <span class="truncate {r.is_pet ? 'text-white/70 italic' : 'text-white'}">{r.name}</span>
-        <span class="shrink-0 font-mono tabular-nums text-white">{r.dps.toFixed(0)}</span>
+        <span class="truncate {r.is_pet ? 'text-foreground/70 italic' : 'text-foreground'}">{r.name}</span>
+        <span class="shrink-0 font-mono tabular-nums text-foreground">{r.dps.toFixed(0)}</span>
       </div>
     </div>
   {/each}
@@ -51,23 +51,29 @@
      whatever's behind it even at background opacity 0 -- the game
      itself, not this panel's own dark fill. Reduces or removes cleanly
      for anyone who'd rather have it thinner (each row's own text color
-     still wins for anything that already sets font-bold/font-mono). -->
+     still wins for anything that already sets font-bold/font-mono).
+
+     Panel background is the theme's own --background now (Spencer's
+     own ask: "ui overlay theme should match"), not a fixed rgb triple
+     -- color-mix against transparent is what makes a THEME color still
+     take a variable alpha, the same thing a literal rgba() did for the
+     one fixed color this used to always be. -->
 <div
   class="flex flex-col gap-1.5 rounded-md p-2 text-[12px] font-semibold"
-  style:background-color="rgba(10, 11, 13, {opacity})"
+  style:background-color="color-mix(in srgb, var(--background) {opacity * 100}%, transparent)"
   style:opacity={overallOpacity}
   style:text-shadow="0 1px 2px rgba(0, 0, 0, 0.9), 0 0px 4px rgba(0, 0, 0, 0.6)"
 >
   {#if !meter || (!meter.outgoing.length && !meter.incoming.length)}
-    <p class="text-white/70">no active fight</p>
+    <p class="text-muted-foreground">no active fight</p>
   {:else}
-    <div class="truncate font-medium text-white">
+    <div class="truncate font-medium text-foreground">
       {meter.target}{meter.open ? '' : ' (ended)'}
     </div>
 
     {#if meter.outgoing.length}
       <div class="flex flex-col gap-0.5">
-        <div class="flex items-center justify-between text-[10px] tracking-wide text-white/60 uppercase">
+        <div class="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
           <span>outgoing</span>
           <span class="font-mono tabular-nums">{total(meter.outgoing).toFixed(0)}</span>
         </div>
@@ -77,7 +83,7 @@
 
     {#if meter.incoming.length}
       <div class="flex flex-col gap-0.5">
-        <div class="flex items-center justify-between text-[10px] tracking-wide text-white/60 uppercase">
+        <div class="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
           <span>incoming</span>
           <span class="font-mono tabular-nums">{total(meter.incoming).toFixed(0)}</span>
         </div>

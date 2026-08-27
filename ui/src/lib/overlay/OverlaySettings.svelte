@@ -137,11 +137,11 @@
     >
       <div
         class="flex size-full items-center justify-center rounded-[3px]"
-        style:background-color="rgba(10, 11, 13, {fadesText ? 1 : opacity})"
+        style:background-color="color-mix(in srgb, var(--background) {(fadesText ? 1 : opacity) * 100}%, transparent)"
         style:opacity={fadesText ? opacity : 1}
       >
         {#if fadesText}
-          <span class="text-[9px] font-medium text-white">abc</span>
+          <span class="text-[9px] font-medium text-foreground">abc</span>
         {/if}
       </div>
     </div>

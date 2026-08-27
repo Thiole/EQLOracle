@@ -94,11 +94,11 @@
     [charmRow, invisRow, hideRow, sneakRow].filter((r): r is NonNullable<typeof r> => r !== null && tracked.includes(r.key)),
   );
 
-  const toneClass = { good: 'text-good', bad: 'text-bad', warn: 'text-caution', dim: 'text-white/50' } as const;
+  const toneClass = { good: 'text-good', bad: 'text-bad', warn: 'text-caution', dim: 'text-muted-foreground' } as const;
 </script>
 
 {#if !rows.length}
-  <p class="text-white/70">no active effects</p>
+  <p class="text-muted-foreground">no active effects</p>
 {:else}
   {#each rows as r (r.label)}
     <div class="rounded-sm px-1 font-medium {toneClass[r.tone]} {r.blink ? `status-blink status-blink-${r.tone}` : ''}">{r.label}</div>
@@ -114,7 +114,11 @@
      alone on the "off" beat so it settles right back into the row's own
      toneClass color once the blink window ends, never mid-invert.
      One class per tone -- a SUCCESS row blinks its own good color, not
-     always red the way a charm-only version could get away with. */
+     always red the way a charm-only version could get away with.
+     --blink-color and the inverted text are theme tokens now (Spencer's
+     own ask: "ui overlay theme should match") -- dim's own blink used to
+     be a raw near-white rgba(), the inverted text a raw near-black hex;
+     both are the theme's own --foreground/--background now instead. */
   .status-blink {
     animation: status-flash 0.4s steps(1, end) 5;
   }
@@ -125,12 +129,12 @@
     --blink-color: var(--bad);
   }
   .status-blink-dim {
-    --blink-color: rgba(255, 255, 255, 0.85);
+    --blink-color: color-mix(in srgb, var(--foreground) 85%, transparent);
   }
   @keyframes status-flash {
     50% {
       background-color: var(--blink-color);
-      color: #0a0b0d;
+      color: var(--background);
     }
   }
 </style>
