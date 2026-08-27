@@ -91,3 +91,84 @@ pub fn unmatched_coverage(ing: &Ingest, top: usize) -> UnmatchedCoverageDto {
         total_lines: ing.counts.total,
     }
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PartyMemberDto {
+    pub name: String,
+    /// why: "you" (the log owner) | "confirmed" (chat/pet proof,
+    /// permanent) | "strong" (Quick Buff corroborated) | "weak"
+    /// (shared-target damage, session-gated) -- see eqlp_session::
+    /// group's own doc for what each of the latter two actually means
+    pub via: &'static str,
+    /// why: only meaningful for "weak" -- how many real, gap-separated
+    /// occasions of shared-target evidence this crossed
+    pub sessions: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GameStateDto {
+    pub party: Vec<PartyMemberDto>,
+    /// why: "You"'s own current class configuration, as of right now --
+    /// same call `list_debug_encounters` makes per-encounter, just at "now"
+    pub your_classes: Vec<String>,
+    /// why: directly observed from real level.up lines, not a per-class estimate
+    pub your_level: Option<u8>,
+}
+
+/// why: "Game State" debug tab -- a compact, live dump of what the
+/// backend currently believes, not a polished feature. Deliberately a
+/// scratchpad: whatever in-progress backend state (GroupTracker today,
+/// more later) is worth eyeballing without a dedicated UI for it yet.
+pub fn game_state(ing: &Ingest) -> GameStateDto {
+    let now = ing.now_ms();
+    let mut party = vec![PartyMemberDto {
+        name: "You".to_string(),
+        via: "you",
+        sessions: 0,
+    }];
+
+    // why: permanent, chat/pet-proven allies -- players() can include
+    // "You" itself (the log owner talking in a player channel proves
+    // their own Kind::Player same as anyone else's), already listed above
+    for name in ing.encounters.entities.players() {
+        if name.eq_ignore_ascii_case("you") {
+            continue;
+        }
+        party.push(PartyMemberDto {
+            name: name.to_string(),
+            via: "confirmed",
+            sessions: 0,
+        });
+    }
+
+    // why: GroupTracker's dynamic roster, resolved through display_name
+    // for real casing -- keys are fold_key'd. Skip anyone already listed
+    // via permanent proof above, no point showing the same name twice.
+    for (key, sessions, strong, _last_ms) in ing.groups.current_members(now) {
+        let display = ing.encounters.entities.display_name(&key).to_string();
+        if party.iter().any(|p| p.name.eq_ignore_ascii_case(&display)) {
+            continue;
+        }
+        party.push(PartyMemberDto {
+            name: display,
+            via: if strong { "strong" } else { "weak" },
+            sessions,
+        });
+    }
+
+    let your_classes = ing
+        .store
+        .names
+        .get("You")
+        .map(|y| {
+            ing.classes
+                .configuration_of_visit(y.0, ing.zone.index_at(now))
+        })
+        .unwrap_or_default();
+
+    GameStateDto {
+        party,
+        your_classes,
+        your_level: ing.levels.latest(),
+    }
+}

@@ -94,6 +94,17 @@ struct Evidence {
     strong: bool,
 }
 
+impl Evidence {
+    /// why: single source of truth for the gate -- currently_grouped and
+    /// current_members must never drift apart on what "current" means
+    fn is_current(&self, ts: Millis) -> bool {
+        if ts - self.last_ms > GROUP_TTL_MS {
+            return false;
+        }
+        self.strong || self.sessions >= MIN_SESSIONS
+    }
+}
+
 /// why: monotonic-evidence keying (fold_key) mirrors Entities -- same
 /// name, same identity, regardless of which struct is asked
 #[derive(Debug, Default)]
@@ -140,13 +151,21 @@ impl GroupTracker {
     /// channel additionally needs the session gate, strong never does --
     /// see module doc for why the two channels earn that differently
     pub fn currently_grouped(&self, name: &str, ts: Millis) -> bool {
-        let Some(e) = self.entries.get(&fold_key(name)) else {
-            return false;
-        };
-        if ts - e.last_ms > GROUP_TTL_MS {
-            return false;
-        }
-        e.strong || e.sessions >= MIN_SESSIONS
+        self.entries
+            .get(&fold_key(name))
+            .is_some_and(|e| e.is_current(ts))
+    }
+
+    /// why: currently_grouped answers one name at a time; a debug/Game
+    /// State dump needs the whole roster as of ts. Keys are fold_key'd
+    /// (lowercase first char), not display casing -- callers resolve
+    /// through Entities::display_name the same way `Ingest` does elsewhere.
+    pub fn current_members(&self, ts: Millis) -> Vec<(String, u32, bool, Millis)> {
+        self.entries
+            .iter()
+            .filter(|(_, e)| e.is_current(ts))
+            .map(|(name, e)| (name.clone(), e.sessions, e.strong, e.last_ms))
+            .collect()
     }
 }
 

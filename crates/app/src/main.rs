@@ -158,6 +158,7 @@ fn main() {
             commands::list_mob_encounters,
             commands::list_debug_encounters,
             commands::get_unmatched_coverage,
+            commands::get_game_state,
             commands::get_character_estimate,
             commands::get_session,
             commands::get_aa_log,

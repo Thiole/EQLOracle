@@ -10,7 +10,7 @@ use crate::combat::{
     EntityStateDto, FightTimelineDto, ZoneEncounterDto, ZoneVisitDto,
 };
 use crate::config::{self, AppConfig};
-use crate::debugview::{self, DebugEncounterDto, UnmatchedCoverageDto};
+use crate::debugview::{self, DebugEncounterDto, GameStateDto, UnmatchedCoverageDto};
 use crate::dpscalc::{self, DamageSpellDto};
 use crate::gearplanner::{self, InventoryDumpDto, ItemDto, SlotRecommendationDto};
 use crate::history::{self, ParseRecord};
@@ -195,6 +195,14 @@ pub fn list_debug_encounters(
 #[tauri::command]
 pub fn get_unmatched_coverage(state: State<AppState>, top: Option<usize>) -> UnmatchedCoverageDto {
     debugview::unmatched_coverage(&state.ingest.lock().unwrap(), top.unwrap_or(100))
+}
+
+/// why: Debug module's "Game State" tab -- compact live dump of current
+/// party/class/level belief, not a polished feature
+
+#[tauri::command]
+pub fn get_game_state(state: State<AppState>) -> GameStateDto {
+    debugview::game_state(&state.ingest.lock().unwrap())
 }
 
 /// why: Combat module's primary view -- allies sorted by total damage descending

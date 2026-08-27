@@ -1152,6 +1152,18 @@ export interface UnmatchedCoverageDto {
   total_lines: number;
 }
 
+export interface PartyMemberDto {
+  name: string;
+  via: 'you' | 'confirmed' | 'strong' | 'weak';
+  sessions: number;
+}
+
+export interface GameStateDto {
+  party: PartyMemberDto[];
+  your_classes: string[];
+  your_level: number | null;
+}
+
 export const api = {
   getStatus: () => invoke<StatusDto>('get_status'),
 
@@ -1436,4 +1448,6 @@ export const api = {
 
   getUnmatchedCoverage: (top: number | null = null) =>
     invoke<UnmatchedCoverageDto>('get_unmatched_coverage', { top }),
+
+  getGameState: () => invoke<GameStateDto>('get_game_state'),
 };
