@@ -686,6 +686,27 @@ struct PendingXp {
     ts: Millis,
 }
 
+/// why: Sky Quests' own real turn-in detector -- see skyquests.rs's own
+/// doc and Action::TradeOffered's own doc for the full real signal shape
+struct PendingTurnIn {
+    who: String,
+    items: Vec<(String, u64)>,
+    /// why: only a genuine XP gain landing while this is open proves the
+    /// offered items were actually accepted -- a trade.complete line
+    /// alone fires either way, confirmed live: the wrong items to the
+    /// wrong NPC still get one, with no XP at all
+    confirmed: bool,
+}
+
+/// why: one genuinely confirmed Sky Quest turn-in -- who, and every item
+/// (name, qty) really accepted in that one exchange
+#[derive(Debug, Clone)]
+pub struct ConfirmedTurnIn {
+    pub ts: Millis,
+    pub who: String,
+    pub items: Vec<(String, u64)>,
+}
+
 /// why: everything parsed from one tailed file, plus the machinery
 /// turning raw matches into store rows and encounters. One per tailed
 /// file -- row indices and encounter ids are meaningless across a
@@ -757,6 +778,15 @@ pub struct Ingest {
     pub invis: Option<crate::effects::InvisStatus>,
     pub hide: Option<crate::effects::MomentaryStatus>,
     pub sneak: Option<crate::effects::MomentaryStatus>,
+    /// why: Sky Quests' own real turn-in detector -- see skyquests.rs's
+    /// own doc, and Action::TradeOffered's own doc for why a
+    /// trade-complete line alone never proves success. Live-only, one
+    /// NPC's worth of offers at a time; a trade.complete (confirmed or
+    /// not) always clears it, so it never carries stale state into an
+    /// unrelated later trade window.
+    pending_turnin: Option<PendingTurnIn>,
+    /// why: every genuinely confirmed turn-in this session, in order
+    pub turn_ins: Vec<ConfirmedTurnIn>,
     /// why: overlay's Skill Tracker widget -- see skilltracker.rs's own doc
     pub skills: std::collections::HashMap<String, crate::skilltracker::SkillTrack>,
     /// why: every AA rank purchase this session, see AaLog
@@ -846,6 +876,8 @@ impl Default for Ingest {
             invis: None,
             hide: None,
             sneak: None,
+            pending_turnin: None,
+            turn_ins: Vec::new(),
             skills: std::collections::HashMap::new(),
             aa: AaLog::default(),
             spellbook: SpellLog::default(),
@@ -1458,7 +1490,38 @@ impl Ingest {
                     self.record_currency(ts, "autosell", &text);
                 }
             }
-            Action::Xp { scope, pct } => self.record_xp(ts, &scope, pct),
+            Action::Xp { scope, pct } => {
+                if let Some(p) = &mut self.pending_turnin {
+                    p.confirmed = true;
+                }
+                self.record_xp(ts, &scope, pct);
+            }
+            Action::XpGainedBare => {
+                if let Some(p) = &mut self.pending_turnin {
+                    p.confirmed = true;
+                }
+            }
+            Action::TradeOffered { qty, item, who } => match &mut self.pending_turnin {
+                Some(p) if p.who == who => p.items.push((item, qty)),
+                _ => {
+                    self.pending_turnin = Some(PendingTurnIn {
+                        who,
+                        items: vec![(item, qty)],
+                        confirmed: false,
+                    })
+                }
+            },
+            Action::TradeComplete { who } => {
+                if let Some(p) = self.pending_turnin.take() {
+                    if p.who == who && p.confirmed {
+                        self.turn_ins.push(ConfirmedTurnIn {
+                            ts,
+                            who: p.who,
+                            items: p.items,
+                        });
+                    }
+                }
+            }
             Action::Currency { source, text } => self.record_currency(ts, &source, &text),
             Action::AfkOn => self.afk_state = true,
             Action::AfkOff => {
@@ -1492,10 +1555,9 @@ impl Ingest {
             // empty for every selection, always. Same lookup record_avoided
             // already uses for Miss rows.
             let actor_name = self.store.name(actor).to_string();
-            // why: Skill Tracker's own recovery clock -- Spencer's own
-            // correction, a spell's real cooldown starts at this
-            // confirmed landing, not at cast.begin's own attempt
-            // timestamp; see skilltracker.rs's own doc
+            // why: Skill Tracker's recovery clock starts at this
+            // confirmed landing, not at cast.begin's attempt timestamp;
+            // see skilltracker.rs's own doc
             if r.outcome == CastOutcome::Landed && actor_name.eq_ignore_ascii_case("you") {
                 crate::skilltracker::observe_skill_landed(&mut self.skills, r.end_ms, &spell_name);
             }
@@ -1529,19 +1591,12 @@ impl Ingest {
         amount: u64,
         flags: Flags,
     ) {
-        // why: Spencer's own ask -- "when you charm something, and you see
-        // no indication of charm ending, but you see outward combat on a
-        // similarly named mob, that means its a new target". A charmed pet
-        // can attack enemies all session without a break line ever needing
-        // to fire, but it can never legitimately land a hit on "You" --
-        // that alone is real proof the charm is already gone (naturally
-        // expired, a fresh backfire, or a new mob reusing the same name
-        // after the old one died), the same effective signal
-        // Action::Recovered's own explicit break line gives, just inferred
-        // here from real combat instead of waiting on one that may never
-        // come. Same two-part clear Action::Recovered does -- self.charm
-        // AND the timeline, so target_effects' own State::Charmed check
-        // agrees immediately too.
+        // why: a charmed pet can attack enemies all session with no break
+        // line, but it can never legitimately land a hit on "You" --
+        // that alone proves the charm is gone (expired, backfired, or a
+        // new mob reusing the name), inferred here instead of waiting on
+        // a break line that may never come. Same two-part clear as
+        // Action::Recovered -- self.charm AND the timeline.
         if let Some(c) = &mut self.charm {
             if c.active && c.who.eq_ignore_ascii_case(src) && dst.eq_ignore_ascii_case("you") {
                 c.active = false;
@@ -1605,19 +1660,12 @@ impl Ingest {
     }
 
     /// why: shared guard, never promotes a currently charmed entity -- a
-    /// temporary ally must not become a permanent one. Spencer's own
-    /// framing: real players stay a consistent, permanent classification
-    /// (chat proof or shared-target proof); a mob is only ever a
-    /// temporary ally (charm, already correctly time-scoped via the
-    /// timeline's own State::Charmed -- reverts the instant the charm
-    /// itself does, nothing sticky about it). Real bug, caught live: a
-    /// mob dealing damage to an anchor "You" already confirmed (two
-    /// mobs cross-tangled, cleave splash, ...) got promoted to
-    /// permanent Kind::Player via this same path, silently poisoning
-    /// EVERY later encounter with that same name -- "a haunted chest,
-    /// only thing in combat... wasnt parsing to the ui for it". Guarded
-    /// with plausible_player_name so an obviously-a-mob name can never
-    /// earn that permanent status in the first place.
+    /// temporary ally (charm, time-scoped via State::Charmed) must never
+    /// become a permanent one (chat proof / shared-target proof). Real
+    /// bug, caught live: a mob damaging an already-confirmed anchor "You"
+    /// (cross-tangled mobs, cleave splash) got permanently promoted,
+    /// poisoning every later encounter with that name. Guarded with
+    /// plausible_player_name so an obviously-a-mob name can't qualify.
     fn promote_party_member(&mut self, sym: Sym, ts: Millis) {
         if matches!(self.timeline.state_at(sym.0, ts), Some((State::Charmed, _))) {
             return;
@@ -2633,6 +2681,28 @@ enum Action {
     ExaltationProc {
         item: String,
     },
+    /// why: an item handed to an NPC mid-trade -- Sky Quests' own real
+    /// confirmation signal, see skyquests.rs's own doc. Never enough on
+    /// its own (a real counterexample, caught live: the wrong items to
+    /// the wrong NPC still get every one of these lines, then just no
+    /// Xp/TradeComplete pair after) -- only pending_turnin's own
+    /// confirmed flag, set by a genuine XP gain, makes it count.
+    TradeOffered {
+        qty: u64,
+        item: String,
+        who: String,
+    },
+    /// why: the trade window closing -- fires whether the turn-in
+    /// actually succeeded or not, see TradeOffered's own doc
+    TradeComplete {
+        who: String,
+    },
+    /// why: the bare ("You gain \[party \]experience!", no percentage)
+    /// xp-gain shape -- deliberately NOT folded into Action::Xp/
+    /// record_xp, there's no percentage here to record and this is
+    /// used for exactly one purpose: confirming a pending Sky Quest
+    /// turn-in actually landed (see TradeOffered's own doc)
+    XpGainedBare,
 }
 
 /// why: classifies what one matched line means without mutating
@@ -2987,6 +3057,15 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             scope: str_field("scope").unwrap_or_default(),
             pct: f64_field("pct")?,
         }),
+        "xp.gain_bare" => Some(Action::XpGainedBare),
+        "trade.offered" => Some(Action::TradeOffered {
+            qty: u64_field("qty").unwrap_or(1),
+            item: str_field("item")?,
+            who: str_field("who")?,
+        }),
+        "trade.complete" => Some(Action::TradeComplete {
+            who: str_field("who")?,
+        }),
         "money.corpse" => Some(Action::Currency {
             source: "corpse".to_string(),
             text: str_field("amount")?,
@@ -3321,16 +3400,11 @@ mod party_promotion_tests {
         assert!(!plausible_player_name(""));
     }
 
-    /// why: real bug, caught live -- "a haunted chest, only thing in
-    /// combat... wasnt parsing to the ui for it, but it was parsing
-    /// fine to dps meter". A mob dealing damage to an anchor "You" had
-    /// already confirmed (here: two mobs cross-damaging each other)
-    /// used to promote that mob to permanent Kind::Player via the same
-    /// shared-target heuristic that's supposed to catch silent real
-    /// party members -- poisoning every later encounter with that same
-    /// name for the rest of the session. Spencer's own framing: real
-    /// players stay a consistent classification, a mob is only ever a
-    /// TEMPORARY ally (charm).
+    /// why: real bug -- a mob damaging an already-confirmed anchor "You"
+    /// (two mobs cross-damaging) used to promote that mob to permanent
+    /// Kind::Player via the shared-target heuristic meant to catch
+    /// silent real party members, poisoning every later encounter with
+    /// that name. A mob is only ever a TEMPORARY ally (charm).
     #[test]
     fn a_mob_cross_damaging_a_confirmed_anchor_is_never_promoted_to_player() {
         let ing = run(&[

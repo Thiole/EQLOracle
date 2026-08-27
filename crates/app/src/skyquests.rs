@@ -14,8 +14,11 @@
 //! Per tracked item: ever looted (tier-stripped), sold-without-keeping
 //! (from `flag::LOOT_AUTO_SOLD`, not guessed from a same-timestamp
 //! currency row), currently owned (from the latest inventory dump, None
-//! not 0 if no dump exists). Plus achievement-only **completed**, real
-//! ground truth via "Obtain `<name>`." lines, not a proxy.
+//! not 0 if no dump exists). **completed** is the achievement file's
+//! "Obtain `<name>`." line, ORed with a live turn-in this session
+//! (`Ingest::turn_ins`, see `confirmed_by_turnin`) -- the achievement
+//! dump is only ever as fresh as the last `/outputfile`, so the live
+//! signal shows a real turn-in immediately instead of waiting on that.
 
 use crate::ingest::Ingest;
 use crate::inventory;
@@ -242,6 +245,47 @@ fn unlocked_status(ctx: &Context, wiki_class: &str) -> Option<bool> {
     })
 }
 
+/// why: live confirmation via a real trade+XP pair this session
+/// (`Ingest::turn_ins`) -- ORed with the achievement file so a turn-in
+/// shows complete right away, not only after a fresh Achievements dump.
+/// Matches on quest giver + the exact rune+item set, tier-stripped.
+fn confirmed_by_turnin(
+    ing: &Ingest,
+    giver: Option<&str>,
+    rune: Option<&str>,
+    items: &[RawQuestItem],
+) -> bool {
+    let Some(giver) = giver else {
+        return false;
+    };
+    let mut wanted: Vec<String> = rune
+        .into_iter()
+        .chain(items.iter().map(|i| i.item.as_str()))
+        .map(str::to_ascii_lowercase)
+        .collect();
+    wanted.sort();
+    ing.turn_ins.iter().any(|t| {
+        t.who == giver && {
+            let mut got: Vec<String> = t
+                .items
+                .iter()
+                .map(|(name, _qty)| inventory::strip_tier(name).0.to_ascii_lowercase())
+                .collect();
+            got.sort();
+            got == wanted
+        }
+    })
+}
+
+/// why: real achievement text OR a live turn-in this session -- either one alone confirms
+fn completed_status(ach: Option<bool>, live: bool) -> Option<bool> {
+    if live {
+        Some(true)
+    } else {
+        ach
+    }
+}
+
 /// why: "Sky - Quests" tab's source -- every material turn-in, full detail
 pub fn list_quests(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClassDto> {
     let ctx = build_context(ing, base_dir);
@@ -273,11 +317,19 @@ pub fn list_quests(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClassDto> {
                             )
                         })
                         .collect(),
-                    completed: q.reward.as_ref().and_then(|r| {
-                        ctx.achievements.as_ref().and_then(|a| {
-                            a.is_complete(&format!("Obtain {}", achievement_reward_name(r)))
-                        })
-                    }),
+                    completed: completed_status(
+                        q.reward.as_ref().and_then(|r| {
+                            ctx.achievements.as_ref().and_then(|a| {
+                                a.is_complete(&format!("Obtain {}", achievement_reward_name(r)))
+                            })
+                        }),
+                        confirmed_by_turnin(
+                            ing,
+                            c.quest_giver.as_deref(),
+                            q.rune.as_deref(),
+                            &q.items,
+                        ),
+                    ),
                     reward: q.reward.clone(),
                 })
                 .collect(),
@@ -317,9 +369,20 @@ pub fn list_class_unlocks(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClass
                         looted_count: it.looted_count,
                         currently_owned: it.currently_owned,
                         sold_without_keeping: it.sold_without_keeping,
-                        completed: ctx.achievements.as_ref().and_then(|a| {
-                            a.is_complete(&format!("Obtain {}", achievement_reward_name(reward)))
-                        }),
+                        completed: completed_status(
+                            ctx.achievements.as_ref().and_then(|a| {
+                                a.is_complete(&format!(
+                                    "Obtain {}",
+                                    achievement_reward_name(reward)
+                                ))
+                            }),
+                            confirmed_by_turnin(
+                                ing,
+                                c.quest_giver.as_deref(),
+                                q.rune.as_deref(),
+                                &q.items,
+                            ),
+                        ),
                         materials,
                     })
                 })
@@ -456,5 +519,46 @@ mod tests {
         assert_eq!(mask.materials[0].item, "Wind Rune Meda");
         assert_eq!(mask.materials[1].item, "Light Woolen Mask");
         assert_eq!(mask.materials[1].source.as_deref(), Some("3-Gorga"));
+    }
+
+    /// why: real observed log turn-in (Cilin Spellsinger, Bard Test of
+    /// Voice) must mark both the quest and its reward complete with no
+    /// achievements dump at all -- the live signal, not a proxy for it
+    #[test]
+    fn a_real_turnin_this_session_marks_its_quest_and_reward_complete_with_no_achievements_dump()
+    {
+        let mut ing = Ingest::default();
+        ing.turn_ins.push(crate::ingest::ConfirmedTurnIn {
+            ts: 0,
+            who: "Cilin Spellsinger".to_string(),
+            items: vec![
+                ("Wind Rune Kala".to_string(), 1),
+                ("Light Woolen Mantle".to_string(), 1),
+            ],
+        });
+
+        let quests = list_quests(&ing, None);
+        let bard = quests.iter().find(|c| c.class == "Bard").expect("Bard");
+        let voice = bard
+            .quests
+            .iter()
+            .find(|q| q.quest == "Bard Test of Voice")
+            .expect("Bard Test of Voice");
+        assert_eq!(voice.completed, Some(true));
+        let tone = bard
+            .quests
+            .iter()
+            .find(|q| q.quest == "Bard Test of Tone")
+            .expect("Bard Test of Tone");
+        assert_eq!(tone.completed, None, "an unrelated quest stays untouched");
+
+        let unlocks = list_class_unlocks(&ing, None);
+        let bard = unlocks.iter().find(|c| c.class == "Bard").expect("Bard");
+        let mantle = bard
+            .rewards
+            .iter()
+            .find(|r| r.name == "Mantle of the Songweaver")
+            .expect("Mantle of the Songweaver");
+        assert_eq!(mantle.completed, Some(true));
     }
 }

@@ -858,11 +858,22 @@ pct = { from = "pct", as = "f64" }
 id = "xp.gain_bare"
 kind = "xp"
 priority = 40
-anchors = ["You gain experience!"]
+anchors = ["You gain ", "experience!"]
 # why: xp.gain above requires a trailing "(N.NNN%)" clause -- a real,
-# distinct bare form exists with no percentage at all.
-pattern = '''^You gain experience!$'''
-examples = ["[Tue Jul 28 15:02:15 2026] You gain experience!"]
+# distinct bare form exists with no percentage at all, scope prefix and
+# all (own real example: "You gain party experience!", no parenthetical).
+# Used to be anchored to the solo phrasing only -- "You gain party
+# experience!" fell through to state.misc's own generic bundle instead,
+# unable to carry a scope, real gap for anything (a Sky Quest turn-in's
+# own real confirmation, see skyquests.rs's own doc) that cares this is
+# specifically an experience-gain and not just unstructured flavor text.
+pattern = '''^You gain (?P<scope>party |group |raid |)experience!$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You gain experience!",
+  "[Thu Aug 27 12:07:05 2026] You gain party experience!",
+]
+[rule.fields]
+scope = { from = "scope", as = "str" }
 
 [[rule]]
 id = "level.up"
@@ -2036,7 +2047,7 @@ anchors = [" "]
 # that don't share enough with any single existing rule to justify
 # their own -- same "one alternation, not one rule per phrase" call
 # noise.stunned already makes.
-pattern = '''^(?:You have been knocked unconscious!|You lose control of yourself!|You have control of yourself again\.|Your target cannot be mesmerized\.|Your target cannot be mesmerized \(with this spell\)\.|Your target has been stunned too recently for your stun to have full effect\.|You are encumbered!|You are no longer encumbered\.|You cannot have more than one pet at a time\.|You cannot remove this effect\.|Your target is immune to the stun portion of this effect\.|This NPC cannot be charmed\.|You must be standing to cast a spell\.|You must be standing to attack!|This spell only works on the undead\.|Your will is not sufficient to command this weapon\.|Your attempt to disarm failed\.|You feel an aura of vigorous protection surrounding you\.|Your song ends\.|Your melody has been interrupted!|A mystical path appears before you\.|Your attack failed because your target is Encounter Locked to someone else\.|The aria lifts you into the air\.|You mend your wounds and heal some damage\.|You feel torn between life and death\.|You are engulfed in a blinding rage\.|You are surrounded by a shield of songs\.|YOU are burning!|You feel a healing touch\.|You gain party experience!|Your mind clouds as your concentration bleeds away\.|This creature would take an army to defeat!|You have momentarily ducked away from the main combat\.|The heal within you blooms\.|Your skin erupts with festering sores\.|For a few heartbeats, further stuns will not take hold\.|Your enemies have forgotten you!|You bear a curse of broken oaths\.)$'''
+pattern = '''^(?:You have been knocked unconscious!|You lose control of yourself!|You have control of yourself again\.|Your target cannot be mesmerized\.|Your target cannot be mesmerized \(with this spell\)\.|Your target has been stunned too recently for your stun to have full effect\.|You are encumbered!|You are no longer encumbered\.|You cannot have more than one pet at a time\.|You cannot remove this effect\.|Your target is immune to the stun portion of this effect\.|This NPC cannot be charmed\.|You must be standing to cast a spell\.|You must be standing to attack!|This spell only works on the undead\.|Your will is not sufficient to command this weapon\.|Your attempt to disarm failed\.|You feel an aura of vigorous protection surrounding you\.|Your song ends\.|Your melody has been interrupted!|A mystical path appears before you\.|Your attack failed because your target is Encounter Locked to someone else\.|The aria lifts you into the air\.|You mend your wounds and heal some damage\.|You feel torn between life and death\.|You are engulfed in a blinding rage\.|You are surrounded by a shield of songs\.|YOU are burning!|You feel a healing touch\.|Your mind clouds as your concentration bleeds away\.|This creature would take an army to defeat!|You have momentarily ducked away from the main combat\.|The heal within you blooms\.|Your skin erupts with festering sores\.|For a few heartbeats, further stuns will not take hold\.|Your enemies have forgotten you!|You bear a curse of broken oaths\.)$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] You have been knocked unconscious!",
   "[Tue Jul 28 15:02:15 2026] You lose control of yourself!",
@@ -2066,7 +2077,6 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] You are surrounded by a shield of songs.",
   "[Tue Jul 28 15:02:15 2026] YOU are burning!",
   "[Tue Jul 28 15:02:15 2026] You feel a healing touch.",
-  "[Tue Jul 28 15:02:15 2026] You gain party experience!",
   "[Tue Jul 28 15:02:15 2026] Your mind clouds as your concentration bleeds away.",
   "[Tue Jul 28 15:02:15 2026] This creature would take an army to defeat!",
   "[Tue Jul 28 15:02:15 2026] You have momentarily ducked away from the main combat.",
