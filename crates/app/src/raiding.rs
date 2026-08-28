@@ -267,6 +267,71 @@ fn build_times(
     times
 }
 
+/// why: per-visit trace for the `raid_timer_debug` example -- same walk
+/// `build_times` does, but describing every visit instead of only the
+/// fastest. Not used by any real command, kept for empirical debugging.
+pub fn debug_visit_trace(ing: &Ingest, zone: &str, boss_log_name: &str) -> Vec<String> {
+    let Some(you) = ing.store.names.get("You") else {
+        return vec!["no 'You' interned yet".to_string()];
+    };
+    let xp_credited = monsters::xp_credited_encounters(ing);
+    let spans: Vec<(eqlp_source::Millis, &str)> = ing.zone.iter().collect();
+    let mut out = Vec::new();
+    for (i, &(start, label)) in spans.iter().enumerate() {
+        if !crate::zone::zone_matches(label, zone) {
+            continue;
+        }
+        let end = spans.get(i + 1).map(|&(s, _)| s).unwrap_or(i64::MAX);
+        let (base, tier) = crate::zone::zone_tier(label);
+        let is_group = label.contains("- Group");
+        out.push(format!(
+            "visit #{i}: label={label:?} base={base:?} tier={tier} is_group={is_group} start={start} end={end}"
+        ));
+
+        let mut first_action: Option<(i64, String)> = None;
+        let mut boss_kill: Option<i64> = None;
+        for e in &ing.store.encounters {
+            if e.start_ms < start || e.start_ms >= end {
+                continue;
+            }
+            let name = ing.store.name(e.target);
+            let is_pull = monsters::counts_as_pull(ing, e, you, &xp_credited);
+            if name.eq_ignore_ascii_case(boss_log_name) {
+                out.push(format!(
+                    "  boss encounter: start={} slain={} end={:?} counts_as_pull={is_pull}",
+                    e.start_ms, e.slain, e.end_ms
+                ));
+            }
+            if is_pull && first_action.as_ref().is_none_or(|(f, _)| e.start_ms < *f) {
+                first_action = Some((e.start_ms, name.to_string()));
+            }
+            if e.slain && name.eq_ignore_ascii_case(boss_log_name) {
+                if let Some(end_ms) = e.end_ms {
+                    boss_kill = Some(boss_kill.map_or(end_ms, |b| b.min(end_ms)));
+                }
+            }
+        }
+        out.push(format!(
+            "  first_action={:?} boss_kill={boss_kill:?}",
+            first_action.as_ref().map(|(t, n)| format!("{t} ({n})"))
+        ));
+        match (&first_action, boss_kill) {
+            (Some((fa, _)), Some(bk)) if bk > *fa => {
+                out.push(format!("  => WOULD RECORD duration_ms={}", bk - fa))
+            }
+            (Some(_), Some(_)) => out.push("  => boss_kill <= first_action, REJECTED".to_string()),
+            (None, Some(_)) => {
+                out.push("  => no qualifying pull found at all, REJECTED".to_string())
+            }
+            (Some(_), None) => {
+                out.push("  => boss never confirmed slain in this visit".to_string())
+            }
+            (None, None) => out.push("  => nothing relevant happened in this visit".to_string()),
+        }
+    }
+    out
+}
+
 /// why: one-pass loot grouping, same shape as `monsters::list_mobs` uses
 fn build_loot_index(ing: &Ingest) -> HashMap<String, HashMap<String, u64>> {
     let mut out: HashMap<String, HashMap<String, u64>> = HashMap::new();
