@@ -8,6 +8,7 @@ import { refreshLastLocation, refreshZoneContext } from '../stores/maps';
 import { refreshRaidRows } from '../stores/raiding';
 import { onChatTick } from '../stores/chat';
 import { pollTrackedLoot } from '../stores/dropWatchLoot';
+import { refreshSession } from '../stores/session';
 
 interface RecentLine {
   kind: string;
@@ -35,6 +36,7 @@ export async function initTauriEvents() {
     void refreshRaidRows();
     onChatTick();
     void pollTrackedLoot();
+    void refreshSession();
   });
 
   await listen<string>('parse-error', (e) => {

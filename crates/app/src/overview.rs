@@ -16,7 +16,9 @@ const MIN_SESSION_MS_FOR_RATE: Millis = 60_000;
 pub struct SessionDto {
     /// Whether AFK as of the most recently parsed line.
     pub afk: bool,
-    /// why: None only before a single line has been parsed at all
+    /// why: None only before a single line has been parsed at all.
+    /// Reflects `Ingest::session_start` -- AFK-return or a manual
+    /// "restart" (`reset_session`), whichever is later.
     pub session_start_ms: Option<Millis>,
     pub session_duration_ms: Millis,
     /// why: None below `MIN_SESSION_MS_FOR_RATE`
@@ -28,6 +30,21 @@ pub struct SessionDto {
     pub progress_pct: Option<f64>,
     /// why: None if either half unavailable, or rate is 0 (would be infinity)
     pub eta_hours: Option<f64>,
+    /// why: real Loot rows, every "Mote of <tier> Potential" tier summed
+    /// together -- see `sum_motes_since`'s own doc for why a combined
+    /// total, not a per-tier breakdown
+    pub motes_found: u64,
+    /// why: None below `MIN_SESSION_MS_FOR_RATE`, same gate as the other rates
+    pub motes_per_hour: Option<f64>,
+    /// why: current_level minus the level as of session start -- None
+    /// when the level at session start itself isn't known (no level.up
+    /// line has ever landed by then), never guessed as 0
+    pub levels_gained: Option<u8>,
+    /// why: real AA cost sum since session start, from the same
+    /// timestamped grants `progression::aa_log` already exposes --
+    /// "how many points you've spent this session", not a rate (AA
+    /// grants are too bursty/rare for a per-hour number to mean much)
+    pub aa_spent: u32,
 }
 
 /// why: sum matching rows at/after `start_ts`, via `partition_point`
@@ -48,12 +65,35 @@ fn sum_from_index(ing: &Ingest, kind: EventKind, start_i: usize) -> u64 {
         .sum()
 }
 
+/// why: every "Mote of <tier> Potential" (Infinitesimal/Minor/Lesser/.../
+/// Ascendant, confirmed 9 real tiers in the reference log) summed as one
+/// combined total, not broken out per tier -- the Session card's own ask
+/// was "motes found", a single number to watch climb while farming, not
+/// a tier-by-tier breakdown (that's a real, easy follow-up if wanted,
+/// not assumed here). Loot rows only, matching sum_since's own shape.
+fn sum_motes_since(ing: &Ingest, start_ts: Millis) -> u64 {
+    let start_i = ing.store.ts.partition_point(|&t| t < start_ts);
+    (start_i..ing.store.len())
+        .filter(|&j| ing.store.kind[j] == EventKind::Loot)
+        .filter(|&j| {
+            ing.store
+                .ability_name(ing.store.ability[j])
+                .starts_with("Mote of ")
+        })
+        .map(|j| ing.store.amount[j])
+        .sum()
+}
+
 pub fn session(ing: &Ingest) -> SessionDto {
     let now = ing.now_ms();
     let session_start_ms = ing.session_start();
     let session_duration_ms = session_start_ms.map(|s| now.saturating_sub(s)).unwrap_or(0);
 
-    let (platinum_per_hour, xp_pct_per_hour) = if session_duration_ms >= MIN_SESSION_MS_FOR_RATE {
+    let motes_found = session_start_ms.map_or(0, |s| sum_motes_since(ing, s));
+
+    let (platinum_per_hour, xp_pct_per_hour, motes_per_hour) = if session_duration_ms
+        >= MIN_SESSION_MS_FOR_RATE
+    {
         let start = session_start_ms.expect("duration is only nonzero once a session has started");
         let hours = session_duration_ms as f64 / 3_600_000.0;
         let copper = sum_since(ing, EventKind::Currency, start);
@@ -61,9 +101,10 @@ pub fn session(ing: &Ingest) -> SessionDto {
         (
             Some((copper as f64 / 1000.0) / hours),
             Some((milli_pct as f64 / 1000.0) / hours),
+            Some(motes_found as f64 / hours),
         )
     } else {
-        (None, None)
+        (None, None, None)
     };
 
     let current_level = ing.levels.latest();
@@ -79,6 +120,25 @@ pub fn session(ing: &Ingest) -> SessionDto {
         _ => None,
     };
 
+    // why: None (not 0) when the level *at session start* was never
+    // itself confirmed by a real level.up line -- an honest "don't know
+    // your starting point" beats guessing zero gained
+    let levels_gained = match (
+        current_level,
+        session_start_ms.and_then(|s| ing.levels.at(s)),
+    ) {
+        (Some(cur), Some(start)) => Some(cur.saturating_sub(start)),
+        _ => None,
+    };
+
+    let aa_spent = session_start_ms.map_or(0, |start| {
+        ing.aa
+            .all()
+            .filter(|(ts, _)| *ts >= start)
+            .map(|(_, g)| g.cost)
+            .sum()
+    });
+
     SessionDto {
         afk: ing.currently_afk(),
         session_start_ms,
@@ -88,5 +148,97 @@ pub fn session(ing: &Ingest) -> SessionDto {
         current_level,
         progress_pct,
         eta_hours,
+        motes_found,
+        motes_per_hour,
+        levels_gained,
+        aa_spent,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ingest::{backfill_lines, framed_lines};
+    use crate::parser::build_engine;
+
+    fn run(log: &str) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let bytes = log.as_bytes();
+        let lines = framed_lines(bytes);
+        let mut ing = Ingest::default();
+        backfill_lines(&mut ing, &engine, &lines, lines.len());
+        ing
+    }
+
+    /// why: real line -- confirms the combined-tier sum, not just one tier
+    #[test]
+    fn motes_are_summed_across_every_tier() {
+        let ing = run(
+            "[Tue Jul 28 15:31:55 2026] You looted a Mote of Infinitesimal Potential from a dune spiderling's corpse and stored it in your currency\r\n\
+             [Tue Jul 28 19:41:42 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n",
+        );
+        assert_eq!(session(&ing).motes_found, 2);
+    }
+
+    /// why: honest unknown, not a guessed 0 -- no level.up line at all
+    /// means the level as of session start was never actually confirmed
+    #[test]
+    fn levels_gained_is_none_with_no_level_up_line_at_all() {
+        let ing = run("[Tue Jul 28 15:31:55 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n");
+        assert_eq!(session(&ing).levels_gained, None);
+    }
+
+    /// why: real bug shape this guards against -- a ding *before*
+    /// session_start (here, before an AFK-return moves session_start
+    /// forward) must count as "already at this level coming in", not
+    /// inflate levels_gained
+    #[test]
+    fn levels_gained_only_counts_dings_after_session_start() {
+        let ing = run(
+            "[Tue Jul 28 15:00:00 2026] You have gained a level! Welcome to level 5!\r\n\
+             [Tue Jul 28 15:00:01 2026] You are now A.F.K. (Away From Keyboard).\r\n\
+             [Tue Jul 28 15:00:02 2026] You are no longer A.F.K. (Away From Keyboard).\r\n\
+             [Tue Jul 28 15:31:55 2026] You have gained a level! Welcome to level 6!\r\n",
+        );
+        let s = session(&ing);
+        assert_eq!(s.current_level, Some(6));
+        assert_eq!(
+            s.levels_gained,
+            Some(1),
+            "session_start moved to the afk-off (15:00:02), after the level-5 ding and \
+             before the level-6 one -- level 5 was already the level coming into the \
+             session, only the level-6 ding happened inside it"
+        );
+    }
+
+    /// why: real bug this whole feature is for -- reset_session must
+    /// zero out levels_gained/motes_found for anything that already
+    /// happened before the click, and pick back up cleanly after
+    #[test]
+    fn reset_session_starts_every_session_stat_over_from_zero() {
+        let mut ing = run("[Tue Jul 28 15:00:00 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n[Tue Jul 28 15:00:01 2026] You have gained a level! Welcome to level 5!\r\n");
+        assert_eq!(session(&ing).motes_found, 1);
+
+        ing.reset_session();
+        let after_reset = session(&ing);
+        assert_eq!(
+            after_reset.motes_found, 0,
+            "the earlier mote is before the reset"
+        );
+        assert_eq!(
+            after_reset.levels_gained,
+            Some(0),
+            "level 5 is now the level as of the (later) session start"
+        );
+    }
+
+    /// why: real AA line, confirms the sum uses cost not a flat per-grant count
+    #[test]
+    fn aa_spent_sums_real_cost_not_grant_count() {
+        let ing = run(
+            "[Fri Jul 31 16:55:33 2026] You have gained the ability \"Spell Casting Deftness\" at a cost of 2 ability points.\r\n\
+             [Mon Aug 10 09:00:00 2026] You have improved Spell Casting Deftness 2 at a cost of 4 ability points.\r\n",
+        );
+        assert_eq!(session(&ing).aa_spent, 6);
     }
 }

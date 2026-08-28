@@ -737,6 +737,12 @@ pub struct Ingest {
     afk_state: bool,
     /// why: most recent afk.off timestamp, session_start's preferred answer over first_ts
     last_afk_off: Option<Millis>,
+    /// why: user-triggered "restart" for the Overview Session card --
+    /// independent of AFK-based session_start, so clicking it always
+    /// means "start counting from right now" regardless of AFK state.
+    /// In-memory only, not persisted -- same live-not-saved nature
+    /// session_start's own two inputs already have.
+    session_reset_ms: Option<Millis>,
     /// why: session-wide entity states, keyed by the same Sym the store uses
     pub timeline: Timeline,
     /// why: per-cast outcome, keyed on interned Syms reused from store.names
@@ -872,6 +878,7 @@ impl Default for Ingest {
             first_ts: None,
             afk_state: false,
             last_afk_off: None,
+            session_reset_ms: None,
             timeline: Timeline::default(),
             casts: CastResolver::default(),
             classes: ClassDetector::default(),
@@ -929,12 +936,26 @@ impl Ingest {
         self.log_clock.now_ms()
     }
 
-    /// why: most recent afk.off, else first_ts; a return from AFK reads
-    /// as a fresh session on purpose -- AFK time inside an unbroken
-    /// window would silently drag down plat/hour and xp/hour. Going AFK
-    /// itself doesn't end anything, only coming back does.
+    /// why: the latest of (most recent afk.off, else first_ts) and a
+    /// manual reset -- a return from AFK reads as a fresh session on
+    /// purpose (AFK time inside an unbroken window would silently drag
+    /// down plat/hour and xp/hour; going AFK itself doesn't end
+    /// anything, only coming back does), and a manual "restart" always
+    /// wins over both since it's a direct, explicit "start counting from
+    /// right now" -- never overridden backwards by an earlier AFK-off
+    /// that already happened before the click.
     pub fn session_start(&self) -> Option<Millis> {
-        self.last_afk_off.or(self.first_ts)
+        match (self.last_afk_off.or(self.first_ts), self.session_reset_ms) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (a, None) => a,
+            (None, b) => b,
+        }
+    }
+
+    /// why: Overview's Session card "restart" button -- see
+    /// session_reset_ms's own doc for why this isn't persisted
+    pub fn reset_session(&mut self) {
+        self.session_reset_ms = Some(self.now_ms());
     }
 
     /// why: AFK as of the most recently processed line
@@ -4125,6 +4146,39 @@ mod afk_tests {
         assert!(ing.currently_afk());
         // why: no afk.off seen -- falls back to first_ts, not None or the afk.on line
         assert_eq!(ing.session_start(), ing.first_ts);
+    }
+
+    /// why: the Overview Session card's own "restart" button -- a manual
+    /// reset must win over an earlier AFK-off that already happened
+    #[test]
+    fn a_manual_reset_wins_over_an_earlier_afk_off() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = AFK_ROUND_TRIP.lines().map(str::as_bytes).collect();
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let afk_off = ing.session_start().expect("an afk.off line was seen");
+        ing.reset_session();
+        assert!(
+            ing.session_start().expect("reset just happened") >= afk_off,
+            "reset_session must never move session_start backwards"
+        );
+    }
+
+    /// why: an earlier reset must never win over a LATER real afk-off --
+    /// coming back from AFK after a stale manual reset is still a fresh session
+    #[test]
+    fn a_later_afk_off_wins_over_an_earlier_manual_reset() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        ing.reset_session();
+        let reset_ms = ing.session_start().expect("just reset");
+        let lines: Vec<&[u8]> = AFK_ROUND_TRIP.lines().map(str::as_bytes).collect();
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let start = ing.session_start().expect("an afk.off line was seen");
+        assert!(
+            start > reset_ms,
+            "the real afk-off (well after the file's own 2026 dates) should win over a reset taken at real wall-clock time"
+        );
     }
 }
 

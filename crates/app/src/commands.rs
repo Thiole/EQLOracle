@@ -358,6 +358,16 @@ pub fn get_session(state: State<AppState>) -> SessionDto {
     overview::session(&state.ingest.lock().unwrap())
 }
 
+/// why: Overview Session card's own "restart" button -- see
+/// Ingest::reset_session's own doc for why this isn't persisted
+
+#[tauri::command]
+pub fn reset_session(state: State<AppState>) -> SessionDto {
+    let mut ing = state.ingest.lock().unwrap();
+    ing.reset_session();
+    overview::session(&ing)
+}
+
 /// why: every AA purchase this session plus total spent; no UI consumes this yet
 
 #[tauri::command]

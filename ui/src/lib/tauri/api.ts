@@ -295,6 +295,16 @@ export interface SessionDto {
   progress_pct: number | null;
   /** why: null if either half unavailable, or rate is 0 (would be infinity) */
   eta_hours: number | null;
+  /** why: every "Mote of <tier> Potential" tier summed together */
+  motes_found: number;
+  /** why: null below overview.rs's own MIN_SESSION_MS_FOR_RATE */
+  motes_per_hour: number | null;
+  /** why: null when the level *at session start* was never itself
+   * confirmed by a real level.up line -- never guessed as 0 */
+  levels_gained: number | null;
+  /** why: real AA cost sum since session start, not a rate -- AA grants
+   * are too bursty/rare for a per-hour number to mean anything */
+  aa_spent: number;
 }
 
 // ---------------------------------------------------------------- endgame
@@ -1240,6 +1250,9 @@ export const api = {
 
   /** why: Overview's plat/hr, xp%/hr, current level + progress, ETA to next ding */
   getSession: () => invoke<SessionDto>('get_session'),
+
+  /** why: Overview Session card's own "restart" button -- see Ingest::reset_session's own doc */
+  resetSession: () => invoke<SessionDto>('reset_session'),
 
   getAaLog: () => invoke<AaLogDto>('get_aa_log'),
 
