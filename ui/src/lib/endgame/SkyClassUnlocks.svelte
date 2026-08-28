@@ -4,6 +4,7 @@
   import * as Select from '$lib/components/ui/select';
   import BellIcon from '@lucide/svelte/icons/bell';
   import GdLink from '$lib/gamedata/GdLink.svelte';
+  import ItemLocateLabel from '$lib/gamedata/ItemLocateLabel.svelte';
   import { api, type SkyClassUnlockDto, type SkyRewardDto } from '$lib/tauri/api';
   import { trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
 
@@ -100,7 +101,7 @@
         <Badge class="h-4 px-1 text-[9px] text-muted-foreground" variant="outline" title="no Achievements.txt line found for this reward">?</Badge>
       {/if}
     </div>
-    <span class="text-[10px] opacity-80">{status.label}</span>
+    <span class="text-[10px] opacity-80"><ItemLocateLabel item={r.name} label={status.label} owned={status.inHand} /></span>
     {#if !secured}
       <!-- why: asked directly -- a reward that isn't sitting in hand yet
            has to say where it actually comes from, not just a bare

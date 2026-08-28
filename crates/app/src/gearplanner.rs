@@ -1167,9 +1167,7 @@ mod scale_stat_tests {
         );
         let parsed = crate::inventory::ParsedInventory {
             equipped,
-            owned: HashMap::new(),
-            owned_tier: HashMap::new(),
-            exalted: HashMap::new(),
+            ..Default::default()
         };
         let dto = resolve_inventory(&parsed, None);
         let item = dto
@@ -1197,9 +1195,8 @@ mod scale_stat_tests {
         exalted.insert("BACK".to_string(), back_sockets);
         let parsed = crate::inventory::ParsedInventory {
             equipped,
-            owned: HashMap::new(),
-            owned_tier: HashMap::new(),
             exalted,
+            ..Default::default()
         };
         let dto = resolve_inventory(&parsed, None);
         let item = dto
@@ -1684,9 +1681,7 @@ mod proc_evidence_tests {
         );
         crate::inventory::ParsedInventory {
             equipped,
-            owned: HashMap::new(),
-            owned_tier: HashMap::new(),
-            exalted: HashMap::new(),
+            ..Default::default()
         }
     }
 

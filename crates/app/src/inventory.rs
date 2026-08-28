@@ -53,6 +53,47 @@ pub(crate) fn strip_tier(name: &str) -> (&str, u8) {
     (name, 0)
 }
 
+/// why: raw dump location -> a label a player actually recognizes.
+/// Numbered by the same bag/bank index the dump itself uses, not the
+/// bag's own item name (e.g. "Spacious Rucksack") -- that's a real,
+/// separate cross-reference this doesn't attempt, and EQ players
+/// already talk about their own bags by slot number ("check gen 3").
+fn display_location(location: &str) -> String {
+    if let Some(rest) = location.strip_prefix("General ") {
+        return match rest.split_once("-Slot") {
+            Some((bag, slot)) => format!("General bag {bag}, slot {slot}"),
+            None => format!("General bag {rest} (the bag itself)"),
+        };
+    }
+    if let Some(rest) = location.strip_prefix("Bank") {
+        return match rest.split_once("-Slot") {
+            Some((bag, slot)) => format!("Bank bag {bag}, slot {slot}"),
+            None if rest.is_empty() => "Bank".to_string(),
+            None => format!("Bank bag {rest} (the bag itself)"),
+        };
+    }
+    if let Some(slot) = location.strip_prefix("SharedBank-Slot") {
+        return format!("Shared Bank, slot {slot}");
+    }
+    if location == "SharedBank" {
+        return "Shared Bank".to_string();
+    }
+    if let Some(slot) = location.strip_prefix("Personal-Depot") {
+        return format!("Personal Depot, slot {slot}");
+    }
+    if location == "KeyRing" {
+        return "Key Ring".to_string();
+    }
+    // why: an equip-doll slot -- everything else this function doesn't
+    // recognize is shown as-is, but a bare slot name ("Chest") reads
+    // like a location by coincidence only; spelling out "Equipped"
+    // makes it unambiguous
+    if SLOT_ORDER.iter().any(|(loc, _)| *loc == location) {
+        return format!("Equipped ({location})");
+    }
+    location.to_string()
+}
+
 /// why: strips any trailing "-Slot<N>", not just modelled ones -- see `parse`'s doc
 fn strip_trailing_numbered_slot(location: &str) -> Option<&str> {
     let (base, tail) = location.rsplit_once("-Slot")?;
@@ -75,6 +116,17 @@ const EXALT_SOCKET_SUFFIXES: &[(&str, &str)] = &[
 /// why: exalt source's display name always carries this literal suffix
 const EXALTATION_SUFFIX: &str = " (Exaltation)";
 
+/// why: one real copy's own resting place -- "the locate feature"'s
+/// entire payload, keyed externally by item name in `ParsedInventory::
+/// locations` the same way `owned`/`owned_tier` already are
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct InventoryLocation {
+    /// why: player-recognizable, not the raw dump string -- see `display_location`
+    pub label: String,
+    pub tier: u8,
+    pub count: u32,
+}
+
 /// why: both halves of a dump read in one pass -- equipped, and total owned
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct ParsedInventory {
@@ -88,6 +140,26 @@ pub struct ParsedInventory {
     /// unlike `Ingest::exaltation_procs`' proc-evidence inference; no
     /// entry for an empty socket
     pub exalted: HashMap<String, HashMap<String, String>>,
+    /// why: every real copy's own row, not just the summed total --
+    /// "where is my X" (the locate feature) needs each individual
+    /// resting place, `owned` only ever needed the sum. Same key space
+    /// (tier-stripped name) and same row set as `owned`/`owned_tier` --
+    /// built inline in the same loop, not a second pass.
+    pub locations: HashMap<String, Vec<InventoryLocation>>,
+}
+
+impl ParsedInventory {
+    /// why: case-insensitive -- callers (GdLink's own "locate" affordance)
+    /// pass a wiki-spelled name, not guaranteed byte-for-byte identical to
+    /// the log's own casing, same reasoning skyquests.rs's owned_ci
+    /// lookup already applies to this exact same data
+    pub fn locate(&self, name: &str) -> &[InventoryLocation] {
+        self.locations
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_slice())
+            .unwrap_or(&[])
+    }
 }
 
 /// why: tab-separated dump (Location/Name/ID/Count/Slots); `equipped`
@@ -114,13 +186,43 @@ pub fn parse(path: &Path) -> std::io::Result<ParsedInventory> {
         else {
             continue;
         };
+        // why: real bug, caught while building the locate feature --
+        // confirmed against a real dump: "KeyRing\tName\tID\t" (a
+        // section's own re-embedded column header, trailing tab makes
+        // it 4 fields) parses as if it owns 1 copy of an item literally
+        // named "Name" at location "KeyRing". Harmless today (nothing
+        // real is ever named "Name"), but the locate feature makes any
+        // owned-item listing directly visible, where this would show
+        // up as nonsense. A genuine Count field is never empty; this is.
+        if count.is_empty() {
+            continue;
+        }
 
         // why: checked structurally against every "-Slot<N>" row, not
         // just the 4 modelled suffixes -- an unmodelled socket (e.g.
         // ornament) used to fall through and corrupt last_base_location/
         // last_equip_key, breaking matching for its real siblings
         if let Some(base) = strip_trailing_numbered_slot(location) {
-            if base == last_base_location {
+            // why: real bug, caught empirically against the live reference
+            // dump while building the locate feature -- `base ==
+            // last_base_location` alone treats a bag's OWN bare name
+            // ("Bank5") as if it could carry sockets the same way an
+            // equip-doll slot ("Back") can, so the bag's *first* real
+            // content row ("Bank5-Slot1") -- and every row after it,
+            // since a matched continuation never advances
+            // last_base_location -- gets silently swallowed as a
+            // "socket" instead of counted, until some later row happens
+            // to break the false match by coincidence. Confirmed: real
+            // items (Efreeti War Club, Ceremonial Belt, White Dragon
+            // Scales x4, Belt of the Four Winds, Blood-Drawn Runes, ...)
+            // vanished from `owned` entirely in the live dump. A bag's
+            // bare name can never carry sockets -- only an equipped item
+            // (SLOT_ORDER) or an already-one-level-deep bag *content*
+            // row (its own real item, which itself might carry a further
+            // nested augment/exalt socket) can.
+            let can_carry_sockets = SLOT_ORDER.iter().any(|(loc, _)| *loc == base)
+                || strip_trailing_numbered_slot(base).is_some();
+            if base == last_base_location && can_carry_sockets {
                 if name != "Empty" {
                     if let (Some(equip_key), Some(socket_key)) = (
                         last_equip_key,
@@ -151,6 +253,14 @@ pub fn parse(path: &Path) -> std::io::Result<ParsedInventory> {
         *out.owned.entry(base_name.to_string()).or_insert(0) += count;
         let best_tier = out.owned_tier.entry(base_name.to_string()).or_insert(0);
         *best_tier = (*best_tier).max(tier);
+        out.locations
+            .entry(base_name.to_string())
+            .or_default()
+            .push(InventoryLocation {
+                label: display_location(location),
+                tier,
+                count,
+            });
 
         let Some((_, slot_keys)) = SLOT_ORDER.iter().find(|(loc, _)| *loc == location) else {
             continue;
@@ -345,6 +455,113 @@ mod parse_tests {
             parsed.owned.get("White Dragonscale Cloak (Exaltation)"),
             None
         );
+    }
+
+    /// why: real lines from the live reference dump -- the locate
+    /// feature's whole point, one row per real resting place
+    #[test]
+    fn locations_read_a_real_bag_bank_depot_and_equip_slot() {
+        let path = scratch_file(
+            "locations",
+            "Location\tName\tID\tCount\tSlots\n\
+             General 1-Slot2\tBlade of Abrogation +1\t5430\t1\t10\n\
+             Bank5-Slot4\tBlade of Abrogation +2\t5430\t1\t10\n\
+             Personal-Depot7\tAmber\t10022\t31\t10\n\
+             Fingers\tRing of Pureblood +5\t1540\t1\t10\n",
+        );
+        let parsed = parse(&path).unwrap();
+        let blade = parsed.locate("Blade of Abrogation");
+        assert_eq!(blade.len(), 2, "one copy in the bag, one in the bank");
+        assert!(blade
+            .iter()
+            .any(|l| l.label == "General bag 1, slot 2" && l.tier == 1));
+        assert!(blade
+            .iter()
+            .any(|l| l.label == "Bank bag 5, slot 4" && l.tier == 2));
+        assert_eq!(
+            parsed.locate("Amber"),
+            &[InventoryLocation {
+                label: "Personal Depot, slot 7".to_string(),
+                tier: 0,
+                count: 31,
+            }]
+        );
+        assert_eq!(
+            parsed.locate("ring of pureblood"), // why: case-insensitive, see locate's own doc
+            &[InventoryLocation {
+                label: "Equipped (Fingers)".to_string(),
+                tier: 5,
+                count: 1,
+            }]
+        );
+        assert!(parsed.locate("Nothing Owned").is_empty());
+    }
+
+    /// why: real bug, caught while building the locate feature -- see
+    /// this guard's own doc in `parse` for the full real-dump line
+    #[test]
+    fn a_reembedded_section_header_row_is_not_mistaken_for_an_owned_item() {
+        let path = scratch_file(
+            "keyring-header",
+            "Location\tName\tID\tCount\tSlots\n\
+             KeyRing\tName\tID\t\n",
+        );
+        let parsed = parse(&path).unwrap();
+        assert!(!parsed.owned.contains_key("Name"));
+        assert!(parsed.locate("Name").is_empty());
+    }
+
+    /// why: real bug, caught empirically against the live reference dump
+    /// (not guessed) while building the locate feature -- `base ==
+    /// last_base_location` alone treated a bag's own bare name as if it
+    /// could carry sockets the same as an equip-doll slot, silently
+    /// swallowing a bag's first real content row and (since a matched
+    /// continuation never advances last_base_location) every row after
+    /// it too, until something coincidentally broke the false match.
+    /// These are the exact real lines that exposed it: Efreeti War Club
+    /// (Bank5's very first content row) and Ceremonial Belt (General
+    /// 1's) both vanished from `owned` entirely before the fix.
+    #[test]
+    fn a_bags_own_first_content_slot_is_a_real_item_not_a_socket_of_the_bag() {
+        let path = scratch_file(
+            "bag-first-slot",
+            "Location\tName\tID\tCount\tSlots\n\
+             Bank5\tDriftwood Treasure Chest\t17406\t1\t10\n\
+             Bank5-Slot1\tEfreeti War Club +1\t20845\t1\t10\n\
+             Bank5-Slot1-Slot2\tEmpty\t0\t0\t0\n\
+             Bank5-Slot1-Slot7\tEmpty\t0\t0\t0\n\
+             Bank5-Slot2\tEfreeti Magi Staff +1\t20870\t1\t10\n\
+             General 1\tSpacious Rucksack\t177751\t1\t24\n\
+             General 1-Slot1\tCeremonial Belt\t20838\t1\t10\n",
+        );
+        let parsed = parse(&path).unwrap();
+        assert_eq!(parsed.owned.get("Efreeti War Club"), Some(&1));
+        assert_eq!(
+            parsed.locate("Efreeti War Club"),
+            &[InventoryLocation {
+                label: "Bank bag 5, slot 1".to_string(),
+                tier: 1,
+                count: 1,
+            }]
+        );
+        // why: the row after the swallowed one was already correct by
+        // coincidence (its own preceding Empty socket rows happened to
+        // break the false match) -- still asserted, so a future change
+        // can't silently re-break the general case while this specific
+        // regression stays green
+        assert_eq!(parsed.owned.get("Efreeti Magi Staff"), Some(&1));
+        assert_eq!(parsed.owned.get("Ceremonial Belt"), Some(&1));
+        assert_eq!(
+            parsed.locate("Ceremonial Belt"),
+            &[InventoryLocation {
+                label: "General bag 1, slot 1".to_string(),
+                tier: 0,
+                count: 1,
+            }]
+        );
+        // why: the bag containers themselves are real owned items too
+        assert_eq!(parsed.owned.get("Driftwood Treasure Chest"), Some(&1));
+        assert_eq!(parsed.owned.get("Spacious Rucksack"), Some(&1));
     }
 }
 

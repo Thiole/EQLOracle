@@ -663,6 +663,13 @@ export interface SlotRecommendationDto {
   items: ScoredItemDto[];
 }
 
+/** why: one real copy's own resting place -- "where is my X", GdLink's own locate affordance */
+export interface ItemLocationDto {
+  label: string;
+  tier: number;
+  count: number;
+}
+
 export interface InventoryDumpDto {
   /** why: slot -> matched item */
   resolved: Record<string, ItemDto>;
@@ -1253,6 +1260,9 @@ export const api = {
     invoke<Record<string, number>>('get_gear_weights', { classes, level }),
 
   getInventoryDump: (file: string) => invoke<InventoryDumpDto>('get_inventory_dump', { file }),
+
+  /** why: empty (not an error) whenever there's no dump yet -- unknown, not "not found" */
+  locateItem: (name: string) => invoke<ItemLocationDto[]>('locate_item', { name }),
 
   /** why: doll/preview tier picker -- "what if I upgrade this to +N" */
   getItemAtTier: (id: string, tier: number) => invoke<ItemDto | null>('get_item_at_tier', { id, tier }),

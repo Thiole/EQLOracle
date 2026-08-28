@@ -4,6 +4,7 @@
   import * as Select from '$lib/components/ui/select';
   import BellIcon from '@lucide/svelte/icons/bell';
   import GdLink from '$lib/gamedata/GdLink.svelte';
+  import ItemLocateLabel from '$lib/gamedata/ItemLocateLabel.svelte';
   import { api, type SkyClassDto, type TurnInDto, type TurnInItemDto } from '$lib/tauri/api';
   import { trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
 
@@ -119,7 +120,7 @@
     {/if}
     <span class="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] {status.classes}" title="{it.item}{it.source ? ` (${it.source})` : ''} -- {status.label}">
       <GdLink kind="item" name={it.item} />
-      <span class="opacity-80">· {status.label}</span>
+      <span class="opacity-80">· <ItemLocateLabel item={it.item} label={status.label} owned={status.inHand} /></span>
     </span>
   </span>
 {/snippet}

@@ -136,6 +136,7 @@ fn main() {
             commands::get_gear_weights,
             commands::get_inventory_dump,
             commands::find_existing_inventory_dump,
+            commands::locate_item,
             commands::list_map_packs,
             commands::list_map_zones,
             commands::list_all_map_zones,
