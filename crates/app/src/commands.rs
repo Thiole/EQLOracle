@@ -537,6 +537,23 @@ fn overlay_label(widget: &str) -> String {
     format!("overlay-{widget}")
 }
 
+/// why: CC Tracker's own layout knob -- "small"/"medium"/"large" mapped
+/// to a logical-pixel (width, height) just big enough for 3 squares at
+/// that size plus the shared panel chrome (CCTrackerWidget's own p-2,
+/// OverlayApp's own p-2 wrapper). Mirrored exactly on the frontend by
+/// ccSize.ts's own CC_SIZE_WINDOW_DIMS -- the two must stay in sync by
+/// hand (no shared codegen across the Rust/TS boundary here), which is
+/// why both sides comment-reference each other. An unrecognized string
+/// (old/downgraded install, hand-edited prefs file) falls back to
+/// "small" rather than erroring -- same contract as `theme`.
+fn cc_tracker_dims(size: &str) -> (f64, f64) {
+    match size {
+        "medium" => (250.0, 60.0),
+        "large" => (280.0, 76.0),
+        _ => (220.0, 48.0),
+    }
+}
+
 /// why: creates (or closes) this one widget's own floating window -- a
 /// fresh capability check every time, never trusts a stale frontend
 /// value, since the session's own display server can't change mid-run
@@ -564,10 +581,19 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
     // why: one shared overlay.html bundle for every widget -- which one
     // to render is read from the window's own label at runtime (see
     // ui's currentOverlayWidget()), not a distinct HTML entry per widget
+    //
+    // why per-widget default size: most widgets are real data tables
+    // (rows of players, cooldowns, drops) and want the room. CC Tracker
+    // is three fixed squares at a user-chosen size -- see
+    // cc_tracker_dims's own doc.
+    let (w, h) = match widget.as_str() {
+        "cc_tracker" => cc_tracker_dims(&preferences::load(&app).overlay_cc_tracker_size),
+        _ => (360.0, 240.0),
+    };
     let mut builder =
         WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("overlay.html".into()))
             .title(format!("EQL Oracle Overlay -- {widget}"))
-            .inner_size(360.0, 240.0)
+            .inner_size(w, h)
             .transparent(true)
             .decorations(false)
             .always_on_top(true)
@@ -611,6 +637,22 @@ pub fn set_overlay_opacity(app: AppHandle, widget: String, opacity: f64) {
 pub fn set_overlay_overall_opacity(app: AppHandle, widget: String, opacity: f64) {
     if let Some(w) = app.get_webview_window(&overlay_label(&widget)) {
         let _ = w.emit("overlay-overall-opacity", opacity.clamp(0.0, 1.0));
+    }
+}
+
+/// why: same live-push/persist split as set_overlay_opacity, but resizes
+/// the real OS window instead of a CSS value -- this command only
+/// forwards the raw string, it never touches actual pixel dimensions.
+/// The window receiving it is the one that already knows its own new
+/// size (OverlayApp.svelte's own 'overlay-size' listener, via ccSize.
+/// ts's own table) and resizes itself; only CC Tracker uses this today,
+/// shaped generically (a `widget` param, same as every other overlay
+/// setting) so the next widget with a size preset doesn't need a new
+/// command.
+#[tauri::command]
+pub fn set_overlay_size(app: AppHandle, widget: String, size: String) {
+    if let Some(w) = app.get_webview_window(&overlay_label(&widget)) {
+        let _ = w.emit("overlay-size", size);
     }
 }
 
@@ -1642,5 +1684,25 @@ mod live_start_position_tests {
             Some((-200.0, -100.0, 5.0)),
             "the fresher /loc reading should win, not the earlier teleport landing"
         );
+    }
+}
+
+#[cfg(test)]
+mod cc_tracker_dims_tests {
+    use super::*;
+
+    #[test]
+    fn each_named_preset_gets_its_own_real_size() {
+        assert_eq!(cc_tracker_dims("small"), (220.0, 48.0));
+        assert_eq!(cc_tracker_dims("medium"), (250.0, 60.0));
+        assert_eq!(cc_tracker_dims("large"), (280.0, 76.0));
+    }
+
+    /// why: an old/downgraded install or a hand-edited prefs file must
+    /// still open a window, not panic or return zero-size garbage
+    #[test]
+    fn an_unrecognized_size_falls_back_to_small() {
+        assert_eq!(cc_tracker_dims("huge"), cc_tracker_dims("small"));
+        assert_eq!(cc_tracker_dims(""), cc_tracker_dims("small"));
     }
 }

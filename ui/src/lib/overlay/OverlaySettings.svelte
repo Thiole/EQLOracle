@@ -34,8 +34,17 @@
     setDropWatchOverallOpacity,
     trackedDropItems,
     toggleTrackedDropItem,
+    ccTrackerEnabled,
+    ccTrackerOpacity,
+    setCcTrackerEnabled,
+    setCcTrackerOpacity,
+    ccTrackerOverallOpacity,
+    setCcTrackerOverallOpacity,
+    ccTrackerSize,
+    setCcTrackerSize,
     loadPreferences,
   } from '$lib/stores/settings';
+  import type { CcSize } from './ccSize';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
   import TrackedSkillsList from './TrackedSkillsList.svelte';
 
@@ -47,9 +56,15 @@
   let enableError = $state<string | null>(null);
   let skillTrackerError = $state<string | null>(null);
   let dropWatchError = $state<string | null>(null);
+  let ccTrackerError = $state<string | null>(null);
   // why: each widget's own window starts locked (click-through) --
   // matches every widget window's own real default at open
-  let locked = $state<Record<string, boolean>>({ dps_meter: true, skill_tracker: true, drop_watch: true });
+  let locked = $state<Record<string, boolean>>({
+    dps_meter: true,
+    skill_tracker: true,
+    drop_watch: true,
+    cc_tracker: true,
+  });
 
   async function onToggleDpsMeter(on: boolean) {
     enableError = null;
@@ -81,6 +96,16 @@
     }
   }
 
+  async function onToggleCcTracker(on: boolean) {
+    ccTrackerError = null;
+    try {
+      await setCcTrackerEnabled(on);
+      locked.cc_tracker = true;
+    } catch (e) {
+      ccTrackerError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   async function toggleLocked(widget: string) {
     locked[widget] = !locked[widget];
     await api.setOverlayLocked(widget, locked[widget]).catch(() => {});
@@ -95,11 +120,28 @@
   // to the same new state. Not its own persisted preference -- stays a
   // live, explicit action each session (see preferences.rs's doc on
   // why enabled/disabled stays live-only).
-  const allEnabled = $derived($dpsMeterEnabled && $skillTrackerEnabled && $dropWatchEnabled);
+  const allEnabled = $derived($dpsMeterEnabled && $skillTrackerEnabled && $dropWatchEnabled && $ccTrackerEnabled);
   async function onToggleAll(on: boolean) {
-    await Promise.all([onToggleDpsMeter(on), onToggleSkillTracker(on), onToggleDropWatch(on)]);
+    await Promise.all([onToggleDpsMeter(on), onToggleSkillTracker(on), onToggleDropWatch(on), onToggleCcTracker(on)]);
   }
 </script>
+
+{#snippet sizePicker(current: CcSize, onPick: (v: CcSize) => void, disabled: boolean)}
+  <div class="mt-2 flex gap-1">
+    {#each [['small', 'small'], ['medium', 'medium'], ['large', 'large']] as [v, label] (v)}
+      <button
+        type="button"
+        {disabled}
+        onclick={() => onPick(v as CcSize)}
+        class="rounded-md border px-2 py-1 text-[11px] {current === v
+          ? 'border-primary text-foreground'
+          : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'} {disabled ? 'opacity-40' : ''}"
+      >
+        {label}
+      </button>
+    {/each}
+  </div>
+{/snippet}
 
 {#snippet repositionButton(widget: string)}
   <button
@@ -187,42 +229,90 @@
     </CardContent>
   </Card>
 
-  <Card class="rounded-sm">
-    <CardContent class="px-3 py-2.5">
-      <h2 class="panel-title mb-1.5">DPS meter</h2>
-      <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
-        <Checkbox checked={$dpsMeterEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleDpsMeter(v)} />
-        enable
-      </label>
-      <p class="mt-0.5 text-[11px] text-muted-foreground">Players and assumed pets, rolling recent-fight damage.</p>
-      {#if capped}
-        <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
-      {/if}
-      {#if enableError}
-        <p class="mt-1 text-[11px] text-bad">{enableError}</p>
-      {/if}
-      {#if $dpsMeterEnabled && !capped}
-        {@render repositionButton('dps_meter')}
-      {/if}
+  <!-- why: max 2 wide, same layout rule as every other module's own
+       menu (see Character's own doc) -- these two are the compact
+       glance-able ones (a checkbox, a couple sliders, no per-item list),
+       so a 50/50 split reads better than either stacking full-width or
+       flowing loose with the wider list-heavy cards below. Skill Tracker/
+       Drop Watch keep full width -- their own tracked-item lists need
+       the room. -->
+  <div class="grid grid-cols-2 gap-3">
+    <Card class="rounded-sm">
+      <CardContent class="px-3 py-2.5">
+        <h2 class="panel-title mb-1.5">DPS meter</h2>
+        <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
+          <Checkbox checked={$dpsMeterEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleDpsMeter(v)} />
+          enable
+        </label>
+        <p class="mt-0.5 text-[11px] text-muted-foreground">Players and assumed pets, rolling recent-fight damage.</p>
+        {#if capped}
+          <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
+        {/if}
+        {#if enableError}
+          <p class="mt-1 text-[11px] text-bad">{enableError}</p>
+        {/if}
+        {#if $dpsMeterEnabled && !capped}
+          {@render repositionButton('dps_meter')}
+        {/if}
 
-      {@render alphaPreview(
-        $dpsMeterOpacity,
-        (v) => void setDpsMeterOpacity(v),
-        capped,
-        'background opacity',
-        'How see-through the panel behind everything reads -- text and numbers stay fully readable no matter how low this goes.',
-        false,
-      )}
-      {@render alphaPreview(
-        $dpsMeterOverallOpacity,
-        (v) => void setDpsMeterOverallOpacity(v),
-        capped,
-        'everything',
-        'Fades the whole widget together -- text and numbers included, not just the panel behind them.',
-        true,
-      )}
-    </CardContent>
-  </Card>
+        {@render alphaPreview(
+          $dpsMeterOpacity,
+          (v) => void setDpsMeterOpacity(v),
+          capped,
+          'background opacity',
+          'How see-through the panel behind everything reads -- text and numbers stay fully readable no matter how low this goes.',
+          false,
+        )}
+        {@render alphaPreview(
+          $dpsMeterOverallOpacity,
+          (v) => void setDpsMeterOverallOpacity(v),
+          capped,
+          'everything',
+          'Fades the whole widget together -- text and numbers included, not just the panel behind them.',
+          true,
+        )}
+      </CardContent>
+    </Card>
+
+    <Card class="rounded-sm">
+      <CardContent class="px-3 py-2.5">
+        <h2 class="panel-title mb-1.5">CC tracker</h2>
+        <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
+          <Checkbox checked={$ccTrackerEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleCcTracker(v)} />
+          enable
+        </label>
+        <p class="mt-0.5 text-[11px] text-muted-foreground">Root / Stun / Fear, three small squares -- lit up when one's on you.</p>
+        {#if capped}
+          <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
+        {/if}
+        {#if ccTrackerError}
+          <p class="mt-1 text-[11px] text-bad">{ccTrackerError}</p>
+        {/if}
+        <p class="mt-2 text-[11px] text-muted-foreground">size</p>
+        {@render sizePicker($ccTrackerSize, (v) => void setCcTrackerSize(v), capped)}
+        {#if $ccTrackerEnabled && !capped}
+          {@render repositionButton('cc_tracker')}
+        {/if}
+
+        {@render alphaPreview(
+          $ccTrackerOpacity,
+          (v) => void setCcTrackerOpacity(v),
+          capped,
+          'background opacity',
+          'How see-through the panel behind the squares reads.',
+          false,
+        )}
+        {@render alphaPreview(
+          $ccTrackerOverallOpacity,
+          (v) => void setCcTrackerOverallOpacity(v),
+          capped,
+          'everything',
+          'Fades the whole widget together -- the squares included, not just the panel behind them.',
+          true,
+        )}
+      </CardContent>
+    </Card>
+  </div>
 
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">

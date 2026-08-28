@@ -1,17 +1,12 @@
 <script lang="ts">
-  // why: combined overlay widget, four sections in one window/panel:
-  // 1. CC status (Root/Stun/Fear) -- compact colored squares, its own
-  //    standalone/modular component (CCStatusWidget.svelte) rendered
-  //    first so it's the first thing your eye hits mid-fight. Not part
-  //    of the tracked_skills list below -- always shown, not opt-in
-  //    (a CC state you can't act around isn't something to hide).
-  // 2. status effects (Charm/Invis/Hide/Sneak) -- real members of the
+  // why: combined overlay widget, three sections in one window/panel:
+  // 1. status effects (Charm/Invis/Hide/Sneak) -- real members of the
   //    same tracked_skills list as any other skill, just on by default
   //    (see preferences.rs's default_tracked_skills), removable the
   //    same way.
-  // 3. skill cooldowns (Kick/Bash/...) -- only the ones picked in
+  // 2. skill cooldowns (Kick/Bash/...) -- only the ones picked in
   //    Settings, "select skills to track".
-  // 4. target effects -- "Target: <name>" header, one icon+timer per
+  // 3. target effects -- "Target: <name>" header, one icon+timer per
   //    tracked spell effect on it. Real spell-icon art (same assets
   //    SpellbookBuilder renders, see ICON_BASE) when the backend
   //    resolved one; a compact 2-letter badge falls back otherwise.
@@ -21,10 +16,16 @@
   //    target. The backend still observes everything (a spell added
   //    mid-fight shows its real history immediately); only what's
   //    rendered here is opt-in.
+  //
+  // CC status (Root/Stun/Fear) is a SEPARATE overlay widget
+  // (CCTrackerWidget.svelte, its own window) -- not a section here. It
+  // used to be embedded at this panel's top; moved out to its own
+  // widget, same footing as DPS meter/Drop Watch (own on/off, own
+  // opacity, own tiny window), since it's glanceable battle-data that
+  // doesn't belong sized/positioned together with cooldowns.
   import type { StatusEffectsDto, SkillStatusDto, TargetEffectsDto } from '$lib/tauri/api';
   import { ICON_BASE } from '$lib/character/constants';
   import StatusEffectsWidget from './StatusEffectsWidget.svelte';
-  import CCStatusWidget from './CCStatusWidget.svelte';
   import { logClockNowMs } from './logClock';
 
   let {
@@ -150,8 +151,6 @@
   style:opacity={overallOpacity}
   style:text-shadow="0 1px 2px rgba(0, 0, 0, 0.9), 0 0px 4px rgba(0, 0, 0, 0.6)"
 >
-  <CCStatusWidget {status} />
-
   <StatusEffectsWidget {status} tracked={trackedSkillNames} />
 
   {#if visibleSkills.length}

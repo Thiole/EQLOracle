@@ -38,6 +38,12 @@ fn default_overlay_opacity() -> f64 {
     0.85
 }
 
+/// why: CC Tracker's only size preset a fresh install has ever seen --
+/// see commands::cc_tracker_dims's own doc for what each preset maps to
+fn default_cc_tracker_size() -> String {
+    "small".to_string()
+}
+
 /// why: the second opacity knob. overlay_<widget>_opacity above is
 /// background-only (rgba alpha on the panel; text stays fully
 /// readable). This is a CSS `opacity` on the whole outer element, so
@@ -139,6 +145,23 @@ pub struct Preferences {
     /// "everything" fade, this widget's own.
     #[serde(default = "default_overall_opacity")]
     pub overlay_drop_watch_overall_opacity: f64,
+    /// why: the CC Tracker widget's own opacity (Root/Stun/Fear squares)
+    /// -- see overlay_dps_meter_opacity's own doc, same pattern. Its own
+    /// widget, not a Skill Tracker section -- see CCTrackerWidget.
+    /// svelte's own doc.
+    #[serde(default = "default_overlay_opacity")]
+    pub overlay_cc_tracker_opacity: f64,
+    /// why: see overlay_dps_meter_overall_opacity's own doc -- same
+    /// "everything" fade, this widget's own.
+    #[serde(default = "default_overall_opacity")]
+    pub overlay_cc_tracker_overall_opacity: f64,
+    /// why: "small"/"medium"/"large" -- CC Tracker's own layout knob, not
+    /// shared by any other widget today. A plain String, not a Rust enum
+    /// -- same "unrecognized value falls back, no hard error" contract
+    /// as `theme` above (validated on the frontend by ccSize.ts's own
+    /// asCcSize(), and on this side by commands::cc_tracker_dims()).
+    #[serde(default = "default_cc_tracker_size")]
+    pub overlay_cc_tracker_size: String,
     /// why: which entries show in the Skill Tracker overlay -- real
     /// tracked abilities/spells (added via a "track" button, none by
     /// default) plus the 4 baked-in status pseudo-entries (Charmed/
@@ -214,6 +237,9 @@ impl Default for Preferences {
             overlay_skill_tracker_overall_opacity: default_overall_opacity(),
             overlay_drop_watch_opacity: default_overlay_opacity(),
             overlay_drop_watch_overall_opacity: default_overall_opacity(),
+            overlay_cc_tracker_opacity: default_overlay_opacity(),
+            overlay_cc_tracker_overall_opacity: default_overall_opacity(),
+            overlay_cc_tracker_size: default_cc_tracker_size(),
             tracked_skills: default_tracked_skills(),
             tracked_target_effects: Vec::new(),
             tracked_drop_items: Vec::new(),
@@ -289,6 +315,9 @@ mod tests {
         );
         assert_eq!(p.overlay_drop_watch_opacity, 0.85);
         assert_eq!(p.overlay_drop_watch_overall_opacity, 1.0);
+        assert_eq!(p.overlay_cc_tracker_opacity, 0.85);
+        assert_eq!(p.overlay_cc_tracker_overall_opacity, 1.0);
+        assert_eq!(p.overlay_cc_tracker_size, "small");
         assert!(
             p.tracked_drop_items.is_empty(),
             "nothing baked in -- always an opt-in pick"
@@ -324,6 +353,9 @@ mod tests {
             overlay_skill_tracker_overall_opacity: 0.9,
             overlay_drop_watch_opacity: 0.5,
             overlay_drop_watch_overall_opacity: 0.8,
+            overlay_cc_tracker_opacity: 0.3,
+            overlay_cc_tracker_overall_opacity: 0.6,
+            overlay_cc_tracker_size: "large".to_string(),
             tracked_skills: vec!["Kick".to_string(), "Backstab".to_string()],
             tracked_target_effects: vec!["Tashania".to_string()],
             tracked_drop_items: vec!["Light Woolen Mask".to_string()],
@@ -344,6 +376,9 @@ mod tests {
         assert_eq!(back.overlay_skill_tracker_overall_opacity, 0.9);
         assert_eq!(back.overlay_drop_watch_opacity, 0.5);
         assert_eq!(back.overlay_drop_watch_overall_opacity, 0.8);
+        assert_eq!(back.overlay_cc_tracker_opacity, 0.3);
+        assert_eq!(back.overlay_cc_tracker_overall_opacity, 0.6);
+        assert_eq!(back.overlay_cc_tracker_size, "large");
         assert_eq!(back.tracked_skills, vec!["Kick", "Backstab"]);
         assert_eq!(back.tracked_target_effects, vec!["Tashania"]);
         assert_eq!(back.tracked_drop_items, vec!["Light Woolen Mask"]);
@@ -374,6 +409,9 @@ mod tests {
         assert_eq!(back.overlay_skill_tracker_overall_opacity, 1.0);
         assert_eq!(back.overlay_drop_watch_opacity, 0.85);
         assert_eq!(back.overlay_drop_watch_overall_opacity, 1.0);
+        assert_eq!(back.overlay_cc_tracker_opacity, 0.85);
+        assert_eq!(back.overlay_cc_tracker_overall_opacity, 1.0);
+        assert_eq!(back.overlay_cc_tracker_size, "small");
         assert_eq!(
             back.tracked_skills,
             vec!["Charmed", "Invisible", "Hide", "Sneak"]

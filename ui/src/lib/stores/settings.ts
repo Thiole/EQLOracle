@@ -6,6 +6,7 @@
 // local component state in Settings.svelte.
 import { writable, derived, get } from 'svelte/store';
 import { api, type PreferencesDto, type TrackedLootDto } from '../tauri/api';
+import { asCcSize, DEFAULT_CC_SIZE, type CcSize } from '../overlay/ccSize';
 
 export const volume = writable(100);
 /** why: the raw saved preference -- null means "no explicit choice yet",
@@ -42,6 +43,16 @@ export const skillTrackerOpacity = writable(0.85);
 /** why: see dpsMeterOverallOpacity's own doc -- same "everything" fade,
  * this widget's own */
 export const skillTrackerOverallOpacity = writable(1.0);
+/** why: same on/off contract as dpsMeterEnabled -- see its own doc. CC
+ * Tracker (Root/Stun/Fear squares) is its own peer widget, not a Skill
+ * Tracker section -- see CCTrackerWidget.svelte's own doc. */
+export const ccTrackerEnabled = writable(false);
+export const ccTrackerOpacity = writable(0.85);
+/** why: see dpsMeterOverallOpacity's own doc -- same "everything" fade,
+ * this widget's own */
+export const ccTrackerOverallOpacity = writable(1.0);
+/** why: CC Tracker's own layout knob -- see ccSize.ts's own doc */
+export const ccTrackerSize = writable<CcSize>(DEFAULT_CC_SIZE);
 /** why: any ability/spell the player has "track"ed for the Skill
  * Tracker's own cooldowns section -- not a fixed list, populated by a
  * real "track" action wherever a spell/ability shows up (Combat's
@@ -108,6 +119,9 @@ export function loadPreferences(): Promise<void> {
     trackedTargetEffects.set(prefs.tracked_target_effects);
     dropWatchOpacity.set(prefs.overlay_drop_watch_opacity);
     dropWatchOverallOpacity.set(prefs.overlay_drop_watch_overall_opacity);
+    ccTrackerOpacity.set(prefs.overlay_cc_tracker_opacity);
+    ccTrackerOverallOpacity.set(prefs.overlay_cc_tracker_overall_opacity);
+    ccTrackerSize.set(asCcSize(prefs.overlay_cc_tracker_size));
     trackedDropItems.set(prefs.tracked_drop_items);
     trackedDropSeenCounts.set(prefs.tracked_drop_seen_counts);
     dropWatchCheckpointMs.set(prefs.drop_watch_checkpoint_ms);
@@ -131,6 +145,9 @@ function currentPrefs(): PreferencesDto {
     tracked_target_effects: get(trackedTargetEffects),
     overlay_drop_watch_opacity: get(dropWatchOpacity),
     overlay_drop_watch_overall_opacity: get(dropWatchOverallOpacity),
+    overlay_cc_tracker_opacity: get(ccTrackerOpacity),
+    overlay_cc_tracker_overall_opacity: get(ccTrackerOverallOpacity),
+    overlay_cc_tracker_size: get(ccTrackerSize),
     tracked_drop_items: get(trackedDropItems),
     tracked_drop_seen_counts: get(trackedDropSeenCounts),
     drop_watch_checkpoint_ms: get(dropWatchCheckpointMs),
@@ -267,6 +284,37 @@ export async function setDropWatchOverallOpacity(v: number) {
   await api
     .setPreferences({ ...currentPrefs(), overlay_drop_watch_overall_opacity: v })
     .catch(() => {});
+}
+
+/** why: same contract as setDpsMeterEnabled -- see its own doc */
+export async function setCcTrackerEnabled(on: boolean) {
+  ccTrackerEnabled.set(on);
+  await api.setOverlayEnabled('cc_tracker', on);
+}
+
+/** why: same contract as setDpsMeterOpacity -- see its own doc */
+export async function setCcTrackerOpacity(v: number) {
+  ccTrackerOpacity.set(v);
+  void api.setOverlayOpacity('cc_tracker', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_cc_tracker_opacity: v }).catch(() => {});
+}
+
+/** why: see setDpsMeterOverallOpacity's own doc -- same "everything" fade, this widget's own */
+export async function setCcTrackerOverallOpacity(v: number) {
+  ccTrackerOverallOpacity.set(v);
+  void api.setOverlayOverallOpacity('cc_tracker', v);
+  await api
+    .setPreferences({ ...currentPrefs(), overlay_cc_tracker_overall_opacity: v })
+    .catch(() => {});
+}
+
+/** why: resizes the real OS window (if open), not just a CSS value --
+ * same live-push/persist split as setCcTrackerOpacity above, see
+ * ccSize.ts's own doc */
+export async function setCcTrackerSize(v: CcSize) {
+  ccTrackerSize.set(v);
+  void api.setOverlaySize('cc_tracker', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_cc_tracker_size: v }).catch(() => {});
 }
 
 /** why: which items show a heads-up in the Drop Watch overlay -- IS

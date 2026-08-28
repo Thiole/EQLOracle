@@ -17,9 +17,12 @@
   } from '$lib/tauri/api';
   import { listen } from '$lib/tauri/invoke';
   import { currentOverlayWidget } from '$lib/tauri/window';
+  import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
   import DpsMeterWidget from './DpsMeterWidget.svelte';
   import SkillTrackerWidget from './SkillTrackerWidget.svelte';
   import DropWatchWidget from './DropWatchWidget.svelte';
+  import CCTrackerWidget from './CCTrackerWidget.svelte';
+  import { asCcSize, CC_SIZE_WINDOW_DIMS, DEFAULT_CC_SIZE, type CcSize } from './ccSize';
 
   const widget = currentOverlayWidget();
 
@@ -35,6 +38,7 @@
   let skills = $state<SkillStatusDto[]>([]);
   let targetEffects = $state<TargetEffectsDto | null>(null);
   let dropRows = $state<DropWatchRowDto[]>([]);
+  let ccSize = $state<CcSize>(DEFAULT_CC_SIZE);
 
   async function refreshPrefs() {
     const p = await api.getPreferences();
@@ -65,6 +69,15 @@
       opacity = p.overlay_drop_watch_opacity;
       overallOpacity = p.overlay_drop_watch_overall_opacity;
       trackedDropNames = p.tracked_drop_items;
+    } else if (widget === 'cc_tracker') {
+      opacity = p.overlay_cc_tracker_opacity;
+      overallOpacity = p.overlay_cc_tracker_overall_opacity;
+      // why: NOT resized here -- this only sets the local class/render
+      // size. The window's own dimensions are set once at open time by
+      // set_overlay_enabled (reading this same persisted value), and
+      // live-resized only by the 'overlay-size' listener below, so a
+      // plain poll never fights a mid-drag/mid-resize window.
+      ccSize = asCcSize(p.overlay_cc_tracker_size);
     }
   }
 
@@ -78,6 +91,8 @@
       targetEffects = te;
     } else if (widget === 'drop_watch') {
       dropRows = await api.getDropWatch();
+    } else if (widget === 'cc_tracker') {
+      status = await api.getStatusEffects();
     }
   }
 
@@ -90,10 +105,24 @@
     });
     const unlistenOpacity = listen<number>('overlay-opacity', (e) => (opacity = e.payload));
     const unlistenOverallOpacity = listen<number>('overlay-overall-opacity', (e) => (overallOpacity = e.payload));
+    // why: the one live-push that resizes the real OS window, not just a
+    // CSS value -- set_overlay_size (commands.rs) only emits, this
+    // window is the one that knows its own new dims (see ccSize.ts's own
+    // doc) and calls setSize on itself. Only ever emitted to this
+    // window's own label when widget is actually 'cc_tracker' (see
+    // overlay_label's own doc), but guarded here too rather than trust
+    // that.
+    const unlistenSize = listen<string>('overlay-size', (e) => {
+      if (widget !== 'cc_tracker') return;
+      ccSize = asCcSize(e.payload);
+      const { w, h } = CC_SIZE_WINDOW_DIMS[ccSize];
+      void getCurrentWindow().setSize(new LogicalSize(w, h));
+    });
     return () => {
       void unlistenTick.then((f) => f());
       void unlistenOpacity.then((f) => f());
       void unlistenOverallOpacity.then((f) => f());
+      void unlistenSize.then((f) => f());
     };
   });
 </script>
@@ -118,5 +147,7 @@
     />
   {:else if widget === 'drop_watch'}
     <DropWatchWidget rows={dropRows} trackedNames={trackedDropNames} {opacity} {overallOpacity} />
+  {:else if widget === 'cc_tracker'}
+    <CCTrackerWidget {status} {opacity} {overallOpacity} size={ccSize} />
   {/if}
 </div>

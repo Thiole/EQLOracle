@@ -1181,6 +1181,17 @@ export interface PreferencesDto {
   /** why: see overlay_dps_meter_overall_opacity's own doc -- same
    * "everything" fade, this widget's own */
   overlay_drop_watch_overall_opacity: number;
+  /** why: same pattern as overlay_dps_meter_opacity -- CC Tracker's own
+   * widget (Root/Stun/Fear squares), see CCTrackerWidget.svelte's own doc */
+  overlay_cc_tracker_opacity: number;
+  /** why: see overlay_dps_meter_overall_opacity's own doc -- same
+   * "everything" fade, this widget's own */
+  overlay_cc_tracker_overall_opacity: number;
+  /** why: 'small' | 'medium' | 'large' -- see ccSize.ts's own doc. A
+   * plain string, not a union, same "unrecognized value just falls back"
+   * contract as `theme` above -- ccSize.ts's asCcSize() is what actually
+   * validates it on read. */
+  overlay_cc_tracker_size: string;
   /** why: item names the player wants a heads-up on when currently
    * fighting a mob known to drop one -- entry points are Sky Quests'
    * material chips and Primary Class Unlocks' reward materials. Empty by
@@ -1468,6 +1479,12 @@ export const api = {
   /** why: the SEPARATE "everything" fade -- same live-push/persist split as setOverlayOpacity above */
   setOverlayOverallOpacity: (widget: string, opacity: number) =>
     invoke<void>('set_overlay_overall_opacity', { widget, opacity }),
+  /** why: same live-push/persist split as setOverlayOpacity above, but
+   * resizes the real OS window instead of a CSS value -- only CC Tracker
+   * uses this today, shaped generically (a `widget` param, same as every
+   * other overlay setting here) so the next widget with a size preset
+   * doesn't need a new command. See ccSize.ts's own doc. */
+  setOverlaySize: (widget: string, size: string) => invoke<void>('set_overlay_size', { widget, size }),
   /** why: unlock to drag that widget's own window into position, lock to make it click-through again */
   setOverlayLocked: (widget: string, locked: boolean) => invoke<void>('set_overlay_locked', { widget, locked }),
 

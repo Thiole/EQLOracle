@@ -121,6 +121,7 @@ fn main() {
             commands::set_overlay_enabled,
             commands::set_overlay_opacity,
             commands::set_overlay_overall_opacity,
+            commands::set_overlay_size,
             commands::set_overlay_locked,
             commands::get_guild_chat,
             commands::get_party_chat,
