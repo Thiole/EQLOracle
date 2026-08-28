@@ -105,18 +105,38 @@
       void refreshPrefs();
       void refresh();
     });
-    const unlistenOpacity = listen<number>('overlay-opacity', (e) => (opacity = e.payload));
-    const unlistenOverallOpacity = listen<number>('overlay-overall-opacity', (e) => (overallOpacity = e.payload));
+    // why: [widget, value] tuples, NOT bare values -- real bug, caught
+    // live: emit_to does not actually scope delivery to one window here.
+    // Every overlay-* window shares one capability entry
+    // (capabilities/default.json's "overlay-*" glob), and confirmed via
+    // temporary two-sided logging, emit_to's permission check treats
+    // that whole glob as its audience -- every open overlay window's
+    // listener fires on every emit_to call targeting any one of them,
+    // regardless of the label actually passed in. So every payload here
+    // carries the target widget too, and each window filters to its own
+    // identity (the `widget` this component was constructed with) before
+    // acting on it -- correct regardless of emit_to's actual scoping,
+    // not dependent on trusting it. See commands::set_overlay_opacity's
+    // own doc for the Rust side.
+    const unlistenOpacity = listen<[string, number]>('overlay-opacity', (e) => {
+      if (e.payload[0] !== widget) return;
+      opacity = e.payload[1];
+    });
+    const unlistenOverallOpacity = listen<[string, number]>('overlay-overall-opacity', (e) => {
+      if (e.payload[0] !== widget) return;
+      overallOpacity = e.payload[1];
+    });
     // why: the one live-push that resizes the real OS window, not just a
     // CSS value -- set_overlay_size (commands.rs) only emits, this
     // window is the one that knows its own new dims (see ccSize.ts's own
-    // doc) and calls setSize on itself. Only ever emitted to this
-    // window's own label when widget is actually 'cc_tracker' (see
-    // overlay_label's own doc), but guarded here too rather than trust
-    // that.
-    const unlistenSize = listen<string>('overlay-size', (e) => {
-      if (widget !== 'cc_tracker') return;
-      ccSize = asCcSize(e.payload);
+    // doc) and calls setSize on itself. Only ever emitted for
+    // 'cc_tracker' today (see overlay_label's own doc), but filtered by
+    // payload widget same as every other event here now -- see the
+    // opacity listeners' own doc on why that check can't be skipped even
+    // when only one widget currently uses an event.
+    const unlistenSize = listen<[string, string]>('overlay-size', (e) => {
+      if (e.payload[0] !== widget) return;
+      ccSize = asCcSize(e.payload[1]);
       const { w, h } = CC_SIZE_WINDOW_DIMS[ccSize];
       void getCurrentWindow().setSize(new LogicalSize(w, h));
     });
@@ -128,7 +148,8 @@
     // class would already be present, and CSS doesn't restart a
     // still-running animation just because the class re-applies without
     // an intervening reflow).
-    const unlistenLocate = listen('overlay-locate', () => {
+    const unlistenLocate = listen<string>('overlay-locate', (e) => {
+      if (e.payload !== widget) return;
       locating = false;
       void rootEl?.offsetWidth;
       locating = true;

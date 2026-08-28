@@ -619,35 +619,38 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
 
 /// why: live-pushes to this widget's own open window -- a no-op, not an
 /// error, when it isn't open; persistence is the caller's own
-/// setPreferences call. The window is already widget-scoped by its own
-/// label, so the event payload is just the number.
+/// setPreferences call.
 ///
-/// emit_to, NOT emit -- real bug, caught live: Emitter::emit()
-/// broadcasts to every webview/window in the app regardless of which
-/// specific WebviewWindow handle you call it on (see its own doc,
-/// "Emits an event to all targets"); only emit_to actually scopes to
-/// one window by label. Every event in this file made this same
-/// mistake until a "locate" click on one widget flashed every open
-/// overlay window (and any window happening to be layered near it)
-/// instead of just its own.
-
+/// emit_to alone does NOT scope this the way its own doc implies --
+/// real bug, caught live: with every overlay window covered by the same
+/// "overlay-*" capability glob (capabilities/default.json), emit_to's
+/// permission check treats the whole glob as one audience and delivers
+/// to every window matching it, not just the one whose label was
+/// passed in. Confirmed with temporary two-sided logging: the SEND side
+/// always carried the right label, but every open overlay-* window's
+/// own listener fired regardless. So every payload here now carries the
+/// target widget too, and each window filters to its own identity
+/// (currentOverlayWidget()) before acting -- correct regardless of
+/// whatever emit_to does under the hood, not dependent on understanding
+/// its exact scoping behavior for this capability shape.
 #[tauri::command]
 pub fn set_overlay_opacity(app: AppHandle, widget: String, opacity: f64) {
     let label = overlay_label(&widget);
     if app.get_webview_window(&label).is_some() {
-        let _ = app.emit_to(&label, "overlay-opacity", opacity.clamp(0.0, 1.0));
+        let _ = app.emit_to(&label, "overlay-opacity", (widget, opacity.clamp(0.0, 1.0)));
     }
 }
 
 /// why: the SEPARATE "everything" fade (see
 /// preferences::default_overall_opacity's doc) -- same live-push/
 /// persistence split as set_overlay_opacity, its own event name so the
-/// overlay window can tell the two apart.
+/// overlay window can tell the two apart. Same widget-in-payload
+/// filtering as set_overlay_opacity -- see its own doc.
 #[tauri::command]
 pub fn set_overlay_overall_opacity(app: AppHandle, widget: String, opacity: f64) {
     let label = overlay_label(&widget);
     if app.get_webview_window(&label).is_some() {
-        let _ = app.emit_to(&label, "overlay-overall-opacity", opacity.clamp(0.0, 1.0));
+        let _ = app.emit_to(&label, "overlay-overall-opacity", (widget, opacity.clamp(0.0, 1.0)));
     }
 }
 
@@ -659,12 +662,13 @@ pub fn set_overlay_overall_opacity(app: AppHandle, widget: String, opacity: f64)
 /// ts's own table) and resizes itself; only CC Tracker uses this today,
 /// shaped generically (a `widget` param, same as every other overlay
 /// setting) so the next widget with a size preset doesn't need a new
-/// command.
+/// command. Same widget-in-payload filtering as set_overlay_opacity --
+/// see its own doc.
 #[tauri::command]
 pub fn set_overlay_size(app: AppHandle, widget: String, size: String) {
     let label = overlay_label(&widget);
     if app.get_webview_window(&label).is_some() {
-        let _ = app.emit_to(&label, "overlay-size", size);
+        let _ = app.emit_to(&label, "overlay-size", (widget, size));
     }
 }
 
@@ -672,16 +676,17 @@ pub fn set_overlay_size(app: AppHandle, widget: String, size: String) {
 /// always-on-top widget is easy to lose track of, especially right
 /// after a reposition or a display change. Brings it to front (a
 /// click-through window never gets real focus/raise from clicking
-/// through it) and emits a payload-less event; OverlayApp.svelte owns
-/// the actual flash-invert effect, this command has no opinion on what
-/// "very visible" looks like, just that something should happen. No-op
-/// if the widget's window isn't open.
+/// through it) and emits an event carrying the target widget;
+/// OverlayApp.svelte owns the actual flash effect and filters to its
+/// own identity -- see set_overlay_opacity's own doc on why the payload
+/// carries the widget now instead of trusting emit_to alone. No-op if
+/// the widget's window isn't open.
 #[tauri::command]
 pub fn locate_overlay(app: AppHandle, widget: String) {
     let label = overlay_label(&widget);
     if let Some(w) = app.get_webview_window(&label) {
         let _ = w.set_focus();
-        let _ = app.emit_to(&label, "overlay-locate", ());
+        let _ = app.emit_to(&label, "overlay-locate", widget);
     }
 }
 
@@ -699,6 +704,7 @@ pub fn locate_overlay(app: AppHandle, widget: String) {
 
 #[tauri::command]
 pub fn set_overlay_locked(app: AppHandle, widget: String, locked: bool) -> Result<(), String> {
+    eprintln!("[DEBUG set_overlay_locked] widget={widget:?} locked={locked}");
     if windowcap::detect().capability != WindowCapability::ClickThrough {
         return Ok(());
     }
