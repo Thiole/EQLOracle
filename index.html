@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EQL Oracle — a real-time companion for EverQuest Legends</title>
+<meta name="description" content="Live DPS meter, automatic class detection, Drop Watch alerts, raid and Sky Quest tracking — all local, nothing uploaded." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2315171b'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23c9a15a' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23c9a15a'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --background: #15171b;
+    --background-alt: #101216;
+    --card: #1e2126;
+    --card-hover: #23262c;
+    --foreground: #e9e6df;
+    --muted: #8b8f97;
+    --primary: #c9a15a;
+    --primary-foreground: #1a1305;
+    --border: #363b43;
+    --good: #7fb37a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  a { color: inherit; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- header ---------- */
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(21, 23, 27, 0.88);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  header .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 15px; letter-spacing: 0.01em; text-decoration: none; }
+  .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 10px var(--primary); flex-shrink: 0; }
+  .gh-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--muted); text-decoration: none;
+    border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px;
+    transition: color .15s, border-color .15s;
+  }
+  .gh-link:hover { color: var(--foreground); border-color: #4a5058; }
+  .gh-link svg { width: 15px; height: 15px; }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 96px 0 72px; text-align: center; }
+  .eyebrow {
+    display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 12px;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary);
+    border: 1px solid rgba(201, 161, 90, 0.35); background: rgba(201, 161, 90, 0.08);
+    border-radius: 999px; padding: 5px 14px; margin-bottom: 22px;
+  }
+  h1 { font-size: 44px; line-height: 1.15; margin: 0 0 18px; letter-spacing: -0.015em; font-weight: 700; }
+  h1 span { color: var(--primary); }
+  .sub { font-size: 17px; color: var(--muted); max-width: 560px; margin: 0 auto 40px; }
+
+  /* ---------- download picker ---------- */
+  .download-block { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: var(--primary); color: var(--primary-foreground);
+    font-weight: 600; font-size: 16px; text-decoration: none;
+    padding: 15px 30px; border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(201, 161, 90, 0.22);
+    transition: transform .12s, box-shadow .12s;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(201, 161, 90, 0.3); }
+  .btn-primary svg { width: 20px; height: 20px; }
+  .btn-primary .ver { opacity: 0.75; font-weight: 500; font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+  .alt-platforms { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; justify-content: center; font-size: 13px; }
+  .alt-platforms a { color: var(--muted); text-decoration: none; border-bottom: 1px dotted transparent; }
+  .alt-platforms a:hover { color: var(--foreground); border-bottom-color: var(--muted); }
+  .alt-platforms .sep { color: var(--border); }
+  .local-note { margin-top: 30px; font-size: 12.5px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+  .local-note .good-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--good); margin-right: 7px; }
+
+  /* ---------- screenshot ---------- */
+  .shot-frame {
+    margin: 64px auto 0; max-width: 880px;
+    border: 1px solid var(--border); border-radius: 12px;
+    background: var(--background-alt);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+    overflow: hidden;
+  }
+  .shot-frame .titlebar { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .shot-frame .titlebar span { width: 10px; height: 10px; border-radius: 50%; background: #363b43; }
+  .shot-frame .placeholder {
+    aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 13px;
+    background:
+      repeating-linear-gradient(-45deg, transparent, transparent 12px, rgba(255,255,255,0.015) 12px, rgba(255,255,255,0.015) 24px);
+  }
+
+  /* ---------- features ---------- */
+  .features { padding: 100px 0 90px; }
+  .section-head { text-align: center; margin-bottom: 56px; }
+  .section-head h2 { font-size: 28px; margin: 0 0 10px; font-weight: 700; letter-spacing: -0.01em; }
+  .section-head p { color: var(--muted); margin: 0; font-size: 15px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 26px 24px; transition: background .15s, border-color .15s;
+  }
+  .card:hover { background: var(--card-hover); border-color: #4a5058; }
+  .card .icon {
+    width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+    background: rgba(201, 161, 90, 0.12); color: var(--primary); margin-bottom: 16px;
+  }
+  .card .icon svg { width: 18px; height: 18px; }
+  .card h3 { font-size: 15.5px; margin: 0 0 8px; font-weight: 600; }
+  .card p { font-size: 13.5px; color: var(--muted); margin: 0; line-height: 1.6; }
+  .card.wide { grid-column: span 3; display: flex; align-items: center; gap: 22px; }
+  .card.wide .icon { margin-bottom: 0; flex-shrink: 0; }
+  .card.wide .body h3 { margin-bottom: 4px; }
+
+  /* ---------- footer ---------- */
+  footer { border-top: 1px solid var(--border); padding: 30px 0; }
+  footer .wrap { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+  footer p { margin: 0; font-size: 12.5px; color: var(--muted); }
+  footer .links { display: flex; gap: 18px; font-size: 12.5px; }
+  footer a { text-decoration: none; color: var(--muted); }
+  footer a:hover { color: var(--foreground); }
+
+  @media (max-width: 760px) {
+    h1 { font-size: 32px; }
+    .grid { grid-template-columns: 1fr; }
+    .card.wide { flex-direction: column; align-items: flex-start; text-align: left; }
+    .hero { padding: 64px 0 48px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="#">
+      <span class="dot"></span>
+      EQL ORACLE
+    </a>
+    <a class="gh-link" href="https://github.com/Thiole/EQLOracle" target="_blank" rel="noopener">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      View on GitHub
+    </a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow">EverQuest Legends companion</span>
+    <h1>Everything happening in your<br />fight, <span>finally on screen</span>.</h1>
+    <p class="sub">
+      A live combat meter, automatic class detection, and drop tracking that reads your log
+      and never phones home. Free, open source, and it runs entirely on your machine.
+    </p>
+
+    <div class="download-block">
+      <a id="primary-download" class="btn-primary" href="https://github.com/Thiole/EQLOracle/releases/latest" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        <span id="primary-download-label">View releases on GitHub</span>
+        <span class="ver" id="version-badge"></span>
+      </a>
+      <div class="alt-platforms" id="alt-platforms">
+        <a href="https://github.com/Thiole/EQLOracle/releases/latest" target="_blank" rel="noopener">All downloads &amp; changelog →</a>
+      </div>
+    </div>
+
+    <p class="local-note"><span class="good-dot"></span>your log is parsed locally — nothing is ever uploaded</p>
+
+    <div class="shot-frame">
+      <div class="titlebar"><span></span><span></span><span></span></div>
+      <div class="placeholder">combat meter · class detection · drop watch — screenshot coming soon</div>
+    </div>
+  </div>
+</section>
+
+<section class="features">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>What it actually does</h2>
+      <p>Not a wrapper around a spreadsheet. Everything below reads straight off your own combat log.</p>
+    </div>
+    <div class="grid">
+
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></div>
+        <h3>Live combat, actually explained</h3>
+        <p>Real-time DPS, per-ability breakdowns, and a fight timeline you can scrub through — not just a final number.</p>
+      </div>
+
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
+        <h3>Never re-enter your class</h3>
+        <p>Detected automatically from what you actually cast — updates the moment your loadout changes, mid-session.</p>
+      </div>
+
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6l3-3M12 2 9 5"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M5 10v6a7 7 0 0 0 14 0v-6"/></svg></div>
+        <h3>Drop Watch</h3>
+        <p>A heads-up the moment you're fighting something that drops what you're after — then tells you exactly where it landed.</p>
+      </div>
+
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><path d="m16 8-8.5 8.5"/></svg></div>
+        <h3>Sky Quests &amp; raid progress</h3>
+        <p>Primary Class Unlocks, raid tier completion, and your fastest confirmed clears — read straight off real kills.</p>
+      </div>
+
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/><path d="M15 12h6l-2-2m2 2-2 2"/></svg></div>
+        <h3>Inventory, bags to bank</h3>
+        <p>Browse every bag, bank slot, and depot item — and jump straight to where a specific item actually is.</p>
+      </div>
+
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
+        <h3>An overlay that stays out of the way</h3>
+        <p>Click-through, per-widget opacity, own window per panel — up when you need it, invisible when you don't.</p>
+      </div>
+
+      <div class="card wide">
+        <div class="icon" style="width:44px;height:44px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px;"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V8a5 5 0 0 1 10 0v3"/></svg></div>
+        <div class="body">
+          <h3>Runs on your machine, full stop</h3>
+          <p>No account, no server, no telemetry. It reads a text file on disk and shows you what's in it — that's the whole trust model.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p class="mono">EQL Oracle — an unofficial, open-source EverQuest Legends companion.</p>
+    <div class="links">
+      <a href="https://github.com/Thiole/EQLOracle" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/Thiole/EQLOracle/releases/latest" target="_blank" rel="noopener">Releases</a>
+      <a href="https://github.com/Thiole/EQLOracle/issues" target="_blank" rel="noopener">Report an issue</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var REPO = 'Thiole/EQLOracle';
+  var label = document.getElementById('primary-download-label');
+  var primary = document.getElementById('primary-download');
+  var verBadge = document.getElementById('version-badge');
+  var altBox = document.getElementById('alt-platforms');
+
+  function detectOS() {
+    var p = (navigator.userAgent || '') + ' ' + (navigator.platform || '');
+    if (/Win/i.test(p)) return 'windows';
+    if (/Mac|iPhone|iPad/i.test(p)) return 'mac';
+    if (/Linux|X11/i.test(p)) return 'linux';
+    return 'unknown';
+  }
+
+  function findAsset(assets, re) {
+    for (var i = 0; i < assets.length; i++) {
+      if (re.test(assets[i].name)) return assets[i];
+    }
+    return null;
+  }
+
+  fetch('https://api.github.com/repos/' + REPO + '/releases/latest')
+    .then(function (r) { if (!r.ok) throw new Error('bad response'); return r.json(); })
+    .then(function (data) {
+      var assets = data.assets || [];
+      var version = (data.tag_name || '').replace(/^v/, '') || (data.name || '');
+      if (version) verBadge.textContent = version;
+
+      var windowsExe = findAsset(assets, /x64-setup\.exe$/i);
+      var windowsMsi = findAsset(assets, /_x64.*\.msi$/i);
+      var linuxAppImage = findAsset(assets, /\.AppImage$/i);
+      var linuxDeb = findAsset(assets, /\.deb$/i);
+      var linuxRpm = findAsset(assets, /\.rpm$/i);
+
+      var os = detectOS();
+      var primaryAsset = null, primaryText = 'View releases on GitHub';
+
+      if (os === 'windows' && windowsExe) { primaryAsset = windowsExe; primaryText = 'Download for Windows'; }
+      else if (os === 'linux' && linuxAppImage) { primaryAsset = linuxAppImage; primaryText = 'Download for Linux (AppImage)'; }
+      else if (os === 'mac') { primaryText = 'No macOS build yet — see downloads below'; }
+
+      if (primaryAsset) {
+        primary.href = primaryAsset.browser_download_url;
+        label.textContent = primaryText;
+      } else {
+        label.textContent = primaryText;
+      }
+
+      var links = [];
+      if (windowsExe) links.push('<a href="' + windowsExe.browser_download_url + '">Windows (.exe)</a>');
+      if (windowsMsi) links.push('<a href="' + windowsMsi.browser_download_url + '">Windows (.msi)</a>');
+      if (linuxAppImage) links.push('<a href="' + linuxAppImage.browser_download_url + '">Linux (AppImage)</a>');
+      if (linuxDeb) links.push('<a href="' + linuxDeb.browser_download_url + '">.deb</a>');
+      if (linuxRpm) links.push('<a href="' + linuxRpm.browser_download_url + '">.rpm</a>');
+      links.push('<a href="https://github.com/' + REPO + '/releases/latest" target="_blank" rel="noopener">All releases &amp; changelog →</a>');
+
+      altBox.innerHTML = links.join('<span class="sep">·</span>');
+    })
+    .catch(function () {
+      // why: GitHub API unreachable/rate-limited -- the plain releases
+      // link already in the markup is the real fallback, nothing to do
+    });
+})();
+</script>
+
+</body>
+</html>
