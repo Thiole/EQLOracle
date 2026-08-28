@@ -28,6 +28,19 @@ export const theme = writable('eqlp');
  * loaded from or saved to preferences (see preferences.rs's own doc):
  * whether a widget is currently showing is live session state, not a
  * style choice to remember. Always starts false on a fresh launch. */
+/** why: the real master switch for the whole overlay system -- an
+ * explicit, independent flag (NOT derived from "are all 4 widgets
+ * currently on"), live-only same as every per-widget enabled flag below
+ * (see their own doc). Off gates the per-widget toggles in
+ * OverlayQuickMenu.svelte (the top-bar shortcut) so you can't
+ * individually enable a widget before the system's even on; the
+ * Settings page's own per-widget checkboxes stay independently
+ * clickable regardless -- this flag doesn't gate those, only reflects/
+ * drives the "enable everything at once" action there too (see
+ * setOverlayEnabledAll's own doc). Toggling an individual widget off
+ * after turning this on does NOT flip this back off -- it means "the
+ * system is on," not "literally every widget is on right now". */
+export const overlayEnabled = writable(false);
 export const dpsMeterEnabled = writable(false);
 /** why: this widget's own background alpha, 0.0 (invisible) to 1.0
  * (fully opaque) -- IS persisted, a real style choice worth keeping */
@@ -290,6 +303,26 @@ export async function setDropWatchOverallOpacity(v: number) {
 export async function setCcTrackerEnabled(on: boolean) {
   ccTrackerEnabled.set(on);
   await api.setOverlayEnabled('cc_tracker', on);
+}
+
+/** why: the one "turn everything on/off together" action, shared by
+ * both the Settings page's own "enable ui" checkbox and
+ * OverlayQuickMenu's own master toggle -- one real implementation
+ * instead of two copies that could drift. Sets overlayEnabled explicitly
+ * (see its own doc) rather than leaving it derived, since turning
+ * everything off this way is exactly the "system off" case that flag
+ * means. Errors from an individual widget (e.g. this session is
+ * capability-capped) are swallowed here -- callers that need to surface
+ * a reason per widget (Settings page) call the individual setters
+ * directly instead of this one. */
+export async function setOverlayEnabledAll(on: boolean) {
+  overlayEnabled.set(on);
+  await Promise.all([
+    setDpsMeterEnabled(on).catch(() => {}),
+    setSkillTrackerEnabled(on).catch(() => {}),
+    setDropWatchEnabled(on).catch(() => {}),
+    setCcTrackerEnabled(on).catch(() => {}),
+  ]);
 }
 
 /** why: same contract as setDpsMeterOpacity -- see its own doc */

@@ -2,6 +2,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import { api } from '$lib/tauri/api';
   import { status, refreshStatus } from '$lib/stores/status';
+  import OverlayQuickMenu from '$lib/overlay/OverlayQuickMenu.svelte';
 
   async function changeFolder() {
     const path = await api.pickLogDirectory();
@@ -36,5 +37,16 @@
         change folder
       </button>
     {/if}
+    <!-- why: rightmost -- closest a web-rendered button gets to "next to
+         minimize/maximize/close" on this platform. A real custom title
+         bar (decorations: false) was tried first; reverted -- this
+         exact machine (KWin/XWayland) silently drops Tauri's
+         drag-region move request for an undecorated window, same
+         limitation already documented on the overlay widget windows
+         (see OverlayApp.svelte's own doc), confirmed live: the window
+         became undraggable. Native decorations stay on so dragging by
+         the real title bar keeps working; this is one row below it
+         instead of beside it. -->
+    <OverlayQuickMenu />
   </div>
 </header>

@@ -10,6 +10,7 @@
   import { Checkbox } from '$lib/components/ui/checkbox';
   import { api } from '$lib/tauri/api';
   import {
+    overlayEnabled,
     dpsMeterEnabled,
     dpsMeterOpacity,
     setDpsMeterEnabled,
@@ -122,6 +123,13 @@
   // why enabled/disabled stays live-only).
   const allEnabled = $derived($dpsMeterEnabled && $skillTrackerEnabled && $dropWatchEnabled && $ccTrackerEnabled);
   async function onToggleAll(on: boolean) {
+    // why: keeps overlayEnabled (settings.ts) in sync with this page's
+    // own "enable ui" action too -- OverlayQuickMenu's top-bar shortcut
+    // reads that same flag, so enabling everything from here shouldn't
+    // leave the top-bar button/menu still reading "off". Per-widget
+    // errors still surface on THIS page individually (see each
+    // onToggleX above) -- this just adds the one extra flag set.
+    overlayEnabled.set(on);
     await Promise.all([onToggleDpsMeter(on), onToggleSkillTracker(on), onToggleDropWatch(on), onToggleCcTracker(on)]);
   }
 </script>
