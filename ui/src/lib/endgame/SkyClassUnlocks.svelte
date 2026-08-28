@@ -3,6 +3,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import * as Select from '$lib/components/ui/select';
   import BellIcon from '@lucide/svelte/icons/bell';
+  import GdLink from '$lib/gamedata/GdLink.svelte';
   import { api, type SkyClassUnlockDto, type SkyRewardDto } from '$lib/tauri/api';
   import { trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
 
@@ -90,7 +91,7 @@
   {@const secured = r.completed === true || status.inHand}
   <div class="flex flex-col gap-0.5 rounded-sm border px-2 py-1 {status.classes}">
     <div class="flex items-center justify-between gap-2">
-      <span class="text-[11px] font-medium">{r.name}</span>
+      <span class="text-[11px] font-medium"><GdLink kind="item" name={r.name} /></span>
       {#if r.completed === true}
         <Badge class="h-4 border-good/40 bg-good/10 px-1 text-[9px] text-good" variant="outline">done</Badge>
       {:else if r.completed === false}
@@ -132,7 +133,7 @@
               <BellIcon class="size-3" />
             </button>
             {/if}
-            {m.item}{#if m.source}<span class="opacity-70"> ({m.source})</span>{/if}
+            <GdLink kind="item" name={m.item} />{#if m.source}<span class="opacity-70"> ({m.source})</span>{/if}
           </span>
         {/each}
       </p>
