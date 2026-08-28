@@ -268,25 +268,72 @@
     return 'unknown';
   }
 
-  function findAsset(assets, re) {
-    for (var i = 0; i < assets.length; i++) {
-      if (re.test(assets[i].name)) return assets[i];
-    }
-    return null;
+  // why: parses the "X.Y.Z" every real asset name carries -- the
+  // release's own tag_name is "latest"/"testing" (a channel, not a
+  // version), no good for display or comparison
+  function parseVersion(name) {
+    var m = /(\d+)\.(\d+)\.(\d+)/.exec(name || '');
+    return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0];
   }
 
-  fetch('https://api.github.com/repos/' + REPO + '/releases/latest')
-    .then(function (r) { if (!r.ok) throw new Error('bad response'); return r.json(); })
-    .then(function (data) {
-      var assets = data.assets || [];
-      var version = (data.tag_name || '').replace(/^v/, '') || (data.name || '');
-      if (version) verBadge.textContent = version;
+  function compareVersions(a, b) {
+    for (var i = 0; i < 3; i++) {
+      if (a[i] !== b[i]) return a[i] - b[i];
+    }
+    return 0;
+  }
 
-      var windowsExe = findAsset(assets, /x64-setup\.exe$/i);
-      var windowsMsi = findAsset(assets, /_x64.*\.msi$/i);
-      var linuxAppImage = findAsset(assets, /\.AppImage$/i);
-      var linuxDeb = findAsset(assets, /\.deb$/i);
-      var linuxRpm = findAsset(assets, /\.rpm$/i);
+  // why: NOT "first regex match" -- the testing channel's release
+  // accumulates every historical build under one tag (0.1.0 through
+  // whatever's newest, all sharing the same filename *suffix*), so the
+  // first match in upload order is the OLDEST build, not the newest.
+  // Picks by parsed version instead, so this is correct regardless of
+  // how many old builds are sitting in the same release.
+  function findNewestAsset(assets, re) {
+    var best = null, bestVer = null;
+    for (var i = 0; i < assets.length; i++) {
+      if (!re.test(assets[i].name)) continue;
+      var v = parseVersion(assets[i].name);
+      if (!best || compareVersions(v, bestVer) > 0) {
+        best = assets[i];
+        bestVer = v;
+      }
+    }
+    return best;
+  }
+
+  function fetchRelease(tag) {
+    var url = tag === 'latest'
+      ? 'https://api.github.com/repos/' + REPO + '/releases/latest'
+      : 'https://api.github.com/repos/' + REPO + '/releases/tags/' + tag;
+    return fetch(url).then(function (r) {
+      if (!r.ok) throw new Error('bad response for ' + tag);
+      return r.json();
+    });
+  }
+
+  // why: "latest" is the real public channel, but falls back to
+  // "testing" -- the only channel guaranteed to have fresh assets right
+  // now (see the release workflow's own doc: "latest" only moves on a
+  // deliberate push to main). Whichever one actually answers is what
+  // every link on the page points at, including "All releases".
+  fetchRelease('latest')
+    .then(function (data) { return { channel: 'latest', data: data }; })
+    .catch(function () {
+      return fetchRelease('testing').then(function (data) {
+        return { channel: 'testing', data: data };
+      });
+    })
+    .then(function (result) {
+      var data = result.data;
+      var assets = data.assets || [];
+      var releaseUrl = 'https://github.com/' + REPO + '/releases/tag/' + (data.tag_name || result.channel);
+
+      var windowsExe = findNewestAsset(assets, /x64-setup\.exe$/i);
+      var windowsMsi = findNewestAsset(assets, /_x64.*\.msi$/i);
+      var linuxAppImage = findNewestAsset(assets, /\.AppImage$/i);
+      var linuxDeb = findNewestAsset(assets, /\.deb$/i);
+      var linuxRpm = findNewestAsset(assets, /\.rpm$/i);
 
       var os = detectOS();
       var primaryAsset = null, primaryText = 'View releases on GitHub';
@@ -298,7 +345,9 @@
       if (primaryAsset) {
         primary.href = primaryAsset.browser_download_url;
         label.textContent = primaryText;
+        verBadge.textContent = 'v' + parseVersion(primaryAsset.name).join('.');
       } else {
+        primary.href = releaseUrl;
         label.textContent = primaryText;
       }
 
@@ -308,13 +357,14 @@
       if (linuxAppImage) links.push('<a href="' + linuxAppImage.browser_download_url + '">Linux (AppImage)</a>');
       if (linuxDeb) links.push('<a href="' + linuxDeb.browser_download_url + '">.deb</a>');
       if (linuxRpm) links.push('<a href="' + linuxRpm.browser_download_url + '">.rpm</a>');
-      links.push('<a href="https://github.com/' + REPO + '/releases/latest" target="_blank" rel="noopener">All releases &amp; changelog →</a>');
+      links.push('<a href="' + releaseUrl + '" target="_blank" rel="noopener">All releases &amp; changelog →</a>');
 
       altBox.innerHTML = links.join('<span class="sep">·</span>');
     })
     .catch(function () {
-      // why: GitHub API unreachable/rate-limited -- the plain releases
-      // link already in the markup is the real fallback, nothing to do
+      // why: GitHub API unreachable/rate-limited/both channels failed --
+      // the plain releases link already in the markup is the real
+      // fallback, nothing to do
     });
 })();
 </script>
