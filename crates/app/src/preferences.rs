@@ -177,6 +177,21 @@ pub struct Preferences {
     /// at least once.
     #[serde(default)]
     pub overlay_positions: HashMap<String, OverlayPosition>,
+    /// why: real epoch ms (`Date.now()` on the frontend, which owns this
+    /// entirely -- backend just stores whatever it's given), refreshed
+    /// roughly every 5 minutes while Drop Watch has anything tracked
+    /// (see dropWatchLoot.ts's own doc), not on every poll -- "ish" is
+    /// fine, a few minutes of blind spot on an ungraceful close is a
+    /// real accepted trade-off, not a bug. What "new" means for the
+    /// "remove from Drop Watch?" prompt: a loot event timestamped after
+    /// the *last* value this ever held, not a fixed window back from
+    /// whenever the app happens to next check -- a real gap in an
+    /// earlier version, which used a flat 30s-from-now window and would
+    /// wrongly miss a genuine pickup that happened while the app
+    /// (not the game) was briefly closed. None until Drop Watch has
+    /// tracked anything at least once.
+    #[serde(default)]
+    pub drop_watch_checkpoint_ms: Option<i64>,
     // why: no "is this widget currently on" field -- live session state,
     // not a style preference. An earlier version persisted on/off and
     // reopened widgets automatically, trusting stale state the same way
@@ -204,6 +219,7 @@ impl Default for Preferences {
             tracked_drop_items: Vec::new(),
             tracked_drop_seen_counts: HashMap::new(),
             overlay_positions: HashMap::new(),
+            drop_watch_checkpoint_ms: None,
         }
     }
 }
@@ -313,6 +329,7 @@ mod tests {
             tracked_drop_items: vec!["Light Woolen Mask".to_string()],
             tracked_drop_seen_counts,
             overlay_positions,
+            drop_watch_checkpoint_ms: Some(1_700_000_000_000),
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: Preferences = serde_json::from_str(&json).unwrap();
@@ -339,6 +356,7 @@ mod tests {
             .get("dps_meter")
             .expect("round-tripped");
         assert_eq!((pos.x, pos.y), (12.5, -4.0));
+        assert_eq!(back.drop_watch_checkpoint_ms, Some(1_700_000_000_000));
     }
 
     /// why: an old/partial file must still load via #[serde(default)]

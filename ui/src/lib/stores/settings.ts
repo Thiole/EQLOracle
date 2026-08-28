@@ -67,6 +67,9 @@ export const trackedDropItems = writable<string[]>([]);
 /** why: see PreferencesDto.tracked_drop_seen_counts's own doc -- the
  * "remove from Drop Watch?" prompt's own baseline, not a display value */
 export const trackedDropSeenCounts = writable<Record<string, number>>({});
+/** why: see PreferencesDto.drop_watch_checkpoint_ms's own doc --
+ * dropWatchLoot.ts owns reading/writing this, this store just persists it */
+export const dropWatchCheckpointMs = writable<number | null>(null);
 export const settingsLoaded = writable(false);
 
 // why: applies on every change, not just after an explicit setTheme() --
@@ -107,6 +110,7 @@ export function loadPreferences(): Promise<void> {
     dropWatchOverallOpacity.set(prefs.overlay_drop_watch_overall_opacity);
     trackedDropItems.set(prefs.tracked_drop_items);
     trackedDropSeenCounts.set(prefs.tracked_drop_seen_counts);
+    dropWatchCheckpointMs.set(prefs.drop_watch_checkpoint_ms);
     settingsLoaded.set(true);
   })();
   return loading;
@@ -129,6 +133,7 @@ function currentPrefs(): PreferencesDto {
     overlay_drop_watch_overall_opacity: get(dropWatchOverallOpacity),
     tracked_drop_items: get(trackedDropItems),
     tracked_drop_seen_counts: get(trackedDropSeenCounts),
+    drop_watch_checkpoint_ms: get(dropWatchCheckpointMs),
   };
 }
 
@@ -276,6 +281,13 @@ export async function setTrackedDropItems(items: string[]) {
 export async function setTrackedDropSeenCounts(counts: Record<string, number>) {
   trackedDropSeenCounts.set(counts);
   await api.setPreferences({ ...currentPrefs(), tracked_drop_seen_counts: counts }).catch(() => {});
+}
+
+/** why: dropWatchLoot.ts's own periodic checkpoint save -- see
+ * PreferencesDto.drop_watch_checkpoint_ms's own doc */
+export async function setDropWatchCheckpointMs(ms: number) {
+  dropWatchCheckpointMs.set(ms);
+  await api.setPreferences({ ...currentPrefs(), drop_watch_checkpoint_ms: ms }).catch(() => {});
 }
 
 /** why: the one call every "track this drop" button uses -- Sky Quests'

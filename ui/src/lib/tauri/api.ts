@@ -1109,6 +1109,12 @@ export interface PreferencesDto {
    * already-accounted-for one isn't. Persisted so a restart doesn't
    * re-prompt about the same old loot line. */
   tracked_drop_seen_counts: Record<string, number>;
+  /** why: real epoch ms, refreshed roughly every 5 minutes while Drop
+   * Watch has anything tracked -- see dropWatchLoot.ts's own doc. What
+   * "new" means for the loot-removal prompt: after this, not just
+   * within a fixed window of whenever the app happens to check. null
+   * until Drop Watch has tracked anything at least once. */
+  drop_watch_checkpoint_ms: number | null;
 }
 
 export interface UpdateInfoDto {
