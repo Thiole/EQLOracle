@@ -45,6 +45,43 @@ pub struct SessionDto {
     /// "how many points you've spent this session", not a rate (AA
     /// grants are too bursty/rare for a per-hour number to mean much)
     pub aa_spent: u32,
+    /// why: per-tier companion to `motes_found`'s combined total -- only
+    /// tiers actually seen this session, ascending by `tier`. See
+    /// `MOTE_TIER_ORDER`'s own doc for where the tier numbers come from.
+    pub mote_tiers: Vec<MoteTierDto>,
+}
+
+/// why: all 9 names verified real against the wiki scrape's own
+/// "Mote of <tier> Potential" component stubs (spelling and all); 7 of
+/// them (all but Ascendant/Infinite) also confirmed as real *loot*
+/// lines in both reference logs -- the other 2 only turned up in chat
+/// text so far (players mentioning them as rare), never a "You looted"
+/// line, evidently just rare drops rather than unreal names.
+///
+/// The ORDER, though, is not wiki-confirmed: the scrape has no full
+/// Item record for Motes at all (no stats/icon, just a bare
+/// crafting-component stub with no tier field), so ascending
+/// low-to-high here is inferred purely from the English magnitude
+/// gradient in the names themselves, not a real in-game numbering --
+/// hence the UI shows the tier *name*, never a fabricated "Tier N".
+const MOTE_TIER_ORDER: [&str; 9] = [
+    "Infinitesimal",
+    "Minor",
+    "Lesser",
+    "Greater",
+    "Major",
+    "Superior",
+    "Grand",
+    "Ascendant",
+    "Infinite",
+];
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct MoteTierDto {
+    /// why: 1-based, ascending -- see `MOTE_TIER_ORDER`'s own doc
+    pub tier: u8,
+    pub name: String,
+    pub count: u64,
 }
 
 /// why: sum matching rows at/after `start_ts`, via `partition_point`
@@ -84,12 +121,46 @@ fn sum_motes_since(ing: &Ingest, start_ts: Millis) -> u64 {
         .sum()
 }
 
+/// why: per-tier breakdown for the Session card's icon row -- companion
+/// to `sum_motes_since`'s combined total, not a replacement (that's
+/// still the headline "N motes/hr" number)
+fn motes_by_tier_since(ing: &Ingest, start_ts: Millis) -> Vec<MoteTierDto> {
+    let start_i = ing.store.ts.partition_point(|&t| t < start_ts);
+    let mut counts = [0u64; MOTE_TIER_ORDER.len()];
+    for j in start_i..ing.store.len() {
+        if ing.store.kind[j] != EventKind::Loot {
+            continue;
+        }
+        let name = ing.store.ability_name(ing.store.ability[j]);
+        let Some(rest) = name.strip_prefix("Mote of ") else {
+            continue;
+        };
+        let Some(tier_name) = rest.strip_suffix(" Potential") else {
+            continue;
+        };
+        if let Some(i) = MOTE_TIER_ORDER.iter().position(|&t| t == tier_name) {
+            counts[i] += ing.store.amount[j];
+        }
+    }
+    counts
+        .iter()
+        .enumerate()
+        .filter(|&(_, &c)| c > 0)
+        .map(|(i, &count)| MoteTierDto {
+            tier: i as u8 + 1,
+            name: MOTE_TIER_ORDER[i].to_string(),
+            count,
+        })
+        .collect()
+}
+
 pub fn session(ing: &Ingest) -> SessionDto {
     let now = ing.now_ms();
     let session_start_ms = ing.session_start();
     let session_duration_ms = session_start_ms.map(|s| now.saturating_sub(s)).unwrap_or(0);
 
     let motes_found = session_start_ms.map_or(0, |s| sum_motes_since(ing, s));
+    let mote_tiers = session_start_ms.map_or(Vec::new(), |s| motes_by_tier_since(ing, s));
 
     let (platinum_per_hour, xp_pct_per_hour, motes_per_hour) = if session_duration_ms
         >= MIN_SESSION_MS_FOR_RATE
@@ -152,6 +223,7 @@ pub fn session(ing: &Ingest) -> SessionDto {
         motes_per_hour,
         levels_gained,
         aa_spent,
+        mote_tiers,
     }
 }
 
@@ -178,6 +250,35 @@ mod tests {
              [Tue Jul 28 19:41:42 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n",
         );
         assert_eq!(session(&ing).motes_found, 2);
+    }
+
+    /// why: real bug shape -- combined total and per-tier breakdown must
+    /// agree, and tiers must come out ordered ascending, only-seen-ones
+    #[test]
+    fn mote_tiers_break_down_the_combined_total_by_tier() {
+        let ing = run(
+            "[Tue Jul 28 15:31:55 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n\
+             [Tue Jul 28 15:32:00 2026] You looted a Mote of Infinitesimal Potential from a dune spiderling's corpse and stored it in your currency\r\n\
+             [Tue Jul 28 15:32:05 2026] You looted a Mote of Infinitesimal Potential from a dune spiderling's corpse and stored it in your currency\r\n",
+        );
+        let s = session(&ing);
+        assert_eq!(s.motes_found, 3);
+        assert_eq!(
+            s.mote_tiers,
+            vec![
+                MoteTierDto {
+                    tier: 1,
+                    name: "Infinitesimal".into(),
+                    count: 2
+                },
+                MoteTierDto {
+                    tier: 2,
+                    name: "Minor".into(),
+                    count: 1
+                },
+            ],
+            "ascending by tier, not by first-seen order"
+        );
     }
 
     /// why: honest unknown, not a guessed 0 -- no level.up line at all

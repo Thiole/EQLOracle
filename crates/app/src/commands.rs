@@ -16,6 +16,7 @@ use crate::gearplanner::{self, InventoryDumpDto, ItemDto, SlotRecommendationDto}
 use crate::history::{self, ParseRecord};
 use crate::ingest::LineCounts;
 use crate::inventory;
+use crate::itemdata;
 use crate::mapsdata;
 use crate::mobalias;
 use crate::monsters::{self, LootEventDto, MobDto, MobStatsDto};
@@ -366,6 +367,24 @@ pub fn reset_session(state: State<AppState>) -> SessionDto {
     let mut ing = state.ingest.lock().unwrap();
     ing.reset_session();
     overview::session(&ing)
+}
+
+/// why: Game Data's own top-of-page disclaimer -- what catalog this is
+/// and how stale it might be, not silently presented as live
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GameDataMetaDto {
+    pub source: String,
+    /// why: None if the scrape itself never recorded one (older pack) --
+    /// shown as "unknown" in the UI, never a guessed date
+    pub scraped: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_game_data_meta() -> GameDataMetaDto {
+    GameDataMetaDto {
+        source: "https://eqlwiki.com".to_string(),
+        scraped: itemdata::scraped().map(str::to_string),
+    }
 }
 
 /// why: every AA purchase this session plus total spent; no UI consumes this yet

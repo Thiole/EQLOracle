@@ -86,3 +86,27 @@ pub fn items() -> &'static [Item] {
 pub fn by_id(id: &str) -> Option<&'static Item> {
     items().iter().find(|it| it.id == id)
 }
+
+#[derive(Debug, Deserialize)]
+struct ItemsMeta {
+    scraped: Option<String>,
+}
+
+static ITEMS_SCRAPED: OnceLock<Option<String>> = OnceLock::new();
+
+/// why: Game Data's own "scraped from EQLwiki, last updated ..." banner
+/// -- items.json's own scrape timestamp. npcs/spells/zones are scraped
+/// in the same wiki-scrape run (same date in the real packs as of
+/// writing); not re-checked per-catalog since the banner only needs one
+/// date. A second, small parse of the same file (unknown fields --
+/// `items`/`components` here -- are skipped, not materialized), lazy
+/// and cached same as `items()`.
+pub fn scraped() -> Option<&'static str> {
+    ITEMS_SCRAPED
+        .get_or_init(|| {
+            serde_json::from_str::<ItemsMeta>(ITEM_DATA_JSON)
+                .ok()
+                .and_then(|m| m.scraped)
+        })
+        .as_deref()
+}

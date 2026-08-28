@@ -11,15 +11,17 @@
     enabled: boolean;
   }
 
+  // why: Loot History and Skill Data dropped from this top-level list --
+  // Loot History is now a panel embedded in Overview itself (with its
+  // own fullscreen expand), Skill Data a sub-tab inside Character. Fewer
+  // top-level tabs to scan, each still one click away.
   const items: NavItem[] = [
     { id: 'overview', label: 'Overview', enabled: true },
     { id: 'combat', label: 'Combat', enabled: true },
-    { id: 'monsters', label: 'Loot History', enabled: true },
     { id: 'social', label: 'Social', enabled: true },
     { id: 'character', label: 'Character', enabled: true },
     { id: 'endgame', label: 'Endgame', enabled: true },
     { id: 'gamedata', label: 'Game Data', enabled: true },
-    { id: 'skilldata', label: 'Skill Data', enabled: true },
     { id: 'maps', label: 'Maps', enabled: true },
     { id: 'overlay', label: 'Overlay', enabled: true },
   ];

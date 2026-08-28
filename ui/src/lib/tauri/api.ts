@@ -305,6 +305,25 @@ export interface SessionDto {
   /** why: real AA cost sum since session start, not a rate -- AA grants
    * are too bursty/rare for a per-hour number to mean anything */
   aa_spent: number;
+  /** why: per-tier breakdown of motes_found, only tiers seen this
+   * session, ascending by tier */
+  mote_tiers: MoteTierDto[];
+}
+
+/** why: `tier` is a derived ordinal (ascending by the tier *names'* own
+ * English magnitude), not a wiki-confirmed number -- the scrape has no
+ * real tier field for Motes at all. Use `name` for display. */
+export interface MoteTierDto {
+  tier: number;
+  name: string;
+  count: number;
+}
+
+/** why: Game Data's own top-of-page disclaimer */
+export interface GameDataMetaDto {
+  source: string;
+  /** why: null if the scrape never recorded one -- shown as "unknown", never guessed */
+  scraped: string | null;
 }
 
 // ---------------------------------------------------------------- endgame
@@ -1253,6 +1272,9 @@ export const api = {
 
   /** why: Overview Session card's own "restart" button -- see Ingest::reset_session's own doc */
   resetSession: () => invoke<SessionDto>('reset_session'),
+
+  /** why: Game Data's own disclaimer banner -- source + last scraped date */
+  getGameDataMeta: () => invoke<GameDataMetaDto>('get_game_data_meta'),
 
   getAaLog: () => invoke<AaLogDto>('get_aa_log'),
 

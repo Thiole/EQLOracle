@@ -25,7 +25,7 @@
   import { effectiveEra, eraOptions, passesEra } from '$lib/stores/settings';
   import { spellbook, loadCharacterModule } from '$lib/stores/character';
   import { displayZoneName } from '$lib/utils';
-  import type { ZoneDto, ItemDto, NpcDto, AaDto, SpellDto } from '$lib/tauri/api';
+  import { api, type ZoneDto, type ItemDto, type NpcDto, type AaDto, type SpellDto, type GameDataMetaDto } from '$lib/tauri/api';
   import ZonePage from './ZonePage.svelte';
   import ItemPage from './ItemPage.svelte';
   import NpcPage from './NpcPage.svelte';
@@ -36,6 +36,11 @@
 
   let activeTab = $state<GdKind>('zone');
   let search = $state('');
+  let meta = $state<GameDataMetaDto | null>(null);
+
+  $effect(() => {
+    void api.getGameDataMeta().then((m) => (meta = m));
+  });
 
   $effect(() => {
     void loadGameDataModule();
@@ -112,6 +117,14 @@
 </script>
 
 <div class="flex flex-col gap-3 p-3">
+  <!-- why: this whole module is a wiki mirror, not live game data -- say
+       so up front, with the real scrape date, not silently presented as
+       current. -->
+  <p class="rounded-sm border border-border bg-muted/20 px-3 py-1.5 text-[11px] text-muted-foreground">
+    Scraped from <a class="text-brand-soft hover:text-primary hover:underline" href={meta?.source ?? 'https://eqlwiki.com'} target="_blank" rel="noopener">eqlwiki.com ↗</a>
+    · last updated {meta?.scraped ?? 'unknown'}
+  </p>
+
   {#if !$gameDataLoaded}
     <p class="text-[12px] text-muted-foreground">Loading game data…</p>
   {:else}

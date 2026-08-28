@@ -10,8 +10,6 @@
   import Debug from '$lib/debug/Debug.svelte';
   import Info from '$lib/shell/Info.svelte';
   import GameData from '$lib/gamedata/GameData.svelte';
-  import SkillData from '$lib/skilldata/SkillData.svelte';
-  import LootHistory from '$lib/monsters/LootHistory.svelte';
   import Social from '$lib/social/Social.svelte';
   import Maps from '$lib/maps/Maps.svelte';
   import OverlaySettings from '$lib/overlay/OverlaySettings.svelte';
@@ -59,8 +57,6 @@
             <Overview />
           {:else if $activeModule === 'combat'}
             <Combat />
-          {:else if $activeModule === 'monsters'}
-            <LootHistory />
           {:else if $activeModule === 'social'}
             <Social />
           {:else if $activeModule === 'character'}
@@ -73,8 +69,6 @@
             <Info />
           {:else if $activeModule === 'gamedata'}
             <GameData />
-          {:else if $activeModule === 'skilldata'}
-            <SkillData />
           {:else if $activeModule === 'maps'}
             <Maps />
           {:else if $activeModule === 'overlay'}
