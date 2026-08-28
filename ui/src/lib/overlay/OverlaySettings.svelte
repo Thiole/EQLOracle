@@ -152,13 +152,23 @@
 {/snippet}
 
 {#snippet repositionButton(widget: string)}
-  <button
-    type="button"
-    class="mt-2 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-foreground/30 hover:text-foreground"
-    onclick={() => void toggleLocked(widget)}
-  >
-    {locked[widget] ? 'unlock to reposition' : 'lock (click-through) — drag its title bar to move it, then lock'}
-  </button>
+  <div class="mt-2 flex items-center gap-2">
+    <button
+      type="button"
+      class="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+      onclick={() => void toggleLocked(widget)}
+    >
+      {locked[widget] ? 'unlock to reposition' : 'lock (click-through) — drag its title bar to move it, then lock'}
+    </button>
+    <button
+      type="button"
+      class="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+      onclick={() => void api.locateOverlay(widget)}
+      title="Bring this widget's window to front and flash it"
+    >
+      locate
+    </button>
+  </div>
 {/snippet}
 
 <!-- why: two independent opacity sliders per widget, same snippet

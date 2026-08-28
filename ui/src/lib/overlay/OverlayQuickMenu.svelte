@@ -86,14 +86,25 @@
       {label}
     </label>
     {#if enabled}
-      <button
-        type="button"
-        disabled={!$overlayEnabled}
-        onclick={() => void toggleLocked(id)}
-        class="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {locked[id] ? 'unlock' : 'lock'}
-      </button>
+      <div class="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          disabled={!$overlayEnabled}
+          onclick={() => void toggleLocked(id)}
+          class="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {locked[id] ? 'unlock' : 'lock'}
+        </button>
+        <button
+          type="button"
+          disabled={!$overlayEnabled}
+          onclick={() => void api.locateOverlay(id)}
+          title="Bring this widget's window to front and flash it"
+          class="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          locate
+        </button>
+      </div>
     {/if}
   </div>
 {/snippet}

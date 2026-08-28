@@ -1485,6 +1485,9 @@ export const api = {
    * other overlay setting here) so the next widget with a size preset
    * doesn't need a new command. See ccSize.ts's own doc. */
   setOverlaySize: (widget: string, size: string) => invoke<void>('set_overlay_size', { widget, size }),
+  /** why: brings that widget's own window to front and tells it to flash --
+   * see commands::locate_overlay's own doc. No-op if it isn't open. */
+  locateOverlay: (widget: string) => invoke<void>('locate_overlay', { widget }),
   /** why: unlock to drag that widget's own window into position, lock to make it click-through again */
   setOverlayLocked: (widget: string, locked: boolean) => invoke<void>('set_overlay_locked', { widget, locked }),
 

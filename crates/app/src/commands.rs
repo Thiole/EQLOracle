@@ -621,11 +621,21 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
 /// error, when it isn't open; persistence is the caller's own
 /// setPreferences call. The window is already widget-scoped by its own
 /// label, so the event payload is just the number.
+///
+/// emit_to, NOT emit -- real bug, caught live: Emitter::emit()
+/// broadcasts to every webview/window in the app regardless of which
+/// specific WebviewWindow handle you call it on (see its own doc,
+/// "Emits an event to all targets"); only emit_to actually scopes to
+/// one window by label. Every event in this file made this same
+/// mistake until a "locate" click on one widget flashed every open
+/// overlay window (and any window happening to be layered near it)
+/// instead of just its own.
 
 #[tauri::command]
 pub fn set_overlay_opacity(app: AppHandle, widget: String, opacity: f64) {
-    if let Some(w) = app.get_webview_window(&overlay_label(&widget)) {
-        let _ = w.emit("overlay-opacity", opacity.clamp(0.0, 1.0));
+    let label = overlay_label(&widget);
+    if app.get_webview_window(&label).is_some() {
+        let _ = app.emit_to(&label, "overlay-opacity", opacity.clamp(0.0, 1.0));
     }
 }
 
@@ -635,8 +645,9 @@ pub fn set_overlay_opacity(app: AppHandle, widget: String, opacity: f64) {
 /// overlay window can tell the two apart.
 #[tauri::command]
 pub fn set_overlay_overall_opacity(app: AppHandle, widget: String, opacity: f64) {
-    if let Some(w) = app.get_webview_window(&overlay_label(&widget)) {
-        let _ = w.emit("overlay-overall-opacity", opacity.clamp(0.0, 1.0));
+    let label = overlay_label(&widget);
+    if app.get_webview_window(&label).is_some() {
+        let _ = app.emit_to(&label, "overlay-overall-opacity", opacity.clamp(0.0, 1.0));
     }
 }
 
@@ -651,8 +662,26 @@ pub fn set_overlay_overall_opacity(app: AppHandle, widget: String, opacity: f64)
 /// command.
 #[tauri::command]
 pub fn set_overlay_size(app: AppHandle, widget: String, size: String) {
-    if let Some(w) = app.get_webview_window(&overlay_label(&widget)) {
-        let _ = w.emit("overlay-size", size);
+    let label = overlay_label(&widget);
+    if app.get_webview_window(&label).is_some() {
+        let _ = app.emit_to(&label, "overlay-size", size);
+    }
+}
+
+/// why: "where did that window go" -- a click-through, semi-transparent,
+/// always-on-top widget is easy to lose track of, especially right
+/// after a reposition or a display change. Brings it to front (a
+/// click-through window never gets real focus/raise from clicking
+/// through it) and emits a payload-less event; OverlayApp.svelte owns
+/// the actual flash-invert effect, this command has no opinion on what
+/// "very visible" looks like, just that something should happen. No-op
+/// if the widget's window isn't open.
+#[tauri::command]
+pub fn locate_overlay(app: AppHandle, widget: String) {
+    let label = overlay_label(&widget);
+    if let Some(w) = app.get_webview_window(&label) {
+        let _ = w.set_focus();
+        let _ = app.emit_to(&label, "overlay-locate", ());
     }
 }
 

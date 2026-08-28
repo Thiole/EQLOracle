@@ -39,6 +39,8 @@
   let targetEffects = $state<TargetEffectsDto | null>(null);
   let dropRows = $state<DropWatchRowDto[]>([]);
   let ccSize = $state<CcSize>(DEFAULT_CC_SIZE);
+  let locating = $state(false);
+  let rootEl: HTMLDivElement | undefined = $state();
 
   async function refreshPrefs() {
     const p = await api.getPreferences();
@@ -118,11 +120,25 @@
       const { w, h } = CC_SIZE_WINDOW_DIMS[ccSize];
       void getCurrentWindow().setSize(new LogicalSize(w, h));
     });
+    // why: "where did that window go" -- see commands::locate_overlay's
+    // own doc. Forces a false-then-true round trip with a real reflow in
+    // between (rootEl.offsetWidth) rather than just setting true, so
+    // clicking "locate" again WHILE still flashing restarts the
+    // animation from its first flash instead of being a no-op (the
+    // class would already be present, and CSS doesn't restart a
+    // still-running animation just because the class re-applies without
+    // an intervening reflow).
+    const unlistenLocate = listen('overlay-locate', () => {
+      locating = false;
+      void rootEl?.offsetWidth;
+      locating = true;
+    });
     return () => {
       void unlistenTick.then((f) => f());
       void unlistenOpacity.then((f) => f());
       void unlistenOverallOpacity.then((f) => f());
       void unlistenSize.then((f) => f());
+      void unlistenLocate.then((f) => f());
     };
   });
 </script>
@@ -132,7 +148,7 @@
      move the window (a resize-border drag does). set_overlay_locked
      switches to real decorations instead while unlocked, so dragging
      the actual title bar (every window manager supports that) repositions it. -->
-<div class="min-h-screen w-screen p-2">
+<div bind:this={rootEl} class="min-h-screen w-screen p-2 {locating ? 'locate-flash' : ''}">
   {#if widget === 'dps_meter'}
     <DpsMeterWidget {meter} {opacity} {overallOpacity} />
   {:else if widget === 'skill_tracker'}
@@ -151,3 +167,22 @@
     <CCTrackerWidget {status} {opacity} {overallOpacity} size={ccSize} />
   {/if}
 </div>
+
+<style>
+  /* why: "make it very visible" -- a full-color invert, not a border or
+     a tint, so it reads at a glance regardless of the widget's own
+     theme/opacity. Same hard on/off house style as every other blink in
+     this app (StatusEffectsWidget's status-blink, SkillTrackerWidget's
+     target-effect-blink): steps(1, end), a fixed iteration count so it
+     settles back to normal on its own rather than flashing forever. On
+     transparent: invert only ever touches drawn pixels -- the window's
+     own transparent background stays transparent through it. */
+  .locate-flash {
+    animation: locate-flash-anim 0.3s steps(1, end) 8;
+  }
+  @keyframes locate-flash-anim {
+    50% {
+      filter: invert(1);
+    }
+  }
+</style>
