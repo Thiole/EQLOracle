@@ -412,7 +412,12 @@ pub fn list_class_unlocks(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClass
                         quest: q.quest.clone(),
                         ever_looted: it.ever_looted,
                         looted_count: it.looted_count,
-                        currently_owned: infer_reward_owned(ing, &it.item, it.currently_owned, completed),
+                        currently_owned: infer_reward_owned(
+                            ing,
+                            &it.item,
+                            it.currently_owned,
+                            completed,
+                        ),
                         sold_without_keeping: it.sold_without_keeping,
                         completed,
                         materials,
@@ -557,8 +562,7 @@ mod tests {
     /// Voice) must mark both the quest and its reward complete with no
     /// achievements dump at all -- the live signal, not a proxy for it
     #[test]
-    fn a_real_turnin_this_session_marks_its_quest_and_reward_complete_with_no_achievements_dump()
-    {
+    fn a_real_turnin_this_session_marks_its_quest_and_reward_complete_with_no_achievements_dump() {
         let mut ing = Ingest::default();
         ing.turn_ins.push(crate::ingest::ConfirmedTurnIn {
             ts: 0,
@@ -613,7 +617,8 @@ mod tests {
                 ("Light Woolen Mantle".to_string(), 1),
             ],
         });
-        ing.disposed_items.insert("mantle of the songweaver".to_string());
+        ing.disposed_items
+            .insert("mantle of the songweaver".to_string());
 
         let unlocks = list_class_unlocks(&ing, None);
         let bard = unlocks.iter().find(|c| c.class == "Bard").expect("Bard");

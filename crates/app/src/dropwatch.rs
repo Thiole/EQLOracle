@@ -147,7 +147,8 @@ mod tests {
     /// its real wiki drop list
     #[test]
     fn an_open_fight_against_a_known_monster_lists_its_full_drop_table() {
-        let ing = run("[Tue Jul 28 15:01:00 2026] You hit Keeper of Souls for 5 points of damage.\n");
+        let ing =
+            run("[Tue Jul 28 15:01:00 2026] You hit Keeper of Souls for 5 points of damage.\n");
         let rows = drop_watch(&ing);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].mob, "Keeper of Souls");

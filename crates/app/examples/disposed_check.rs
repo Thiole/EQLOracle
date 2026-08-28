@@ -15,7 +15,9 @@ use eqlp_store::EventKind;
 use std::path::Path;
 
 fn main() {
-    let path = std::env::args().nth(1).expect("usage: disposed_check <log>");
+    let path = std::env::args()
+        .nth(1)
+        .expect("usage: disposed_check <log>");
     let engine = build_engine().expect("pack builds");
     let bytes = std::fs::read(&path).expect("read log");
     let lines: Vec<&[u8]> = framed_lines(&bytes);
