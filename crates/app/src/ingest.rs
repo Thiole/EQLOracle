@@ -6267,14 +6267,26 @@ mod effect_ping_tests {
     /// ambiguous text, both close enough in time to explain the same
     /// landing. Neither source nor skill has one confident answer here;
     /// must stay honestly unresolved, not guess either candidate.
+    ///
+    /// why Alacrity/Quickness, not Healing/Greater Healing (the original
+    /// pair here): a fresh wiki scrape (2026-08-28) revealed "Greater
+    /// Healing" is itself a real display-name collision between two
+    /// distinct spell pages (`Healing_Water`, a Druid-only rename, and
+    /// `Greater_Healing` proper) with two *different* landing texts --
+    /// `spell_by_name`'s single-name lookup only ever sees one of them,
+    /// so whether that pair still demonstrates "two real candidates"
+    /// depends on which one wins, not a fact this test should depend on.
+    /// Alacrity/Quickness have no such self-collision (confirmed against
+    /// the same fresh scrape: one entry each, both "You feel much
+    /// faster.") -- a stabler real pair for the same scenario.
     #[test]
     fn two_real_simultaneous_candidates_leave_source_and_skill_unresolved() {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:02:11 2026] Dippinsauce begins casting Healing.",
-            b"[Tue Jul 28 15:02:12 2026] Bravesirrobin begins casting Greater Healing.",
-            b"[Tue Jul 28 15:02:14 2026] You feel much better.",
+            b"[Tue Jul 28 15:02:11 2026] Dippinsauce begins casting Alacrity.",
+            b"[Tue Jul 28 15:02:12 2026] Bravesirrobin begins casting Quickness.",
+            b"[Tue Jul 28 15:02:14 2026] You feel much faster.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 

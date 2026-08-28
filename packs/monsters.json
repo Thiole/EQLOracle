@@ -1,8 +1,8 @@
 {
   "source": "https://eqlwiki.com",
-  "built": "2026-08-21 22:41 UTC",
+  "built": "2026-08-28 13:14 UTC",
   "from": "items.json",
-  "count": 2972,
+  "count": 2973,
   "mobs": {
     "a Alchemist`s Acolyte": [
       "Di`zok Escape Staff",
@@ -11,12 +11,20 @@
       "Vile Sarnak Brew"
     ],
     "a Champion of Innoruuk": [
+      "Apothic Kilt",
+      "Blighted Trousers",
+      "Carmine Pants",
       "Cloak of the Assassin",
       "Hate Crystal",
+      "Imbrued Platemail Greaves",
       "Indicolite Greaves",
+      "Insidious Pantaloons",
       "Mantle of Study",
+      "Midnight Clad Leggings",
       "Songshawl",
-      "Teir`Dal Sai"
+      "Teir`Dal Sai",
+      "Umbral Platemail Greaves",
+      "Woven Shadow Greaves"
     ],
     "a Chelaki": [
       "Chelaki Tail"
@@ -392,25 +400,31 @@
       "Tribal War Boots"
     ],
     "a Disciple of Innoruuk": [
+      "Anthemion Leggings",
       "Cloak of the Assassin",
       "Crown of Harmony",
       "Cryosilk Sash",
       "Darkmetal Falchion",
-      "Ethereal Mist Boots",
+      "Ethereal Mist Greaves",
       "Gloves of Harmony",
       "Greaves of Harmony",
       "Hate Crystal",
       "Hate's Edge",
       "Hauberk of Harmony",
+      "Lustrous Russet Greaves",
       "Neriak Ceremonial Robe",
       "Rune Etched Greaves",
       "Sandals of Harmony",
+      "Shadow Rage Leggings",
+      "Shiverback-hide Leggings",
       "Silverleaf Belt",
       "Silverleaf Girdle",
       "Songshawl",
       "Teir`Dal Sai",
+      "Thorny Vine Greaves",
       "Valorium Greaves",
       "Vambraces of Harmony",
+      "Vermiculated Leggings",
       "Wristguard of Harmony"
     ],
     "a Dizok Sergeant": [
@@ -600,19 +614,26 @@
       "Sarnak Earring of Station"
     ],
     "a Knight of Innoruuk": [
+      "Anthemion Leggings",
       "Band of Discipline",
       "Boots of the Righteous",
       "Bracer of the Righteous",
       "Breastplate of the Righteous",
       "Cloak of the Assassin",
-      "Ethereal Mist Boots",
       "Ethereal Mist Greaves",
       "Gauntlets of the Righteous",
       "Greaves of the Righteous",
       "Hate Crystal",
       "Helm of the Righteous",
+      "Lustrous Russet Greaves",
+      "Rune Etched Greaves",
+      "Shadow Rage Leggings",
+      "Shiverback-hide Leggings",
       "Spiritguard",
-      "Vambraces of the Righteous"
+      "Thorny Vine Greaves",
+      "Valorium Greaves",
+      "Vambraces of the Righteous",
+      "Vermiculated Leggings"
     ],
     "a Kobold Guard": [
       "Bead Necklace",
@@ -1024,12 +1045,20 @@
       "Silver Amulet"
     ],
     "a Sage of Innoruuk": [
+      "Apothic Kilt",
+      "Blighted Trousers",
+      "Carmine Pants",
       "Cloak of the Assassin",
       "Hate Crystal",
+      "Imbrued Platemail Greaves",
+      "Indicolite Greaves",
+      "Insidious Pantaloons",
+      "Midnight Clad Leggings",
       "Neriak Ceremonial Robe",
       "Raiment of the Chosen",
       "Silverleaf Belt",
-      "Umbral Platemail Greaves"
+      "Umbral Platemail Greaves",
+      "Woven Shadow Greaves"
     ],
     "a Sarnak Assassin": [
       "Windruned Dagger"
@@ -1489,13 +1518,7 @@
     ],
     "a boogeyman": [
       "Anthemion Boots",
-      "Blighted Armband",
-      "Blighted Boots",
-      "Blighted Gloves",
-      "Blighted Robe",
-      "Blighted Skullcap",
-      "Blighted Sleeves",
-      "Blighted Trousers",
+      "Ethereal Mist Boots",
       "Eye of Fright",
       "Fire Emerald Ring",
       "Lustrous Russet Boots",
@@ -1504,7 +1527,12 @@
       "Pearl Necklace",
       "Rune Etched Boots",
       "Sapphire Necklace",
-      "Star Ruby Earring"
+      "Shadow Rage Boots",
+      "Shiverback-hide Boots",
+      "Star Ruby Earring",
+      "Thorny Vine Boots",
+      "Valorium Boots",
+      "Vermiculated Boots"
     ],
     "a borer beetle": [
       "Fire Beetle Eye"
@@ -2087,6 +2115,18 @@
       "Rusty Shan`Tok",
       "Tarnished Fer`Esh"
     ],
+    "a decrepit warder": [
+      "Anthemion Wristguard",
+      "Ethereal Mist Bracers",
+      "Lustrous Russet Bracer",
+      "Opal Bracelet",
+      "Rune Etched Bracer",
+      "Shadow Rage Wristguard",
+      "Shiverback-hide Wristbands",
+      "Thorny Vine Bracer",
+      "Valorium Bracers",
+      "Vermiculated Bracelet"
+    ],
     "a deepwater goblin": [
       "Arrow",
       "Bronze Battle Axe",
@@ -2460,18 +2500,16 @@
     ],
     "a fetid fiend": [
       "Apothic Warband",
+      "Blighted Armband",
       "Carmine Trinket",
       "Girdle of the Diligent",
       "Imbrued Platemail Bracer",
+      "Indicolite Bracer",
       "Insidious Manacle",
       "Midnight Clad Wristbands",
       "Mithril Amulet",
       "Umbral Platemail Bracer",
-      "Valorium Boots",
-      "Valorium Bracers",
-      "Valorium Gauntlets",
-      "Valorium Greaves",
-      "Valorium Vambraces"
+      "Woven Shadow Bracer"
     ],
     "a fierce impaler": [
       "Darksea Harpoon",
@@ -2621,27 +2659,23 @@
     ],
     "a forsaken revenant": [
       "Anthemion Armbands",
-      "Apothic Boots",
-      "Apothic Crown",
-      "Apothic Gloves",
-      "Apothic Kilt",
-      "Apothic Robe",
       "Apothic Sleeves",
-      "Apothic Warband",
+      "Blighted Sleeves",
       "Carmine Sleeves",
+      "Ethereal Mist Vambraces",
       "Imbrued Platemail Vambraces",
-      "Insidious Gloves",
-      "Insidious Halo",
-      "Insidious Manacle",
-      "Insidious Pantaloons",
-      "Insidious Robe",
+      "Indicolite Vambraces",
       "Insidious Sleeves",
-      "Insidious Slippers",
+      "Lustrous Russet Vambraces",
+      "Midnight Clad Armbands",
+      "Rune Etched Vambraces",
       "Shadow Rage Sleeves",
+      "Shiverback-hide Armbands",
       "Staff of Elemental Mastery: Fire",
       "Thorny Vine Vambraces",
       "Umbral Platemail Vambraces",
       "Valorium Vambraces",
+      "Vermiculated Armplates",
       "Wand of Swiftness",
       "Wand of Swords",
       "Woven Shadow Vambraces"
@@ -2665,13 +2699,21 @@
       "Moonstone Ring"
     ],
     "a frightfinger": [
+      "Apothic Gloves",
+      "Blighted Gloves",
       "Carmine Boots",
       "Carmine Gloves",
       "Carmine Pants",
       "Carmine Robe",
       "Carmine Sleeves",
       "Carmine Trinket",
-      "Carmine Turban"
+      "Carmine Turban",
+      "Imbrued Platemail Gauntlets",
+      "Indicolite Gauntlets",
+      "Insidious Gloves",
+      "Midnight Clad Fistwraps",
+      "Umbral Platemail Gauntlets",
+      "Woven Shadow Gauntlets"
     ],
     "a froglok": [
       "Netted Cap",
@@ -3537,14 +3579,20 @@
     ],
     "a glare lord": [
       "Anthemion Jerkin",
+      "Ethereal Mist Chestplate",
       "Fire Emerald Ring",
       "Lustrous Russet Breastplate",
       "Mithril Amulet",
       "Opal Bracelet",
       "Pearl Necklace",
+      "Rune Etched Chestplate",
       "Sapphire Necklace",
+      "Shadow Rage Tunic",
+      "Shiverback-hide Jerkin",
       "Star Ruby Earring",
+      "Thorny Vine Chestplate",
       "Valorium Chestplate",
+      "Vermiculated Tunic",
       "Wand of Lava"
     ],
     "a gloomstalker mermaid": [
@@ -3813,6 +3861,10 @@
     "a gnome skeleton": [
       "Cracked Staff",
       "Worn Great Staff"
+    ],
+    "a gnomish spelunker": [
+      "Repurposed Pickaxe",
+      "Spelunker's Headlamp"
     ],
     "a goblin": [
       "Cloth Sandals",
@@ -4177,12 +4229,15 @@
       "Golden Pendant"
     ],
     "a gorgon": [
-      "Vermiculated Armplates",
-      "Vermiculated Boots",
-      "Vermiculated Bracelet",
-      "Vermiculated Gloves",
-      "Vermiculated Leggings",
-      "Vermiculated Tunic"
+      "Apothic Boots",
+      "Blighted Boots",
+      "Carmine Boots",
+      "Imbrued Platemail Boots",
+      "Indicolite Boots",
+      "Insidious Slippers",
+      "Midnight Clad Footwraps",
+      "Umbral Platemail Boots",
+      "Woven Shadow Boots"
     ],
     "a greater dark bone": [
       "Bronze Bracers",
@@ -4395,13 +4450,13 @@
       "Cryosilk Pantaloons",
       "Ethereal Mist Vambraces",
       "Lustrous Russet Boots",
+      "Lustrous Russet Bracer",
       "Lustrous Russet Breastplate",
+      "Lustrous Russet Gauntlets",
+      "Lustrous Russet Greaves",
       "Lustrous Russet Helm",
-      "Rune Etched Bracer",
-      "Shiverback-hide Boots",
-      "Thorny Vine Boots",
-      "Valorium Greaves",
-      "Vermiculated Bracelet"
+      "Lustrous Russet Vambraces",
+      "Thorny Vine Boots"
     ],
     "a haunted seachest": [
       "Gold Ring",
@@ -4562,14 +4617,12 @@
       "Opal Bracelet"
     ],
     "a kiraikuei": [
+      "Apothic Warband",
+      "Blighted Armband",
+      "Carmine Trinket",
       "Fire Emerald Ring",
-      "Indicolite Boots",
+      "Imbrued Platemail Bracer",
       "Indicolite Bracer",
-      "Indicolite Breastplate",
-      "Indicolite Gauntlets",
-      "Indicolite Greaves",
-      "Indicolite Helm",
-      "Indicolite Vambraces",
       "Insidious Manacle",
       "Legionnaire Scale Boots",
       "Legionnaire Scale Bracers",
@@ -4578,10 +4631,12 @@
       "Legionnaire Scale Greaves",
       "Legionnaire Scale Helm",
       "Legionnaire Scale Vambraces",
+      "Midnight Clad Wristbands",
       "Sapphire Necklace",
       "Shuriken of the Tranquil",
       "Star Ruby Earring",
-      "Umbral Platemail Bracer"
+      "Umbral Platemail Bracer",
+      "Woven Shadow Bracer"
     ],
     "a klaknak warrior": [
       "Fire Beetle Eye"
@@ -4836,22 +4891,21 @@
       "Rusty Short Sword",
       "Rusty Ulak"
     ],
-    "a loathing lich": [
-      "Imbrued Platemail Bracer",
-      "Midnight Clad Armbands",
-      "Midnight Clad Fistwraps",
-      "Midnight Clad Footwraps",
-      "Midnight Clad Headband",
-      "Midnight Clad Leggings",
-      "Midnight Clad Straps",
-      "Midnight Clad Wristbands",
-      "Umbral Platemail Bracer"
-    ],
     "a loathling lich": [
+      "Apothic Warband",
+      "Blighted Armband",
+      "Carmine Trinket",
       "Fire Emerald Ring",
+      "Hate Crystal",
+      "Imbrued Platemail Bracer",
+      "Indicolite Bracer",
+      "Insidious Manacle",
+      "Midnight Clad Wristbands",
       "Sapphire Necklace",
       "Star Ruby Earring",
-      "Wand of Conflagration"
+      "Umbral Platemail Bracer",
+      "Wand of Conflagration",
+      "Woven Shadow Bracer"
     ],
     "a lurking mummy": [
       "Mithril Earring",
@@ -5153,6 +5207,9 @@
       "Fine Steel Short Sword"
     ],
     "a nightmare": [
+      "Apothic Boots",
+      "Blighted Boots",
+      "Carmine Boots",
       "Fire Emerald Ring",
       "Greenmist Boots",
       "Greenmist Bracer",
@@ -5161,12 +5218,18 @@
       "Greenmist Helm",
       "Greenmist Mask",
       "Greenmist Vambraces",
+      "Imbrued Platemail Boots",
+      "Indicolite Boots",
+      "Insidious Slippers",
+      "Midnight Clad Footwraps",
       "Mithril Amulet",
       "Nightmare Hide",
       "Opal Bracelet",
       "Sapphire Necklace",
       "Star Ruby Earring",
-      "Wand of Darkness"
+      "Umbral Platemail Boots",
+      "Wand of Darkness",
+      "Woven Shadow Boots"
     ],
     "a nok ghoul wizard": [
       "Fine Steel Morning Star",
@@ -5196,7 +5259,16 @@
       "Worn Great Staff"
     ],
     "a phantasm": [
-      "Thulian Wand"
+      "Anthemion Boots",
+      "Ethereal Mist Boots",
+      "Lustrous Russet Boots",
+      "Rune Etched Boots",
+      "Shadow Rage Boots",
+      "Shiverback-hide Boots",
+      "Thorny Vine Boots",
+      "Thulian Wand",
+      "Valorium Boots",
+      "Vermiculated Boots"
     ],
     "a phantom": [
       "Green Jade Broadsword",
@@ -5285,6 +5357,10 @@
     "a priest of Nagafen": [
       "Fine Steel Warhammer",
       "Throwing Boulder"
+    ],
+    "a priest of najena": [
+      "Ancient Spurned Ferraiolo",
+      "Ancient Spurned Waistcoat"
     ],
     "a pyre beetle": [
       "Fire Beetle Eye"
@@ -5398,7 +5474,9 @@
       "Serpentine Bracer"
     ],
     "a reanimated hand (Unrest)": [
-      "Ivory Bracelet"
+      "Brittle Staff",
+      "Ivory Bracelet",
+      "Rhodium Band"
     ],
     "a repulsive rat": [
       "Fire Emerald Ring",
@@ -5425,11 +5503,15 @@
     ],
     "a revultant rat": [
       "Apothic Warband",
+      "Blighted Armband",
       "Carmine Trinket",
       "Darkwar Mask",
+      "Imbrued Platemail Bracer",
+      "Indicolite Bracer",
       "Insidious Manacle",
       "Midnight Clad Wristbands",
       "Revultant Whip",
+      "Umbral Platemail Bracer",
       "Woven Shadow Bracer"
     ],
     "a rock dervish": [
@@ -5507,6 +5589,7 @@
       "Worn Great Staff"
     ],
     "a samhain": [
+      "Anthemion Wristguard",
       "Ethereal Mist Bracers",
       "Fire Emerald Ring",
       "Fluxbladed Axe",
@@ -5516,7 +5599,12 @@
       "Pearl Necklace",
       "Rune Etched Bracer",
       "Sapphire Necklace",
-      "Star Ruby Earring"
+      "Shadow Rage Wristguard",
+      "Shiverback-hide Wristbands",
+      "Star Ruby Earring",
+      "Thorny Vine Bracer",
+      "Valorium Bracers",
+      "Vermiculated Bracelet"
     ],
     "a sand giant": [
       "Fine Steel Long Sword",
@@ -5655,7 +5743,9 @@
       "Rune Etched Gauntlets",
       "Shadow Rage Gloves",
       "Shiverback-hide Gloves",
-      "Valorium Gauntlets"
+      "Thorny Vine Gauntlets",
+      "Valorium Gauntlets",
+      "Vermiculated Gloves"
     ],
     "a scoriae hornet": [
       "Mithril Amulet",
@@ -5664,17 +5754,15 @@
     ],
     "a scorn banshee": [
       "Anthemion Wristguard",
-      "Imbrued Platemail Boots",
-      "Imbrued Platemail Bracer",
-      "Imbrued Platemail Breastplate",
-      "Imbrued Platemail Gauntlets",
-      "Imbrued Platemail Greaves",
-      "Imbrued Platemail Helm",
-      "Imbrued Platemail Vambraces",
+      "Ethereal Mist Bracers",
       "Lustrous Russet Bracer",
       "Martune Rapier",
+      "Rune Etched Bracer",
       "Shadow Rage Wristguard",
-      "Shiverback-hide Wristbands"
+      "Shiverback-hide Wristbands",
+      "Thorny Vine Bracer",
+      "Valorium Bracers",
+      "Vermiculated Bracelet"
     ],
     "a scorpion": [
       "Scorpion Pincer"
@@ -5955,13 +6043,15 @@
       "Shin Greaves"
     ],
     "a shiverback": [
-      "Shiverback-hide Armbands",
-      "Shiverback-hide Boots",
+      "Anthemion Gloves",
+      "Ethereal Mist Gauntlets",
+      "Lustrous Russet Gauntlets",
+      "Rune Etched Gauntlets",
+      "Shadow Rage Gloves",
       "Shiverback-hide Gloves",
-      "Shiverback-hide Jerkin",
-      "Shiverback-hide Leggings",
-      "Shiverback-hide Wristbands",
-      "Valorium Gauntlets"
+      "Thorny Vine Gauntlets",
+      "Valorium Gauntlets",
+      "Vermiculated Gloves"
     ],
     "a shoal serpent": [
       "Giant Snake Fang"
@@ -6178,7 +6268,8 @@
       "Bracelet of Distortion",
       "Bracelet of Exertion",
       "Dragon-hide Mantle",
-      "Silvery Girdle"
+      "Silvery Girdle",
+      "White Satin Gloves"
     ],
     "a soul inveigling": [
       "Fine Steel Rapier",
@@ -6225,7 +6316,9 @@
       "Scythe"
     ],
     "a spinechiller spider": [
+      "Apothic Warband",
       "Blighted Armband",
+      "Carmine Trinket",
       "Cryosilk Amice",
       "Cryosilk Bracelet",
       "Cryosilk Cap",
@@ -6240,6 +6333,10 @@
       "Cryosilk Veil",
       "Cryosilk Webshield",
       "Imbrued Platemail Bracer",
+      "Indicolite Bracer",
+      "Insidious Manacle",
+      "Midnight Clad Wristbands",
+      "Umbral Platemail Bracer",
       "Woven Shadow Bracer"
     ],
     "a spirit flux wolf": [
@@ -6264,13 +6361,17 @@
       "Mithril Earring",
       "Silver Amulet"
     ],
+    "a spiroc banisher": [
+      "Belt of Transience"
+    ],
     "a spite golem": [
-      "Rune Etched Boots",
-      "Rune Etched Bracer",
-      "Rune Etched Chestplate",
-      "Rune Etched Gauntlets",
-      "Rune Etched Greaves",
-      "Rune Etched Vambraces",
+      "Apothic Crown",
+      "Blighted Skullcap",
+      "Carmine Turban",
+      "Imbrued Platemail Helm",
+      "Indicolite Helm",
+      "Insidious Halo",
+      "Midnight Clad Headband",
       "Runewood Shield",
       "Scaled Hierophant Boots",
       "Scaled Hierophant Bracers",
@@ -6281,7 +6382,8 @@
       "Scaled Hierophant Helm",
       "Scaled Hierophant Vambraces",
       "Spitestone Shield",
-      "Umbral Platemail Helm"
+      "Umbral Platemail Helm",
+      "Woven Shadow Helm"
     ],
     "a sprited harpie": [
       "Bracelet of Cessation",
@@ -6401,15 +6503,17 @@
       "Tentacle Whip"
     ],
     "a tentacle tormentor": [
+      "Anthemion Jerkin",
       "Dweamorvine Garland",
+      "Ethereal Mist Chestplate",
       "Lustrous Russet Breastplate",
+      "Rune Etched Chestplate",
+      "Shadow Rage Tunic",
+      "Shiverback-hide Jerkin",
       "Thorny Vine Boots",
-      "Thorny Vine Bracer",
       "Thorny Vine Chestplate",
-      "Thorny Vine Gauntlets",
-      "Thorny Vine Greaves",
-      "Thorny Vine Vambraces",
-      "Valorium Chestplate"
+      "Valorium Chestplate",
+      "Vermiculated Tunic"
     ],
     "a terror carver": [
       "Crystal Covered Shroud",
@@ -6559,9 +6663,17 @@
       "Pearl Earring"
     ],
     "a turmoil toad": [
+      "Apothic Gloves",
+      "Blighted Gloves",
+      "Carmine Gloves",
       "Flayed Turmoilskin Belt",
+      "Imbrued Platemail Gauntlets",
+      "Indicolite Gauntlets",
       "Insidious Gloves",
-      "Turmoil Warts"
+      "Midnight Clad Fistwraps",
+      "Turmoil Warts",
+      "Umbral Platemail Gauntlets",
+      "Woven Shadow Gauntlets"
     ],
     "a ulthork man o war": [
       "Ulthork Hide Arms",
@@ -6801,10 +6913,15 @@
     "a windrider drake": [
       "Belt of Contention",
       "Belt of Iniquity",
+      "Belt of Tranquility",
+      "Belt of Transience",
+      "Bracelet of Quiescence",
       "Crown Of Elemental Mastery",
       "Crown of Elemental Mastery",
       "Sphinx Crown",
-      "Weight of the Gods"
+      "Stein of Flowing Ichor",
+      "Weight of the Gods",
+      "White Satin Gloves"
     ],
     "a wooly mammoth": [
       "Ring of Frost"
@@ -6813,9 +6930,16 @@
       "Ring of Frost"
     ],
     "a worry wraith": [
+      "Apothic Gloves",
+      "Blighted Gloves",
+      "Carmine Gloves",
       "Imbrued Platemail Gauntlets",
+      "Indicolite Gauntlets",
+      "Insidious Gloves",
+      "Midnight Clad Fistwraps",
       "Umbral Platemail Gauntlets",
       "Wand of Allure",
+      "Woven Shadow Gauntlets",
       "Wraithstone"
     ],
     "a worry wraith pet": [
@@ -7564,34 +7688,38 @@
       "Sparkling Soul Necklace"
     ],
     "amygdalan knight": [
+      "Amygdalan Tendril",
+      "Apothic Robe",
+      "Blighted Robe",
+      "Carmine Robe",
       "Fire Emerald Ring",
+      "Imbrued Platemail Breastplate",
+      "Indicolite Breastplate",
+      "Insidious Robe",
+      "Midnight Clad Straps",
       "Mithril Amulet",
+      "Nautilus Shield",
       "Opal Bracelet",
       "Pearl Necklace",
       "Sapphire Necklace",
       "Star Ruby Earring",
-      "Umbral Platemail Boots",
-      "Umbral Platemail Bracer",
       "Umbral Platemail Breastplate",
-      "Umbral Platemail Gauntlets",
-      "Umbral Platemail Greaves",
-      "Umbral Platemail Helm",
-      "Umbral Platemail Vambraces",
       "Woven Shadow Chestplate"
     ],
     "amygdalan warrior": [
       "Amygdalan Tendril",
-      "Blighted Armband",
+      "Apothic Robe",
       "Blighted Robe",
+      "Carmine Robe",
       "Imbrued Platemail Breastplate",
+      "Indicolite Breastplate",
+      "Insidious Robe",
+      "Midnight Clad Straps",
       "Nautilus Shield",
       "Opal Bracelet",
       "Pearl Necklace",
-      "Rune Etched Gauntlets",
-      "Shiverback-hide Gloves"
-    ],
-    "amygldalan knight": [
-      "Midnight Clad Straps"
+      "Umbral Platemail Breastplate",
+      "Woven Shadow Chestplate"
     ],
     "an Aged Golem Sentinel": [
       "Sentry Robe"
@@ -7611,12 +7739,7 @@
       "Silverleaf Belt",
       "Silverleaf Girdle",
       "Teir`Dal Sai",
-      "Vambraces of the Untamed",
-      "Woven Shadow Greaves"
-    ],
-    "an Amygdalan warrior": [
-      "Apothic Robe",
-      "Carmine Robe"
+      "Vambraces of the Untamed"
     ],
     "an Ancient Guardian": [
       "Golem Tear Ring"
@@ -7777,18 +7900,16 @@
       "Anthemion Wristguard",
       "Ethereal Mist Bracers",
       "Fire Emerald Ring",
+      "Lustrous Russet Bracer",
       "Rune Etched Bracer",
       "Sapphire Necklace",
+      "Shadow Rage Wristguard",
+      "Shiverback-hide Wristbands",
       "Shrieking Ahlspiess",
       "Star Ruby Earring",
+      "Thorny Vine Bracer",
       "Valorium Bracers",
-      "Woven Shadow Boots",
-      "Woven Shadow Bracer",
-      "Woven Shadow Chestplate",
-      "Woven Shadow Gauntlets",
-      "Woven Shadow Greaves",
-      "Woven Shadow Helm",
-      "Woven Shadow Vambraces"
+      "Vermiculated Bracelet"
     ],
     "an advisor": [
       "Advisor Robe"
@@ -8029,11 +8150,18 @@
       "Pearl Earring"
     ],
     "an ashenbone drake": [
+      "Apothic Sleeves",
       "Ashenbone Abbasi",
       "Ashenbone Axe",
       "Ashenbone Shield",
+      "Blighted Sleeves",
+      "Carmine Sleeves",
+      "Imbrued Platemail Vambraces",
+      "Indicolite Vambraces",
       "Insidious Sleeves",
-      "Umbral Platemail Vambraces"
+      "Midnight Clad Armbands",
+      "Umbral Platemail Vambraces",
+      "Woven Shadow Vambraces"
     ],
     "an asp": [
       "Giant Snake Fang"
@@ -8191,12 +8319,24 @@
       "Rusty Short Sword"
     ],
     "an elite dragoon": [
-      "Ethereal Mist Boots",
+      "Anthemion Leggings",
+      "Apothic Kilt",
+      "Blighted Trousers",
+      "Carmine Pants",
       "Ethereal Mist Greaves",
+      "Imbrued Platemail Greaves",
+      "Indicolite Greaves",
+      "Insidious Pantaloons",
       "Lustrous Russet Greaves",
       "Midnight Clad Leggings",
+      "Rune Etched Greaves",
       "Shadow Rage Leggings",
-      "Shiverback-hide Leggings"
+      "Shiverback-hide Leggings",
+      "Thorny Vine Greaves",
+      "Umbral Platemail Greaves",
+      "Valorium Greaves",
+      "Vermiculated Leggings",
+      "Woven Shadow Greaves"
     ],
     "an elite gnoll guard": [
       "Bronze Long Sword",
@@ -8525,14 +8665,18 @@
       "Raw Silk Robe"
     ],
     "an ire ghast": [
+      "Anthemion Armbands",
       "Darkmetal Holy Water Sprinkler",
       "Ethereal Mist Vambraces",
+      "Lustrous Russet Vambraces",
       "Rune Etched Vambraces",
       "Shadow Rage Sleeves",
+      "Shiverback-hide Armbands",
       "Theologian Claymore",
       "Thorny Vine Vambraces",
       "Trueheart Shield",
-      "Valorium Vambraces"
+      "Valorium Vambraces",
+      "Vermiculated Armplates"
     ],
     "an isle goblin shaman": [
       "Worn Great Staff"
@@ -8846,6 +8990,10 @@
       "Sarnak Enforcer",
       "Tattered Leg Wrappings"
     ],
+    "an undead brewer": [
+      "Brewer's Bracer",
+      "Brewer's Mittens"
+    ],
     "an undead bridesmaid": [
       "Velium Long Sword",
       "Velium Rapier",
@@ -9152,12 +9300,18 @@
     ],
     "bazzt Zzzt": [
       "Adamantium Earring",
+      "Amulet of Woven Hair",
       "Belt of Contention",
       "Belt of Iniquity",
+      "Belt of Tranquility",
+      "Belt of Transience",
+      "Belt of Virtue",
       "Bixie Stinger (Bixie God's Stinger)",
       "Bixie Sword Blade",
       "Blade of Abrogation",
+      "Bracelet of Distortion",
       "Bracelet of Exertion",
+      "Bracelet of Quiescence",
       "Fine Wool Cloak",
       "Rusted Pauldrons",
       "Silvered Spiroc Necklace",
@@ -9165,6 +9319,7 @@
       "Treant Tear",
       "Weight of the Gods",
       "White Gold Earring",
+      "White Satin Gloves",
       "Whitened Treant Fists"
     ],
     "bazzzazzt": [
@@ -9172,11 +9327,18 @@
       "Belt of Concordance",
       "Belt of Contention",
       "Belt of Iniquity",
+      "Belt of Tranquility",
       "Belt of Transience",
+      "Belt of Virtue",
+      "Bracelet of Cessation",
+      "Bracelet of Distortion",
+      "Bracelet of Exertion",
       "Bracelet of Quiescence",
       "Symbol of Marr",
       "Treant Tear",
-      "Weight of the Gods"
+      "Weight of the Gods",
+      "White Satin Gloves",
+      "Whitened Treant Fists"
     ],
     "bejeweled Elemental": [
       "Loam Encrusted Sleeves",
@@ -9192,11 +9354,9 @@
     "bink": [
       "Leatherfoot Raider Skullcap (drop)"
     ],
-    "bizazzt": [
-      "Bracelet of Distortion"
-    ],
     "bizazzzt": [
       "Adamantium Bands",
+      "Bracelet of Distortion",
       "Cracked Leather Belt"
     ],
     "bjoskhua Blackfist": [
@@ -9499,12 +9659,20 @@
     ],
     "bzzzt": [
       "Adamantium Bands",
+      "Belt of Concordance",
       "Belt of Transience",
+      "Belt of Virtue",
       "Belt of the Pine",
       "Blade of Abrogation",
+      "Bracelet of Cessation",
+      "Bracelet of Distortion",
+      "Bracelet of Exertion",
+      "Bracelet of Quiescence",
       "Stein of Flowing Ichor",
       "Symbol of Marr",
-      "Treant Tear"
+      "Treant Tear",
+      "White Satin Gloves",
+      "Whitened Treant Fists"
     ],
     "cWG Model EXG": [
       "Charred Guardian Breastplate",
@@ -9727,15 +9895,12 @@
       "Windetched Staff"
     ],
     "cleric of Innoruuk": [
-      "Ethereal Mist Bracers",
-      "Ethereal Mist Chestplate",
-      "Ethereal Mist Gauntlets",
-      "Ethereal Mist Greaves",
+      "Anthemion Skullcap",
       "Ethereal Mist Helm",
-      "Ethereal Mist Vambraces",
       "Lustrous Russet Helm",
       "Prismatic Shield",
       "Rune Etched Helm",
+      "Shadow Rage Helm",
       "Thorny Vine Helm",
       "Valorium Helmet",
       "Vermiculated Crown"
@@ -9780,8 +9945,7 @@
       "Animated Sword4"
     ],
     "coercer T`vala": [
-      "Insidious Halo",
-      "Insidious Slippers"
+      "Rod of Infinite Thought"
     ],
     "cognoggin": [
       "Rusty Short Sword"
@@ -10873,6 +11037,7 @@
     "eye of Veeshan": [
       "Belt of the Pine",
       "Blade of Abrogation",
+      "Bracelet of Quiescence",
       "Efreeti Great Staff",
       "Fae Pauldrons"
     ],
@@ -10969,6 +11134,7 @@
     ],
     "fire goblin": [
       "Fine Steel Warhammer",
+      "Fire Goblin Skin",
       "Weighted Gloves"
     ],
     "fire goblin bartender": [
@@ -10978,9 +11144,6 @@
     ],
     "fire goblin shaman": [
       "Goblin Fire Totem"
-    ],
-    "fire goblins": [
-      "Fire Goblin Skin"
     ],
     "firiona drixie": [
       "Silver Earring"
@@ -11658,15 +11821,20 @@
     "gorgalosk": [
       "Azure Ring",
       "Belt of Iniquity",
+      "Belt of Tranquility",
       "Belt of Transience",
+      "Belt of Virtue",
       "Belt of the Pine",
       "Blade of Abrogation",
       "Bracelet of Cessation",
       "Bracelet of Distortion",
       "Bracelet of Exertion",
+      "Bracelet of Quiescence",
       "Feathered Cape",
       "Grey Damask Cloak",
       "Inlaid Choker",
+      "Light Woolen Mask",
+      "Stein of Flowing Ichor",
       "Symbol of Marr",
       "Treant Tear",
       "Weight of the Gods",
@@ -12468,7 +12636,10 @@
     ],
     "heart harpie": [
       "Belt of Iniquity",
-      "Blade of Abrogation"
+      "Belt of Tranquility",
+      "Blade of Abrogation",
+      "Bracelet of Exertion",
+      "Whitened Treant Fists"
     ],
     "heartsbane drake": [
       "Crown Of Elemental Mastery"
@@ -12498,6 +12669,9 @@
       "Hierophant's Cloak",
       "Sword of Skyfire",
       "Sword of the Morning"
+    ],
+    "high Priest M`kari": [
+      "Truesight Hammer"
     ],
     "high Priest Zaharn": [
       "Bronze Dagger",
@@ -12734,14 +12908,30 @@
     ],
     "innoruuk's Chosen": [
       "Abjurer's Earring",
+      "Anthemion Leggings",
+      "Apothic Kilt",
+      "Blighted Trousers",
+      "Carmine Pants",
       "Darkmetal Falchion",
+      "Ethereal Mist Greaves",
       "Hate Crystal",
       "Hate's Edge",
-      "Indicolite Bracer",
+      "Imbrued Platemail Greaves",
       "Indicolite Breastplate",
       "Indicolite Greaves",
+      "Insidious Pantaloons",
+      "Lustrous Russet Greaves",
+      "Midnight Clad Leggings",
       "Nightgrowth Blade",
-      "Silverleaf Belt"
+      "Rune Etched Greaves",
+      "Shadow Rage Leggings",
+      "Shiverback-hide Leggings",
+      "Silverleaf Belt",
+      "Thorny Vine Greaves",
+      "Umbral Platemail Greaves",
+      "Valorium Greaves",
+      "Vermiculated Leggings",
+      "Woven Shadow Greaves"
     ],
     "innoruuk_(God)": [
       "Bloodstar Pendant",
@@ -13049,11 +13239,14 @@
       "Belt of Concordance",
       "Belt of Contention",
       "Belt of Iniquity",
+      "Belt of Transience",
       "Belt of Virtue",
       "Belt of the Pine",
       "Black Silk Cape",
       "Blade of Abrogation",
+      "Bracelet of Distortion",
       "Bracelet of Exertion",
+      "Bracelet of Quiescence",
       "Ceramic Mask",
       "Cracked Leather Eyepatch",
       "Fine Velvet Cloak",
@@ -13068,6 +13261,7 @@
       "Symbol of Marr",
       "Treant Tear",
       "Weight of the Gods",
+      "Whitened Treant Fists",
       "Woven Skull Cap"
     ],
     "keeper of the Tombs": [
@@ -13119,6 +13313,14 @@
       "Crystalline Silk Mask (Lore)",
       "Iceflame",
       "Lute of the Howler"
+    ],
+    "khrix Fritchoff": [
+      "Scaredy Cap",
+      "Shawl of Less-Than Invisibility"
+    ],
+    "khrix's Abomination": [
+      "Fistwraps of Raw Flesh",
+      "Rotted Chestwraps"
     ],
     "kihun Solstin": [
       "Gossamer Robe"
@@ -14407,6 +14609,7 @@
     ],
     "lord of Ire": [
       "Bloodmoon",
+      "Darkmetal Holy Water Sprinkler",
       "Eye of Innoruuk",
       "Shield of the Immaculate",
       "Shield of the Stalwart Seas",
@@ -14470,9 +14673,6 @@
     "maggot infested flesh": [
       "Fingerbone Necklace",
       "Maggot Ridden Flesh"
-    ],
-    "magi P'Tasa": [
-      "Apothic Warband"
     ],
     "magi P`Tasa": [
       "Eye of Innoruuk",
@@ -14755,6 +14955,7 @@
     "mooto": [
       "Clay Totem",
       "Cloth Sandals",
+      "Elven Charm Necklace",
       "RunnyEye Warbeads",
       "Shattered Warbeads",
       "Splintering Club"
@@ -15037,13 +15238,15 @@
     "noble Dojorn": [
       "Belt of Concordance",
       "Belt of Contention",
+      "Belt of Tranquility",
+      "Belt of Virtue",
+      "Bracelet of Cessation",
       "Bracelet of Exertion",
       "Bracelet of Quiescence",
       "Brass Knuckles",
       "Efreeti Battle Axe",
       "Efreeti Belt",
       "Efreeti Dirk",
-      "Efreeti Great Staff",
       "Efreeti Long Sword",
       "Efreeti Mace",
       "Efreeti Magi Staff",
@@ -15488,12 +15691,17 @@
       "Gem Encrusted Circlet"
     ],
     "overseer of Air": [
+      "Belt of Tranquility",
+      "Bracelet of Cessation",
+      "Bracelet of Quiescence",
       "Brass Knuckles",
       "Efreeti Battle Axe",
       "Efreeti Dirk",
+      "Efreeti Long Sword",
       "Efreeti Mace",
       "Efreeti Magi Staff",
       "Efreeti Scimitar",
+      "Efreeti Standard",
       "Efreeti War Axe",
       "Efreeti War Bow",
       "Efreeti War Club",
@@ -15502,6 +15710,7 @@
       "Efreeti War Shield",
       "Efreeti War Spear",
       "Efreeti War Staff",
+      "Efreeti Wind Staff",
       "Efreeti Zweihander",
       "Golden Efreeti Bracers",
       "Golden Efreeti Chestplate",
@@ -15568,26 +15777,6 @@
       "Star Ruby Earring",
       "Trident of the Seven Seas",
       "Wand of Mana Tapping"
-    ],
-    "phoboplasm": [
-      "Ethereal Mist Boots",
-      "Ethereal Mist Helm",
-      "Imbrued Platemail Bracer",
-      "Indicolite Gauntlets",
-      "Lustrous Russet Boots",
-      "Lustrous Russet Helm",
-      "Rune Etched Boots",
-      "Rune Etched Helm",
-      "Shiverback-hide Boots",
-      "Shiverback-hide Gloves",
-      "Thorny Vine Greaves",
-      "Thorny Vine Helm",
-      "Valorium Bracers",
-      "Valorium Helmet",
-      "Vermiculated Armplates",
-      "Vermiculated Crown",
-      "Woven Shadow Gauntlets",
-      "Woven Shadow Greaves"
     ],
     "phurzikon": [
       "Pearl Earring",
@@ -15781,6 +15970,9 @@
       "Belt of Transience",
       "Blade of Abrogation",
       "Bracelet of Cessation",
+      "Bracelet of Distortion",
+      "Bracelet of Exertion",
+      "Bracelet of Quiescence",
       "Finely Woven Gold Mesh",
       "Stein of Flowing Ichor",
       "Symbol of Marr",
@@ -16135,6 +16327,10 @@
       "Trochilic's Skean"
     ],
     "retseth Tretse": [
+      "Empyran Jerkin",
+      "Essence of Earth",
+      "Idol of the Underking",
+      "Mudman Enforcer",
       "Stonemelder's Band"
     ],
     "rharzar": [
@@ -16362,9 +16558,6 @@
     "saliz Fe`Dhar": [
       "Saldaren Spear",
       "Winters Fury"
-    ],
-    "samhain": [
-      "Valorium Bracers"
     ],
     "sandgiant Husam": [
       "Fine Steel Long Sword",
@@ -17701,8 +17894,7 @@
       "Stave of Shielding"
     ],
     "soul harvester": [
-      "Symbol of Marr",
-      "White Satin Gloves"
+      "Symbol of Marr"
     ],
     "spectral Commander": [
       "Blood Ember Bracer",
@@ -18302,21 +18494,40 @@
     ],
     "the Hand of Veeshan": [
       "Belt of Iniquity",
+      "Belt of Tranquility",
       "Belt of Transience",
+      "Belt of Virtue",
       "Belt of the Pine",
       "Blade of Abrogation",
+      "Bracelet of Cessation",
+      "Bracelet of Distortion",
+      "Bracelet of Exertion",
+      "Bracelet of Quiescence",
       "Brass Knuckles",
+      "Efreeti Battle Axe",
       "Efreeti Belt",
+      "Efreeti Long Sword",
+      "Efreeti Mace",
+      "Efreeti Standard",
+      "Efreeti War Axe",
       "Efreeti War Bow",
       "Efreeti War Club",
       "Efreeti War Horn",
+      "Efreeti War Maul",
+      "Efreeti War Shield",
       "Efreeti War Staff",
       "Efreeti Wind Staff",
       "Efreeti Zweihander",
+      "Golden Efreeti Bracers",
+      "Golden Efreeti Chestplate",
+      "Golden Efreeti Greaves",
+      "Golden Efreeti Turban",
       "Golden Efreeti Vambraces",
+      "Stein of Flowing Ichor",
       "Symbol of Marr",
       "Treant Tear",
-      "White Satin Gloves"
+      "White Satin Gloves",
+      "Whitened Treant Fists"
     ],
     "the Head Usher": [
       "Crystallized Shadow Belt"
@@ -18380,7 +18591,8 @@
     "the Spiroc Guardian": [
       "Finely Woven Cloth Amice",
       "Mithril Air Ring",
-      "Obsidian Amulet"
+      "Obsidian Amulet",
+      "White Satin Gloves"
     ],
     "the Spiroc Lord": [
       "Belt of Concordance",
@@ -18391,6 +18603,9 @@
       "Belt of Virtue",
       "Blade of Abrogation",
       "Bracelet of Cessation",
+      "Bracelet of Distortion",
+      "Bracelet of Exertion",
+      "Bracelet of Quiescence",
       "Ceremonial Belt",
       "Crude Wooden Flute",
       "Dove Slippers",
@@ -18402,8 +18617,10 @@
       "Silken Mask",
       "Spiroc Battle Staff",
       "Spiroc Wingblade",
+      "Stein of Flowing Ichor",
       "Symbol of Marr",
-      "Treant Tear"
+      "Treant Tear",
+      "Whitened Treant Fists"
     ],
     "the Sporali Moldmaster": [
       "Sporali Defender's Blade",
@@ -20874,6 +21091,10 @@
       "Bronze Spear",
       "Bronze Warhammer",
       "Rusty Short Sword"
+    ],
+    "zombie of an unrest noble": [
+      "Cursed Blade",
+      "Dark Plate Leggings"
     ],
     "zombie trooper": [
       "Bronze Dagger",

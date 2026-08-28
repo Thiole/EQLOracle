@@ -1,6 +1,6 @@
 {
  "source": "https://eqlwiki.com",
- "scraped": "2026-08-21 18:41",
+ "scraped": "2026-08-28 09:14",
  "count": 1928,
  "spells": [
   {
@@ -30818,6 +30818,44 @@
    "icon": "Spellicon 129.png"
   },
   {
+   "id": "Healing_Water",
+   "name": "Greater Healing",
+   "url": "https://eqlwiki.com/Healing_Water",
+   "description": "Conjures healing water from the ground, healing 425 damage to your target.",
+   "classes": [
+    {
+     "class": "Druid",
+     "level": 34
+    }
+   ],
+   "skill": "[[Skill Alteration | Alteration]]",
+   "mana": 150,
+   "range": 100,
+   "casting_time": 0.75,
+   "fizzle_time": 2.5,
+   "recast_time": 6.0,
+   "duration": "Instant",
+   "target_type": "Single Friendly (or Self)",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Healing water flows over you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Hitpoints by 345 (L34) to 425 (L50)"
+    }
+   ],
+   "items_with_effect": [],
+   "where_to_obtain": "}}",
+   "era": null,
+   "categories": [
+    "Spells"
+   ],
+   "icon": "Spellicon 99.png"
+  },
+  {
    "id": "Greater_Healing",
    "name": "Greater Healing",
    "url": "https://eqlwiki.com/Greater_Healing",
@@ -30877,44 +30915,6 @@
    "era": "Classic Era",
    "categories": [
     "Classic Era",
-    "Spells"
-   ],
-   "icon": "Spellicon 99.png"
-  },
-  {
-   "id": "Healing_Water",
-   "name": "Greater Healing",
-   "url": "https://eqlwiki.com/Healing_Water",
-   "description": "Conjures healing water from the ground, healing 425 damage to your target.",
-   "classes": [
-    {
-     "class": "Druid",
-     "level": 34
-    }
-   ],
-   "skill": "[[Skill Alteration | Alteration]]",
-   "mana": 150,
-   "range": 100,
-   "casting_time": 0.75,
-   "fizzle_time": 2.5,
-   "recast_time": 6.0,
-   "duration": "Instant",
-   "target_type": "Single Friendly (or Self)",
-   "spell_type": "Beneficial",
-   "resist": "Unresistable",
-   "msg_cast_on_you": "Healing water flows over you.",
-   "msg_cast_on_other": null,
-   "msg_wears_off": null,
-   "slots": [
-    {
-     "slot": 1,
-     "effect": "Increase Hitpoints by 345 (L34) to 425 (L50)"
-    }
-   ],
-   "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
-   "categories": [
     "Spells"
    ],
    "icon": "Spellicon 99.png"
@@ -52415,23 +52415,18 @@
    "icon": "Spellicon K.png"
   },
   {
-   "id": "Putrid_Breath",
+   "id": "Rabies",
    "name": "Rabies",
-   "url": "https://eqlwiki.com/Putrid_Breath",
-   "description": "A kind of low-level, yet inconvenient spell. Can be a proc from [[a putrid skeleton]], in [[Qeynos Hills]].",
-   "classes": [
-    {
-     "class": "a putrid skeleton",
-     "level": null
-    }
-   ],
+   "url": "https://eqlwiki.com/Rabies",
+   "description": "The king of annoying low-level spells. Many monsters proc Rabies - generally undead. This disease has a very long duration (48mins), so it's best to find someone to cast [[Cure Disease]] or your HP regeneration will be reduced.",
+   "classes": [],
    "skill": null,
    "mana": 0,
    "range": 20,
    "casting_time": 0.0,
    "fizzle_time": 0.0,
    "recast_time": 0.0,
-   "duration": "5 minutes 14 seconds",
+   "duration": "48 minutes",
    "target_type": "Single",
    "spell_type": "Detrimental",
    "resist": "Disease (0)",
@@ -52462,18 +52457,23 @@
    "icon": "Spellicon E.png"
   },
   {
-   "id": "Rabies",
+   "id": "Putrid_Breath",
    "name": "Rabies",
-   "url": "https://eqlwiki.com/Rabies",
-   "description": "The king of annoying low-level spells. Many monsters proc Rabies - generally undead. This disease has a very long duration (48mins), so it's best to find someone to cast [[Cure Disease]] or your HP regeneration will be reduced.",
-   "classes": [],
+   "url": "https://eqlwiki.com/Putrid_Breath",
+   "description": "A kind of low-level, yet inconvenient spell. Can be a proc from [[a putrid skeleton]], in [[Qeynos Hills]].",
+   "classes": [
+    {
+     "class": "a putrid skeleton",
+     "level": null
+    }
+   ],
    "skill": null,
    "mana": 0,
    "range": 20,
    "casting_time": 0.0,
    "fizzle_time": 0.0,
    "recast_time": 0.0,
-   "duration": "48 minutes",
+   "duration": "5 minutes 14 seconds",
    "target_type": "Single",
    "spell_type": "Detrimental",
    "resist": "Disease (0)",
@@ -64314,7 +64314,7 @@
    "categories": [
     "Spells"
    ],
-   "icon": "Spellicon 47.png"
+   "icon": "Spellicon G.png"
   },
   {
    "id": "SpectreLifetap",

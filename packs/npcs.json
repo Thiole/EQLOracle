@@ -1,6 +1,6 @@
 {
  "source": "https://eqlwiki.com",
- "scraped": "2026-08-21 18:41",
+ "scraped": "2026-08-28 09:14",
  "count": 6532,
  "skipped_not_namedmobpage": 1383,
  "npcs": [
@@ -30288,78 +30288,6 @@
    ]
   },
   {
-   "id": "Bouncer_Raan",
-   "name": "Bouncer Haraan",
-   "url": "https://eqlwiki.com/Bouncer_Raan",
-   "race": "Oggok Citizen",
-   "class": "Warrior",
-   "level": "33-37",
-   "zone": "Oggok",
-   "location": "17% @ (-220, 350)",
-   "respawn_time": null,
-   "aggro_radius": 70.0,
-   "run_speed": 1.6,
-   "AC": 259,
-   "HP": null,
-   "HP_regen": 1,
-   "mana_regen": 0,
-   "attacks_per_round": 2,
-   "attack_speed": "92%",
-   "damage_per_hit": "14 - 88",
-   "special": null,
-   "known_loot": [
-    {
-     "item": "Fine Steel Long Sword",
-     "rarity": "Ultra Rare",
-     "stack": 1.0,
-     "chance_per_kill": 25.0,
-     "chance_per_drop": 17.0
-    },
-    {
-     "item": "Fine Steel Short Sword",
-     "rarity": "Ultra Rare",
-     "stack": 1.0,
-     "chance_per_kill": 25.0,
-     "chance_per_drop": 17.0
-    },
-    {
-     "item": "Fine Steel Dagger",
-     "rarity": "Ultra Rare",
-     "stack": 1.0,
-     "chance_per_kill": 25.0,
-     "chance_per_drop": 17.0
-    },
-    {
-     "item": "Fine Steel Spear",
-     "rarity": "Ultra Rare",
-     "stack": 1.0,
-     "chance_per_kill": 25.0,
-     "chance_per_drop": 17.0
-    },
-    {
-     "item": "Round Shield",
-     "rarity": "Ultra Rare",
-     "stack": 1.0,
-     "chance_per_kill": 25.0,
-     "chance_per_drop": 16.0
-    }
-   ],
-   "imagefilename": "npc_bouncer_raan.png",
-   "images": [
-    "Item 542.png",
-    "Item 580.png",
-    "Item 590.png",
-    "Item 592.png",
-    "Item 776.png"
-   ],
-   "era": null,
-   "categories": [
-    "NPCs",
-    "Named Mobs",
-    "Oggok"
-   ]
-  },
-  {
    "id": "Bouncer_Haraan",
    "name": "Bouncer Haraan",
    "url": "https://eqlwiki.com/Bouncer_Haraan",
@@ -30427,6 +30355,78 @@
    "era": "Classic Era",
    "categories": [
     "Classic Era",
+    "NPCs",
+    "Named Mobs",
+    "Oggok"
+   ]
+  },
+  {
+   "id": "Bouncer_Raan",
+   "name": "Bouncer Haraan",
+   "url": "https://eqlwiki.com/Bouncer_Raan",
+   "race": "Oggok Citizen",
+   "class": "Warrior",
+   "level": "33-37",
+   "zone": "Oggok",
+   "location": "17% @ (-220, 350)",
+   "respawn_time": null,
+   "aggro_radius": 70.0,
+   "run_speed": 1.6,
+   "AC": 259,
+   "HP": null,
+   "HP_regen": 1,
+   "mana_regen": 0,
+   "attacks_per_round": 2,
+   "attack_speed": "92%",
+   "damage_per_hit": "14 - 88",
+   "special": null,
+   "known_loot": [
+    {
+     "item": "Fine Steel Long Sword",
+     "rarity": "Ultra Rare",
+     "stack": 1.0,
+     "chance_per_kill": 25.0,
+     "chance_per_drop": 17.0
+    },
+    {
+     "item": "Fine Steel Short Sword",
+     "rarity": "Ultra Rare",
+     "stack": 1.0,
+     "chance_per_kill": 25.0,
+     "chance_per_drop": 17.0
+    },
+    {
+     "item": "Fine Steel Dagger",
+     "rarity": "Ultra Rare",
+     "stack": 1.0,
+     "chance_per_kill": 25.0,
+     "chance_per_drop": 17.0
+    },
+    {
+     "item": "Fine Steel Spear",
+     "rarity": "Ultra Rare",
+     "stack": 1.0,
+     "chance_per_kill": 25.0,
+     "chance_per_drop": 17.0
+    },
+    {
+     "item": "Round Shield",
+     "rarity": "Ultra Rare",
+     "stack": 1.0,
+     "chance_per_kill": 25.0,
+     "chance_per_drop": 16.0
+    }
+   ],
+   "imagefilename": "npc_bouncer_raan.png",
+   "images": [
+    "Item 542.png",
+    "Item 580.png",
+    "Item 590.png",
+    "Item 592.png",
+    "Item 776.png"
+   ],
+   "era": null,
+   "categories": [
     "NPCs",
     "Named Mobs",
     "Oggok"
@@ -78623,37 +78623,6 @@
    ]
   },
   {
-   "id": "Ebon_Strongbear",
-   "name": "Ginleen Harltop",
-   "url": "https://eqlwiki.com/Ebon_Strongbear",
-   "race": "[[Human]]",
-   "class": "Warrior",
-   "level": "61",
-   "zone": "South Qeynos",
-   "location": "(72, -511)",
-   "respawn_time": "?",
-   "aggro_radius": 55.0,
-   "run_speed": 1.25,
-   "AC": 255,
-   "HP": 32000,
-   "HP_regen": 100,
-   "mana_regen": 100,
-   "attacks_per_round": 2,
-   "attack_speed": "67%",
-   "damage_per_hit": "143 - 287",
-   "special": "None",
-   "known_loot": [],
-   "imagefilename": "Ebon-strongbear.jpg",
-   "images": [],
-   "era": "Classic Era",
-   "categories": [
-    "Classic Era",
-    "NPCs",
-    "Named Mobs",
-    "South Qeynos"
-   ]
-  },
-  {
    "id": "Ginleen_Harltop",
    "name": "Ginleen Harltop",
    "url": "https://eqlwiki.com/Ginleen_Harltop",
@@ -78675,6 +78644,37 @@
    "special": "None",
    "known_loot": [],
    "imagefilename": "npc_ginleen_harltop.png",
+   "images": [],
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "NPCs",
+    "Named Mobs",
+    "South Qeynos"
+   ]
+  },
+  {
+   "id": "Ebon_Strongbear",
+   "name": "Ginleen Harltop",
+   "url": "https://eqlwiki.com/Ebon_Strongbear",
+   "race": "[[Human]]",
+   "class": "Warrior",
+   "level": "61",
+   "zone": "South Qeynos",
+   "location": "(72, -511)",
+   "respawn_time": "?",
+   "aggro_radius": 55.0,
+   "run_speed": 1.25,
+   "AC": 255,
+   "HP": 32000,
+   "HP_regen": 100,
+   "mana_regen": 100,
+   "attacks_per_round": 2,
+   "attack_speed": "67%",
+   "damage_per_hit": "143 - 287",
+   "special": "None",
+   "known_loot": [],
+   "imagefilename": "Ebon-strongbear.jpg",
    "images": [],
    "era": "Classic Era",
    "categories": [
@@ -90117,55 +90117,6 @@
    ]
   },
   {
-   "id": "Guard_Bolton",
-   "name": "Guard Drugan",
-   "url": "https://eqlwiki.com/Guard_Bolton",
-   "race": "Highpass Citizen",
-   "class": "Warrior",
-   "level": "23-26",
-   "zone": "High Keep",
-   "location": "(44, -341), (19, -279)",
-   "respawn_time": null,
-   "aggro_radius": 60.0,
-   "run_speed": 1.25,
-   "AC": 115,
-   "HP": null,
-   "HP_regen": 1,
-   "mana_regen": 0,
-   "attacks_per_round": 2,
-   "attack_speed": "100%",
-   "damage_per_hit": "22 - 58",
-   "special": "None",
-   "known_loot": [
-    {
-     "item": "Fine Steel Short Sword",
-     "rarity": null,
-     "stack": null,
-     "chance_per_kill": null,
-     "chance_per_drop": null
-    },
-    {
-     "item": "Highkeep Flask",
-     "rarity": null,
-     "stack": null,
-     "chance_per_kill": null,
-     "chance_per_drop": null
-    }
-   ],
-   "imagefilename": "npc_guard_bolton.png",
-   "images": [
-    "Item 580.png",
-    "Item 584.png"
-   ],
-   "era": "Classic Era",
-   "categories": [
-    "Classic Era",
-    "High Keep",
-    "NPCs",
-    "Named Mobs"
-   ]
-  },
-  {
    "id": "Guard_Drugan",
    "name": "Guard Drugan",
    "url": "https://eqlwiki.com/Guard_Drugan",
@@ -90202,6 +90153,55 @@
     }
    ],
    "imagefilename": "npc_guard_drugan.png",
+   "images": [
+    "Item 580.png",
+    "Item 584.png"
+   ],
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "High Keep",
+    "NPCs",
+    "Named Mobs"
+   ]
+  },
+  {
+   "id": "Guard_Bolton",
+   "name": "Guard Drugan",
+   "url": "https://eqlwiki.com/Guard_Bolton",
+   "race": "Highpass Citizen",
+   "class": "Warrior",
+   "level": "23-26",
+   "zone": "High Keep",
+   "location": "(44, -341), (19, -279)",
+   "respawn_time": null,
+   "aggro_radius": 60.0,
+   "run_speed": 1.25,
+   "AC": 115,
+   "HP": null,
+   "HP_regen": 1,
+   "mana_regen": 0,
+   "attacks_per_round": 2,
+   "attack_speed": "100%",
+   "damage_per_hit": "22 - 58",
+   "special": "None",
+   "known_loot": [
+    {
+     "item": "Fine Steel Short Sword",
+     "rarity": null,
+     "stack": null,
+     "chance_per_kill": null,
+     "chance_per_drop": null
+    },
+    {
+     "item": "Highkeep Flask",
+     "rarity": null,
+     "stack": null,
+     "chance_per_kill": null,
+     "chance_per_drop": null
+    }
+   ],
+   "imagefilename": "npc_guard_bolton.png",
    "images": [
     "Item 580.png",
     "Item 584.png"
@@ -347111,6 +347111,55 @@
    ]
   },
   {
+   "id": "A_goblin_worker_(Clan_RunnyEye)",
+   "name": "a goblin",
+   "url": "https://eqlwiki.com/A_goblin_worker_(Clan_RunnyEye)",
+   "race": "Goblin",
+   "class": "Warrior",
+   "level": "1",
+   "zone": "Clan Runnyeye",
+   "location": "?",
+   "respawn_time": null,
+   "aggro_radius": null,
+   "run_speed": null,
+   "AC": null,
+   "HP": null,
+   "HP_regen": null,
+   "mana_regen": null,
+   "attacks_per_round": 1,
+   "attack_speed": "100%",
+   "damage_per_hit": "1 - 2",
+   "special": "None",
+   "known_loot": [
+    {
+     "item": "Water Flask",
+     "rarity": "Common",
+     "stack": null,
+     "chance_per_kill": null,
+     "chance_per_drop": null
+    },
+    {
+     "item": "Ration",
+     "rarity": "Common",
+     "stack": null,
+     "chance_per_kill": null,
+     "chance_per_drop": null
+    }
+   ],
+   "imagefilename": "npc_a_goblin_worker_(Clan_RunnyEye).png",
+   "images": [
+    "Item 570.png",
+    "Item 584.png"
+   ],
+   "era": "Classic Era",
+   "categories": [
+    "Clan Runnyeye",
+    "Classic Era",
+    "NPCs",
+    "Named Mobs"
+   ]
+  },
+  {
    "id": "A_goblin_(Clan_RunnyEye)",
    "name": "a goblin",
    "url": "https://eqlwiki.com/A_goblin_(Clan_RunnyEye)",
@@ -347170,55 +347219,6 @@
    "era": "Classic Era",
    "categories": [
     "Articles for Deletion",
-    "Clan Runnyeye",
-    "Classic Era",
-    "NPCs",
-    "Named Mobs"
-   ]
-  },
-  {
-   "id": "A_goblin_worker_(Clan_RunnyEye)",
-   "name": "a goblin",
-   "url": "https://eqlwiki.com/A_goblin_worker_(Clan_RunnyEye)",
-   "race": "Goblin",
-   "class": "Warrior",
-   "level": "1",
-   "zone": "Clan Runnyeye",
-   "location": "?",
-   "respawn_time": null,
-   "aggro_radius": null,
-   "run_speed": null,
-   "AC": null,
-   "HP": null,
-   "HP_regen": null,
-   "mana_regen": null,
-   "attacks_per_round": 1,
-   "attack_speed": "100%",
-   "damage_per_hit": "1 - 2",
-   "special": "None",
-   "known_loot": [
-    {
-     "item": "Water Flask",
-     "rarity": "Common",
-     "stack": null,
-     "chance_per_kill": null,
-     "chance_per_drop": null
-    },
-    {
-     "item": "Ration",
-     "rarity": "Common",
-     "stack": null,
-     "chance_per_kill": null,
-     "chance_per_drop": null
-    }
-   ],
-   "imagefilename": "npc_a_goblin_worker_(Clan_RunnyEye).png",
-   "images": [
-    "Item 570.png",
-    "Item 584.png"
-   ],
-   "era": "Classic Era",
-   "categories": [
     "Clan Runnyeye",
     "Classic Era",
     "NPCs",
@@ -437891,6 +437891,48 @@
    ]
   },
   {
+   "id": "An_elder_wyvern_(Western_Wastes)",
+   "name": "an elder wyvern",
+   "url": "https://eqlwiki.com/An_elder_wyvern_(Western_Wastes)",
+   "race": "Wyvern",
+   "class": "Warrior",
+   "level": "50-54",
+   "zone": "Western Wastes",
+   "location": "(3065, -3901)",
+   "respawn_time": null,
+   "aggro_radius": 200.0,
+   "run_speed": 1.25,
+   "AC": 217,
+   "HP": 11000,
+   "HP_regen": 6,
+   "mana_regen": 0,
+   "attacks_per_round": 2,
+   "attack_speed": "91%",
+   "damage_per_hit": "74 - 204",
+   "special": "None",
+   "known_loot": [
+    {
+     "item": "Wyvern Meat",
+     "rarity": "Rare",
+     "stack": null,
+     "chance_per_kill": null,
+     "chance_per_drop": null
+    }
+   ],
+   "imagefilename": "npc_an_elder_wyvern_western_wastes.png",
+   "images": [
+    "Item 817.png",
+    "Map Icon.png"
+   ],
+   "era": "Velious Era",
+   "categories": [
+    "NPCs",
+    "Named Mobs",
+    "Velious Era",
+    "Western Wastes"
+   ]
+  },
+  {
    "id": "An_Elder_Wyvern",
    "name": "an elder wyvern",
    "url": "https://eqlwiki.com/An_Elder_Wyvern",
@@ -437937,48 +437979,6 @@
     "NPCs",
     "Named Mobs",
     "Skyfire Mountains"
-   ]
-  },
-  {
-   "id": "An_elder_wyvern_(Western_Wastes)",
-   "name": "an elder wyvern",
-   "url": "https://eqlwiki.com/An_elder_wyvern_(Western_Wastes)",
-   "race": "Wyvern",
-   "class": "Warrior",
-   "level": "50-54",
-   "zone": "Western Wastes",
-   "location": "(3065, -3901)",
-   "respawn_time": null,
-   "aggro_radius": 200.0,
-   "run_speed": 1.25,
-   "AC": 217,
-   "HP": 11000,
-   "HP_regen": 6,
-   "mana_regen": 0,
-   "attacks_per_round": 2,
-   "attack_speed": "91%",
-   "damage_per_hit": "74 - 204",
-   "special": "None",
-   "known_loot": [
-    {
-     "item": "Wyvern Meat",
-     "rarity": "Rare",
-     "stack": null,
-     "chance_per_kill": null,
-     "chance_per_drop": null
-    }
-   ],
-   "imagefilename": "npc_an_elder_wyvern_western_wastes.png",
-   "images": [
-    "Item 817.png",
-    "Map Icon.png"
-   ],
-   "era": "Velious Era",
-   "categories": [
-    "NPCs",
-    "Named Mobs",
-    "Velious Era",
-    "Western Wastes"
    ]
   },
   {
@@ -447828,6 +447828,61 @@
    ]
   },
   {
+   "id": "A_guard_officer",
+   "name": "an ogre guard",
+   "url": "https://eqlwiki.com/A_guard_officer",
+   "race": "[[Ogre]]",
+   "class": "Warrior",
+   "level": "22-25",
+   "zone": "Najena",
+   "location": "(60, 175), (80,230), (more?)",
+   "respawn_time": null,
+   "aggro_radius": 70.0,
+   "run_speed": 1.4,
+   "AC": 149,
+   "HP": null,
+   "HP_regen": 0,
+   "mana_regen": 0,
+   "attacks_per_round": 1,
+   "attack_speed": "100%",
+   "damage_per_hit": "1 - 44",
+   "special": "None",
+   "known_loot": [
+    {
+     "item": "Guard's Keyring",
+     "rarity": "Common",
+     "stack": null,
+     "chance_per_kill": null,
+     "chance_per_drop": null
+    },
+    {
+     "item": "Whore's Bane",
+     "rarity": "Uncommon",
+     "stack": null,
+     "chance_per_kill": null,
+     "chance_per_drop": null
+    },
+    {
+     "item": "Large Ringmail Coif",
+     "rarity": "Uncommon",
+     "stack": null,
+     "chance_per_kill": null,
+     "chance_per_drop": null
+    }
+   ],
+   "imagefilename": "npc_a_guard_officer.png",
+   "images": [
+    "Item 1079.png"
+   ],
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "NPCs",
+    "Najena",
+    "Named Mobs"
+   ]
+  },
+  {
    "id": "An_Ogre_Guard",
    "name": "an ogre guard",
    "url": "https://eqlwiki.com/An_Ogre_Guard",
@@ -447888,61 +447943,6 @@
    "images": [
     "Item 1079.png",
     "Npc an ogre guard.png"
-   ],
-   "era": "Classic Era",
-   "categories": [
-    "Classic Era",
-    "NPCs",
-    "Najena",
-    "Named Mobs"
-   ]
-  },
-  {
-   "id": "A_guard_officer",
-   "name": "an ogre guard",
-   "url": "https://eqlwiki.com/A_guard_officer",
-   "race": "[[Ogre]]",
-   "class": "Warrior",
-   "level": "22-25",
-   "zone": "Najena",
-   "location": "(60, 175), (80,230), (more?)",
-   "respawn_time": null,
-   "aggro_radius": 70.0,
-   "run_speed": 1.4,
-   "AC": 149,
-   "HP": null,
-   "HP_regen": 0,
-   "mana_regen": 0,
-   "attacks_per_round": 1,
-   "attack_speed": "100%",
-   "damage_per_hit": "1 - 44",
-   "special": "None",
-   "known_loot": [
-    {
-     "item": "Guard's Keyring",
-     "rarity": "Common",
-     "stack": null,
-     "chance_per_kill": null,
-     "chance_per_drop": null
-    },
-    {
-     "item": "Whore's Bane",
-     "rarity": "Uncommon",
-     "stack": null,
-     "chance_per_kill": null,
-     "chance_per_drop": null
-    },
-    {
-     "item": "Large Ringmail Coif",
-     "rarity": "Uncommon",
-     "stack": null,
-     "chance_per_kill": null,
-     "chance_per_drop": null
-    }
-   ],
-   "imagefilename": "npc_a_guard_officer.png",
-   "images": [
-    "Item 1079.png"
    ],
    "era": "Classic Era",
    "categories": [
@@ -449912,6 +449912,42 @@
    ]
   },
   {
+   "id": "An_orc_scout",
+   "name": "an orc scout",
+   "url": "https://eqlwiki.com/An_orc_scout",
+   "race": "Orc",
+   "class": "Warrior",
+   "level": "10-12, 15-18",
+   "zone": "Dagnor's Cauldron",
+   "location": "Various",
+   "respawn_time": null,
+   "aggro_radius": 55.0,
+   "run_speed": 1.35,
+   "AC": null,
+   "HP": null,
+   "HP_regen": 0,
+   "mana_regen": 0,
+   "attacks_per_round": 1,
+   "attack_speed": "100%",
+   "damage_per_hit": "??",
+   "special": null,
+   "known_loot": [],
+   "imagefilename": "npc_an_orc_scout.png",
+   "images": [
+    "Item 1005.png",
+    "Item 869.png",
+    "Item 967.png"
+   ],
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Dagnor's Cauldron",
+    "Kithicor Forest",
+    "NPCs",
+    "Named Mobs"
+   ]
+  },
+  {
    "id": "An_Orc_Scout",
    "name": "an orc scout",
    "url": "https://eqlwiki.com/An_Orc_Scout",
@@ -449945,42 +449981,6 @@
    "era": null,
    "categories": [
     "Highpass Hold",
-    "NPCs",
-    "Named Mobs"
-   ]
-  },
-  {
-   "id": "An_orc_scout",
-   "name": "an orc scout",
-   "url": "https://eqlwiki.com/An_orc_scout",
-   "race": "Orc",
-   "class": "Warrior",
-   "level": "10-12, 15-18",
-   "zone": "Dagnor's Cauldron",
-   "location": "Various",
-   "respawn_time": null,
-   "aggro_radius": 55.0,
-   "run_speed": 1.35,
-   "AC": null,
-   "HP": null,
-   "HP_regen": 0,
-   "mana_regen": 0,
-   "attacks_per_round": 1,
-   "attack_speed": "100%",
-   "damage_per_hit": "??",
-   "special": null,
-   "known_loot": [],
-   "imagefilename": "npc_an_orc_scout.png",
-   "images": [
-    "Item 1005.png",
-    "Item 869.png",
-    "Item 967.png"
-   ],
-   "era": "Classic Era",
-   "categories": [
-    "Classic Era",
-    "Dagnor's Cauldron",
-    "Kithicor Forest",
     "NPCs",
     "Named Mobs"
    ]

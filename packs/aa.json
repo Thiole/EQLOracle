@@ -36,7 +36,7 @@
    "name": "Alchemy Mastery",
    "category": "general",
    "ranks": 3,
-   "cost_raw": "3/6/?",
+   "cost_raw": "3/6/9",
    "certain": true,
    "per_rank": [
     {
@@ -51,7 +51,7 @@
     },
     {
      "rank": 3,
-     "cost": "?",
+     "cost": "9",
      "level": 1
     }
    ],
@@ -61,7 +61,7 @@
    "name": "Baking Mastery",
    "category": "general",
    "ranks": 3,
-   "cost_raw": "2/?/?",
+   "cost_raw": "2/4/6",
    "certain": true,
    "per_rank": [
     {
@@ -71,12 +71,12 @@
     },
     {
      "rank": 2,
-     "cost": "?",
+     "cost": "4",
      "level": 1
     },
     {
      "rank": 3,
-     "cost": "?",
+     "cost": "6",
      "level": 1
     }
    ],
@@ -86,7 +86,7 @@
    "name": "Blacksmithing Mastery",
    "category": "general",
    "ranks": 3,
-   "cost_raw": "2/?/?",
+   "cost_raw": "2/4/6",
    "certain": true,
    "per_rank": [
     {
@@ -96,12 +96,12 @@
     },
     {
      "rank": 2,
-     "cost": "?",
+     "cost": "4",
      "level": 1
     },
     {
      "rank": 3,
-     "cost": "?",
+     "cost": "6",
      "level": 1
     }
    ],
@@ -111,7 +111,7 @@
    "name": "Brewing Mastery",
    "category": "general",
    "ranks": 3,
-   "cost_raw": "2/?/?",
+   "cost_raw": "2/4/6",
    "certain": true,
    "per_rank": [
     {
@@ -121,12 +121,12 @@
     },
     {
      "rank": 2,
-     "cost": "?",
+     "cost": "4",
      "level": 1
     },
     {
      "rank": 3,
-     "cost": "?",
+     "cost": "6",
      "level": 1
     }
    ],
@@ -246,7 +246,7 @@
    "name": "Crafting Mastery",
    "category": "general",
    "ranks": 6,
-   "cost_raw": "3/?/?/?/?/?",
+   "cost_raw": "3/3/3/3/3/3",
    "certain": true,
    "per_rank": [
     {
@@ -256,27 +256,27 @@
     },
     {
      "rank": 2,
-     "cost": "?",
+     "cost": "3",
      "level": 1
     },
     {
      "rank": 3,
-     "cost": "?",
+     "cost": "3",
      "level": 1
     },
     {
      "rank": 4,
-     "cost": "?",
+     "cost": "3",
      "level": 1
     },
     {
      "rank": 5,
-     "cost": "?",
+     "cost": "3",
      "level": 1
     },
     {
      "rank": 6,
-     "cost": "?",
+     "cost": "3",
      "level": 1
     }
    ],
@@ -356,7 +356,7 @@
    "name": "Fletching Mastery",
    "category": "general",
    "ranks": 3,
-   "cost_raw": "2/?/?",
+   "cost_raw": "2/4/6",
    "certain": true,
    "per_rank": [
     {
@@ -366,12 +366,12 @@
     },
     {
      "rank": 2,
-     "cost": "?",
+     "cost": "4",
      "level": 1
     },
     {
      "rank": 3,
-     "cost": "?",
+     "cost": "6",
      "level": 1
     }
    ],
@@ -446,7 +446,7 @@
    "name": "Innate Lung Capacity",
    "category": "general",
    "ranks": 3,
-   "cost_raw": "1/1/?",
+   "cost_raw": "1/1/1",
    "certain": true,
    "per_rank": [
     {
@@ -461,17 +461,17 @@
     },
     {
      "rank": 3,
-     "cost": "?",
+     "cost": "1",
      "level": 1
     }
    ],
-   "description": "This passive ability increases the amount of air you can hold in your lungs by 10/25/?%. Requirements: Level 1."
+   "description": "This passive ability increases the amount of air you can hold in your lungs by 10/25/50%. Requirements: Level 1."
   },
   {
    "name": "Innate Metabolism",
    "category": "general",
    "ranks": 3,
-   "cost_raw": "1/?/?",
+   "cost_raw": "1/1/2",
    "certain": true,
    "per_rank": [
     {
@@ -481,16 +481,16 @@
     },
     {
      "rank": 2,
-     "cost": "?",
+     "cost": "1",
      "level": 1
     },
     {
      "rank": 3,
-     "cost": "?",
+     "cost": "2",
      "level": 1
     }
    ],
-   "description": "This passive ability reduces your food and drink consumption by 110/125/?%. Requirements: Level 1."
+   "description": "This passive ability reduces your food and drink consumption by 110/125/150%. Requirements: Level 1."
   },
   {
    "name": "Innate Regeneration",
@@ -535,7 +535,7 @@
      "level": 1
     }
    ],
-   "description": "This passive ability increases your health regeneration by 1/1/1/2/3/5/5 point(s). Requirements: Level 1."
+   "description": "This passive ability increases your health regeneration by 1/1/1/1/1/1/1 point(s). Requirements: Level 1."
   },
   {
    "name": "Innate Spell Resistance",
@@ -721,7 +721,7 @@
    "name": "Pottery Mastery",
    "category": "general",
    "ranks": 3,
-   "cost_raw": "2/?/?",
+   "cost_raw": "2/4/6",
    "certain": true,
    "per_rank": [
     {
@@ -731,12 +731,12 @@
     },
     {
      "rank": 2,
-     "cost": "?",
+     "cost": "4",
      "level": 1
     },
     {
      "rank": 3,
-     "cost": "?",
+     "cost": "6",
      "level": 1
     }
    ],
@@ -846,7 +846,7 @@
    "name": "Tailoring Mastery",
    "category": "general",
    "ranks": 3,
-   "cost_raw": "2/?/?",
+   "cost_raw": "2/4/6",
    "certain": true,
    "per_rank": [
     {
@@ -856,12 +856,12 @@
     },
     {
      "rank": 2,
-     "cost": "?",
+     "cost": "4",
      "level": 1
     },
     {
      "rank": 3,
-     "cost": "?",
+     "cost": "6",
      "level": 1
     }
    ],
@@ -1601,7 +1601,7 @@
    "name": "Spell Casting Subtlety",
    "category": "archetype",
    "ranks": 6,
-   "cost_raw": "2/?/?/?/?/?",
+   "cost_raw": "2/0/4/0/6/0",
    "certain": true,
    "per_rank": [
     {
@@ -1611,31 +1611,31 @@
     },
     {
      "rank": 2,
-     "cost": "?",
+     "cost": "0",
      "level": 1
     },
     {
      "rank": 3,
-     "cost": "?",
+     "cost": "4",
      "level": 1
     },
     {
      "rank": 4,
-     "cost": "?",
+     "cost": "0",
      "level": 1
     },
     {
      "rank": 5,
-     "cost": "?",
+     "cost": "6",
      "level": 1
     },
     {
      "rank": 6,
-     "cost": "?",
+     "cost": "0",
      "level": 1
     }
    ],
-   "description": "Ability Activation ID: 25 - Refresh Time: 0:00:01 - Ability Timer(s): 0. This ability is DISABLED. Purchase the 0 cost rank to enable its effects. When enabled, this passive ability reduces the amount of hate generated by your attacks and spells by 5/?/?/?/?/?%. Requirements: Level 1."
+   "description": "Ability Activation ID: 25 - Refresh Time: 0:00:01 - Ability Timer(s): 0. This ability is DISABLED. Purchase the 0 cost rank to enable its effects. When enabled, this passive ability reduces the amount of hate generated by your attacks and spells by 5/10/20%. Requirements: Level 1."
   },
   {
    "name": "Thief's Intuition",
