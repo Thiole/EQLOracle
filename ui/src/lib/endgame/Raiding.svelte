@@ -173,9 +173,9 @@
     {#each $raidRows as row (row.row)}
       <div class="flex flex-col gap-2">
         <h1 class="text-[13px] font-semibold text-foreground">{row.row}</h1>
-        <div class="flex flex-wrap gap-3">
+        <div class="grid grid-cols-2 gap-3">
           {#each row.raids as raid (raid.zone)}
-            <Card class="min-w-72 flex-1 rounded-sm">
+            <Card class="rounded-sm">
               <CardContent class="px-3 py-2.5">
                 <div class="mb-1.5 flex items-start justify-between gap-3">
                   <h2 class="panel-title">{raid.zone}</h2>

@@ -169,9 +169,9 @@
         </Select.Root>
       </label>
     </div>
-    <div class="flex flex-wrap gap-3">
+    <div class="grid grid-cols-2 gap-3">
       {#each sortedClasses ?? [] as c (c.class)}
-        <Card class="min-w-80 flex-1 rounded-sm">
+        <Card class="rounded-sm">
           <CardContent class="px-3 py-2.5">
             <div class="mb-1.5 flex items-center justify-between gap-2">
               <div class="flex items-baseline gap-2">

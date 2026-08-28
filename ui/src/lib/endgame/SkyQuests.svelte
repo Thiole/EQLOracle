@@ -154,9 +154,9 @@
         </Select.Root>
       </label>
     </div>
-    <div class="flex flex-wrap gap-2">
+    <div class="grid grid-cols-2 gap-2">
       {#each sortedQuests ?? [] as q (q.class + '::' + q.quest)}
-        <Card class="min-w-72 flex-1 rounded-sm">
+        <Card class="rounded-sm">
           <CardContent class="px-3 py-2 pb-2.5">
             <div class="mb-0.5 flex items-baseline justify-between gap-2">
               <span class="text-[12px] font-medium text-foreground">{q.quest}</span>

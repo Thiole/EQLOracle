@@ -86,9 +86,9 @@
       {#if q && !filtered?.length}
         <p class="text-[12px] text-muted-foreground">Nothing matches "{query}".</p>
       {:else}
-        <div class="flex flex-wrap gap-2">
+        <div class="grid grid-cols-2 gap-2">
           {#each filtered ?? [] as c (c.label)}
-            <Card class="min-w-64 flex-1 basis-64 rounded-sm">
+            <Card class="rounded-sm">
               <CardContent class="px-2.5 py-2">
                 <div class="mb-1 flex items-baseline justify-between gap-2">
                   <span class="text-[11px] font-medium text-foreground">{c.label}</span>
