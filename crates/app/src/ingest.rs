@@ -789,6 +789,12 @@ pub struct Ingest {
     pub invis: Option<crate::effects::InvisStatus>,
     pub hide: Option<crate::effects::MomentaryStatus>,
     pub sneak: Option<crate::effects::MomentaryStatus>,
+    /// why: CC overlay's own state -- see effects.rs's own doc for why
+    /// these reuse MomentaryStatus (Success=landed, Ended=off) same as
+    /// Hide/Sneak, no Failure case
+    pub stun: Option<crate::effects::MomentaryStatus>,
+    pub root: Option<crate::effects::MomentaryStatus>,
+    pub fear: Option<crate::effects::MomentaryStatus>,
     /// why: Sky Quests' own real turn-in detector -- see skyquests.rs's
     /// own doc, and Action::TradeOffered's own doc for why a
     /// trade-complete line alone never proves success. Live-only, one
@@ -902,6 +908,9 @@ impl Default for Ingest {
             invis: None,
             hide: None,
             sneak: None,
+            stun: None,
+            root: None,
+            fear: None,
             pending_turnin: None,
             turn_ins: Vec::new(),
             disposed_items: std::collections::HashSet::new(),
@@ -1517,6 +1526,42 @@ impl Ingest {
             }
             Action::SneakEnded => {
                 self.sneak = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Ended,
+                    since_ms: ts,
+                });
+            }
+            Action::StunOn => {
+                self.stun = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Success,
+                    since_ms: ts,
+                });
+            }
+            Action::StunEnded => {
+                self.stun = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Ended,
+                    since_ms: ts,
+                });
+            }
+            Action::RootOn => {
+                self.root = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Success,
+                    since_ms: ts,
+                });
+            }
+            Action::RootEnded => {
+                self.root = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Ended,
+                    since_ms: ts,
+                });
+            }
+            Action::FearOn => {
+                self.fear = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Success,
+                    since_ms: ts,
+                });
+            }
+            Action::FearEnded => {
+                self.fear = Some(crate::effects::MomentaryStatus {
                     outcome: crate::effects::MomentaryOutcome::Ended,
                     since_ms: ts,
                 });
@@ -2837,6 +2882,14 @@ enum Action {
     SneakSuccess,
     SneakFailure,
     SneakEnded,
+    /// why: CC overlay -- see effects.rs's own doc for why there's no
+    /// "Failure" variant for these three
+    StunOn,
+    StunEnded,
+    RootOn,
+    RootEnded,
+    FearOn,
+    FearEnded,
     /// why: always the player, no third-person loot line exists. corpse
     /// keeps its raw suffix (stripped in record_loot, not here); sold_for
     /// present only for an auto-sell, raw and unparsed
@@ -3252,6 +3305,12 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "sneak.success" => Some(Action::SneakSuccess),
         "sneak.failure" => Some(Action::SneakFailure),
         "sneak.broken" => Some(Action::SneakEnded),
+        "state.you_stunned" => Some(Action::StunOn),
+        "state.you_stun_ended" => Some(Action::StunEnded),
+        "state.you_ensnared" => Some(Action::RootOn),
+        "state.you_ensnared_ended" => Some(Action::RootEnded),
+        "state.you_feared" => Some(Action::FearOn),
+        "state.you_fear_ended" => Some(Action::FearEnded),
         // why: two client line forms for the same fact (bracketed vs
         // direct, varying trailing clause); both produce the identical Action::Loot
         "loot.self" | "loot.self.direct" => Some(Action::Loot {

@@ -1355,18 +1355,106 @@ pattern = '''^You can't use that command right now\.\.\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You can't use that command right now..."]
 
 [[rule]]
+# why: split off state.you_stunned/state.you_stun_ended below -- those 2
+# of the original 5 texts are real ON/OFF transitions, these remaining 3
+# never were (a reminder you're already stunned, an avoided attempt that
+# never landed, and "the stun would refresh but doesn't" -- Confrontation's
+# own text, not a state change on its own account)
 id = "noise.stunned"
 kind = "noise"
 priority = 60
 anchors = ["stun"]
-pattern = '''^(?:You can't cast spells while stunned!|You are stunned!|You are no longer stunned\.|You avoid the stunning blow\.|You overcome the stun!)$'''
+pattern = '''^(?:You can't cast spells while stunned!|You avoid the stunning blow\.)$'''
 examples = [
-  "[Tue Jul 28 15:02:15 2026] You are stunned!",
-  "[Tue Jul 28 15:02:15 2026] You are no longer stunned.",
   "[Tue Jul 28 15:02:15 2026] You can't cast spells while stunned!",
   "[Tue Jul 28 15:02:15 2026] You avoid the stunning blow.",
+]
+
+[[rule]]
+# why: CC overlay's Stun square -- real, dedicated ON/OFF pair, 2,302 /
+# 2,342 real occurrences in the reference log. "You overcome the stun!"
+# counts as ending it early (a resist-mid-effect), same bucket as the
+# natural "no longer stunned" expiry -- see effects.rs's own doc.
+id = "state.you_stunned"
+kind = "state"
+priority = 50
+anchors = ["You are stunned!"]
+pattern = '''^You are stunned!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You are stunned!"]
+
+[[rule]]
+# why: single "stun" anchor, not one per alternative -- the engine
+# requires *every* declared anchor present (AND, not OR; confirmed via
+# engine.rs's own select_candidates), so listing two non-overlapping
+# phrases here would make this rule impossible to ever match. "stun" is
+# a real substring of both real alternatives ("stunned"/"the stun!").
+id = "state.you_stun_ended"
+kind = "state"
+priority = 50
+anchors = ["stun"]
+pattern = '''^(?:You are no longer stunned\.|You overcome the stun!)$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You are no longer stunned.",
   "[Tue Jul 28 15:02:15 2026] You overcome the stun!",
 ]
+
+[[rule]]
+# why: CC overlay's Root square -- this game calls it "ensnared", not
+# "rooted" (confirmed in the reference log, no "rooted" text exists at
+# all); real dedicated ON/OFF pair, 104 / 97 real occurrences, previously
+# matched by nothing at all.
+id = "state.you_ensnared"
+kind = "state"
+priority = 50
+anchors = ["You are ensnared."]
+pattern = '''^You are ensnared\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You are ensnared."]
+
+[[rule]]
+id = "state.you_ensnared_ended"
+kind = "state"
+priority = 50
+anchors = ["no longer ensnared"]
+pattern = '''^You are no longer ensnared\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You are no longer ensnared."]
+
+[[rule]]
+# why: CC overlay's Fear square -- rough, not exhaustive: unlike Stun/
+# Root, "Fear" isn't a real spell_type in the wiki scrape at all, so
+# there's no clean category to pull from. This alternation is a curated
+# list of real `msg_cast_on_you` text from spells.json whose own
+# name/description is unambiguously fear-shaped (Fear, Inspire/Invoke/
+# Wave of Fear, Cloud of Fear, Blinding Fear, Dragon Roar, Angstlich's
+# Appalling Screech, Song of Midnight, Terror of Darkness/Shadows,
+# Screaming Terror, Trepidation) -- confirmed real text, not guessed,
+# but a fear effect outside this list won't register as ON. The single
+# wear-off line ("You are no longer afraid.") is shared across every
+# source (no per-spell wears-off text exists), same "no caster, shared
+# text" shape state.mesmerized/state.charmed already have -- fine, since
+# this only needs ON/OFF, not which spell.
+# why: single generic space anchor, not one per alternative -- these 9
+# real texts share no common substring, and the engine requires *every*
+# declared anchor present (AND, not OR; see state.you_stun_ended's own
+# doc). Same trivial-anchor move state.misc already makes for its own
+# diverse 38-phrase bundle.
+id = "state.you_feared"
+kind = "state"
+priority = 50
+anchors = [" "]
+pattern = '''^(?:Your mind fills with fear\.|Your mind is wracked by fear\.|You freeze in terror\.|You flee in terror\.|Your mind snaps in terror\.|Dark terror fills your mind\.|Shadowed terror fills your mind\.|Your mind fills with trepidation\.|You begin to scream\.)$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] Your mind fills with fear.",
+  "[Tue Jul 28 15:02:15 2026] You freeze in terror.",
+  "[Tue Jul 28 15:02:15 2026] You flee in terror.",
+]
+
+[[rule]]
+id = "state.you_fear_ended"
+kind = "state"
+priority = 50
+anchors = ["no longer afraid"]
+pattern = '''^You are no longer afraid\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You are no longer afraid."]
 
 [[rule]]
 id = "noise.auto_attack"

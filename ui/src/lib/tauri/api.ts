@@ -201,13 +201,18 @@ export interface MomentaryStatusDto {
   since_ms: number;
 }
 
-/** why: Charm/Invisibility/Hide/Sneak -- see effects.rs's own doc. Each
- * field null when nothing of that kind has happened yet this session. */
+/** why: Charm/Invisibility/Hide/Sneak/CC (Stun/Root/Fear) -- see
+ * effects.rs's own doc. Each field null when nothing of that kind has
+ * happened yet this session. CC fields only ever carry 'success'
+ * (landed/on) or 'ended' (off) -- no 'failure' case exists for them. */
 export interface StatusEffectsDto {
   charm: CharmStatusDto | null;
   invis: InvisStatusDto | null;
   hide: MomentaryStatusDto | null;
   sneak: MomentaryStatusDto | null;
+  stun: MomentaryStatusDto | null;
+  root: MomentaryStatusDto | null;
+  fear: MomentaryStatusDto | null;
 }
 
 /** why: Skill Tracker's own-cooldowns section -- see skilltracker.rs's own doc */

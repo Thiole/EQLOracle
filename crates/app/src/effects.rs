@@ -1,12 +1,22 @@
-//! why: overlay's timed-effects tracker -- Charm/Invisibility/Hide/Sneak.
-//! Every signal here is a real log line already matched by the pack, but
-//! before this module existed each one either went unmapped entirely
-//! (invis.fading, and every hide/sneak outcome) or was swallowed into
-//! state.misc's generic bundle with no Action of its own -- see
-//! ingest.rs's `flush_cast_resolutions` doc for the shape of bug that
-//! kind of silent gap produces. Self-only: none of these lines name a
-//! third party, so there's no attribution question to solve, unlike
-//! combat's live_meter.
+//! why: overlay's timed-effects tracker -- Charm/Invisibility/Hide/Sneak/
+//! CC (Stun/Root/Fear). Every signal here is a real log line already
+//! matched by the pack, but before this module existed each one either
+//! went unmapped entirely (invis.fading, and every hide/sneak outcome)
+//! or was swallowed into state.misc's generic bundle with no Action of
+//! its own -- see ingest.rs's `flush_cast_resolutions` doc for the shape
+//! of bug that kind of silent gap produces. Self-only: none of these
+//! lines name a third party, so there's no attribution question to
+//! solve, unlike combat's live_meter.
+//!
+//! CC (Stun/Root/Fear) reuses MomentaryStatus exactly like Hide/Sneak
+//! do -- Success = landed, Ended = wore off/was thrown off early. No
+//! Failure case for these: there's no real "you resisted the stun/root/
+//! fear" self-status line worth building yet (only an *avoided* attempt
+//! exists for stun, which never lands at all -- see packs/eql.toml's
+//! noise.stunned doc). Fear is deliberately rough: see
+//! state.you_feared's own doc in the pack for why its ON list is a
+//! curated, non-exhaustive set of real spell text rather than a clean
+//! wiki category the way Stun/Root have.
 
 use crate::ingest::Ingest;
 use eqlp_source::Millis;
@@ -81,6 +91,11 @@ pub struct StatusEffectsDto {
     pub invis: Option<InvisDto>,
     pub hide: Option<MomentaryDto>,
     pub sneak: Option<MomentaryDto>,
+    /// why: "success" = landed/on, "ended" = wore off/off -- see this
+    /// module's own doc for why CC never uses "failure"
+    pub stun: Option<MomentaryDto>,
+    pub root: Option<MomentaryDto>,
+    pub fear: Option<MomentaryDto>,
 }
 
 /// why: the overlay's own poll -- same shape as combat::live_meter,
@@ -102,6 +117,18 @@ pub fn status_effects(ing: &Ingest) -> StatusEffectsDto {
             since_ms: s.since_ms,
         }),
         sneak: ing.sneak.map(|s| MomentaryDto {
+            outcome: s.outcome.label(),
+            since_ms: s.since_ms,
+        }),
+        stun: ing.stun.map(|s| MomentaryDto {
+            outcome: s.outcome.label(),
+            since_ms: s.since_ms,
+        }),
+        root: ing.root.map(|s| MomentaryDto {
+            outcome: s.outcome.label(),
+            since_ms: s.since_ms,
+        }),
+        fear: ing.fear.map(|s| MomentaryDto {
             outcome: s.outcome.label(),
             since_ms: s.since_ms,
         }),
@@ -275,5 +302,64 @@ mod tests {
             status_effects(&ing).sneak.expect("tracked").outcome,
             "failure"
         );
+    }
+
+    #[test]
+    fn stun_lands_then_ends() {
+        let ing = run(&["[Tue Jul 28 15:01:00 2026] You are stunned!"]);
+        assert_eq!(
+            status_effects(&ing).stun.expect("tracked").outcome,
+            "success"
+        );
+
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You are stunned!",
+            "[Tue Jul 28 15:01:03 2026] You are no longer stunned.",
+        ]);
+        assert_eq!(status_effects(&ing).stun.expect("tracked").outcome, "ended");
+    }
+
+    /// why: real, confirmed second way stun ends -- resisting mid-effect,
+    /// not just the natural "no longer stunned" expiry
+    #[test]
+    fn overcoming_a_stun_early_also_counts_as_ended() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You are stunned!",
+            "[Tue Jul 28 15:01:01 2026] You overcome the stun!",
+        ]);
+        assert_eq!(status_effects(&ing).stun.expect("tracked").outcome, "ended");
+    }
+
+    #[test]
+    fn root_lands_then_ends() {
+        let ing = run(&["[Tue Jul 28 15:01:00 2026] You are ensnared."]);
+        assert_eq!(
+            status_effects(&ing).root.expect("tracked").outcome,
+            "success"
+        );
+
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You are ensnared.",
+            "[Tue Jul 28 15:03:00 2026] You are no longer ensnared.",
+        ]);
+        assert_eq!(status_effects(&ing).root.expect("tracked").outcome, "ended");
+    }
+
+    /// why: real, curated set -- any of several different real fear
+    /// spells' own landing text counts as ON, all sharing the one real
+    /// wear-off line (see state.you_feared's own doc)
+    #[test]
+    fn fear_lands_from_any_curated_source_then_ends() {
+        let ing = run(&["[Tue Jul 28 15:01:00 2026] You freeze in terror."]);
+        assert_eq!(
+            status_effects(&ing).fear.expect("tracked").outcome,
+            "success"
+        );
+
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] Your mind fills with fear.",
+            "[Tue Jul 28 15:01:30 2026] You are no longer afraid.",
+        ]);
+        assert_eq!(status_effects(&ing).fear.expect("tracked").outcome, "ended");
     }
 }
