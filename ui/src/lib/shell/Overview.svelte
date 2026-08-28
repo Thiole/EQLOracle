@@ -209,7 +209,7 @@
                   {/if}
                 </p>
                 <div class="mt-1 flex flex-wrap gap-3">
-                  {#each $session.mote_tiers as t (t.tier)}
+                  {#each $session.mote_tiers as t (t.name)}
                     <div class="flex flex-col items-center gap-0.5">
                       <span class="text-[9px] text-muted-foreground">{t.name}</span>
                       <span class="size-4 rounded-full border border-border/50" style="background-color: {TIER_COLORS[t.name] ?? '#8b93a1'}" title={t.name}></span>

@@ -312,9 +312,13 @@ export interface SessionDto {
 
 /** why: `tier` is a derived ordinal (ascending by the tier *names'* own
  * English magnitude), not a wiki-confirmed number -- the scrape has no
- * real tier field for Motes at all. Use `name` for display. */
+ * real tier field for Motes at all. Use `name` for display. `tier` is
+ * null for a real "Mote of X" loot whose name isn't one of the 9 known
+ * tiers (e.g. the wiki's own bare "Mote of Potential") -- still counted,
+ * just not ranked; `name` stays unique either way, so key lists on it,
+ * not `tier`. */
 export interface MoteTierDto {
-  tier: number;
+  tier: number | null;
   name: string;
   count: number;
 }

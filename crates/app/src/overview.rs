@@ -8,6 +8,7 @@ use crate::ingest::Ingest;
 use eqlp_source::Millis;
 use eqlp_store::EventKind;
 use serde::Serialize;
+use std::collections::HashMap;
 
 /// why: below this, report unavailable -- a short window spikes wildly
 const MIN_SESSION_MS_FOR_RATE: Millis = 60_000;
@@ -78,8 +79,12 @@ const MOTE_TIER_ORDER: [&str; 9] = [
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MoteTierDto {
-    /// why: 1-based, ascending -- see `MOTE_TIER_ORDER`'s own doc
-    pub tier: u8,
+    /// why: 1-based ascending rank among `MOTE_TIER_ORDER`'s 9 known
+    /// names -- `None` for a real "Mote of X" loot whose suffix-stripped
+    /// name isn't one of them (confirmed real case: the wiki also has a
+    /// bare, untiered "Mote of Potential" -- never fabricated a rank for
+    /// it, but never silently dropped either, see `motes_by_tier_since`)
+    pub tier: Option<u8>,
     pub name: String,
     pub count: u64,
 }
@@ -123,10 +128,20 @@ fn sum_motes_since(ing: &Ingest, start_ts: Millis) -> u64 {
 
 /// why: per-tier breakdown for the Session card's icon row -- companion
 /// to `sum_motes_since`'s combined total, not a replacement (that's
-/// still the headline "N motes/hr" number)
+/// still the headline "N motes/hr" number). Every "Mote of X" loot this
+/// matches lands in exactly one bucket here (falling back to the raw
+/// suffix-stripped remainder when it isn't one of the 9 known tier
+/// names) -- so the sum of every `count` here always reconciles with
+/// `sum_motes_since`'s total. Real bug this replaced: the old version
+/// used `strip_suffix(" Potential")` as a second required condition and
+/// `continue`d past anything that failed it, silently dropping the
+/// wiki's own bare, untiered "Mote of Potential" from the breakdown
+/// while `sum_motes_since` (prefix-only) still counted it -- the
+/// headline number and the icon row could disagree with no visible
+/// reason why.
 fn motes_by_tier_since(ing: &Ingest, start_ts: Millis) -> Vec<MoteTierDto> {
     let start_i = ing.store.ts.partition_point(|&t| t < start_ts);
-    let mut counts = [0u64; MOTE_TIER_ORDER.len()];
+    let mut counts: HashMap<&str, u64> = HashMap::new();
     for j in start_i..ing.store.len() {
         if ing.store.kind[j] != EventKind::Loot {
             continue;
@@ -135,23 +150,28 @@ fn motes_by_tier_since(ing: &Ingest, start_ts: Millis) -> Vec<MoteTierDto> {
         let Some(rest) = name.strip_prefix("Mote of ") else {
             continue;
         };
-        let Some(tier_name) = rest.strip_suffix(" Potential") else {
-            continue;
-        };
-        if let Some(i) = MOTE_TIER_ORDER.iter().position(|&t| t == tier_name) {
-            counts[i] += ing.store.amount[j];
-        }
+        let tier_name = rest.strip_suffix(" Potential").unwrap_or(rest);
+        *counts.entry(tier_name).or_insert(0) += ing.store.amount[j];
     }
-    counts
-        .iter()
-        .enumerate()
-        .filter(|&(_, &c)| c > 0)
-        .map(|(i, &count)| MoteTierDto {
-            tier: i as u8 + 1,
-            name: MOTE_TIER_ORDER[i].to_string(),
+    let mut out: Vec<MoteTierDto> = counts
+        .into_iter()
+        .map(|(name, count)| MoteTierDto {
+            tier: MOTE_TIER_ORDER
+                .iter()
+                .position(|&t| t == name)
+                .map(|i| i as u8 + 1),
+            name: name.to_string(),
             count,
         })
-        .collect()
+        .collect();
+    // why: known tiers ascending first (None sorts last via Option's own
+    // Ord), alphabetical among themselves as a stable tiebreak -- matters
+    // for the rare untiered-name case, not for the normal 9-known-tiers path
+    // why: NOT a plain `a.tier.cmp(&b.tier)` -- Option's derived Ord sorts
+    // None *first*, the opposite of what "known tiers, then whatever's
+    // left" means here
+    out.sort_by_key(|t| (t.tier.unwrap_or(u8::MAX), t.name.clone()));
+    out
 }
 
 pub fn session(ing: &Ingest) -> SessionDto {
@@ -267,17 +287,53 @@ mod tests {
             s.mote_tiers,
             vec![
                 MoteTierDto {
-                    tier: 1,
+                    tier: Some(1),
                     name: "Infinitesimal".into(),
                     count: 2
                 },
                 MoteTierDto {
-                    tier: 2,
+                    tier: Some(2),
                     name: "Minor".into(),
                     count: 1
                 },
             ],
             "ascending by tier, not by first-seen order"
+        );
+    }
+
+    /// why: real bug this replaced -- the wiki's own bare, untiered "Mote
+    /// of Potential" used to count toward motes_found (prefix-only
+    /// match) but vanish from mote_tiers entirely (which also required
+    /// the " Potential" suffix to strip cleanly, which it can't off of
+    /// just "Potential"). The two must always reconcile.
+    #[test]
+    fn an_untiered_mote_still_counts_in_the_breakdown_not_just_the_total() {
+        let ing = run(
+            "[Tue Jul 28 15:31:55 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n\
+             [Tue Jul 28 15:32:00 2026] You looted a Mote of Potential from a dune spiderling's corpse and stored it in your currency\r\n",
+        );
+        let s = session(&ing);
+        assert_eq!(s.motes_found, 2);
+        let breakdown_total: u64 = s.mote_tiers.iter().map(|t| t.count).sum();
+        assert_eq!(
+            breakdown_total, s.motes_found,
+            "mote_tiers must always sum to motes_found, no silent drops"
+        );
+        assert_eq!(
+            s.mote_tiers,
+            vec![
+                MoteTierDto {
+                    tier: Some(2),
+                    name: "Minor".into(),
+                    count: 1
+                },
+                MoteTierDto {
+                    tier: None,
+                    name: "Potential".into(),
+                    count: 1
+                },
+            ],
+            "known tier first, untiered fallback last"
         );
     }
 

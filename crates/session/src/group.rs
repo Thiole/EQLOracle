@@ -91,7 +91,15 @@ pub const GROUP_TTL_MS: Millis = 30 * 60 * 1000;
 struct Evidence {
     last_ms: Millis,
     sessions: u32,
-    strong: bool,
+    /// why: timestamp of the most recent strong reinforcement, not a
+    /// bare bool -- real bug, found on review: a plain `bool` that only
+    /// ever flips true and never resets makes one lifetime strong
+    /// confirmation a permanent bypass of MIN_SESSIONS, revivable by a
+    /// single later incidental weak hit (which alone wouldn't qualify)
+    /// no matter how long ago the strong evidence itself actually
+    /// happened. Strong evidence must decay past GROUP_TTL_MS same as
+    /// everything else -- see `strong_currently`.
+    strong_last_ms: Option<Millis>,
 }
 
 impl Evidence {
@@ -101,7 +109,13 @@ impl Evidence {
         if ts - self.last_ms > GROUP_TTL_MS {
             return false;
         }
-        self.strong || self.sessions >= MIN_SESSIONS
+        self.strong_currently(ts) || self.sessions >= MIN_SESSIONS
+    }
+
+    /// why: split out of is_current so current_members can report *why*
+    /// an entry is current without duplicating the TTL check
+    fn strong_currently(&self, ts: Millis) -> bool {
+        self.strong_last_ms.is_some_and(|s| ts - s <= GROUP_TTL_MS)
     }
 }
 
@@ -118,7 +132,7 @@ impl GroupTracker {
         let e = self.entries.entry(key).or_insert(Evidence {
             last_ms: ts,
             sessions: 0,
-            strong: false,
+            strong_last_ms: None,
         });
         // why: sessions==0 catches the very first reinforcement (last_ms
         // was just seeded to ts above, so the gap check alone would miss it)
@@ -133,18 +147,18 @@ impl GroupTracker {
         let e = self.entries.entry(key).or_insert(Evidence {
             last_ms: ts,
             sessions: 0,
-            strong: false,
+            strong_last_ms: None,
         });
-        e.strong = true;
+        e.strong_last_ms = Some(e.strong_last_ms.map_or(ts, |s| s.max(ts)));
         e.last_ms = e.last_ms.max(ts);
     }
 
-    /// why: raw (last_ms, sessions, strong) for diagnostics/debug UI --
-    /// currently_grouped is the real answer, this is "why"
-    pub fn evidence_for(&self, name: &str) -> Option<(Millis, u32, bool)> {
+    /// why: raw (last_ms, sessions, strong_last_ms) for diagnostics/debug
+    /// UI -- currently_grouped is the real answer, this is "why"
+    pub fn evidence_for(&self, name: &str) -> Option<(Millis, u32, Option<Millis>)> {
         self.entries
             .get(&fold_key(name))
-            .map(|e| (e.last_ms, e.sessions, e.strong))
+            .map(|e| (e.last_ms, e.sessions, e.strong_last_ms))
     }
 
     /// why: stale past GROUP_TTL_MS regardless of channel; the weak
@@ -160,11 +174,14 @@ impl GroupTracker {
     /// State dump needs the whole roster as of ts. Keys are fold_key'd
     /// (lowercase first char), not display casing -- callers resolve
     /// through Entities::display_name the same way `Ingest` does elsewhere.
+    /// The bool is whether strong evidence is *currently* what's keeping
+    /// this entry current (as of `ts`), not whether it was ever strong --
+    /// see `strong_currently`.
     pub fn current_members(&self, ts: Millis) -> Vec<(String, u32, bool, Millis)> {
         self.entries
             .iter()
             .filter(|(_, e)| e.is_current(ts))
-            .map(|(name, e)| (name.clone(), e.sessions, e.strong, e.last_ms))
+            .map(|(name, e)| (name.clone(), e.sessions, e.strong_currently(ts), e.last_ms))
             .collect()
     }
 }
@@ -230,6 +247,39 @@ mod tests {
         g.reinforce_strong("Kaeus", 0);
         assert!(g.currently_grouped("Kaeus", GROUP_TTL_MS));
         assert!(!g.currently_grouped("Kaeus", GROUP_TTL_MS + 1));
+    }
+
+    /// why: real bug, found on review -- `strong` used to be a plain
+    /// bool that only ever flipped true and never reset, so a single
+    /// lifetime strong confirmation stayed a permanent MIN_SESSIONS
+    /// bypass. Confirms a decayed strong confirmation stays decayed even
+    /// once *some* reinforcement (a lone weak hit, nowhere near
+    /// MIN_SESSIONS on its own) touches the entry again.
+    #[test]
+    fn a_decayed_strong_confirmation_does_not_revive_via_a_later_lone_weak_hit() {
+        let mut g = GroupTracker::default();
+        g.reinforce_strong("Kaeus", 0);
+        let after_ttl = GROUP_TTL_MS + 1;
+        assert!(!g.currently_grouped("Kaeus", after_ttl));
+
+        g.reinforce_weak("Kaeus", after_ttl + 1);
+        assert!(
+            !g.currently_grouped("Kaeus", after_ttl + 1),
+            "one incidental shared-target hit must not resurrect a long-decayed strong confirmation"
+        );
+    }
+
+    /// why: companion to the above -- a genuinely *fresh* strong
+    /// reinforcement (not leftover state) does renew normally
+    #[test]
+    fn a_fresh_strong_reinforcement_renews_after_the_first_decayed() {
+        let mut g = GroupTracker::default();
+        g.reinforce_strong("Kaeus", 0);
+        let after_ttl = GROUP_TTL_MS + 1;
+        assert!(!g.currently_grouped("Kaeus", after_ttl));
+
+        g.reinforce_strong("Kaeus", after_ttl);
+        assert!(g.currently_grouped("Kaeus", after_ttl));
     }
 
     #[test]

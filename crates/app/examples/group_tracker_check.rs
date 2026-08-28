@@ -47,7 +47,7 @@ fn main() {
         last_ms.len()
     );
     for name in &grouped {
-        let (last, sessions, strong) = ing.groups.evidence_for(name).unwrap();
-        println!("{name}\tsessions={sessions}\tstrong={strong}\tlast_ms={last}");
+        let (last, sessions, strong_last_ms) = ing.groups.evidence_for(name).unwrap();
+        println!("{name}\tsessions={sessions}\tstrong_last_ms={strong_last_ms:?}\tlast_ms={last}");
     }
 }
