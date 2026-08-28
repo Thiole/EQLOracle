@@ -137,6 +137,7 @@ fn main() {
             commands::get_inventory_dump,
             commands::find_existing_inventory_dump,
             commands::locate_item,
+            commands::get_inventory_browser,
             commands::list_map_packs,
             commands::list_map_zones,
             commands::list_all_map_zones,

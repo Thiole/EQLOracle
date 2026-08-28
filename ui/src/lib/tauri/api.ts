@@ -670,6 +670,21 @@ export interface ItemLocationDto {
   count: number;
 }
 
+/** why: one real item sitting in a storage container -- the Inventory tab's own per-row payload */
+export interface InventorySlotDto {
+  slot: string;
+  item: string;
+  tier: number;
+  count: number;
+}
+
+/** why: one real storage container (a bag, the bank, the depot, key ring, ...) */
+export interface InventoryContainerDto {
+  label: string;
+  bag_item: string | null;
+  slots: InventorySlotDto[];
+}
+
 export interface InventoryDumpDto {
   /** why: slot -> matched item */
   resolved: Record<string, ItemDto>;
@@ -1263,6 +1278,8 @@ export const api = {
 
   /** why: empty (not an error) whenever there's no dump yet -- unknown, not "not found" */
   locateItem: (name: string) => invoke<ItemLocationDto[]>('locate_item', { name }),
+
+  getInventoryBrowser: () => invoke<InventoryContainerDto[]>('get_inventory_browser'),
 
   /** why: doll/preview tier picker -- "what if I upgrade this to +N" */
   getItemAtTier: (id: string, tier: number) => invoke<ItemDto | null>('get_item_at_tier', { id, tier }),

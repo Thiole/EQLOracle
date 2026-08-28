@@ -895,31 +895,36 @@ pub fn find_existing_inventory_dump(state: State<AppState>) -> Option<ExistingIn
     Some(ExistingInventoryDumpDto { file, character })
 }
 
+/// why: shared by `locate_item` and `get_inventory_browser` -- both want
+/// "the latest dump on disk, parsed", neither cares which file. None
+/// covers every reason that can fail (no base folder configured, no
+/// dump yet, a read/parse error) -- "unknown", same stance every other
+/// inventory-derived read already takes, not worth distinguishing for a
+/// read-only view.
+fn latest_parsed_inventory(state: &State<AppState>) -> Option<inventory::ParsedInventory> {
+    let base_dir = state.config.lock().unwrap().as_ref()?.base_dir.clone();
+    let (file, _character) = inventory::find_existing_dump(&base_dir)?;
+    let path = inventory::dump_path(&base_dir, &file).ok()?;
+    inventory::parse(&path).ok()
+}
+
 /// why: "where is my X" -- GdLink's own locate affordance, wherever an
-/// item name already renders in the app. Empty (not an error) whenever
-/// there's no base folder or no dump yet -- "unknown", same stance every
-/// other inventory-derived read already takes.
+/// item name already renders in the app.
 #[tauri::command]
 pub fn locate_item(state: State<AppState>, name: String) -> Vec<inventory::InventoryLocation> {
-    let Some(base_dir) = state
-        .config
-        .lock()
-        .unwrap()
-        .as_ref()
-        .map(|c| c.base_dir.clone())
-    else {
-        return Vec::new();
-    };
-    let Some((file, _character)) = inventory::find_existing_dump(&base_dir) else {
-        return Vec::new();
-    };
-    let Ok(path) = inventory::dump_path(&base_dir, &file) else {
-        return Vec::new();
-    };
-    let Ok(parsed) = inventory::parse(&path) else {
-        return Vec::new();
-    };
-    parsed.locate(&name).to_vec()
+    latest_parsed_inventory(&state)
+        .map(|parsed| parsed.locate(&name).to_vec())
+        .unwrap_or_default()
+}
+
+/// why: Character module's Inventory tab -- bags/bank/depot/key ring,
+/// grouped by real container. Equip-doll slots deliberately excluded,
+/// see `inventory::ParsedInventory::containers`' own doc.
+#[tauri::command]
+pub fn get_inventory_browser(state: State<AppState>) -> Vec<inventory::InventoryContainerDto> {
+    latest_parsed_inventory(&state)
+        .map(|parsed| parsed.containers)
+        .unwrap_or_default()
 }
 
 /// why: Maps module's pack picker; empty is valid, base game only

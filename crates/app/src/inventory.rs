@@ -94,6 +94,104 @@ fn display_location(location: &str) -> String {
     location.to_string()
 }
 
+/// why: raw dump location -> which real container it belongs to, for
+/// the browser view -- a separate, independent function from
+/// `display_location` (not built from a shared helper) since the two
+/// have genuinely different phrasing needs ("Equipped (Fingers)" as one
+/// string vs. a container/slot pair to group by) and `display_location`
+/// is already shipped/tested; not worth the coupling to unify them.
+fn container_key(location: &str) -> String {
+    if let Some(rest) = location.strip_prefix("General ") {
+        return format!(
+            "General bag {}",
+            rest.split_once("-Slot").map_or(rest, |(bag, _)| bag)
+        );
+    }
+    if let Some(rest) = location.strip_prefix("Bank") {
+        if rest.is_empty() {
+            return "Bank".to_string();
+        }
+        return format!(
+            "Bank bag {}",
+            rest.split_once("-Slot").map_or(rest, |(bag, _)| bag)
+        );
+    }
+    if location.starts_with("SharedBank") {
+        return "Shared Bank".to_string();
+    }
+    if location.starts_with("Personal-Depot") {
+        return "Personal Depot".to_string();
+    }
+    if location == "KeyRing" {
+        return "Key Ring".to_string();
+    }
+    location.to_string()
+}
+
+/// why: this row's own label *within* its container -- None means the
+/// row itself IS the container (a bag's own header row), see `parse`'s
+/// use of this alongside `container_key`
+fn slot_label(location: &str) -> Option<String> {
+    if let Some(rest) = location.strip_prefix("General ") {
+        return rest
+            .split_once("-Slot")
+            .map(|(_, slot)| format!("slot {slot}"));
+    }
+    if let Some(rest) = location.strip_prefix("Bank") {
+        return rest
+            .split_once("-Slot")
+            .map(|(_, slot)| format!("slot {slot}"));
+    }
+    // why: flat -- "SharedBank1"/"Personal-Depot7", no bag-index level
+    // and no "-Slot" separator at all, confirmed against the real dump
+    // (unlike General/Bank, which nest a bag index then "-SlotN")
+    if let Some(slot) = location.strip_prefix("SharedBank") {
+        return Some(format!("slot {slot}"));
+    }
+    if let Some(slot) = location.strip_prefix("Personal-Depot") {
+        return Some(format!("slot {slot}"));
+    }
+    None
+}
+
+/// why: true only for a bag/bank's own bare container-defining row
+/// ("General 1", "Bank5", bare "Bank") -- a bag's own numbered CONTENTS
+/// aren't sockets of the bag, they're real, distinct items, each of
+/// which (equipped, bagged, shared-banked, depot, or the bag/pouch item
+/// itself) can legitimately carry its own nested exalt/augment socket.
+/// An exclusion, not an enumeration -- deliberately, so a container type
+/// this doesn't know about (Dragon's Hoard, if it ever shows up) is
+/// eligible by default rather than silently swallowed the way this bug
+/// class already proved happens to an un-enumerated case.
+fn is_bag_container_header(base: &str) -> bool {
+    if let Some(rest) = base.strip_prefix("General ") {
+        return !rest.contains("-Slot");
+    }
+    if let Some(rest) = base.strip_prefix("Bank") {
+        return !rest.contains("-Slot");
+    }
+    false
+}
+
+/// why: `Vec`, not a `HashMap` -- containers display in first-seen
+/// (dump) order, and there are only ever a few dozen of them, so a
+/// linear find is cheap and simpler than keeping a parallel index
+fn container_mut<'a>(
+    containers: &'a mut Vec<InventoryContainerDto>,
+    label: &str,
+) -> &'a mut InventoryContainerDto {
+    if let Some(i) = containers.iter().position(|c| c.label == label) {
+        &mut containers[i]
+    } else {
+        containers.push(InventoryContainerDto {
+            label: label.to_string(),
+            bag_item: None,
+            slots: Vec::new(),
+        });
+        containers.last_mut().expect("just pushed")
+    }
+}
+
 /// why: strips any trailing "-Slot<N>", not just modelled ones -- see `parse`'s doc
 fn strip_trailing_numbered_slot(location: &str) -> Option<&str> {
     let (base, tail) = location.rsplit_once("-Slot")?;
@@ -127,6 +225,29 @@ pub struct InventoryLocation {
     pub count: u32,
 }
 
+/// why: one real item sitting in a storage container -- the browser
+/// view's own per-row payload, `slot` already player-recognizable
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InventorySlotDto {
+    pub slot: String,
+    pub item: String,
+    pub tier: u8,
+    pub count: u32,
+}
+
+/// why: one real storage container (a bag, the bank, the depot, key
+/// ring, ...) -- the browser view groups by this, `locations`/`owned`
+/// don't need to
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InventoryContainerDto {
+    pub label: String,
+    /// why: the bag/pouch's own name when it's a real numbered container
+    /// (e.g. "Spacious Rucksack") -- None for containers with no such
+    /// concept in this dump (Shared Bank, Personal Depot, Key Ring)
+    pub bag_item: Option<String>,
+    pub slots: Vec<InventorySlotDto>,
+}
+
 /// why: both halves of a dump read in one pass -- equipped, and total owned
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct ParsedInventory {
@@ -146,6 +267,11 @@ pub struct ParsedInventory {
     /// (tier-stripped name) and same row set as `owned`/`owned_tier` --
     /// built inline in the same loop, not a second pass.
     pub locations: HashMap<String, Vec<InventoryLocation>>,
+    /// why: the browser view -- storage only (bags/bank/depot/key ring),
+    /// deliberately excludes equip-doll slots (already the Gear
+    /// Planner's own job). First-seen order, which is the dump's own
+    /// order -- no reason to re-sort what the game already lays out sensibly.
+    pub containers: Vec<InventoryContainerDto>,
 }
 
 impl ParsedInventory {
@@ -215,14 +341,12 @@ pub fn parse(path: &Path) -> std::io::Result<ParsedInventory> {
             // to break the false match by coincidence. Confirmed: real
             // items (Efreeti War Club, Ceremonial Belt, White Dragon
             // Scales x4, Belt of the Four Winds, Blood-Drawn Runes, ...)
-            // vanished from `owned` entirely in the live dump. A bag's
-            // bare name can never carry sockets -- only an equipped item
-            // (SLOT_ORDER) or an already-one-level-deep bag *content*
-            // row (its own real item, which itself might carry a further
-            // nested augment/exalt socket) can.
-            let can_carry_sockets = SLOT_ORDER.iter().any(|(loc, _)| *loc == base)
-                || strip_trailing_numbered_slot(base).is_some();
-            if base == last_base_location && can_carry_sockets {
+            // vanished from `owned` entirely in the live dump. Excludes
+            // only a bag/bank's own bare container-defining row -- every
+            // other real item (equipped, bagged, in the shared bank, in
+            // the depot, or the bag/pouch item itself) legitimately can
+            // carry its own nested exalt/augment socket.
+            if base == last_base_location && !is_bag_container_header(base) {
                 if name != "Empty" {
                     if let (Some(equip_key), Some(socket_key)) = (
                         last_equip_key,
@@ -261,6 +385,26 @@ pub fn parse(path: &Path) -> std::io::Result<ParsedInventory> {
                 tier,
                 count,
             });
+
+        // why: the browser view (bags/bank/depot/key ring), grouped by
+        // real container -- deliberately excludes equip-doll slots,
+        // already served by the Gear Planner/Character Sheet, so this
+        // stays scoped to storage. A container's own header row (e.g.
+        // "General 1" naming "Spacious Rucksack") sets `bag_item`
+        // instead of adding a slot -- it's the bag's own identity, not
+        // something sitting inside it.
+        if !SLOT_ORDER.iter().any(|(loc, _)| *loc == location) {
+            let container = container_mut(&mut out.containers, &container_key(location));
+            match slot_label(location) {
+                Some(slot) => container.slots.push(InventorySlotDto {
+                    slot,
+                    item: base_name.to_string(),
+                    tier,
+                    count,
+                }),
+                None => container.bag_item = Some(base_name.to_string()),
+            }
+        }
 
         let Some((_, slot_keys)) = SLOT_ORDER.iter().find(|(loc, _)| *loc == location) else {
             continue;
@@ -562,6 +706,103 @@ mod parse_tests {
         // why: the bag containers themselves are real owned items too
         assert_eq!(parsed.owned.get("Driftwood Treasure Chest"), Some(&1));
         assert_eq!(parsed.owned.get("Spacious Rucksack"), Some(&1));
+
+        // why: the browser view must show the same real slots, grouped
+        // by container, bag's own name captured separately from its
+        // contents -- this is the same real data, viewed the other way
+        let bank5 = parsed
+            .containers
+            .iter()
+            .find(|c| c.label == "Bank bag 5")
+            .expect("Bank bag 5 present");
+        assert_eq!(bank5.bag_item.as_deref(), Some("Driftwood Treasure Chest"));
+        assert_eq!(
+            bank5.slots.len(),
+            2,
+            "Efreeti War Club + Efreeti Magi Staff, not their empty sockets"
+        );
+        assert!(bank5
+            .slots
+            .iter()
+            .any(|s| s.slot == "slot 1" && s.item == "Efreeti War Club" && s.tier == 1));
+
+        let general1 = parsed
+            .containers
+            .iter()
+            .find(|c| c.label == "General bag 1")
+            .expect("General bag 1 present");
+        assert_eq!(general1.bag_item.as_deref(), Some("Spacious Rucksack"));
+        assert_eq!(general1.slots.len(), 1);
+        assert_eq!(general1.slots[0].slot, "slot 1");
+        assert_eq!(general1.slots[0].item, "Ceremonial Belt");
+    }
+
+    /// why: browser view must never include equip-doll slots -- those
+    /// are the Gear Planner/Character Sheet's own job, not this one's
+    #[test]
+    fn the_browser_view_excludes_equipped_items() {
+        let path = scratch_file(
+            "browser-excludes-equipped",
+            "Location\tName\tID\tCount\tSlots\n\
+             Fingers\tRing of Pureblood +5\t1540\t1\t10\n\
+             General 1\tSpacious Rucksack\t177751\t1\t24\n\
+             General 1-Slot1\tCeremonial Belt\t20838\t1\t10\n",
+        );
+        let parsed = parse(&path).unwrap();
+        assert!(parsed.equipped.contains_key("FINGER1"));
+        assert!(
+            !parsed
+                .containers
+                .iter()
+                .any(|c| c.slots.iter().any(|s| s.item == "Ring of Pureblood")),
+            "equipped items belong to `equipped`, not `containers`"
+        );
+        assert_eq!(parsed.containers.len(), 1, "only the real bag shows up");
+    }
+
+    /// why: real lines -- Shared Bank and Personal Depot are flat
+    /// (a bare number appended directly, e.g. "SharedBank1"), no
+    /// bag-index level and no "-Slot" separator at all, unlike General/
+    /// Bank's two-level "bag index, then -SlotN" scheme. A naive port of
+    /// that scheme would either miss these slots entirely or, worse,
+    /// wrongly treat a real item's own nested augment socket as if it
+    /// couldn't exist here (the same bug class this whole fix is about,
+    /// just for a container type this dump's real data never exercises).
+    #[test]
+    fn shared_bank_and_personal_depot_use_their_own_flat_numbering() {
+        let path = scratch_file(
+            "flat-containers",
+            "Location\tName\tID\tCount\tSlots\n\
+             SharedBank1\tEfreeti War Club +1\t20845\t1\t10\n\
+             SharedBank1-Slot7\tSome Focus Item (Exaltation)\t1\t1\t10\n\
+             Personal-Depot7\tAmber\t10022\t31\t10\n",
+        );
+        let parsed = parse(&path).unwrap();
+        let shared = parsed
+            .containers
+            .iter()
+            .find(|c| c.label == "Shared Bank")
+            .expect("Shared Bank present");
+        assert_eq!(
+            shared.slots.len(),
+            1,
+            "the nested socket is not a second item"
+        );
+        assert_eq!(shared.slots[0].slot, "slot 1");
+        assert_eq!(shared.slots[0].item, "Efreeti War Club");
+        // why: the nested socket is real evidence too, just not counted
+        // as a separate owned item -- confirms it wasn't simply dropped
+        assert!(!parsed.owned.contains_key("Some Focus Item"));
+        assert!(!parsed.owned.contains_key("Some Focus Item (Exaltation)"));
+
+        let depot = parsed
+            .containers
+            .iter()
+            .find(|c| c.label == "Personal Depot")
+            .expect("Personal Depot present");
+        assert_eq!(depot.slots.len(), 1);
+        assert_eq!(depot.slots[0].slot, "slot 7");
+        assert_eq!(depot.slots[0].count, 31);
     }
 }
 
