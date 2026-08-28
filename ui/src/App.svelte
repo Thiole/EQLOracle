@@ -7,6 +7,7 @@
   import Combat from '$lib/combat/Combat.svelte';
   import Character from '$lib/character/Character.svelte';
   import Endgame from '$lib/endgame/Endgame.svelte';
+  import Tradeskill from '$lib/tradeskill/Tradeskill.svelte';
   import Debug from '$lib/debug/Debug.svelte';
   import Info from '$lib/shell/Info.svelte';
   import GameData from '$lib/gamedata/GameData.svelte';
@@ -63,6 +64,8 @@
             <Character />
           {:else if $activeModule === 'endgame'}
             <Endgame />
+          {:else if $activeModule === 'tradeskill'}
+            <Tradeskill />
           {:else if $activeModule === 'debug'}
             <Debug />
           {:else if $activeModule === 'info'}

@@ -21,6 +21,7 @@
     { id: 'social', label: 'Social', enabled: true },
     { id: 'character', label: 'Character', enabled: true },
     { id: 'endgame', label: 'Endgame', enabled: true },
+    { id: 'tradeskill', label: 'Tradeskill', enabled: true },
     { id: 'gamedata', label: 'Game Data', enabled: true },
     { id: 'maps', label: 'Maps', enabled: true },
     { id: 'overlay', label: 'Overlay', enabled: true },

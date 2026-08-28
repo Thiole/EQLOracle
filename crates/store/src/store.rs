@@ -18,6 +18,12 @@ pub enum EventKind {
     Xp,
     /// why: amount is total copper, actor/target always the player
     Currency,
+    /// why: a tradeskill combine attempt -- ability is the output/
+    /// attempted item name (reuses the Abilities interner like Loot),
+    /// amount always 1, actor/target always the player. Outcome lives in
+    /// flags (flag::CRAFT_SUCCESS / not set = failure), not a separate
+    /// bool column -- mirrors how Loot's own auto-sold state is a flag.
+    Craft,
 }
 
 /// why: widened from u16, only 3 spare bits remained
@@ -38,6 +44,14 @@ pub mod flag {
 
     /// why: Loot-only -- auto-sold, so not actually still held
     pub const LOOT_AUTO_SOLD: Flags = 1 << 18;
+
+    /// why: Craft-only -- set means the combine succeeded, unset means
+    /// "You lacked the skills to fashion..." (a real failure, not unknown)
+    pub const CRAFT_SUCCESS: Flags = 1 << 19;
+    /// why: Craft-only -- this same combine also hit "You can no longer
+    /// advance your skill from making this item." (a separate log line,
+    /// correlated onto the row it's about -- see Ingest::record_craft)
+    pub const CRAFT_SKILL_CAPPED: Flags = 1 << 20;
 
     /// why: Cast outcome, mutually exclusive, exactly one set once resolved
     pub const CAST_LANDED: Flags = 1 << 8;

@@ -165,6 +165,8 @@ fn main() {
             commands::get_session,
             commands::reset_session,
             commands::get_game_data_meta,
+            commands::get_tradeskill_catalog,
+            commands::get_craft_log,
             commands::get_aa_log,
             commands::get_spellbook,
             commands::get_spell_ranks,

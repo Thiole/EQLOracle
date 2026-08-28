@@ -832,6 +832,13 @@ pub struct Ingest {
     you_confirmed_target_encs: HashSet<EncounterId>,
     /// why: open Quick Buff activation windows, resolved name -> activation timestamp
     pending_quickbuff: HashMap<String, Millis>,
+    /// why: a "You can no longer advance your skill..." notice that
+    /// arrived *before* the Craft row it's actually about (real, common
+    /// line-order variance confirmed in the reference log -- the two
+    /// lines always share a timestamp, but which one logs first isn't
+    /// fixed). Consumed by the next Craft row at the same timestamp;
+    /// cleared either way so it can never attach to a much later one.
+    pending_craft_skill_cap: Option<Millis>,
     /// why: Quick Buff evidence held for GROUP_CAST_WINDOW_MS in case it's really a group cast
     pending_quickbuff_evidence: Vec<PendingQuickbuffEvidence>,
     /// why: every recognized flavor landing across entities, trailing
@@ -911,6 +918,7 @@ impl Default for Ingest {
             you_confirmed_target_encs: HashSet::new(),
             pet_owner: HashMap::new(),
             pending_quickbuff: HashMap::new(),
+            pending_craft_skill_cap: None,
             pending_quickbuff_evidence: Vec::new(),
             recent_flavor_landings: Vec::new(),
             log_clock: VirtualClock::new(0),
@@ -1524,6 +1532,12 @@ impl Ingest {
                     self.record_currency(ts, "autosell", &text);
                 }
             }
+            Action::CraftAttempt { item, success } => {
+                self.record_craft(ts, &item, success);
+            }
+            Action::CraftSkillCapped => {
+                self.record_craft_skill_capped(ts);
+            }
             Action::Xp { scope, pct } => {
                 if let Some(p) = &mut self.pending_turnin {
                     p.confirmed = true;
@@ -1934,6 +1948,51 @@ impl Ingest {
             enc,
             tier,
         );
+    }
+
+    /// why: real tradeskill combine attempt -- see Store::EventKind::Craft's
+    /// own doc for why outcome is a flag, not a separate column
+    fn record_craft(&mut self, ts: Millis, item: &str, success: bool) {
+        let you = self.sym("You");
+        let ab = self.store.ability_id(item, 0);
+        let flags = if success { flag::CRAFT_SUCCESS } else { 0 };
+        let i = self.store.push(
+            ts,
+            EventKind::Craft,
+            you,
+            you,
+            ab,
+            1,
+            flags,
+            NO_ENCOUNTER,
+            0,
+        );
+        // why: a skill-capped notice that arrived first (real, confirmed
+        // line-order variance -- see pending_craft_skill_cap's own doc)
+        // is waiting for exactly this row, same timestamp
+        if self.pending_craft_skill_cap == Some(ts) {
+            self.store.flags[i as usize] |= flag::CRAFT_SKILL_CAPPED;
+        }
+        self.pending_craft_skill_cap = None;
+    }
+
+    /// why: "You can no longer advance your skill..." carries no item
+    /// name of its own -- correlates onto the Craft row at the *same*
+    /// timestamp (both lines are one combine action; real line order
+    /// between them varies, confirmed in the reference log, so this
+    /// checks backward for an already-pushed row first, then buffers
+    /// forward for one that hasn't arrived yet). No match either way
+    /// means nothing to attribute it to; dropped, not guessed.
+    fn record_craft_skill_capped(&mut self, ts: Millis) {
+        if let Some(i) = (0..self.store.len())
+            .rev()
+            .take_while(|&i| self.store.ts[i] == ts)
+            .find(|&i| self.store.kind[i] == EventKind::Craft)
+        {
+            self.store.flags[i] |= flag::CRAFT_SKILL_CAPPED;
+        } else {
+            self.pending_craft_skill_cap = Some(ts);
+        }
     }
 
     /// why: best-effort encounter for a loot line, matches kill order not
@@ -2787,6 +2846,17 @@ enum Action {
         qty: u64,
         sold_for: Option<String>,
     },
+    /// why: always the player; item is the recipe's own output name on
+    /// success, the attempted item's name on failure ("You lacked the
+    /// skills to fashion X.") -- same shape, just record which happened
+    CraftAttempt {
+        item: String,
+        success: bool,
+    },
+    /// why: carries no item name of its own ("You can no longer advance
+    /// your skill from making this item.") -- correlated onto the most
+    /// recent CraftAttempt at the same timestamp in record_craft_skill_capped
+    CraftSkillCapped,
     /// why: always the player; scope is the raw capture, empty for solo,
     /// normalized in record_xp not here
     Xp {
@@ -3190,6 +3260,15 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             qty: u64_field("qty").unwrap_or(1),
             sold_for: str_field("sold_for"),
         }),
+        "craft.success" => Some(Action::CraftAttempt {
+            item: str_field("item")?,
+            success: true,
+        }),
+        "craft.failure" => Some(Action::CraftAttempt {
+            item: str_field("item")?,
+            success: false,
+        }),
+        "craft.skill_capped" => Some(Action::CraftSkillCapped),
         "xp.gain" => Some(Action::Xp {
             scope: str_field("scope").unwrap_or_default(),
             pct: f64_field("pct")?,
@@ -6326,5 +6405,120 @@ mod effect_ping_tests {
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].skill.as_deref(), Some("Antimagic Poison"));
         assert_eq!(recent[0].source.as_deref(), Some("Dippinsauce"));
+    }
+}
+
+#[cfg(test)]
+mod craft_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    fn craft_rows(ing: &Ingest) -> Vec<(String, u64, bool, bool)> {
+        (0..ing.store.len())
+            .filter(|&i| ing.store.kind[i] == EventKind::Craft)
+            .map(|i| {
+                (
+                    ing.store.ability_name(ing.store.ability[i]).to_string(),
+                    ing.store.amount[i],
+                    ing.store.flags[i] & flag::CRAFT_SUCCESS != 0,
+                    ing.store.flags[i] & flag::CRAFT_SKILL_CAPPED != 0,
+                )
+            })
+            .collect()
+    }
+
+    /// why: real success line -- confirms the row lands with the right
+    /// item name, amount 1, and the success flag set
+    #[test]
+    fn a_successful_combine_records_a_craft_row() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> =
+            vec![b"[Tue Jul 28 15:02:15 2026] You have fashioned the items together to create something new: Silver Malachite Ring."];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert_eq!(
+            craft_rows(&ing),
+            vec![("Silver Malachite Ring".to_string(), 1, true, false)]
+        );
+    }
+
+    /// why: real failure line -- a real, counted failure, not silently dropped
+    #[test]
+    fn a_failed_combine_records_a_craft_row_without_the_success_flag() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:02:15 2026] You lacked the skills to fashion Silver Malachite Ring.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert_eq!(
+            craft_rows(&ing),
+            vec![("Silver Malachite Ring".to_string(), 1, false, false)]
+        );
+    }
+
+    /// why: real bug shape this guards against -- "You can no longer
+    /// advance your skill..." carries no item name of its own; must
+    /// correlate onto the success it actually describes, not create its
+    /// own unattributed row
+    #[test]
+    fn a_skill_capped_notice_attaches_to_the_same_timestamp_success() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:02:15 2026] You have fashioned the items together to create something new: Silver Malachite Ring.",
+            b"[Tue Jul 28 15:02:15 2026] You can no longer advance your skill from making this item.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert_eq!(
+            craft_rows(&ing),
+            vec![("Silver Malachite Ring".to_string(), 1, true, true)]
+        );
+    }
+
+    /// why: real, confirmed line-order variance in the reference log --
+    /// the capped notice sometimes logs *before* its own success line,
+    /// same timestamp either way
+    #[test]
+    fn a_skill_capped_notice_that_arrives_first_still_attaches_to_the_row_after_it() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:02:15 2026] You can no longer advance your skill from making this item.",
+            b"[Tue Jul 28 15:02:15 2026] You have fashioned the items together to create something new: Silver Malachite Ring.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert_eq!(
+            craft_rows(&ing),
+            vec![("Silver Malachite Ring".to_string(), 1, true, true)]
+        );
+    }
+
+    /// why: no Craft row at all at this timestamp -- must not panic,
+    /// must not fabricate a row to attach to
+    #[test]
+    fn a_skill_capped_notice_with_no_matching_craft_row_is_dropped() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![b"[Tue Jul 28 15:02:15 2026] You can no longer advance your skill from making this item."];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert!(craft_rows(&ing).is_empty());
+    }
+
+    /// why: a skill-capped notice from a *later* combine (different ts)
+    /// must not reach back and mark an earlier, unrelated success
+    #[test]
+    fn a_skill_capped_notice_does_not_attach_across_a_different_timestamp() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:02:15 2026] You have fashioned the items together to create something new: Silver Malachite Ring.",
+            b"[Tue Jul 28 15:02:20 2026] You can no longer advance your skill from making this item.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert_eq!(
+            craft_rows(&ing),
+            vec![("Silver Malachite Ring".to_string(), 1, true, false)]
+        );
     }
 }

@@ -417,6 +417,50 @@ export interface SkyClassDto {
   unlocked: boolean | null;
 }
 
+// ---------------------------------------------------------------- tradeskills
+
+export interface RecipeIngredientDto {
+  item: string;
+  qty: number;
+  /** why: a container/tool that's consumed but handed back either way (e.g. a Pie Tin) */
+  returned: boolean;
+}
+
+/** why: real wiki recipe data -- see tradeskilldata.rs's own doc for the
+ * real table-shape quirks this survived, and what's still not captured
+ * (a long tail of one-off armor-material sub-tables) */
+export interface RecipeDto {
+  item: string;
+  /** why: some output cells carry their own yield prefix ("2x [[Item]]") */
+  yield_qty: number;
+  ingredients: RecipeIngredientDto[];
+  implements: string | null;
+  yield: string | null;
+  /** why: null when the wiki's own value isn't a plain integer -- see trivial_raw */
+  trivial: number | null;
+  trivial_raw: string | null;
+  use: string | null;
+}
+
+export interface TradeskillSkillDto {
+  skill: string;
+  recipes: RecipeDto[];
+}
+
+/** why: real craft attempts this file has ever recorded, joined against
+ * the catalog above by output item name -- see craftlog.rs's own doc */
+export interface CraftLogEntryDto {
+  item: string;
+  /** why: null when this item isn't a known recipe output anywhere in the catalog */
+  tradeskill: string | null;
+  trivial: number | null;
+  attempts: number;
+  successes: number;
+  failures: number;
+  /** why: true if any attempt at this item ever hit the skill cap */
+  skill_capped: boolean;
+}
+
 /** why: one final reward item -- what "Primary Class Unlocks" tracks, never the raw
  * materials a quest is built from */
 /** why: name plus where the wiki says it comes from -- no loot/ownership tracking of its
@@ -1454,6 +1498,14 @@ export const api = {
 
   /** why: the "Sky - Quests" tab's whole data source */
   getSkyQuests: () => invoke<SkyClassDto[]>('get_sky_quests'),
+
+  // ------------------------------------------------------------------ tradeskills
+
+  /** why: static recipe catalog, every core tradeskill -- no Ingest needed */
+  getTradeskillCatalog: () => invoke<TradeskillSkillDto[]>('get_tradeskill_catalog'),
+
+  /** why: real craft attempts this file has recorded, joined against the catalog above */
+  getCraftLog: () => invoke<CraftLogEntryDto[]>('get_craft_log'),
 
   // ------------------------------------------------------------------ ui files
 

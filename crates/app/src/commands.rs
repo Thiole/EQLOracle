@@ -10,6 +10,7 @@ use crate::combat::{
     EntityStateDto, FightTimelineDto, ZoneEncounterDto, ZoneVisitDto,
 };
 use crate::config::{self, AppConfig};
+use crate::craftlog::{self, CraftLogEntryDto};
 use crate::debugview::{self, DebugEncounterDto, GameStateDto, UnmatchedCoverageDto};
 use crate::dpscalc::{self, DamageSpellDto};
 use crate::gearplanner::{self, InventoryDumpDto, ItemDto, SlotRecommendationDto};
@@ -37,6 +38,7 @@ use crate::spelleffect;
 use crate::stackingdata;
 use crate::state::AppState;
 use crate::tail_worker::{self, TailStatus};
+use crate::tradeskilldata::{self, TradeskillSkill};
 use crate::uifiles;
 use crate::updater;
 use crate::windowcap::{self, WindowCapability, WindowCapabilityDto};
@@ -385,6 +387,20 @@ pub fn get_game_data_meta() -> GameDataMetaDto {
         source: "https://eqlwiki.com".to_string(),
         scraped: itemdata::scraped().map(str::to_string),
     }
+}
+
+/// why: static recipe catalog for the Tradeskill module -- every core
+/// tradeskill's own recipe list, baked in at compile time, no Ingest needed
+#[tauri::command]
+pub fn get_tradeskill_catalog() -> Vec<TradeskillSkill> {
+    tradeskilldata::skills().to_vec()
+}
+
+/// why: real craft attempts this file has ever recorded, joined against
+/// the static catalog above -- see craftlog's own doc
+#[tauri::command]
+pub fn get_craft_log(state: State<AppState>) -> Vec<CraftLogEntryDto> {
+    craftlog::craft_log(&state.ingest.lock().unwrap())
 }
 
 /// why: every AA purchase this session plus total spent; no UI consumes this yet
