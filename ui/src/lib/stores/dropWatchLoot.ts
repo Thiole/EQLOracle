@@ -9,8 +9,9 @@ import { api } from '../tauri/api';
 import { trackedDropItems, trackedDropSeenCounts, setTrackedDropSeenCounts, toggleTrackedDropItem } from './settings';
 
 /** why: long enough to actually notice and read, short enough it
- * doesn't linger as a stale question after you've moved on */
-export const LOOT_PROMPT_TIMEOUT_MS = 15_000;
+ * doesn't linger as a stale question after you've moved on. Doubled
+ * from 15s -- Spencer's own real experience, 15s wasn't enough */
+export const LOOT_PROMPT_TIMEOUT_MS = 30_000;
 
 export interface PendingLootPrompt {
   item: string;
