@@ -107,6 +107,18 @@
     }
   }
 
+  // why: reads the widget id off the clicked element's own data-widget
+  // attribute, NOT a closure over repositionButton's own `widget`
+  // parameter -- real bug, caught live: with this snippet rendered 4
+  // times (one per widget Card), a click was firing with a stale/wrong
+  // id (always whichever widget was most recently enabled, not the
+  // card actually clicked). See OverlayQuickMenu.svelte's own doc on
+  // the same fix -- a data-* attribute is tied 1:1 to that one rendered
+  // node, there's no closure to go stale.
+  function widgetOf(e: Event): string {
+    return (e.currentTarget as HTMLElement).dataset.widget ?? '';
+  }
+
   async function toggleLocked(widget: string) {
     locked[widget] = !locked[widget];
     await api.setOverlayLocked(widget, locked[widget]).catch(() => {});
@@ -155,15 +167,17 @@
   <div class="mt-2 flex items-center gap-2">
     <button
       type="button"
+      data-widget={widget}
       class="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-foreground/30 hover:text-foreground"
-      onclick={() => void toggleLocked(widget)}
+      onclick={(e) => void toggleLocked(widgetOf(e))}
     >
       {locked[widget] ? 'unlock to reposition' : 'lock (click-through) — drag its title bar to move it, then lock'}
     </button>
     <button
       type="button"
+      data-widget={widget}
       class="rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:border-foreground/30 hover:text-foreground"
-      onclick={() => void api.locateOverlay(widget)}
+      onclick={(e) => void api.locateOverlay(widgetOf(e))}
       title="Bring this widget's window to front and flash it"
     >
       locate

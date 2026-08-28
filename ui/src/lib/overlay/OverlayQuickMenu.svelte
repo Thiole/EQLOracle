@@ -54,6 +54,21 @@
     cc_tracker: true,
   });
 
+  // why: reads the widget id off the clicked element's own data-widget
+  // attribute, NOT a closure over the snippet's own `id` parameter --
+  // real bug, caught live: with 4 rows rendered off the same {#snippet
+  // row(...)}, a click was firing with a stale/wrong id (always
+  // whichever widget was most recently enabled, not the row actually
+  // clicked). Root cause not fully isolated (Svelte 5 snippets are
+  // young; a re-render triggered by one store changing may be reusing a
+  // handler closure across sibling {@render} calls) -- reading the id
+  // from the DOM element itself sidesteps the question entirely: a
+  // data-* attribute is tied 1:1 to that one rendered node, there's no
+  // closure to go stale.
+  function widgetOf(e: Event): string {
+    return (e.currentTarget as HTMLElement).dataset.widget ?? '';
+  }
+
   async function toggleLocked(widget: string) {
     locked[widget] = !locked[widget];
     await api.setOverlayLocked(widget, locked[widget]).catch(() => {});
@@ -89,16 +104,18 @@
       <div class="flex shrink-0 items-center gap-1">
         <button
           type="button"
+          data-widget={id}
           disabled={!$overlayEnabled}
-          onclick={() => void toggleLocked(id)}
+          onclick={(e) => void toggleLocked(widgetOf(e))}
           class="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         >
           {locked[id] ? 'unlock' : 'lock'}
         </button>
         <button
           type="button"
+          data-widget={id}
           disabled={!$overlayEnabled}
-          onclick={() => void api.locateOverlay(id)}
+          onclick={(e) => void api.locateOverlay(widgetOf(e))}
           title="Bring this widget's window to front and flash it"
           class="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         >
