@@ -39,7 +39,6 @@
   let targetEffects = $state<TargetEffectsDto | null>(null);
   let dropRows = $state<DropWatchRowDto[]>([]);
   let ccSize = $state<CcSize>(DEFAULT_CC_SIZE);
-  let locating = $state(false);
   let rootEl: HTMLDivElement | undefined = $state();
 
   async function refreshPrefs() {
@@ -141,18 +140,26 @@
       void getCurrentWindow().setSize(new LogicalSize(w, h));
     });
     // why: "where did that window go" -- see commands::locate_overlay's
-    // own doc. Forces a false-then-true round trip with a real reflow in
-    // between (rootEl.offsetWidth) rather than just setting true, so
-    // clicking "locate" again WHILE still flashing restarts the
-    // animation from its first flash instead of being a no-op (the
-    // class would already be present, and CSS doesn't restart a
-    // still-running animation just because the class re-applies without
-    // an intervening reflow).
+    // own doc. Toggles the class directly on the real DOM node, NOT via
+    // `locating` state -- real bug, caught live: a `locating = false`
+    // then `= true` round trip (with a reflow read in between) works on
+    // raw DOM but not through Svelte 5 state, since $state writes are
+    // batched onto a microtask rather than applied to the DOM
+    // synchronously. Reading rootEl.offsetWidth right after the `false`
+    // write usually ran before Svelte had actually removed the class,
+    // so the two writes collapsed into one net update and the class
+    // never left the DOM -- the first-ever flash worked (a genuine
+    // absent-to-present transition), every flash after that was a
+    // silent no-op (CSS doesn't restart a still-applied animation just
+    // because the class re-applies without an intervening reflow, and
+    // there wasn't one). classList.remove/offsetWidth/classList.add
+    // here are real synchronous DOM calls, no framework batching to
+    // fight.
     const unlistenLocate = listen<string>('overlay-locate', (e) => {
-      if (e.payload !== widget) return;
-      locating = false;
-      void rootEl?.offsetWidth;
-      locating = true;
+      if (e.payload !== widget || !rootEl) return;
+      rootEl.classList.remove('locate-flash');
+      void rootEl.offsetWidth;
+      rootEl.classList.add('locate-flash');
     });
     return () => {
       void unlistenTick.then((f) => f());
@@ -169,7 +176,7 @@
      move the window (a resize-border drag does). set_overlay_locked
      switches to real decorations instead while unlocked, so dragging
      the actual title bar (every window manager supports that) repositions it. -->
-<div bind:this={rootEl} class="min-h-screen w-screen p-2 {locating ? 'locate-flash' : ''}">
+<div bind:this={rootEl} class="min-h-screen w-screen p-2">
   {#if widget === 'dps_meter'}
     <DpsMeterWidget {meter} {opacity} {overallOpacity} />
   {:else if widget === 'skill_tracker'}
@@ -197,8 +204,13 @@
      target-effect-blink): steps(1, end), a fixed iteration count so it
      settles back to normal on its own rather than flashing forever. On
      transparent: invert only ever touches drawn pixels -- the window's
-     own transparent background stays transparent through it. */
-  .locate-flash {
+     own transparent background stays transparent through it. Applied
+     via classList directly on rootEl (see the 'overlay-locate'
+     listener's own doc), not a template class binding -- :global so it
+     doesn't rely on Svelte's own scoping hash still being present on
+     the element, and so the compiler doesn't flag it as an unused
+     selector for a class it can't see being applied. */
+  :global(.locate-flash) {
     animation: locate-flash-anim 0.3s steps(1, end) 8;
   }
   @keyframes locate-flash-anim {
