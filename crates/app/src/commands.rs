@@ -627,16 +627,35 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
         builder = builder.position(pos.x, pos.y);
     }
     let window = builder.build().map_err(|e| e.to_string())?;
-    hide_from_window_switcher(&window);
-    // why: ClickThrough only -- Floating alone (never actually
-    // reachable today, detect() only ever returns Docked or
-    // ClickThrough, kept as its own tier for when finer Wayland
-    // detection becomes possible) would still block clicks on the
-    // game underneath it
-    if cap.capability == WindowCapability::ClickThrough {
-        let _ = window.set_ignore_cursor_events(true);
-    }
-    let _ = window.show();
+    // why: one main-thread closure, strict internal order -- three real
+    // constraints at once, and the ordering between tao's request
+    // channel and run_on_main_thread's own queue is not guaranteed
+    // across separate calls:
+    // (1) the GTK type hint is a direct GTK call, main-thread only, and
+    //     must land before the window first maps;
+    // (2) show() must come BEFORE set_ignore_cursor_events -- real
+    //     crash, caught live: tao's CursorIgnoreEvents handler unwraps
+    //     the GdkWindow, which is None until the window is realized, so
+    //     click-through against the still-hidden window panicked the
+    //     main thread and took the whole app down ("app crashes when
+    //     enabling overlay");
+    // (3) both queued requests (show, then ignore) drain FIFO after
+    //     this closure returns, so ignore always runs against a
+    //     realized window.
+    let w = window.clone();
+    let click_through = cap.capability == WindowCapability::ClickThrough;
+    let _ = window.run_on_main_thread(move || {
+        hide_from_window_switcher(&w);
+        let _ = w.show();
+        // why: ClickThrough only -- Floating alone (never actually
+        // reachable today, detect() only ever returns Docked or
+        // ClickThrough, kept as its own tier for when finer Wayland
+        // detection becomes possible) would still block clicks on the
+        // game underneath it
+        if click_through {
+            let _ = w.set_ignore_cursor_events(true);
+        }
+    });
     Ok(())
 }
 
