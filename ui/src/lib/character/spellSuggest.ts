@@ -549,6 +549,21 @@ export function simulateRotation(candidates: DamageSpellDto[], windowSecs: numbe
   // scalar floor, not per-spell: the caster is mid-recovery, not the
   // specific spell; each spell's FULL reuse is still tracked separately
   // via nextAvailable, this only adds a floor on top.
+  //
+  // Capped at GCD_FLOOR_CAP_SECS -- real bug, reproduced against the
+  // real candidate pool (A/B harness on the reference log's own DTOs):
+  // uncapped, a 12s-recast AE (Frost Storm) locked the caster out of
+  // EVERYTHING for 6s after each cast, and a 15s-window rotation
+  // degraded from Frost Storm -> Conflagration -> Ice Comet (426 dps)
+  // to Frost Storm -> Mana Detonation (260 dps) -- the "wrong spells"
+  // regression reported live. The half-of-recast estimate was
+  // calibrated on standard 1.5s-recast nukes (0.75s gap); the measured
+  // weave transitions in BACKLOG.md (GMMS->Ice Comet 2.16s cycles,
+  // EM->GMMS 1.77s over 489 samples) say the real inter-cast gap is
+  // small and roughly FLAT, not proportional to the previous spell's
+  // own cooldown -- so the cap keeps the estimate exactly as-is for
+  // ordinary nukes and stops it scaling with long AE recasts.
+  const GCD_FLOOR_CAP_SECS = 0.75;
   let gcdFloor = 0;
 
   while (t < windowSecs) {
@@ -570,7 +585,7 @@ export function simulateRotation(candidates: DamageSpellDto[], windowSecs: numbe
     const castStart = cursor;
     sequence.push(best);
     t = castStart + best.casting_time;
-    gcdFloor = t + best.recast_time / 2;
+    gcdFloor = t + Math.min(best.recast_time / 2, GCD_FLOOR_CAP_SECS);
     totalDamage += scheduleDamage(best, castStart, t, windowSecs);
     // why: total_damage / dps_with_reuse == cycle_secs (casting + recast,
     // or duration for a DoT) -- already-shipped fields, no new backend data
