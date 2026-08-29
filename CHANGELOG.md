@@ -19,6 +19,7 @@
 
 ### Versioning
 
+- Bumped to 0.3.0 for the public release carrying the game-state truth pass, encounter involvement, the overlay alt-tab fix, and the new icon -- same reason as every main bump: the updater's strict greater-than comparison means a re-published 0.2.0 would never be offered to existing installs.
 - Bumped the app to 0.2.0 -- the first hand-bumped version; public releases were stuck at 0.1.0, which the updater's strict greater-than comparison could never offer as an update.
 - Testing builds now derive their synthetic version from the base major.minor (`0.2.<run>`) instead of a hardcoded `0.1.<run>`, so betas keep outranking the public release they're built past.
 - Self-install now records the build's real version (including CI's synthetic testing version) instead of the crate version.
