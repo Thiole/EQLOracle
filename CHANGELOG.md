@@ -2,6 +2,12 @@
 
 ## 2026-08-29
 
+### Versioning
+
+- Bumped the app to 0.2.0 -- the first hand-bumped version; public releases were stuck at 0.1.0, which the updater's strict greater-than comparison could never offer as an update.
+- Testing builds now derive their synthetic version from the base major.minor (`0.2.<run>`) instead of a hardcoded `0.1.<run>`, so betas keep outranking the public release they're built past.
+- Self-install now records the build's real version (including CI's synthetic testing version) instead of the crate version.
+
 ### Linux self-install
 
 - A downloaded AppImage now installs itself as a real app on first launch: copied to `~/Applications/EQL-Oracle.AppImage`, with an applications-menu entry and icon, then hands off to that installed copy.

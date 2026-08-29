@@ -33,10 +33,20 @@ fn prefer_x11_backend() {
 }
 
 fn main() {
+    // why: generated up front (pure data, touches nothing) -- selfinstall
+    // needs the context's version, the one CI's --config override sets on
+    // testing builds; CARGO_PKG_VERSION never sees that override
+    let context = tauri::generate_context!();
     // why: before anything else -- may exec into the installed copy and
     // never return; nothing (GTK included) should have initialized yet
     #[cfg(target_os = "linux")]
-    eqlp_app::selfinstall::install_or_handoff();
+    eqlp_app::selfinstall::install_or_handoff(
+        context
+            .config()
+            .version
+            .as_deref()
+            .unwrap_or(env!("CARGO_PKG_VERSION")),
+    );
     #[cfg(target_os = "linux")]
     prefer_x11_backend();
 
@@ -199,6 +209,6 @@ fn main() {
             commands::install_pending_update,
             commands::get_app_version,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running eqlp-app");
 }

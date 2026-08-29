@@ -754,7 +754,7 @@ checksum = "4ef6b89e5b37196644d8796de5268852ff179b44e96276cf4290264843743bb7"
 
 [[package]]
 name = "eqlp-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "eqlp-core",
@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "eqlp-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eqlp-core",
  "eqlp-source",
@@ -784,7 +784,7 @@ dependencies = [
 
 [[package]]
 name = "eqlp-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -796,7 +796,7 @@ dependencies = [
 
 [[package]]
 name = "eqlp-session"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eqlp-core",
  "eqlp-source",
@@ -804,14 +804,14 @@ dependencies = [
 
 [[package]]
 name = "eqlp-source"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eqlp-core",
 ]
 
 [[package]]
 name = "eqlp-store"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eqlp-source",
  "eqlp-testkit",
@@ -819,7 +819,7 @@ dependencies = [
 
 [[package]]
 name = "eqlp-testkit"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "equivalent"

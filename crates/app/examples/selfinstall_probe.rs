@@ -6,6 +6,6 @@
 
 fn main() {
     #[cfg(target_os = "linux")]
-    eqlp_app::selfinstall::install_or_handoff();
+    eqlp_app::selfinstall::install_or_handoff(env!("CARGO_PKG_VERSION"));
     println!("no-handoff: probe ran its own copy");
 }

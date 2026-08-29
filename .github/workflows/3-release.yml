@@ -117,12 +117,20 @@ jobs:
           # -- main's version is a deliberate human decision each real
           # release, left alone. run_number always increases across this
           # workflow file's own runs, so each testing build reliably
-          # outranks the one before it; a plain patch bump (0.1.<n>), not
-          # a prerelease suffix on the same base -- semver ranks ANY
-          # prerelease of 0.1.0 BELOW plain 0.1.0 itself, which would
-          # have made this fix actively worse than doing nothing.
+          # outranks the one before it; a patch bump on the base's own
+          # major.minor (read live from tauri.conf.json, not hardcoded --
+          # a hardcoded "0.1" went stale the moment main bumped to 0.2.0,
+          # which would have ranked every new beta BELOW the public
+          # release), not a prerelease suffix on the same base -- semver
+          # ranks ANY prerelease of X.Y.0 BELOW plain X.Y.0 itself, which
+          # would have made this fix actively worse than doing nothing.
+          # Convention this leans on: main releases bump minor and keep
+          # patch 0, so <maj>.<min>.<run> always outranks the public
+          # <maj>.<min>.0 it's built past.
           if [ "${{ github.ref_name }}" != "main" ]; then
-            echo "version=0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            # why: sed, not jq -- one less tool the runner must have
+            base=$(sed -n 's/.*"version": *"\([0-9.]*\)".*/\1/p' crates/app/tauri.conf.json | head -1)
+            echo "version=${base%.*}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
           fi
 
       # why: a file, not an inline --config JSON string -- avoids relying

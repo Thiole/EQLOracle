@@ -21,7 +21,10 @@ const DESKTOP_ID: &str = "com.eqlp.oracle";
 /// why: called first thing in main(). Execs (never returns) when handing
 /// off to the installed copy; returns to run this process normally when
 /// this IS the installed copy, isn't an AppImage at all, or handoff fails.
-pub fn install_or_handoff() {
+/// `current_version` comes from the generated tauri context, not
+/// CARGO_PKG_VERSION -- CI's --config override gives testing builds a
+/// synthetic version only the context sees (see 3-release.yml).
+pub fn install_or_handoff(current_version: &str) {
     // why: loop guard -- the exec'd copy must never re-enter this logic
     if std::env::var_os("EQLP_HANDOFF").is_some() {
         return;
@@ -49,17 +52,13 @@ pub fn install_or_handoff() {
         // why: refreshed every launch -- the in-app updater rewrites the
         // AppImage in place, so the marker goes stale until here; the
         // desktop entry rewrite is idempotent and self-heals a deleted one
-        write_desktop_integration(&install_path);
-        let _ = std::fs::write(install_dir.join(VERSION_MARKER), env!("CARGO_PKG_VERSION"));
+        write_desktop_integration(&install_path, current_version);
+        let _ = std::fs::write(install_dir.join(VERSION_MARKER), current_version);
         return;
     }
 
     let marker = std::fs::read_to_string(install_dir.join(VERSION_MARKER)).ok();
-    if should_replace(
-        install_path.exists(),
-        marker.as_deref(),
-        env!("CARGO_PKG_VERSION"),
-    ) {
+    if should_replace(install_path.exists(), marker.as_deref(), current_version) {
         if let Err(e) = install_copy(&appimage, &install_dir, &install_path) {
             // why: never block launch on install trouble -- run the copy
             // the user actually clicked and try again next time
@@ -70,8 +69,8 @@ pub fn install_or_handoff() {
             );
             return;
         }
-        write_desktop_integration(&install_path);
-        let _ = std::fs::write(install_dir.join(VERSION_MARKER), env!("CARGO_PKG_VERSION"));
+        write_desktop_integration(&install_path, current_version);
+        let _ = std::fs::write(install_dir.join(VERSION_MARKER), current_version);
     }
 
     use std::os::unix::process::CommandExt;
@@ -132,7 +131,7 @@ fn data_home() -> Option<PathBuf> {
 
 /// why: menu entry + icon, best-effort -- a failure here still leaves a
 /// working installed AppImage, just without desktop integration
-fn write_desktop_integration(install_path: &Path) {
+fn write_desktop_integration(install_path: &Path, version: &str) {
     let Some(data) = data_home() else {
         return;
     };
@@ -147,7 +146,7 @@ fn write_desktop_integration(install_path: &Path) {
     if std::fs::create_dir_all(&apps_dir).is_ok() {
         let _ = std::fs::write(
             apps_dir.join(format!("{DESKTOP_ID}.desktop")),
-            desktop_entry(install_path),
+            desktop_entry(install_path, version),
         );
         // why: refreshes the menu cache where present; harmless where not
         let _ = std::process::Command::new("update-desktop-database")
@@ -158,7 +157,7 @@ fn write_desktop_integration(install_path: &Path) {
 
 /// why: Exec is double-quoted per the desktop-entry spec's quoting rules
 /// so a space in $HOME can't split the path into arguments
-fn desktop_entry(install_path: &Path) -> String {
+fn desktop_entry(install_path: &Path, version: &str) -> String {
     let exec = install_path
         .to_string_lossy()
         .replace('\\', "\\\\")
@@ -175,8 +174,7 @@ fn desktop_entry(install_path: &Path) -> String {
          Terminal=false\n\
          Categories=Game;Utility;\n\
          StartupWMClass=eqlp-app\n\
-         X-AppImage-Version={}\n",
-        env!("CARGO_PKG_VERSION")
+         X-AppImage-Version={version}\n"
     )
 }
 
@@ -204,7 +202,10 @@ mod tests {
 
     #[test]
     fn desktop_entry_quotes_exec_and_names_the_icon() {
-        let entry = desktop_entry(Path::new("/home/a user/Applications/EQL-Oracle.AppImage"));
+        let entry = desktop_entry(
+            Path::new("/home/a user/Applications/EQL-Oracle.AppImage"),
+            "0.2.0",
+        );
         assert!(entry.contains("Exec=\"/home/a user/Applications/EQL-Oracle.AppImage\"\n"));
         assert!(entry.contains("Icon=com.eqlp.oracle\n"));
         assert!(entry.contains("Name=EQL Oracle\n"));
