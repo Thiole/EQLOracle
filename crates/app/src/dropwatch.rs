@@ -93,66 +93,103 @@ pub fn loot_status(ing: &Ingest, items: &[String]) -> Vec<TrackedLootDto> {
         .collect()
 }
 
-/// why: one row per living enemy ENTITY in any currently-live fight, not
-/// one per store-encounter anchor -- real gap, reported by the player:
-/// the store encounter carries a single anchor label, so a second mob
-/// joining an already-open pull (the exact moment "look out, this one
-/// drops X" is most useful) never showed at all. The session graph's
-/// own Live fights track every entity as it joins; this walks those.
+/// why: how long a swing that never landed still counts as "actively
+/// engaged" -- matches the graph's own 10s idle window (Policy::idle_ms
+/// default), so a swings-only engagement goes stale on the same clock a
+/// landed-damage fight would
+const ENGAGED_MISS_WINDOW_MS: Millis = 10_000;
+
+/// why: one row per living enemy ENTITY actively engaged right now --
+/// two sources, both real gaps the player reported in turn:
+/// 1. every entity in any currently-live graph fight (not one row per
+///    store-encounter anchor -- a mob JOINING an open pull is exactly
+///    when the heads-up matters);
+/// 2. either side of a recent Miss row -- fight-graph membership only
+///    comes from LANDED damage, so a mob trading swings that all miss
+///    (or one you keep whiffing at) is genuinely engaged yet in no live
+///    fight at all ("it shouldnt have to hit back, just be an active
+///    member of the current engagement", the player's own spec).
+///
 /// Empty drop lists (a real mob the wiki records no drops for) are
 /// skipped, nothing to show regardless of tracking.
 pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
     let now = ing.now_ms();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut out = Vec::new();
+
+    // why: shared filter for both sources -- one place decides what a
+    // watchable engaged enemy is; `slain_in_fight` is only meaningful
+    // for the graph source (a Miss row has no fight-scoped slain list)
+    let mut consider = |name: &str, slain_in_fight: bool| {
+        if name.eq_ignore_ascii_case("you") || slain_in_fight {
+            return None;
+        }
+        // why: read-only sym lookup, same shape is_ally uses -- a
+        // drop-watch query must never itself intern an identity
+        let state = ing
+            .store
+            .names
+            .get(ing.encounters.entities.display_name(name))
+            .and_then(|sym| ing.timeline.state_at(sym.0, now))
+            .map(|(s, _)| s)
+            .unwrap_or(State::Engaged);
+        if state == State::Dead || state == State::Charmed {
+            return None;
+        }
+        // why: effective_kind not raw kind -- a group-tracked ally
+        // (or charm-flip, caught above) must not read as a mob to watch
+        let kind = ing.effective_kind(name, now);
+        if !Allegiance::of(kind, state).is_enemy() {
+            return None;
+        }
+        let drops = crate::monsterdata::known_drops(name);
+        if drops.is_empty() {
+            return None;
+        }
+        // why: dedupe at PUSH time, not at loop entry -- real bug in
+        // the first cut: a slain instance in one fight inserted the
+        // name before its own slain-skip, shadowing a genuinely live
+        // same-named mob in another fight out of the list entirely
+        if seen.insert(name.to_ascii_lowercase()) {
+            Some(DropWatchRowDto {
+                mob: name.to_string(),
+                drops: drops.to_vec(),
+            })
+        } else {
+            None
+        }
+    };
+
     for live in ing.encounters.live_encounters() {
         for name in &live.entities {
-            // why: the log owner is in every fight's entity list; never a drop source
-            if name.eq_ignore_ascii_case("you") {
-                continue;
-            }
-            // why: already slain in this fight -- old news, not a live heads-up
-            if live
+            let slain = live
                 .slain
                 .iter()
-                .any(|s| s.eq_ignore_ascii_case(name.as_str()))
-            {
-                continue;
-            }
-            // why: read-only sym lookup, same shape is_ally uses -- a
-            // drop-watch query must never itself intern an identity
-            let state = ing
-                .store
-                .names
-                .get(ing.encounters.entities.display_name(name))
-                .and_then(|sym| ing.timeline.state_at(sym.0, now))
-                .map(|(s, _)| s)
-                .unwrap_or(State::Engaged);
-            if state == State::Dead || state == State::Charmed {
-                continue;
-            }
-            // why: effective_kind not raw kind -- a group-tracked ally
-            // (or charm-flip, caught above) must not read as a mob to watch
-            let kind = ing.effective_kind(name, now);
-            if !Allegiance::of(kind, state).is_enemy() {
-                continue;
-            }
-            let drops = crate::monsterdata::known_drops(name);
-            if drops.is_empty() {
-                continue;
-            }
-            // why: dedupe at PUSH time, not at loop entry -- real bug in
-            // the first cut: a slain instance in one fight inserted the
-            // name before its own slain-skip, shadowing a genuinely live
-            // same-named mob in another fight out of the list entirely
-            if seen.insert(name.to_ascii_lowercase()) {
-                out.push(DropWatchRowDto {
-                    mob: name.clone(),
-                    drops: drops.to_vec(),
-                });
+                .any(|s| s.eq_ignore_ascii_case(name.as_str()));
+            if let Some(row) = consider(name, slain) {
+                out.push(row);
             }
         }
     }
+
+    // why: source 2 -- recent swings that never landed. Both sides of
+    // the Miss row: the mob missing "You" AND the mob "You" keep
+    // whiffing at are each engaged. partition_point over the store's
+    // time column, same suffix-scan shape overview.rs uses.
+    let cutoff = now - ENGAGED_MISS_WINDOW_MS;
+    let from = ing.store.ts.partition_point(|&t| t < cutoff);
+    for i in from..ing.store.len() {
+        if ing.store.kind[i] != EventKind::Miss {
+            continue;
+        }
+        for sym in [ing.store.actor[i], ing.store.target[i]] {
+            let name = ing.store.name(sym).to_string();
+            if let Some(row) = consider(&name, false) {
+                out.push(row);
+            }
+        }
+    }
+
     out
 }
 
@@ -220,6 +257,38 @@ mod tests {
             rows.iter().any(|r| r.mob == "Keeper of Souls"),
             "re-engaged farm mob must show without needing to act first, got {:?}",
             rows.iter().map(|r| &r.mob).collect::<Vec<_>>()
+        );
+    }
+
+    /// why: the player's own spec -- "it shouldnt have to hit back, but
+    /// just be an active member in the current engagement". A mob whose
+    /// every swing misses (and that "You" never landed on) is in no
+    /// graph fight at all, yet it's genuinely engaged
+    #[test]
+    fn a_mob_only_trading_misses_still_shows_up() {
+        let ing =
+            run("[Tue Jul 28 15:01:00 2026] Keeper of Souls tries to punch YOU, but YOU dodge!\n");
+        let rows = drop_watch(&ing);
+        assert!(
+            rows.iter().any(|r| r.mob == "Keeper of Souls"),
+            "swings-only engagement must still show, got {:?}",
+            rows.iter().map(|r| &r.mob).collect::<Vec<_>>()
+        );
+    }
+
+    /// why: a swing from ages ago isn't a live engagement -- the miss
+    /// source goes stale on the same 10s clock a real fight idles out on
+    #[test]
+    fn a_stale_missed_swing_does_not_keep_a_mob_on_the_list() {
+        let ing = run(concat!(
+            "[Tue Jul 28 15:01:00 2026] Keeper of Souls tries to punch YOU, but YOU dodge!\n",
+            // why: a much later unrelated line advances the log clock well past the window
+            "[Tue Jul 28 15:05:00 2026] You hit a rat for 5 points of damage.\n",
+        ));
+        let rows = drop_watch(&ing);
+        assert!(
+            !rows.iter().any(|r| r.mob == "Keeper of Souls"),
+            "a 4-minute-old whiff is not an active engagement"
         );
     }
 
