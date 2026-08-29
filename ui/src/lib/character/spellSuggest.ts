@@ -563,7 +563,12 @@ export function simulateRotation(candidates: DamageSpellDto[], windowSecs: numbe
   // small and roughly FLAT, not proportional to the previous spell's
   // own cooldown -- so the cap keeps the estimate exactly as-is for
   // ordinary nukes and stops it scaling with long AE recasts.
-  const GCD_FLOOR_CAP_SECS = 0.75;
+  //
+  // 0.25, refined from the first cut's 0.75 -- player's own read of
+  // real weaves: "sometimes instant sometimes 0.5 but always faster
+  // than a standard reuse". A sim averaging damage over a whole window
+  // wants the expected gap, and the mean of instant-to-0.5 is 0.25.
+  const GCD_FLOOR_CAP_SECS = 0.25;
   let gcdFloor = 0;
 
   while (t < windowSecs) {
