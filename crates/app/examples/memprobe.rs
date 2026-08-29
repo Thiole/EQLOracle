@@ -43,7 +43,7 @@ fn main() {
     let chat_n = ing.chat.guild().len()
         + ing.chat.party().len()
         + ing.chat.raid().len()
-        + ing.chat.pm_threads().map(|_| 1).count();
+        + ing.chat.pm_threads().count();
     println!("chat messages (channels+threads): {chat_n}");
 
     let closed = &ing.encounters.closed;
