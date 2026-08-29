@@ -174,7 +174,7 @@
     {#if open}
     <p class="mb-2 mt-1.5 text-[11px] text-muted-foreground">
       Damage/mana math for every damage spell you can currently cast (level {MAX_CHARACTER_LEVEL} cap, same as the picker above).
-      Nuke damage is rank-adjusted at +10% of base per live rank tier -- measured against your own log, not the wiki's guide page.
+      Nuke damage is rank-adjusted at +6% per live rank level (I-X), compounding -- the wiki upgrade guide's own rate.
       A DoT's own <i>per-tick</i> damage doesn't scale with rank; only its one-time "on cast" hit (if any) does, though its cast
       time/mana/duration still shrink or grow with rank (wiki-sourced estimate, unverified). A DoT already ticks on its own once
       cast, so its "DPS (no reuse)" column only ever reflects that one-time hit (0 for most real DoTs) -- its real sustained rate
