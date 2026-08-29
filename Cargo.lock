@@ -761,6 +761,7 @@ dependencies = [
  "eqlp-session",
  "eqlp-source",
  "eqlp-store",
+ "gtk",
  "libc",
  "regex",
  "serde",
@@ -771,6 +772,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tokio",
  "url",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

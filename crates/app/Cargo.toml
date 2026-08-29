@@ -54,3 +54,16 @@ base64 = "0.22"
 # rule engine) -- promoted here too rather than hand-rolling parsers for
 # spelldata's own messy duration/effect-text formats (see spelleffect.rs).
 regex = "1"
+
+# Already in the lockfile as tauri's own transitive dep (gtk 0.18) --
+# promoted direct only to set the overlay windows' GTK type hint to
+# Utility, the one thing that actually keeps them out of KWin's alt-tab
+# switcher (skip_taskbar covers the taskbar, not the switcher). Same
+# promotion precedent as base64/url/regex above.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+
+# why: WS_EX_TOOLWINDOW is the Windows equivalent -- tao's skip_taskbar
+# only calls ITaskbarList::DeleteTab, which leaves alt-tab untouched.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }

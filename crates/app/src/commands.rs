@@ -607,6 +607,9 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
         "cc_tracker" => cc_tracker_dims(&preferences::load(&app).overlay_cc_tracker_size),
         _ => (360.0, 240.0),
     };
+    // why: built hidden, shown only after hide_from_window_switcher --
+    // the GTK type hint must be set before the window first maps for
+    // the window manager to honor it at manage time
     let mut builder =
         WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("overlay.html".into()))
             .title(format!("EQL Oracle Overlay -- {widget}"))
@@ -615,6 +618,7 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
             .decorations(false)
             .always_on_top(true)
             .skip_taskbar(true)
+            .visible(false)
             .shadow(false);
     // why: restore a widget's last saved position -- see
     // preferences::OverlayPosition's doc (captured in set_overlay_locked
@@ -623,6 +627,7 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
         builder = builder.position(pos.x, pos.y);
     }
     let window = builder.build().map_err(|e| e.to_string())?;
+    hide_from_window_switcher(&window);
     // why: ClickThrough only -- Floating alone (never actually
     // reachable today, detect() only ever returns Docked or
     // ClickThrough, kept as its own tier for when finer Wayland
@@ -631,7 +636,50 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
     if cap.capability == WindowCapability::ClickThrough {
         let _ = window.set_ignore_cursor_events(true);
     }
+    let _ = window.show();
     Ok(())
+}
+
+/// why: skip_taskbar alone covers the TASKBAR, not the alt-tab
+/// switcher -- KWin's switcher filters on window TYPE (Utility and
+/// friends are excluded, skip-taskbar windows are not), and tao's
+/// Windows skip_taskbar only calls ITaskbarList::DeleteTab, which
+/// likewise leaves alt-tab untouched. Four always-on-top widget
+/// windows cycling through alt-tab as separate "apps" is exactly what
+/// an overlay must not do. Best-effort on both platforms: a failure
+/// leaves the widget working, just visible in the switcher again.
+/// Called while the window is still hidden (builder sets
+/// visible(false)) so the WM sees the hint at first map.
+fn hide_from_window_switcher(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::GtkWindowExt;
+        if let Ok(gtk_window) = window.gtk_window() {
+            gtk_window.set_type_hint(gtk::gdk::WindowTypeHint::Utility);
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+        };
+        if let Ok(hwnd) = window.hwnd() {
+            // why: double cast -- tauri's `windows` crate HWND has been
+            // isize in some versions and *mut c_void in others; through
+            // isize it lands on windows-sys's own alias either way
+            let hwnd = hwnd.0 as isize;
+            unsafe {
+                let ex = GetWindowLongPtrW(hwnd as _, GWL_EXSTYLE);
+                SetWindowLongPtrW(
+                    hwnd as _,
+                    GWL_EXSTYLE,
+                    (ex | WS_EX_TOOLWINDOW as isize) & !(WS_EX_APPWINDOW as isize),
+                );
+            }
+        }
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    let _ = window;
 }
 
 /// why: live-pushes to this widget's own open window -- a no-op, not an
