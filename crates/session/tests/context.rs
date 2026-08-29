@@ -28,14 +28,19 @@ fn late_zone_lines_insert_in_position() {
 }
 
 #[test]
-fn re_entering_the_same_zone_is_not_a_new_span() {
-    // Zone lines repeat on load screens. Treating each as a new span would
-    // fragment every grouping built on top.
+fn re_entering_the_same_zone_is_a_new_span() {
+    // why: player's own spec -- zoning out and straight back in is a new
+    // visit. The old collapse rested on "zone lines repeat on load
+    // screens", which the reference log disproves: 113 consecutive
+    // same-zone enters, every one >=10s apart, zero duplicate prints --
+    // each line is a real zoning (relog, camp, instance re-entry).
     let mut z = Spans::default();
     z.enter(1_000, "Befallen");
     z.enter(2_000, "Befallen");
     z.enter(3_000, "Befallen");
-    assert_eq!(z.len(), 1);
+    assert_eq!(z.len(), 3);
+    assert_ne!(z.index_at(1_500), z.index_at(2_500), "distinct visits");
+    assert_eq!(z.at(1_500), z.at(2_500), "same zone name");
 }
 
 #[test]

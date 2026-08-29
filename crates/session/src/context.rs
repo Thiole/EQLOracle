@@ -13,13 +13,20 @@ pub struct Spans {
 
 impl Spans {
     /// why: handles out-of-order insertion, a late line can't corrupt lookups
+    ///
+    /// Every enter is a new span, INCLUDING a consecutive same-label one
+    /// -- player's own spec: "when you zone out, even if you zone back
+    /// in, it should be considered a new zone". The old consecutive-
+    /// same-label dedupe was checked against the real reference log
+    /// before removal: 113 consecutive same-zone re-enters, every one
+    /// at least 10s apart (71 of them 10+ minutes -- relogs, camps,
+    /// instance re-entries), zero duplicate-print pairs -- the game
+    /// emits exactly one "You have entered" per real zoning, so
+    /// collapsing was pure information loss (a re-entered instance is a
+    /// genuinely new visit).
     pub fn enter(&mut self, ts: Millis, label: impl Into<String>) {
         let label = label.into();
         let at = self.starts.partition_point(|&x| x <= ts);
-        // why: re-entering the same zone isn't a new span
-        if at > 0 && self.labels[at - 1] == label {
-            return;
-        }
         self.starts.insert(at, ts);
         self.labels.insert(at, label);
     }
