@@ -238,6 +238,14 @@ async function refreshSelection(preserveScrub = false) {
 
 // why: refetch open selection only; closed fights untouched, no teardown
 export async function onCombatTick() {
+  // why: real bug, exposed by app restarts -- zoneVisits used to load
+  // ONLY on Combat mount, and Combat is the launch default, so a fresh
+  // instance snapshotted the zone list at second zero (mid-backfill,
+  // empty) and the picker read "All zones (0)" forever until a module
+  // switch happened to remount it. The fight list below always
+  // refreshed per tick; the zone list now does too -- one cheap IPC,
+  // same cadence, selection untouched.
+  void loadZoneVisits();
   const zv = get(selectedZoneVisit);
   encounters.set((await api.listEncounters(zv)) ?? []); // defensive -- invoke<T>() is an assertion, not a guarantee
 
