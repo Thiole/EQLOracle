@@ -318,7 +318,8 @@ pub fn list_zone_encounters(ing: &Ingest, zone_id: &str, limit: usize) -> Vec<Zo
         // why: involves_you -- your own recent fights here, not a
         // stranger group's; list_mob_encounters (Monsters, a data view)
         // deliberately keeps every observed fight instead
-        let is_match = e.involves_you && e.zone.and_then(|z| ing.cached_wiki_zone(z)) == Some(zone_id);
+        let is_match =
+            e.involves_you && e.zone.and_then(|z| ing.cached_wiki_zone(z)) == Some(zone_id);
         if is_match {
             matched.push(e);
             if matched.len() >= limit {

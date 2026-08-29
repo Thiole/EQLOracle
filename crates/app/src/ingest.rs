@@ -2575,8 +2575,8 @@ impl Ingest {
         // that pet is a current ally. Used to re-affirm CHARM state, not
         // to group-track the name -- group currency would outlive the
         // charm by GROUP_TTL_MS, and a charm ally must end with the charm.
-        let name_plausible = plausible_player_name(&resolved)
-            && !crate::npcdata::is_known_npc_name(&resolved);
+        let name_plausible =
+            plausible_player_name(&resolved) && !crate::npcdata::is_known_npc_name(&resolved);
         let charm_tracked = self
             .charm
             .as_ref()
@@ -4299,7 +4299,10 @@ mod charm_reaffirm_tests {
             "[Tue Jul 28 15:01:13 2026] an abhorrent is enveloped by flame.",
         ]);
         let c = ing.charm.as_ref().expect("charm still tracked");
-        assert!(c.active, "the group-cast landing proves the pet is still yours");
+        assert!(
+            c.active,
+            "the group-cast landing proves the pet is still yours"
+        );
         let now = ing.now_ms();
         assert!(!ing.allegiance_at("an abhorrent", now).is_enemy());
     }

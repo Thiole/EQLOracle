@@ -32,8 +32,14 @@ fn main() {
     }
 
     let gs = debugview::game_state(&ing);
-    println!("game_state party total:                  {}", gs.party.len());
-    println!("game_state known_players:                {}", gs.known_players);
+    println!(
+        "game_state party total:                  {}",
+        gs.party.len()
+    );
+    println!(
+        "game_state known_players:                {}",
+        gs.known_players
+    );
     let mut by_via: std::collections::HashMap<&str, usize> = Default::default();
     for m in &gs.party {
         *by_via.entry(m.via).or_default() += 1;
@@ -44,7 +50,12 @@ fn main() {
     }
 
     let total = ing.store.encounters.len();
-    let involved = ing.store.encounters.iter().filter(|e| e.involves_you).count();
+    let involved = ing
+        .store
+        .encounters
+        .iter()
+        .filter(|e| e.involves_you)
+        .count();
     println!(
         "encounters: {total} total, {involved} involve you, {} someone else's",
         total - involved
