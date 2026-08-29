@@ -201,7 +201,14 @@ jobs:
             VERSION=$(python3 -c "import json;print(json.load(open('crates/app/tauri.conf.json'))['version'])")
           else
             TAG=testing
-            VERSION="0.1.${{ github.run_number }}"
+            # why: must mirror the release job's synthetic version exactly
+            # (base major.minor read live from tauri.conf.json + run_number).
+            # A hardcoded "0.1.<run>" went stale the moment main bumped to
+            # 0.2.0 -- the release job uploaded 0.2.x assets while this job
+            # looked for 0.1.x sig files, failing every testing finalize
+            # with "no assets match the file pattern".
+            base=$(sed -n 's/.*"version": *"\([0-9.]*\)".*/\1/p' crates/app/tauri.conf.json | head -1)
+            VERSION="${base%.*}.${{ github.run_number }}"
           fi
           REPO="${{ github.repository }}"
           APPIMAGE="EQL.Oracle_${VERSION}_amd64.AppImage"
