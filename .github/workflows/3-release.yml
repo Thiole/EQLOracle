@@ -9,6 +9,15 @@ on:
 permissions:
   contents: write
 
+# why: two pushes in quick succession used to race two whole release
+# runs against one shared rolling release -- with finalize pruning to
+# "0.1.0 + this run's build", an older run's finalize landing AFTER a
+# newer run's uploads would delete the newer build's own assets out
+# from under its manifest. Only the newest push's run may live.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
 # why: two rolling channels, not tag-triggered -- routine work pushes to
 # `testing` (auto-published under the "testing" tag, prerelease), a real
 # release is a deliberate, separate push to `main` (published under
