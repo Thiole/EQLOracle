@@ -144,6 +144,25 @@ pub async fn install_pending_update(
     let Some(update) = update else {
         return Err("no pending update -- call check_for_update first".to_string());
     };
+    // why: real incident, destroyed a real install -- a CI manifest bug
+    // put the RPM's url under linux-x86_64, and download_and_install
+    // wrote that RPM byte-for-byte over the running $APPIMAGE file: the
+    // app closed for its restart and could never reopen. The manifest
+    // side is fixed in CI (3-release.yml's finalize job), but the
+    // client must never trust that alone: when this instance runs as an
+    // AppImage, only an AppImage payload may ever be installed.
+    #[cfg(target_os = "linux")]
+    if std::env::var("APPIMAGE").is_ok() {
+        let url = update.download_url.as_str();
+        if !url.ends_with(".AppImage") && !url.ends_with(".AppImage.tar.gz") {
+            return Err(format!(
+                "refusing to install: this instance runs as an AppImage but the update \
+                 manifest points at a non-AppImage payload ({url}) -- installing it would \
+                 overwrite the AppImage file itself. The release manifest is broken; \
+                 report this and update manually from the Releases page."
+            ));
+        }
+    }
     update
         .download_and_install(|_, _| {}, || {})
         .await

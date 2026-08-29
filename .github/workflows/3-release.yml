@@ -150,4 +150,84 @@ jobs:
             Not a semver release -- this tag moves to whatever ${{ github.ref_name }} last built successfully.
           releaseDraft: false
           prerelease: ${{ steps.channel.outputs.prerelease == 'true' }}
-          includeUpdaterJson: true
+          # why: real incident -- tauri-action's own manifest let the rpm's
+          # updater entry overwrite the AppImage's under the same
+          # linux-x86_64 key, and the shipped updater then wrote an RPM
+          # over a user's running AppImage file (destroyed a real
+          # install). Its replace-before-upload also stopped finding the
+          # old latest.json once the rolling release passed ~100
+          # accumulated assets (paginated lookup), 422ing the whole leg.
+          # The finalize job below assembles the manifest instead.
+          includeUpdaterJson: false
+
+  # why: runs once, after BOTH platform legs succeed -- assembles a
+  # correct latest.json from the assets actually uploaded (AppImage for
+  # linux, never the rpm; setup.exe for windows), force-replaces the old
+  # manifest, and prunes the rolling release down to 0.1.0 plus the
+  # build this run just published (player's own spec: "only should be
+  # 0.1.0 and most current version"). On any leg failure this never
+  # runs, so the manifest always describes a complete, real build.
+  finalize:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble manifest and prune release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            TAG=latest
+            VERSION=$(python3 -c "import json;print(json.load(open('crates/app/tauri.conf.json'))['version'])")
+          else
+            TAG=testing
+            VERSION="0.1.${{ github.run_number }}"
+          fi
+          REPO="${{ github.repository }}"
+          APPIMAGE="EQL.Oracle_${VERSION}_amd64.AppImage"
+          SETUP="EQL.Oracle_${VERSION}_x64-setup.exe"
+
+          # why: the .sig files ARE the manifest signatures -- download just those two
+          gh release download "$TAG" --repo "$REPO" -D sigs \
+            --pattern "${APPIMAGE}.sig" --pattern "${SETUP}.sig"
+
+          python3 - "$TAG" "$VERSION" "$REPO" "$APPIMAGE" "$SETUP" <<'PY'
+          import json, sys, datetime
+          tag, version, repo, appimage, setup = sys.argv[1:6]
+          base = f"https://github.com/{repo}/releases/download/{tag}"
+          manifest = {
+              "version": version,
+              "notes": f"Automated build from {tag} channel.",
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+              "platforms": {
+                  "linux-x86_64": {
+                      "signature": open(f"sigs/{appimage}.sig").read().strip(),
+                      "url": f"{base}/{appimage}",
+                  },
+                  "windows-x86_64": {
+                      "signature": open(f"sigs/{setup}.sig").read().strip(),
+                      "url": f"{base}/{setup}",
+                  },
+              },
+          }
+          json.dump(manifest, open("latest.json", "w"), indent=1)
+          PY
+          # why: --clobber replaces the existing asset -- the 422 fix
+          gh release upload "$TAG" latest.json --repo "$REPO" --clobber
+
+          # why: prune everything that isn't 0.1.0, this run's build, or
+          # the manifest itself -- keeps the rolling release readable and
+          # keeps the asset count far below the pagination cliff for good
+          RELEASE_ID=$(gh api "repos/$REPO/releases/tags/$TAG" --jq .id)
+          gh api --paginate "repos/$REPO/releases/$RELEASE_ID/assets" \
+            --jq '.[] | "\(.id) \(.name)"' | while read -r id name; do
+            [ "$name" = "latest.json" ] && continue
+            v=$(echo "$name" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+            if [ "$v" != "0.1.0" ] && [ "$v" != "$VERSION" ]; then
+              echo "pruning $name ($v)"
+              gh api -X DELETE "repos/$REPO/releases/assets/$id"
+            fi
+          done
