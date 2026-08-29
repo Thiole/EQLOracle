@@ -3,7 +3,7 @@
 //! against the already-classified `Store`.
 
 use crate::ingest::Ingest;
-use eqlp_session::{series as bucket_series, Allegiance, Cause, Kind, State};
+use eqlp_session::{series as bucket_series, Cause, Kind, State};
 use eqlp_source::Millis;
 use eqlp_store::{
     by_ability, by_actor, dps_window, flag, tag, total, AbilityId, AbilityRow, Encounter,
@@ -201,7 +201,9 @@ pub fn list_encounters(
         .store
         .encounters
         .iter()
-        .filter(|e| matches_visit(ing, e.start_ms, zone_visit))
+        // why: the Combat tab lists the player's own fights; someone
+        // else's stays parsed in the backend (Debug shows it, flagged)
+        .filter(|e| e.involves_you && matches_visit(ing, e.start_ms, zone_visit))
         .collect();
     matched.sort_by_key(|b| std::cmp::Reverse(b.start_ms));
     matched
@@ -313,7 +315,10 @@ pub fn list_zone_encounters(ing: &Ingest, zone_id: &str, limit: usize) -> Vec<Zo
 
     let mut matched: Vec<&Encounter> = Vec::with_capacity(limit.min(256));
     for e in ing.store.encounters.iter().rev() {
-        let is_match = e.zone.and_then(|z| ing.cached_wiki_zone(z)) == Some(zone_id);
+        // why: involves_you -- your own recent fights here, not a
+        // stranger group's; list_mob_encounters (Monsters, a data view)
+        // deliberately keeps every observed fight instead
+        let is_match = e.involves_you && e.zone.and_then(|z| ing.cached_wiki_zone(z)) == Some(zone_id);
         if is_match {
             matched.push(e);
             if matched.len() >= limit {
@@ -446,12 +451,16 @@ fn resolve_ids(
     encounter_id: Option<u32>,
 ) -> Vec<EncounterId> {
     if let Some(eid) = encounter_id {
+        // why: an explicit id is honored involved-or-not -- the caller
+        // (debug view, a direct link) asked for that specific fight
         vec![EncounterId(eid)]
     } else {
+        // why: aggregates scope to the player's own fights -- a stranger
+        // group's fight in the same visit is backend data, not "your combat"
         ing.store
             .encounters
             .iter()
-            .filter(|e| matches_visit(ing, e.start_ms, zone_visit))
+            .filter(|e| e.involves_you && matches_visit(ing, e.start_ms, zone_visit))
             .map(|e| e.id)
             .collect()
     }
@@ -761,13 +770,9 @@ pub fn list_allies(
         }
         for (sym, dmg, hits, crits) in by_actor(&ing.store, &Filter::encounter(id).damage()) {
             let name = ing.store.name(sym);
-            let kind = ing.effective_kind(name, now);
-            let state = ing
-                .timeline
-                .state_at(sym.0, now)
-                .map(|(s, _)| s)
-                .unwrap_or(State::Engaged);
-            if Allegiance::of(kind, state).is_enemy() {
+            // why: one composition of kind/charm/group belief -- see
+            // Ingest::allegiance_at for why this isn't effective_kind+of
+            if ing.allegiance_at(name, now).is_enemy() {
                 continue;
             }
             let e = acc.entry(sym).or_insert((0, 0, 0));
@@ -1023,16 +1028,11 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
         let total: u64 = amt.iter().sum();
         let kind = ing.effective_kind(name, end);
         // why: as of the fight's end -- a query, not a stored flag; a still-charmed mob reads as ally
-        let state = ing
-            .timeline
-            .state_at(sym.0, end)
-            .map(|(s, _)| s)
-            .unwrap_or(State::Engaged);
         series.push(EntitySeriesDto {
             name: name.clone(),
             is_player: kind == Kind::Player,
             is_pet: kind == Kind::Pet,
-            is_enemy: Allegiance::of(kind, state).is_enemy(),
+            is_enemy: ing.allegiance_at(name, end).is_enemy(),
             total,
             values: buckets.iter().map(|b| b.total).collect(),
         });
@@ -1115,7 +1115,7 @@ fn fight_state_at_windowed(
             EntityStateDto {
                 is_player: kind == Kind::Player,
                 is_pet: kind == Kind::Pet,
-                is_enemy: Allegiance::of(kind, state).is_enemy(),
+                is_enemy: ing.allegiance_at(&name, ts_ms).is_enemy(),
                 state: state.name(),
                 observed,
                 dps,
@@ -1164,11 +1164,20 @@ pub struct LiveMeterDto {
 /// common case (the most recent row almost always belongs to whatever's
 /// actively being fought). None before any real encounter exists yet
 /// this session.
+/// Only fights the player is actually part of (`involves_you`) --
+/// someone else's fight nearby is parsed as an encounter in the backend
+/// but never becomes "the current encounter" the overlay shows.
 pub fn current_encounter(ing: &Ingest) -> Option<&Encounter> {
     let latest_id = (0..ing.store.len())
         .rev()
         .map(|i| ing.store.enc[i])
-        .find(|&e| e != NO_ENCOUNTER)?;
+        .find(|&e| {
+            e != NO_ENCOUNTER
+                && ing
+                    .store
+                    .encounter(EncounterId(e))
+                    .is_some_and(|enc| enc.involves_you)
+        })?;
     ing.store.encounter(EncounterId(latest_id))
 }
 

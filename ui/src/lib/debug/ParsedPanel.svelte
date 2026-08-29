@@ -57,6 +57,7 @@
             <th class="px-2 py-0.5 text-left font-normal text-muted-foreground">raw zone</th>
             <th class="px-2 py-0.5 text-left font-normal text-muted-foreground">resolved</th>
             <SortableTh label="tier" align="right" active={sort.key === 'tier'} dir={sort.dir} onclick={() => toggle('tier')} />
+            <th class="px-2 py-0.5 text-left font-normal text-muted-foreground">yours</th>
             <th class="px-2 py-0.5 text-left font-normal text-muted-foreground">classes</th>
           </tr>
         </thead>
@@ -73,6 +74,8 @@
                 {e.resolved_zone_id ?? (e.raw_zone ? 'failed to resolve' : '—')}
               </td>
               <td class="px-2 py-0.5 text-right tabular-nums">{e.tier}</td>
+              <!-- why: someone else's fight -- parsed for clean data, hidden from Combat/overlay -->
+              <td class="px-2 py-0.5 {e.involves_you ? '' : 'text-muted-foreground'}">{e.involves_you ? 'yours' : 'other'}</td>
               <td class="px-2 py-0.5 {e.player_classes.length ? '' : 'text-muted-foreground'}">{e.player_classes.join(' / ') || '— unresolved —'}</td>
             </tr>
           {/each}

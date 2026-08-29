@@ -18,13 +18,13 @@
   }
 
   // why: labels the evidence channel behind each row -- see
-  // eqlp_session::group's own doc for what "quick buff"/"shared target" mean
+  // eqlp_session::group's own doc for what each channel actually means
   function viaLabel(via: PartyMemberDto['via']): string {
     switch (via) {
       case 'you':
         return 'you';
-      case 'confirmed':
-        return 'confirmed';
+      case 'joined':
+        return 'roster line';
       case 'strong':
         return 'quick buff';
       case 'weak':
@@ -60,6 +60,10 @@
         <div class="flex-1 px-3 py-1.5">
           <div class="stat-figure">{$gameState.party.length}</div>
           <div class="stat-label">party members</div>
+        </div>
+        <div class="flex-1 px-3 py-1.5">
+          <div class="stat-figure">{$gameState.known_players}</div>
+          <div class="stat-label">known players (whole log)</div>
         </div>
       </div>
       <table class="w-full text-[11px]">

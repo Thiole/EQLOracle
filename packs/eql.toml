@@ -232,6 +232,26 @@ pattern = '''^You are now the leader of your group\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You are now the leader of your group."]
 
 [[rule]]
+id = "group.other_invites_you"
+kind = "group"
+priority = 50
+anchors = [" invites you to join a group"]
+pattern = '''^(?P<who>.+?) invites you to join a group\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] Dippinsauce invites you to join a group."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "group.you_agreed"
+kind = "group"
+priority = 50
+anchors = ["that you agree to join the group"]
+pattern = '''^You notify (?P<who>.+?) that you agree to join the group\.$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You notify Dippinsauce that you agree to join the group."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
 id = "noise.channel_full"
 kind = "noise"
 priority = 50

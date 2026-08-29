@@ -6,7 +6,7 @@
 //! per-pull attribution confidence.
 
 use crate::ingest::Ingest;
-use eqlp_session::{Allegiance, State};
+
 use eqlp_source::Millis;
 use eqlp_store::{by_target_and_ability, total, EventKind, Filter, Sym, NO_ENCOUNTER};
 use serde::Serialize;
@@ -39,7 +39,7 @@ pub struct MobDto {
 /// why: whether `e` counts as a real pull, shared by `list_mobs`/`mob_stats`.
 /// Two checks: (1) allegiance as of this fight's own start, not "is this
 /// name ever an ally" -- charm makes allegiance per-fight, not per-name;
-/// mirrors `Ingest::is_ally` since that one's private and needs a Millis.
+/// `Ingest::allegiance_at`, the same composition `is_ally` uses.
 /// (2) personal damage OR `xp_credited` -- fixes a real gap: a raid
 /// boss's death line only names the killing blow, so a party member's
 /// kill with zero personal damage rows used to read as "not your kill"
@@ -54,13 +54,7 @@ pub(crate) fn counts_as_pull(
     xp_credited: &std::collections::HashSet<u32>,
 ) -> bool {
     let name = ing.store.name(e.target);
-    let kind = ing.encounters.entities.kind(name);
-    let state = ing
-        .timeline
-        .state_at(e.target.0, e.start_ms)
-        .map(|(s, _)| s)
-        .unwrap_or(State::Engaged);
-    if !Allegiance::of(kind, state).is_enemy() {
+    if !ing.allegiance_at(name, e.start_ms).is_enemy() {
         return false;
     }
     total(&ing.store, &Filter::encounter(e.id).damage().by(you)) != 0

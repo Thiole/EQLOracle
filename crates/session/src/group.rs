@@ -9,7 +9,13 @@
 //! demotes" model, deliberately, because the underlying real-world fact
 //! this tracks (who's with me right now) is itself not monotonic.
 //!
-//! Two reinforcement channels, genuinely different confidence levels:
+//! Three reinforcement channels, genuinely different confidence levels:
+//! - `joined` (an explicit roster line -- "<Name> has joined the group",
+//!   a group-chat message, an accepted invite): the game itself stated
+//!   membership, no decay at all. Ends only by an explicit exit (`left`,
+//!   `reset`) -- the join/leave lines are symmetric in the log, so a
+//!   membership that started with a line ends with one (or with a
+//!   whole-roster reset; see `reset`).
 //! - `reinforce_weak` (shared-target damage -- someone else hit the same
 //!   mob "You" did): needs the same name to co-occur across >=
 //!   `MIN_SESSIONS` real, gap-separated occasions before it counts at
@@ -87,6 +93,28 @@ pub const SESSION_GAP_MS: Millis = 2 * 60 * 60 * 1000;
 /// doesn't linger across a whole play session
 pub const GROUP_TTL_MS: Millis = 30 * 60 * 1000;
 
+/// why: which channel is keeping a member current -- certainty descends
+/// down the list, and the UI labels each differently
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Channel {
+    /// An explicit roster line named them. No decay.
+    Joined,
+    /// A corroborated Quick Buff group-cast landing, within GROUP_TTL_MS.
+    Strong,
+    /// Session-gated shared-target damage, within GROUP_TTL_MS.
+    Weak,
+}
+
+impl Channel {
+    pub fn name(self) -> &'static str {
+        match self {
+            Channel::Joined => "joined",
+            Channel::Strong => "strong",
+            Channel::Weak => "weak",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Evidence {
     last_ms: Millis,
@@ -100,20 +128,39 @@ struct Evidence {
     /// happened. Strong evidence must decay past GROUP_TTL_MS same as
     /// everything else -- see `strong_currently`.
     strong_last_ms: Option<Millis>,
+    /// why: an explicit roster line ("has joined the group") -- no TTL,
+    /// the game states the fact; ends only via evicted_ms/reset_ms
+    joined_ms: Option<Millis>,
+    /// why: this one member's own explicit exit ("has left the group") --
+    /// evidence at or before this instant no longer counts as current;
+    /// session history survives, so a rejoin re-qualifies normally
+    evicted_ms: Option<Millis>,
 }
 
 impl Evidence {
     /// why: single source of truth for the gate -- currently_grouped and
-    /// current_members must never drift apart on what "current" means
-    fn is_current(&self, ts: Millis) -> bool {
-        if ts - self.last_ms > GROUP_TTL_MS {
-            return false;
+    /// current_members must never drift apart on what "current" means.
+    /// `cutoff` is the later of this entry's own eviction and the
+    /// tracker-wide reset; evidence at or after it counts. >= not > --
+    /// log timestamps are whole seconds, and the real accept sequence
+    /// ("You have joined" resetting the roster, the inviter added in the
+    /// same second) must let that same-instant join survive its own reset.
+    fn channel(&self, ts: Millis, reset_ms: Option<Millis>) -> Option<Channel> {
+        let cutoff = self.evicted_ms.max(reset_ms);
+        let fresh = |t: Option<Millis>| t.is_some_and(|t| Some(t) >= cutoff);
+        if fresh(self.joined_ms) {
+            return Some(Channel::Joined);
         }
-        self.strong_currently(ts) || self.sessions >= MIN_SESSIONS
+        if ts - self.last_ms > GROUP_TTL_MS || !fresh(Some(self.last_ms)) {
+            return None;
+        }
+        if self.strong_currently(ts) && fresh(self.strong_last_ms) {
+            return Some(Channel::Strong);
+        }
+        (self.sessions >= MIN_SESSIONS).then_some(Channel::Weak)
     }
 
-    /// why: split out of is_current so current_members can report *why*
-    /// an entry is current without duplicating the TTL check
+    /// why: split out of channel so the TTL check isn't duplicated
     fn strong_currently(&self, ts: Millis) -> bool {
         self.strong_last_ms.is_some_and(|s| ts - s <= GROUP_TTL_MS)
     }
@@ -124,16 +171,26 @@ impl Evidence {
 #[derive(Debug, Default)]
 pub struct GroupTracker {
     entries: HashMap<String, Evidence>,
+    /// why: the whole roster's cutoff -- "You" left/were removed/joined a
+    /// different group, or the log itself gapped a whole play session.
+    /// Evidence at or before this instant no longer makes anyone current;
+    /// session history survives (long-term recurrence is still real).
+    reset_ms: Option<Millis>,
 }
 
 impl GroupTracker {
-    pub fn reinforce_weak(&mut self, name: &str, ts: Millis) {
-        let key = fold_key(name);
-        let e = self.entries.entry(key).or_insert(Evidence {
+    fn entry(&mut self, name: &str, ts: Millis) -> &mut Evidence {
+        self.entries.entry(fold_key(name)).or_insert(Evidence {
             last_ms: ts,
             sessions: 0,
             strong_last_ms: None,
-        });
+            joined_ms: None,
+            evicted_ms: None,
+        })
+    }
+
+    pub fn reinforce_weak(&mut self, name: &str, ts: Millis) {
+        let e = self.entry(name, ts);
         // why: sessions==0 catches the very first reinforcement (last_ms
         // was just seeded to ts above, so the gap check alone would miss it)
         if e.sessions == 0 || ts - e.last_ms > SESSION_GAP_MS {
@@ -143,14 +200,38 @@ impl GroupTracker {
     }
 
     pub fn reinforce_strong(&mut self, name: &str, ts: Millis) {
-        let key = fold_key(name);
-        let e = self.entries.entry(key).or_insert(Evidence {
-            last_ms: ts,
-            sessions: 0,
-            strong_last_ms: None,
-        });
+        let e = self.entry(name, ts);
         e.strong_last_ms = Some(e.strong_last_ms.map_or(ts, |s| s.max(ts)));
         e.last_ms = e.last_ms.max(ts);
+    }
+
+    /// why: an explicit roster statement -- a join line, a group-chat
+    /// message, an accepted invite. Definitive as of ts, no decay.
+    pub fn joined(&mut self, name: &str, ts: Millis) {
+        let e = self.entry(name, ts);
+        e.joined_ms = Some(e.joined_ms.map_or(ts, |j| j.max(ts)));
+        e.last_ms = e.last_ms.max(ts);
+    }
+
+    /// why: this one member's explicit exit line -- ends every channel's
+    /// currency for them at ts without erasing session history (a
+    /// linkdead groupmate who rejoins in two minutes shouldn't restart
+    /// from zero gap-separated sessions). joined_ms cleared directly,
+    /// not just out-cutoff'd: timestamps are whole seconds, so a
+    /// same-second join+leave pair resolves by call order (log order),
+    /// which the eviction comparison alone can't express.
+    pub fn left(&mut self, name: &str, ts: Millis) {
+        let e = self.entry(name, ts);
+        e.evicted_ms = Some(e.evicted_ms.map_or(ts, |v| v.max(ts)));
+        e.joined_ms = None;
+    }
+
+    /// why: the whole party is over for "You" -- removed/disbanded,
+    /// joined a fresh group, or the log gapped past a real play session.
+    /// One epoch, not per-entry mutation: O(1), and late re-evidence
+    /// after the reset revives per channel rules exactly like `left`.
+    pub fn reset(&mut self, ts: Millis) {
+        self.reset_ms = Some(self.reset_ms.map_or(ts, |r| r.max(ts)));
     }
 
     /// why: raw (last_ms, sessions, strong_last_ms) for diagnostics/debug
@@ -161,27 +242,29 @@ impl GroupTracker {
             .map(|e| (e.last_ms, e.sessions, e.strong_last_ms))
     }
 
-    /// why: stale past GROUP_TTL_MS regardless of channel; the weak
-    /// channel additionally needs the session gate, strong never does --
-    /// see module doc for why the two channels earn that differently
+    /// why: stale past GROUP_TTL_MS regardless of channel (explicit joins
+    /// excepted -- the game stated the fact); the weak channel
+    /// additionally needs the session gate, strong never does -- see
+    /// module doc for why each channel earns that differently
     pub fn currently_grouped(&self, name: &str, ts: Millis) -> bool {
         self.entries
             .get(&fold_key(name))
-            .is_some_and(|e| e.is_current(ts))
+            .is_some_and(|e| e.channel(ts, self.reset_ms).is_some())
     }
 
     /// why: currently_grouped answers one name at a time; a debug/Game
     /// State dump needs the whole roster as of ts. Keys are fold_key'd
     /// (lowercase first char), not display casing -- callers resolve
     /// through Entities::display_name the same way `Ingest` does elsewhere.
-    /// The bool is whether strong evidence is *currently* what's keeping
-    /// this entry current (as of `ts`), not whether it was ever strong --
-    /// see `strong_currently`.
-    pub fn current_members(&self, ts: Millis) -> Vec<(String, u32, bool, Millis)> {
+    /// The Channel is whichever evidence is *currently* keeping the entry
+    /// current (as of `ts`), not the strongest it has ever been.
+    pub fn current_members(&self, ts: Millis) -> Vec<(String, u32, Channel, Millis)> {
         self.entries
             .iter()
-            .filter(|(_, e)| e.is_current(ts))
-            .map(|(name, e)| (name.clone(), e.sessions, e.strong_currently(ts), e.last_ms))
+            .filter_map(|(name, e)| {
+                e.channel(ts, self.reset_ms)
+                    .map(|via| (name.clone(), e.sessions, via, e.last_ms))
+            })
             .collect()
     }
 }
@@ -287,5 +370,99 @@ mod tests {
         let mut g = GroupTracker::default();
         g.reinforce_strong("kaeus", 0);
         assert!(g.currently_grouped("Kaeus", 0));
+    }
+
+    #[test]
+    fn an_explicit_join_is_definitive_and_does_not_decay() {
+        let mut g = GroupTracker::default();
+        g.joined("Dippinsauce", 0);
+        assert!(g.currently_grouped("Dippinsauce", 0));
+        // why: hours later, no reinforcement at all -- still a member
+        // until an explicit exit; join/leave lines are symmetric
+        assert!(g.currently_grouped("Dippinsauce", 5 * 60 * 60 * 1000));
+    }
+
+    #[test]
+    fn an_explicit_leave_ends_membership_for_that_member_only() {
+        let mut g = GroupTracker::default();
+        g.joined("Dippinsauce", 0);
+        g.joined("Bravesirrobin", 0);
+        g.left("Dippinsauce", 10_000);
+        assert!(!g.currently_grouped("Dippinsauce", 10_000));
+        assert!(g.currently_grouped("Bravesirrobin", 10_000));
+    }
+
+    #[test]
+    fn a_rejoin_after_leaving_revives_membership() {
+        let mut g = GroupTracker::default();
+        g.joined("Dippinsauce", 0);
+        g.left("Dippinsauce", 10_000);
+        g.joined("Dippinsauce", 20_000);
+        assert!(g.currently_grouped("Dippinsauce", 20_000));
+    }
+
+    #[test]
+    fn reset_clears_every_channel_at_once() {
+        let mut g = GroupTracker::default();
+        g.joined("Dippinsauce", 0);
+        g.reinforce_strong("Kaeus", 0);
+        let mut ts = 0;
+        for _ in 0..MIN_SESSIONS {
+            g.reinforce_weak("Wynvern", ts);
+            ts += SESSION_GAP_MS + 1;
+        }
+        let last_weak = ts - SESSION_GAP_MS - 1;
+        assert!(g.currently_grouped("Wynvern", last_weak));
+
+        let disband = last_weak + 1;
+        g.reset(disband);
+        assert!(!g.currently_grouped("Dippinsauce", disband + 1));
+        assert!(!g.currently_grouped("Kaeus", disband + 1));
+        assert!(!g.currently_grouped("Wynvern", disband + 1));
+    }
+
+    /// why: session history deliberately survives a reset -- one fresh
+    /// shared-target hit after a disband re-qualifies a longtime
+    /// groupmate (their recurrence is still real), while a stranger
+    /// still needs MIN_SESSIONS from scratch
+    #[test]
+    fn fresh_weak_evidence_after_a_reset_requalifies_a_longtime_groupmate() {
+        let mut g = GroupTracker::default();
+        let mut ts = 0;
+        for _ in 0..MIN_SESSIONS {
+            g.reinforce_weak("Wynvern", ts);
+            ts += SESSION_GAP_MS + 1;
+        }
+        g.reset(ts);
+        assert!(!g.currently_grouped("Wynvern", ts + 1));
+        g.reinforce_weak("Wynvern", ts + 2);
+        assert!(g.currently_grouped("Wynvern", ts + 2));
+    }
+
+    #[test]
+    fn an_explicit_leave_beats_older_strong_evidence() {
+        let mut g = GroupTracker::default();
+        g.reinforce_strong("Kaeus", 1_000);
+        g.left("Kaeus", 2_000);
+        assert!(!g.currently_grouped("Kaeus", 2_000));
+        // why: fresh strong evidence after the exit revives normally
+        g.reinforce_strong("Kaeus", 3_000);
+        assert!(g.currently_grouped("Kaeus", 3_000));
+    }
+
+    #[test]
+    fn current_members_reports_the_channel_keeping_each_entry_current() {
+        let mut g = GroupTracker::default();
+        g.joined("Dippinsauce", 0);
+        g.reinforce_strong("Kaeus", 0);
+        let members = g.current_members(0);
+        let via = |name: &str| {
+            members
+                .iter()
+                .find(|(n, ..)| n == &fold_key(name))
+                .map(|&(_, _, via, _)| via)
+        };
+        assert_eq!(via("Dippinsauce"), Some(Channel::Joined));
+        assert_eq!(via("Kaeus"), Some(Channel::Strong));
     }
 }

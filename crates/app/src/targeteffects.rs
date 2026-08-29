@@ -34,7 +34,7 @@
 use crate::combat;
 use crate::ingest::Ingest;
 use crate::{spelldata, spelleffect};
-use eqlp_session::{Allegiance, State};
+use eqlp_session::State;
 use eqlp_source::Millis;
 use eqlp_store::{tag, EventKind, Sym};
 use serde::Serialize;
@@ -185,8 +185,10 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
     // encounter yet (the pure-debuff-cast fallback path in target_sym).
     let confirmed_enemy_anchor = enc.is_some_and(|e| e.target == target_sym && e.is_open());
     if !confirmed_enemy_anchor {
-        let kind = ing.encounters.entities.kind(&target_name);
-        if !Allegiance::of(kind, state).is_enemy() {
+        // why: allegiance_at composes the same sticky kind with charm
+        // state AND current group belief -- a group-tracked name is no
+        // more a debuff target than a proven player is
+        if !ing.allegiance_at(&target_name, now).is_enemy() {
             return TargetEffectsDto::default();
         }
     }

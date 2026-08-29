@@ -1291,6 +1291,9 @@ export interface DebugEncounterDto {
   resolved_zone_id: string | null;
   tier: number;
   player_classes: string[];
+  /** why: false = someone else's fight -- parsed for clean data, hidden
+   * from Combat/overlay; Debug is where it stays visible */
+  involves_you: boolean;
 }
 
 export interface UnmatchedShapeDto {
@@ -1309,12 +1312,15 @@ export interface UnmatchedCoverageDto {
 
 export interface PartyMemberDto {
   name: string;
-  via: 'you' | 'confirmed' | 'strong' | 'weak';
+  via: 'you' | 'joined' | 'strong' | 'weak';
   sessions: number;
 }
 
 export interface GameStateDto {
   party: PartyMemberDto[];
+  /** why: everyone ever proven a real player across the whole log -- a
+   * permanent identity fact, deliberately a count and never party rows */
+  known_players: number;
   your_classes: string[];
   your_level: number | null;
 }

@@ -29,7 +29,7 @@
 //! list rather than silently dropping it -- see `TrackedLootDto`'s own doc.
 
 use crate::ingest::Ingest;
-use eqlp_session::{Allegiance, State};
+use eqlp_session::State;
 use eqlp_source::Millis;
 use eqlp_store::EventKind;
 use serde::Serialize;
@@ -160,10 +160,9 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         if state == State::Dead || state == State::Charmed {
             return None;
         }
-        // why: effective_kind not raw kind -- a group-tracked ally
+        // why: allegiance_at not raw kind -- a group-tracked ally
         // (or charm-flip, caught above) must not read as a mob to watch
-        let kind = ing.effective_kind(name, now);
-        if !Allegiance::of(kind, state).is_enemy() {
+        if !ing.allegiance_at(name, now).is_enemy() {
             return None;
         }
         // why: three drop sources unioned per the player's spec --

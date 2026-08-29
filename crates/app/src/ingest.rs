@@ -90,6 +90,16 @@ const PULSE_WINDOW_MS: Millis = 15_000;
 /// only catches what slips past that normal path
 const STALE_ENCOUNTER_MS: Millis = 5 * 60 * 1000;
 
+/// why: generous slack between an invite (or "you agree") line and its
+/// "You have joined the group." -- usually the same log-second, but an
+/// invite can sit while the player finishes something first
+const INVITE_ACCEPT_WINDOW_MS: Millis = 120_000;
+
+/// why: how recently a charm must have been cleared for a Quick Buff
+/// landing to un-clear it -- the wrong-instance repair (see
+/// `reaffirm_charm`), not a license to resurrect a long-ended charm
+const CHARM_REAFFIRM_MS: Millis = 60_000;
+
 /// why: effective (account) level over time, from level.up lines,
 /// first-person only. The effective level, not any one class's own --
 /// swapping a class drops it silently with no line marking the drop
@@ -873,6 +883,13 @@ pub struct Ingest {
     you_confirmed_target_encs: HashSet<EncounterId>,
     /// why: open Quick Buff activation windows, resolved name -> activation timestamp
     pending_quickbuff: HashMap<String, Millis>,
+    /// why: who invited "You" (or whom "You" agreed to join) -- committed
+    /// as a member only by the "You have joined" line that follows, since
+    /// that line itself resets the roster first and names nobody
+    pending_group_inviter: Option<(Millis, String)>,
+    /// why: previous timestamped line -- a gap past a real play session
+    /// means the group is gone (camped/logged out), with no line saying so
+    last_line_ts: Option<Millis>,
     /// why: a "You can no longer advance your skill..." notice that
     /// arrived *before* the Craft row it's actually about (real, common
     /// line-order variance confirmed in the reference log -- the two
@@ -971,6 +988,8 @@ impl Default for Ingest {
             you_confirmed_target_encs: HashSet::new(),
             pet_owner: HashMap::new(),
             pending_quickbuff: HashMap::new(),
+            pending_group_inviter: None,
+            last_line_ts: None,
             pending_craft_skill_cap: None,
             pending_quickbuff_evidence: Vec::new(),
             recent_flavor_landings: Vec::new(),
@@ -1168,6 +1187,7 @@ impl Ingest {
                 }
 
                 self.log_clock.set_at_least(ts_ms);
+                self.note_line_gap(ts_ms);
                 if let Some(action) = extract_action(engine, rule.id.as_str(), m, line) {
                     self.apply(ts_ms, action);
                 }
@@ -1177,6 +1197,7 @@ impl Ingest {
                 // why: checked against the flavor dictionary first,
                 // unconditional -- a hit is understood, no business in "Unparsed"
                 let ts_ms = ts.secs() * 1000;
+                self.note_line_gap(ts_ms);
                 let text = String::from_utf8_lossy(body.slice(line));
                 if !self.flavor_evidence_for(ts_ms, &text) {
                     self.note_unmatched_shape(body.slice(line));
@@ -1210,6 +1231,22 @@ impl Ingest {
 
     /// why: executes one extracted action; never touches line/Match/Engine
     /// so the same logic runs from a sequential backfill merge or inline live
+    /// why: a log gap past a real play session means the group is gone
+    /// (camped/logged out) with no disband line ever written -- same 2h
+    /// boundary GroupTracker's own session counting uses. Explicit roster
+    /// membership has no TTL, so this is what ends it when the log just
+    /// stops. Per-LINE, not per-action -- the first line back after a
+    /// gap ("You say, ...") often produces no Action at all, and the
+    /// reset must land before whatever that line does anyway.
+    fn note_line_gap(&mut self, ts: Millis) {
+        if let Some(prev) = self.last_line_ts {
+            if ts - prev > eqlp_session::group::SESSION_GAP_MS {
+                self.groups.reset(ts);
+            }
+        }
+        self.last_line_ts = Some(ts);
+    }
+
     fn apply(&mut self, ts: Millis, action: Action) {
         if self.first_ts.is_none() {
             self.first_ts = Some(ts);
@@ -1494,9 +1531,50 @@ impl Ingest {
                 // why: same real-player evidence PlayerProof gave every
                 // one of these channels before ChatMessage replaced it
                 self.encounters.entities.note_player_channel(&who);
+                // why: group chat only reaches groupmates -- someone
+                // speaking in it IS in the group right now, as definitive
+                // as a join line (and the only roster source for a group
+                // formed before this log started)
+                if matches!(channel, ChatChannel::Party) && !who.eq_ignore_ascii_case("you") {
+                    let resolved = self.resolve_name(&who);
+                    self.groups.joined(&resolved, ts);
+                }
                 self.chat.push(ts, who, channel, text);
             }
             Action::QuickBuff { who } => self.note_quickbuff(ts, &who),
+            Action::GroupJoined { who } => {
+                // why: NPCs and charm pets can't join a group -- this line
+                // is player proof as strong as a chat channel
+                self.encounters.entities.note_player_channel(&who);
+                let resolved = self.resolve_name(&who);
+                self.groups.joined(&resolved, ts);
+            }
+            Action::GroupLeft { who } => {
+                self.encounters.entities.note_player_channel(&who);
+                let resolved = self.resolve_name(&who);
+                self.groups.left(&resolved, ts);
+            }
+            Action::GroupYouJoined => {
+                // why: "You" can only be invited while ungrouped, so this
+                // starts a fresh roster; the inviter (held from the
+                // invite/agree line -- this line itself names nobody) is
+                // its first known member
+                self.groups.reset(ts);
+                if let Some((invited_ms, inviter)) = self.pending_group_inviter.take() {
+                    if ts - invited_ms <= INVITE_ACCEPT_WINDOW_MS {
+                        self.groups.joined(&inviter, ts);
+                    }
+                }
+            }
+            Action::GroupYouLeft => {
+                self.groups.reset(ts);
+                self.pending_group_inviter = None;
+            }
+            Action::GroupInviteYou { who } | Action::GroupYouAgreed { who } => {
+                self.encounters.entities.note_player_channel(&who);
+                let resolved = self.resolve_name(&who);
+                self.pending_group_inviter = Some((ts, resolved));
+            }
             Action::Mez { who } => {
                 let sym = self.sym(&who);
                 self.timeline.observed(ts, sym.0, State::Mezzed);
@@ -1760,6 +1838,7 @@ impl Ingest {
             }
         }
         let enc = self.link(ts, src, dst);
+        self.note_involvement(enc, src, dst, ts);
         let a = self.sym(src);
         let t = self.sym(dst);
         self.note_shared_target(ts, enc, src, t);
@@ -1879,6 +1958,11 @@ impl Ingest {
         let enc = self
             .current_encounter_of(src)
             .or_else(|| self.current_encounter_of(dst));
+        if let Some(id) = enc {
+            // why: a heal into a fight is involvement too -- "You" healing
+            // the tank counts even before "You" ever swings
+            self.note_involvement(id, src, dst, ts);
+        }
         let a = self.sym(src);
         let t = self.sym(dst);
         self.clear_dead_if_acting(ts, a);
@@ -1910,6 +1994,11 @@ impl Ingest {
         let enc = self
             .current_encounter_of(src)
             .or_else(|| self.current_encounter_of(dst));
+        if let Some(id) = enc {
+            // why: an avoided swing proves presence in the fight the same
+            // as a landed one -- a fully-dodged puller still pulled
+            self.note_involvement(id, src, dst, ts);
+        }
         let a = self.sym(src);
         let t = self.sym(dst);
         self.clear_dead_if_acting(ts, a);
@@ -2271,6 +2360,31 @@ impl Ingest {
         self.pending_quickbuff.insert(resolved, ts);
     }
 
+    /// why: a corroborated Quick Buff group-cast landed on the tracked
+    /// charm name -- the game's own targeting says that pet is currently
+    /// a group ally. Two same-named mobs are indistinguishable in the
+    /// log, so the "charm gone" inference (a same-named hit landing on
+    /// "You", record_damage's own clear) can fire on the OTHER instance
+    /// and wrongly flip a still-loyal pet to enemy; this is the repair
+    /// signal, bounded to a recent clear so a long-ended charm can't be
+    /// resurrected by a coincidental matching landing.
+    fn reaffirm_charm(&mut self, ts: Millis, target_sym: u32) {
+        let Some(c) = &mut self.charm else { return };
+        if !c.active && ts - c.since_ms > CHARM_REAFFIRM_MS {
+            return;
+        }
+        c.active = true;
+        if self
+            .timeline
+            .state_at(target_sym, ts)
+            .map(|(s, _)| s)
+            .unwrap_or(State::Engaged)
+            != State::Charmed
+        {
+            self.timeline.observed(ts, target_sym, State::Charmed);
+        }
+    }
+
     /// why: live-tail's entry point for checking an unmatched line against
     /// the flavor dictionary; backfill does this itself during parallel
     /// classification instead (no Ingest access there). Four checks,
@@ -2452,9 +2566,23 @@ impl Ingest {
         // `promote_party_member`'s own doc for why excluding charm no
         // longer serves the purpose it used to now that nothing here is
         // permanent.
+        // why: the mob-name guards stay for GroupTracker (an enemy
+        // cleric-mob's own self-buff shares real flavor text -- see the
+        // "Center" analysis above), but a name the charm tracker itself
+        // is holding gets through on that different evidence: the game
+        // scopes a Quick Buff group-cast to valid group targets, so a
+        // landing on the tracked charm name is the game itself saying
+        // that pet is a current ally. Used to re-affirm CHARM state, not
+        // to group-track the name -- group currency would outlive the
+        // charm by GROUP_TTL_MS, and a charm ally must end with the charm.
+        let name_plausible = plausible_player_name(&resolved)
+            && !crate::npcdata::is_known_npc_name(&resolved);
+        let charm_tracked = self
+            .charm
+            .as_ref()
+            .is_some_and(|c| c.who.eq_ignore_ascii_case(&resolved));
         if !resolved.eq_ignore_ascii_case("you")
-            && plausible_player_name(&resolved)
-            && !crate::npcdata::is_known_npc_name(&resolved)
+            && (name_plausible || charm_tracked)
             && !crate::flavordata::classes_for_flavor(text).is_empty()
         {
             if let Some(&activated_ms) = self.pending_quickbuff.get("You") {
@@ -2465,7 +2593,12 @@ impl Ingest {
                     })
                 });
                 if ts - activated_ms <= QUICKBUFF_WINDOW_MS && corroborated {
-                    self.groups.reinforce_strong(&resolved, ts);
+                    if name_plausible {
+                        self.groups.reinforce_strong(&resolved, ts);
+                    }
+                    if charm_tracked {
+                        self.reaffirm_charm(ts, sym);
+                    }
                 }
             }
         }
@@ -2623,11 +2756,24 @@ impl Ingest {
     /// why: ally as of ts, not forever -- a currently-charmed player/pet
     /// reads as enemy for as long as that lasts. Shared by link's new-fight and retarget paths.
     fn is_ally(&self, name: &str, ts: Millis) -> bool {
-        let kind = if name.eq_ignore_ascii_case("you") {
-            Kind::Player
-        } else {
-            self.effective_kind(name, ts)
-        };
+        !self.allegiance_at(name, ts).is_enemy()
+    }
+
+    /// why: the one composition of permanent Kind, charm state, and
+    /// GroupTracker -- callers used to layer `effective_kind` under
+    /// `Allegiance::of`, which mis-flipped exactly the case GroupTracker
+    /// exists for: a charmed mob the tracker promoted to "Player" read
+    /// Enemy (the flip assumes a *real* player being charmed fights the
+    /// other side), cancelling the charm ally-ness it was promoted FOR.
+    /// The group belief instead ORs into ally-ness only for Unproven
+    /// names: a permanently proven Player/Pet keeps the flip (an enemy
+    /// charming your groupmate really does turn them), while an Unproven
+    /// name is an ally while charmed (your pet) or currently grouped --
+    /// and a charmed grouped mob stays an ally either way.
+    pub(crate) fn allegiance_at(&self, name: &str, ts: Millis) -> Allegiance {
+        if name.eq_ignore_ascii_case("you") {
+            return Allegiance::Ally;
+        }
         // why: read-only, never interns -- an ally check must never
         // itself create identity; no Sym yet defaults correctly to Engaged
         let canonical = self.encounters.entities.display_name(name);
@@ -2638,12 +2784,62 @@ impl Ingest {
             .and_then(|sym| self.timeline.state_at(sym.0, ts))
             .map(|(s, _)| s)
             .unwrap_or(State::Engaged);
-        !Allegiance::of(kind, state).is_enemy()
+        match self.encounters.entities.kind(name) {
+            Kind::Player | Kind::Pet => {
+                if state == State::Charmed {
+                    Allegiance::Enemy
+                } else {
+                    Allegiance::Ally
+                }
+            }
+            Kind::Unproven => {
+                if state == State::Charmed || self.groups.currently_grouped(name, ts) {
+                    Allegiance::Ally
+                } else {
+                    Allegiance::Enemy
+                }
+            }
+        }
     }
 
     fn current_encounter_of(&self, name: &str) -> Option<EncounterId> {
         let enc_id = self.encounters.encounter_of(name)?;
         self.enc_map.get(&enc_id).copied()
+    }
+
+    /// why: is this participant "You", your pet, or a current groupmate
+    /// (or a groupmate's pet) -- what makes a fight the player's own
+    /// rather than someone else's fight parsed for clean data. Read-only:
+    /// runs after link/sym already interned these names, so display_name
+    /// resolves without creating identity.
+    fn participant_is_yours(&self, name: &str, ts: Millis) -> bool {
+        let name = canonical_you(name);
+        if name.eq_ignore_ascii_case("you") {
+            return true;
+        }
+        let display = self.encounters.entities.display_name(name);
+        let owner = self
+            .pet_owner
+            .get(display)
+            .map(|s| s.as_str())
+            .or_else(|| self.encounters.entities.owner_of(display));
+        let effective = owner.unwrap_or(display);
+        if effective.eq_ignore_ascii_case("you") {
+            return true;
+        }
+        self.groups.currently_grouped(effective, ts)
+    }
+
+    /// why: flags the store encounter the first time either side of an
+    /// edge proves the player's involvement; monotonic, so the check
+    /// stops costing anything once a fight is flagged
+    fn note_involvement(&mut self, enc: EncounterId, src: &str, dst: &str, ts: Millis) {
+        if self.store.encounter(enc).is_none_or(|e| e.involves_you) {
+            return;
+        }
+        if self.participant_is_yours(src, ts) || self.participant_is_yours(dst, ts) {
+            self.store.mark_involves_you(enc);
+        }
     }
 
     /// why: drains newly-closed graph encounters into the store; Builder::closed only grows
@@ -2946,6 +3142,29 @@ enum Action {
     /// lines get checked against the buff-landing-message dictionary. See
     /// `crate::flavordata`'s module doc for why.
     QuickBuff {
+        who: String,
+    },
+    /// why: explicit roster lines -- the game states group membership
+    /// outright, no inference needed. Joined/Left name one member;
+    /// YouJoined/YouLeft are whole-roster events ("You" can only join
+    /// having not been grouped, and leaving ends the roster for "You").
+    GroupJoined {
+        who: String,
+    },
+    GroupLeft {
+        who: String,
+    },
+    GroupYouJoined,
+    GroupYouLeft,
+    /// why: an invite alone is not membership -- held as the pending
+    /// inviter, committed only by a "You have joined" within the window
+    GroupInviteYou {
+        who: String,
+    },
+    /// why: "You notify X that you agree" -- X is the inviter, so a
+    /// definitive member of the group being joined; held pending the
+    /// join line (which resets the roster first) rather than added now
+    GroupYouAgreed {
         who: String,
     },
     Mez {
@@ -3459,6 +3678,23 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "ability.quickbuff" => Some(Action::QuickBuff {
             who: str_field("who")?,
         }),
+        // why: group.invited ("You invite X") and group.you_leader carry
+        // no membership fact -- an invite can be declined, and leadership
+        // changes don't move anyone in or out
+        "group.member_joined" => Some(Action::GroupJoined {
+            who: str_field("who")?,
+        }),
+        "group.left" => Some(Action::GroupLeft {
+            who: str_field("who")?,
+        }),
+        "group.you_joined" => Some(Action::GroupYouJoined),
+        "group.you_removed" => Some(Action::GroupYouLeft),
+        "group.other_invites_you" => Some(Action::GroupInviteYou {
+            who: str_field("who")?,
+        }),
+        "group.you_agreed" => Some(Action::GroupYouAgreed {
+            who: str_field("who")?,
+        }),
         "chat.channel" => Some(Action::PlayerProof {
             who: str_field("who")?,
         }),
@@ -3855,6 +4091,259 @@ mod party_promotion_tests {
     }
 }
 
+#[cfg(test)]
+mod group_roster_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    fn run(lines: &[&str]) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let bytes: Vec<&[u8]> = lines.iter().map(|l| l.as_bytes()).collect();
+        backfill_lines(&mut ing, &engine, &bytes, 1);
+        ing
+    }
+
+    fn grouped(ing: &Ingest, name: &str) -> bool {
+        ing.groups.currently_grouped(name, ing.now_ms())
+    }
+
+    #[test]
+    fn a_join_line_makes_a_member_and_a_leave_line_removes_them() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] Dippinsauce has joined the group.",
+            "[Tue Jul 28 15:01:01 2026] Bravesirrobin has joined the group.",
+            "[Tue Jul 28 15:30:00 2026] Bravesirrobin has left the group.",
+        ]);
+        assert!(grouped(&ing, "Dippinsauce"));
+        assert!(!grouped(&ing, "Bravesirrobin"));
+        // why: a roster line is also player proof -- NPCs can't join
+        assert_eq!(ing.encounters.entities.kind("Dippinsauce"), Kind::Player);
+    }
+
+    #[test]
+    fn you_being_removed_clears_the_whole_roster() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] Dippinsauce has joined the group.",
+            "[Tue Jul 28 15:01:01 2026] Bravesirrobin has joined the group.",
+            "[Tue Jul 28 16:00:00 2026] You have been removed from the group.",
+        ]);
+        assert!(!grouped(&ing, "Dippinsauce"));
+        assert!(!grouped(&ing, "Bravesirrobin"));
+    }
+
+    #[test]
+    fn a_group_chat_message_proves_current_membership() {
+        let ing = run(&["[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'inc'"]);
+        assert!(grouped(&ing, "Kaeus"));
+    }
+
+    #[test]
+    fn an_accepted_invite_names_the_inviter_as_a_member() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] Kaeus invites you to join a group.",
+            "[Tue Jul 28 15:01:05 2026] You have joined the group.",
+        ]);
+        assert!(grouped(&ing, "Kaeus"));
+    }
+
+    #[test]
+    fn the_agree_line_survives_the_join_lines_own_roster_reset() {
+        // why: real line order -- the notify precedes "You have joined",
+        // which resets the roster; the inviter must land AFTER that reset
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You notify Kaeus that you agree to join the group.",
+            "[Tue Jul 28 15:01:00 2026] You have joined the group.",
+        ]);
+        assert!(grouped(&ing, "Kaeus"));
+    }
+
+    #[test]
+    fn joining_a_new_group_drops_the_old_roster() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] Dippinsauce has joined the group.",
+            "[Tue Jul 28 16:00:00 2026] You have been removed from the group.",
+            "[Tue Jul 28 16:05:00 2026] Wynvern invites you to join a group.",
+            "[Tue Jul 28 16:05:03 2026] You have joined the group.",
+        ]);
+        assert!(!grouped(&ing, "Dippinsauce"));
+        assert!(grouped(&ing, "Wynvern"));
+    }
+
+    #[test]
+    fn a_log_gap_past_a_play_session_ends_explicit_membership() {
+        // why: camping/logging out writes no disband line -- the 2h gap
+        // (SESSION_GAP_MS) is the only signal the group ended
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] Dippinsauce has joined the group.",
+            "[Tue Jul 28 19:00:00 2026] You say, 'back'",
+        ]);
+        assert!(!grouped(&ing, "Dippinsauce"));
+    }
+
+    #[test]
+    fn game_state_party_is_the_roster_not_every_player_ever_seen() {
+        let ing = run(&[
+            // why: two strangers proven Player via group-independent chat
+            "[Tue Jul 28 15:00:00 2026] Hawnter tells the guild, 'wts stuff'",
+            "[Tue Jul 28 15:00:01 2026] Excalibur tells the guild, 'lol'",
+            "[Tue Jul 28 15:01:00 2026] Dippinsauce has joined the group.",
+        ]);
+        let gs = crate::debugview::game_state(&ing);
+        let names: Vec<&str> = gs.party.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(names, vec!["You", "Dippinsauce"]);
+        assert_eq!(
+            gs.party[1].via, "joined",
+            "explicit roster membership, not permanent player proof"
+        );
+        // why: the strangers stay visible as a count, never as party rows
+        assert!(gs.known_players >= 3, "{}", gs.known_players);
+    }
+}
+
+#[cfg(test)]
+mod involvement_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    fn run(lines: &[&str]) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let bytes: Vec<&[u8]> = lines.iter().map(|l| l.as_bytes()).collect();
+        backfill_lines(&mut ing, &engine, &bytes, 1);
+        ing
+    }
+
+    #[test]
+    fn a_fight_you_never_touch_is_parsed_but_not_yours() {
+        let ing = run(&["[Tue Jul 28 15:01:00 2026] a rat hit a bat for 3 points of damage."]);
+        // why: still parsed as an encounter -- clean backend data
+        assert_eq!(ing.store.encounters.len(), 1);
+        assert!(!ing.store.encounters[0].involves_you);
+        // why: but never the overlay's current encounter, and not Combat's list
+        assert!(crate::combat::current_encounter(&ing).is_none());
+        assert!(crate::combat::list_encounters(&ing, None, 0, 10).is_empty());
+    }
+
+    #[test]
+    fn your_own_fight_is_yours_from_the_first_swing() {
+        let ing = run(&["[Tue Jul 28 15:01:00 2026] You hit a bat for 5 points of damage."]);
+        assert!(ing.store.encounters[0].involves_you);
+        assert!(crate::combat::current_encounter(&ing).is_some());
+    }
+
+    #[test]
+    fn being_hit_makes_the_fight_yours_before_you_ever_swing() {
+        let ing = run(&["[Tue Jul 28 15:01:00 2026] a bat hits You for 5 points of damage."]);
+        assert!(ing.store.encounters[0].involves_you);
+    }
+
+    #[test]
+    fn a_rostered_groupmates_fight_is_yours_even_if_you_never_engage() {
+        let ing = run(&[
+            "[Tue Jul 28 15:00:00 2026] Dippinsauce has joined the group.",
+            "[Tue Jul 28 15:01:00 2026] Dippinsauce hit a bat for 5 points of damage.",
+        ]);
+        assert!(ing.store.encounters[0].involves_you);
+    }
+
+    #[test]
+    fn a_strangers_fight_stays_theirs_even_though_they_are_a_proven_player() {
+        let ing = run(&[
+            "[Tue Jul 28 15:00:00 2026] Hawnter tells the guild, 'wts stuff'",
+            "[Tue Jul 28 15:01:00 2026] Hawnter hit a bat for 5 points of damage.",
+        ]);
+        assert!(
+            !ing.store.encounters[0].involves_you,
+            "permanent player proof is identity, not party membership"
+        );
+    }
+
+    #[test]
+    fn current_encounter_skips_a_strangers_later_fight() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You hit a bat for 5 points of damage.",
+            // why: a stranger's fight opens LATER -- the old backward scan
+            // would have surfaced it as "the current encounter"
+            "[Tue Jul 28 15:01:05 2026] a rat hit a snake for 3 points of damage.",
+        ]);
+        let cur = crate::combat::current_encounter(&ing).expect("your own fight");
+        assert_eq!(ing.store.name(cur.target), "a bat");
+    }
+}
+
+#[cfg(test)]
+mod charm_reaffirm_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    fn run(lines: &[&str]) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let bytes: Vec<&[u8]> = lines.iter().map(|l| l.as_bytes()).collect();
+        backfill_lines(&mut ing, &engine, &bytes, 1);
+        ing
+    }
+
+    /// why: the wrong-instance repair -- two same-named mobs, the OTHER
+    /// one hits "You" (clearing the tracked charm), then a corroborated
+    /// Quick Buff group-cast lands on the charm name: the game's own
+    /// targeting says the pet is still a group ally, so charm state comes back
+    #[test]
+    fn a_quickbuff_burst_restores_a_charm_cleared_by_the_wrong_instance() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
+            "[Tue Jul 28 15:01:05 2026] an abhorrent hits You for 4 points of damage.",
+            "[Tue Jul 28 15:01:10 2026] You activate Quick Buff.",
+            "[Tue Jul 28 15:01:12 2026] You are enveloped by flame.",
+            "[Tue Jul 28 15:01:13 2026] an abhorrent is enveloped by flame.",
+        ]);
+        let c = ing.charm.as_ref().expect("charm still tracked");
+        assert!(c.active, "the group-cast landing proves the pet is still yours");
+        let now = ing.now_ms();
+        assert!(!ing.allegiance_at("an abhorrent", now).is_enemy());
+    }
+
+    /// why: bounded repair, not a resurrection license -- a charm that
+    /// ended a long time ago stays ended even if matching flavor text
+    /// coincidentally lands on the same name much later
+    #[test]
+    fn a_long_ended_charm_is_not_resurrected_by_a_matching_landing() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
+            "[Tue Jul 28 15:01:05 2026] an abhorrent hits You for 4 points of damage.",
+            // why: 5 minutes later, far past CHARM_REAFFIRM_MS
+            "[Tue Jul 28 15:06:10 2026] You activate Quick Buff.",
+            "[Tue Jul 28 15:06:12 2026] You are enveloped by flame.",
+            "[Tue Jul 28 15:06:13 2026] an abhorrent is enveloped by flame.",
+        ]);
+        let c = ing.charm.as_ref().expect("charm still tracked");
+        assert!(!c.active, "a long-broken charm must stay broken");
+    }
+
+    /// why: composition guard -- a charmed real PLAYER fights the other
+    /// side; roster membership must not override the charm flip
+    #[test]
+    fn a_charmed_rostered_player_reads_enemy_while_charmed() {
+        let ing = run(&[
+            "[Tue Jul 28 15:00:00 2026] Kaeus has joined the group.",
+            "[Tue Jul 28 15:01:00 2026] Kaeus has been charmed.",
+        ]);
+        let now = ing.now_ms();
+        assert!(ing.allegiance_at("Kaeus", now).is_enemy());
+    }
+
+    /// why: the inverse composition -- an Unproven mob that's both
+    /// charmed and (somehow) group-believed is an ally either way, never
+    /// the old effective_kind+flip cancellation that read it Enemy
+    #[test]
+    fn a_charmed_mob_reads_ally_while_the_charm_holds() {
+        let ing = run(&["[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed."]);
+        let now = ing.now_ms();
+        assert!(!ing.allegiance_at("an abhorrent", now).is_enemy());
+    }
+}
+
 /// why: splits into wearer + flavour word; falls back to the whole string as wearer, no panic
 fn split_damage_shield_source(raw: &str) -> (String, String) {
     if let Some(flavour) = raw.strip_prefix("YOUR ") {
@@ -4132,6 +4621,7 @@ pub fn backfill_lines(ing: &mut Ingest, engine: &Engine, lines: &[&[u8]], thread
         }
         for (ts_ms, item) in r.matched {
             ing.log_clock.set_at_least(ts_ms);
+            ing.note_line_gap(ts_ms);
             match item {
                 Some(Classified::Action(action)) => ing.apply(ts_ms, action),
                 Some(Classified::SelfFlavorHit { classes, text }) => {

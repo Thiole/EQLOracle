@@ -19,6 +19,9 @@ pub struct DebugEncounterDto {
     pub tier: u8,
     /// why: classdetect's belief for this zone visit; empty means unconfirmed
     pub player_classes: Vec<String>,
+    /// why: false marks someone else's fight -- parsed for clean data,
+    /// filtered out of Combat/overlay; Debug is where it stays visible
+    pub involves_you: bool,
 }
 
 /// why: newest-first, bounded scan like `combat::list_zone_encounters`
@@ -41,6 +44,7 @@ pub fn list_debug_encounters(ing: &Ingest, limit: usize) -> Vec<DebugEncounterDt
                 .and_then(|z| ing.cached_wiki_zone(z))
                 .map(str::to_string),
             tier: ing.store.tier.get(e.first as usize).copied().unwrap_or(0),
+            involves_you: e.involves_you,
             player_classes: you
                 .map(|y| {
                     ing.classes
@@ -95,10 +99,10 @@ pub fn unmatched_coverage(ing: &Ingest, top: usize) -> UnmatchedCoverageDto {
 #[derive(Debug, Clone, Serialize)]
 pub struct PartyMemberDto {
     pub name: String,
-    /// why: "you" (the log owner) | "confirmed" (chat/pet proof,
-    /// permanent) | "strong" (Quick Buff corroborated) | "weak"
-    /// (shared-target damage, session-gated) -- see eqlp_session::
-    /// group's own doc for what each of the latter two actually means
+    /// why: "you" (the log owner) | "joined" (an explicit roster line --
+    /// join/leave lines, group chat, an accepted invite) | "strong"
+    /// (Quick Buff corroborated) | "weak" (shared-target damage,
+    /// session-gated) -- see eqlp_session::group's own doc
     pub via: &'static str,
     /// why: only meaningful for "weak" -- how many real, gap-separated
     /// occasions of shared-target evidence this crossed
@@ -108,6 +112,12 @@ pub struct PartyMemberDto {
 #[derive(Debug, Clone, Serialize)]
 pub struct GameStateDto {
     pub party: Vec<PartyMemberDto>,
+    /// why: everyone ever proven a real player (chat channels, roster
+    /// lines) across the whole log -- a permanent identity fact, NOT
+    /// party membership. Kept as a count: the old party view listed all
+    /// of these as members, which is how a 245MB log "grouped" the log
+    /// owner with 3,800 strangers.
+    pub known_players: usize,
     /// why: "You"'s own current class configuration, as of right now --
     /// same call `list_debug_encounters` makes per-encounter, just at "now"
     pub your_classes: Vec<String>,
@@ -119,6 +129,8 @@ pub struct GameStateDto {
 /// backend currently believes, not a polished feature. Deliberately a
 /// scratchpad: whatever in-progress backend state (GroupTracker today,
 /// more later) is worth eyeballing without a dedicated UI for it yet.
+/// The party list is GroupTracker's CURRENT roster only -- "ever proven
+/// a player" is identity, not membership, and stays a count.
 pub fn game_state(ing: &Ingest) -> GameStateDto {
     let now = ing.now_ms();
     let mut party = vec![PartyMemberDto {
@@ -127,31 +139,19 @@ pub fn game_state(ing: &Ingest) -> GameStateDto {
         sessions: 0,
     }];
 
-    // why: permanent, chat/pet-proven allies -- players() can include
-    // "You" itself (the log owner talking in a player channel proves
-    // their own Kind::Player same as anyone else's), already listed above
-    for name in ing.encounters.entities.players() {
-        if name.eq_ignore_ascii_case("you") {
-            continue;
-        }
-        party.push(PartyMemberDto {
-            name: name.to_string(),
-            via: "confirmed",
-            sessions: 0,
-        });
-    }
-
-    // why: GroupTracker's dynamic roster, resolved through display_name
-    // for real casing -- keys are fold_key'd. Skip anyone already listed
-    // via permanent proof above, no point showing the same name twice.
-    for (key, sessions, strong, _last_ms) in ing.groups.current_members(now) {
+    // why: GroupTracker's roster, resolved through display_name for real
+    // casing -- keys are fold_key'd. Sorted by channel certainty then
+    // name so the dump reads stably between polls.
+    let mut members = ing.groups.current_members(now);
+    members.sort_by(|a, b| (a.2 as u8, &a.0).cmp(&(b.2 as u8, &b.0)));
+    for (key, sessions, via, _last_ms) in members {
         let display = ing.encounters.entities.display_name(&key).to_string();
-        if party.iter().any(|p| p.name.eq_ignore_ascii_case(&display)) {
+        if display.eq_ignore_ascii_case("you") {
             continue;
         }
         party.push(PartyMemberDto {
             name: display,
-            via: if strong { "strong" } else { "weak" },
+            via: via.name(),
             sessions,
         });
     }
@@ -168,6 +168,7 @@ pub fn game_state(ing: &Ingest) -> GameStateDto {
 
     GameStateDto {
         party,
+        known_players: ing.encounters.entities.players().count(),
         your_classes,
         your_level: ing.levels.latest(),
     }

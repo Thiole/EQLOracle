@@ -106,6 +106,11 @@ pub struct Encounter {
     pub wiped: bool,
     /// why: zone active at open, cached rather than re-derived per query
     pub zone: Option<Sym>,
+    /// why: "You", your pet, or a current groupmate acted in this fight --
+    /// false means someone else's fight (or mob vs mob), parsed for clean
+    /// data but never surfaced as the player's own combat. Monotonic:
+    /// flips true the moment involvement is proven, never back.
+    pub involves_you: bool,
 }
 
 impl Encounter {
@@ -207,8 +212,17 @@ impl Store {
             slain: false,
             wiped: false,
             zone,
+            involves_you: false,
         });
         id
+    }
+
+    /// why: involvement is discovered per-edge, possibly well after open
+    /// (a puller's mob only becomes "your fight" once your side acts)
+    pub fn mark_involves_you(&mut self, id: EncounterId) {
+        if let Some(e) = self.slot(id).and_then(|i| self.encounters.get_mut(i)) {
+            e.involves_you = true;
+        }
     }
 
     /// why: position in the live vec, None if evicted

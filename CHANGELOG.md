@@ -2,6 +2,21 @@
 
 ## 2026-08-29
 
+### Game state: party roster
+
+- The Game State party list is now GroupTracker's current roster only. It previously listed every player ever proven anywhere in the log as a "party member" (3,800+ on a 245MB reference log); those remain visible as a known-players count.
+- Explicit group lines now drive membership directly: join/leave lines add and remove members, "You have been removed" / joining a fresh group clears the whole roster, an accepted invite records the inviter, and a group-chat message proves the speaker's current membership. Explicit membership has no decay; it ends only via an exit line, a roster reset, or a 2-hour log gap (camping writes no disband line).
+- Two new parse rules for lines the pack didn't cover: "X invites you to join a group." and "You notify X that you agree to join the group."
+
+### Encounter involvement
+
+- Every store encounter now carries `involves_you`: whether "You", your pet, or a current groupmate (or their pet) acted in it. Fights between strangers or mob-vs-mob are still parsed as encounters for clean backend data (~20% of encounters on the reference logs) but no longer surface as the overlay's current encounter, in Combat's fight lists, or in zone-visit aggregates. The Debug parsed-encounters view shows everything, flagged yours/other.
+
+### Charm and allegiance
+
+- One composition (`allegiance_at`) now decides ally-vs-enemy from permanent kind, charm state, and group belief together. Previously the group-tracking layer promoted a name to "player" before the charm flip, so a group-tracked charm pet read as an enemy — exactly the case the tracker existed for.
+- A corroborated Quick Buff group-cast landing on the tracked charm name now re-affirms the charm: the game itself scopes those casts to valid group targets. This repairs the wrong-instance case where a second same-named mob hitting "You" cleared a still-loyal pet's charm; bounded to a recent clear so a long-ended charm stays ended.
+
 ### Versioning
 
 - Bumped the app to 0.2.0 -- the first hand-bumped version; public releases were stuck at 0.1.0, which the updater's strict greater-than comparison could never offer as an update.
