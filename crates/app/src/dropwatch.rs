@@ -111,10 +111,6 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
             if name.eq_ignore_ascii_case("you") {
                 continue;
             }
-            // why: same-named mob in two fights (or twice via casing) is one row
-            if !seen.insert(name.to_ascii_lowercase()) {
-                continue;
-            }
             // why: already slain in this fight -- old news, not a live heads-up
             if live
                 .slain
@@ -145,10 +141,16 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
             if drops.is_empty() {
                 continue;
             }
-            out.push(DropWatchRowDto {
-                mob: name.clone(),
-                drops: drops.to_vec(),
-            });
+            // why: dedupe at PUSH time, not at loop entry -- real bug in
+            // the first cut: a slain instance in one fight inserted the
+            // name before its own slain-skip, shadowing a genuinely live
+            // same-named mob in another fight out of the list entirely
+            if seen.insert(name.to_ascii_lowercase()) {
+                out.push(DropWatchRowDto {
+                    mob: name.clone(),
+                    drops: drops.to_vec(),
+                });
+            }
         }
     }
     out
@@ -198,6 +200,25 @@ mod tests {
         assert!(
             rows.iter().any(|r| r.mob == "Keeper of Souls"),
             "joined mid-fight, never the anchor -- must still show, got {:?}",
+            rows.iter().map(|r| &r.mob).collect::<Vec<_>>()
+        );
+    }
+
+    /// why: the real reported bug -- farming the same-named mob: kill
+    /// one, engage the next. Timeline state is per-NAME, so the old
+    /// kill's Dead used to stick to the new mob until it happened to
+    /// act; being the target of live damage must count as proof of life
+    #[test]
+    fn a_reengaged_same_named_mob_shows_up_before_it_ever_swings_back() {
+        let ing = run(concat!(
+            "[Tue Jul 28 15:01:00 2026] You hit Keeper of Souls for 50 points of damage.\n",
+            "[Tue Jul 28 15:01:05 2026] You have slain Keeper of Souls!\n",
+            "[Tue Jul 28 15:02:05 2026] You hit Keeper of Souls for 50 points of damage.\n",
+        ));
+        let rows = drop_watch(&ing);
+        assert!(
+            rows.iter().any(|r| r.mob == "Keeper of Souls"),
+            "re-engaged farm mob must show without needing to act first, got {:?}",
             rows.iter().map(|r| &r.mob).collect::<Vec<_>>()
         );
     }

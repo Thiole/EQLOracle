@@ -1714,6 +1714,15 @@ impl Ingest {
         let t = self.sym(dst);
         self.note_shared_target(ts, enc, src, t);
         self.clear_dead_if_acting(ts, a);
+        // why: being a live damage TARGET is proof of life too -- the
+        // game never logs damage onto a corpse. Real bug, reproduced
+        // live: timeline state is per-NAME, so after killing one "Keeper
+        // of Souls" the next same-named mob read Dead until it happened
+        // to act -- Drop Watch (and every other state_at consumer)
+        // stayed blind to a re-engaged farm mob the player was actively
+        // hitting. The death line for a kill arrives AFTER its killing
+        // damage row, so this never un-marks the mob that just died.
+        self.clear_dead_if_acting(ts, t);
         // why: melee only -- a spell's own use is observed off cast.begin
         // instead (see Action::Cast's own handling), never both, or a
         // damage spell's own cast and its landing would count as two
@@ -1854,6 +1863,9 @@ impl Ingest {
         let a = self.sym(src);
         let t = self.sym(dst);
         self.clear_dead_if_acting(ts, a);
+        // why: a target that just dodged/blocked/parried is definitely
+        // alive -- same proof-of-life as record_damage's target clear
+        self.clear_dead_if_acting(ts, t);
         let canonical = canonical_melee_ability(verb);
         // why: an avoided real special attack -- see record_damage's own
         // matching hook, and skilltracker.rs's own doc
