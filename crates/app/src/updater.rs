@@ -9,7 +9,7 @@ use crate::state::AppState;
 use serde::Serialize;
 #[cfg(target_os = "linux")]
 use tauri::Manager;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_updater::UpdaterExt;
 
 /// why: same channel-to-tag mapping the release workflow itself uses
@@ -185,21 +185,42 @@ pub async fn install_pending_update(
             ));
         }
     }
+    // why: real progress, not a spinner -- the download runs 10-15s with
+    // the old window still up, and with empty callbacks that period read
+    // as "nothing happening" (player's own report). (received, total)
+    // per chunk; total is None when the server sends no content-length.
+    let progress_app = app.clone();
+    let mut received: u64 = 0;
     update
-        .download_and_install(|_, _| {}, || {})
+        .download_and_install(
+            move |chunk, total| {
+                received += chunk as u64;
+                let _ = progress_app.emit("update-progress", (received, total));
+            },
+            || {},
+        )
         .await
         .map_err(|e| e.to_string())?;
-    // why: real bug, caught twice -- clearing WebKitGTK's cache used to
-    // happen right here, before restart, in the OLD process, while its
-    // WebProcess/NetworkProcess/GPU subprocesses were still alive
-    // holding open handles into the directories being deleted (a
-    // second real report: a live-but-blank webview, not a hang, on the
-    // plain binary, not just the AppImage path the first fix targeted).
-    // Fits a race between the dying process's subprocesses and the
-    // freshly-restarted one's fighting over the same cache directory
-    // right after `rm -rf` pulls it out from under the old one. See
-    // app_startup's clear_stale_webview_cache -- moved to run once, at
-    // the start of the NEXT process's setup(), before any webview
-    // exists, nothing else alive to race with.
+    // why: deliberately NO restart here -- two-step flow, player's own
+    // spec: install in the background, then "update installed, restart
+    // when ready" (restart_app is that second step; an ordinary window
+    // close works too, the next launch is the new version either way).
+    // Deferring is safe on Linux because the plugin swaps the AppImage
+    // via rename -- the running instance's FUSE mount keeps the old
+    // inode. On Windows this line is never reached at all: the plugin
+    // launches the installer and exits the process itself
+    // (std::process::exit(0) in its own install path), so install
+    // remains install-and-exit there inherently.
+    //
+    // The WebKitGTK cache-clear that used to be discussed here still
+    // runs at the start of the NEXT process's setup() (see
+    // clear_stale_webview_cache_if_needed) -- unaffected by who
+    // triggers the restart or when.
+    Ok(())
+}
+
+/// why: the deferred second step of install_pending_update -- the
+/// "restart now" button once an update is installed. Never returns.
+pub fn restart_app(app: AppHandle) {
     app.restart();
 }

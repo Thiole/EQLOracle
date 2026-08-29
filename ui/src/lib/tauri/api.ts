@@ -1616,9 +1616,15 @@ export const api = {
    * Checks whichever channel Preferences.update_channel currently says. */
   checkForUpdate: () => invoke<UpdateInfoDto | null>('check_for_update'),
 
-  /** why: installs whatever the last checkForUpdate call found, then
-   * restarts the app -- this call does not resolve on success (the
-   * process exits first), only on failure. */
+  /** why: the deferred second step -- restarts into an update
+   * installPendingUpdate already put on disk. Never resolves. */
+  restartApp: () => invoke<void>('restart_app'),
+
+  /** why: installs whatever the last checkForUpdate call found -- swaps
+   * the file on disk, emits 'update-progress' ([received, total|null])
+   * while downloading, and resolves WITHOUT restarting (two-step flow;
+   * restartApp is the second step). On Windows the plugin's installer
+   * exits the process itself, so this never resolves there. */
   installPendingUpdate: () => invoke<void>('install_pending_update'),
 
   /** why: what's actually installed right now -- no network round trip,

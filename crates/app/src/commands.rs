@@ -1044,6 +1044,11 @@ pub async fn check_for_update(
 }
 
 #[tauri::command]
+pub fn restart_app(app: AppHandle) {
+    updater::restart_app(app)
+}
+
+#[tauri::command]
 pub async fn install_pending_update(
     app: AppHandle,
     state: State<'_, AppState>,

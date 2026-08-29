@@ -207,6 +207,7 @@ fn main() {
             commands::set_preferences,
             commands::check_for_update,
             commands::install_pending_update,
+            commands::restart_app,
             commands::get_app_version,
         ])
         .run(context)
