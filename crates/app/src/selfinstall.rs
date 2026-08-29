@@ -148,10 +148,13 @@ fn write_desktop_integration(install_path: &Path, version: &str) {
             apps_dir.join(format!("{DESKTOP_ID}.desktop")),
             desktop_entry(install_path, version),
         );
-        // why: refreshes the menu cache where present; harmless where not
+        // why: refreshes the menu cache where present; harmless where not.
+        // kbuildsycoca6 too -- KDE's menu reads its own compiled cache and
+        // (seen live on Bazzite) can miss a newly written entry without it
         let _ = std::process::Command::new("update-desktop-database")
             .arg(&apps_dir)
             .output();
+        let _ = std::process::Command::new("kbuildsycoca6").output();
     }
 }
 
