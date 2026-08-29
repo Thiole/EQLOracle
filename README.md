@@ -1,29 +1,47 @@
 # EQL Oracle
 
-Parsing & progression assistant for EverQuest Legends. Watches your `eqlog_<Character>_<Server>.txt`, replays what's already in it, keeps parsing live. Classes, AAs, spells, kills — all read off the log, nothing hand-entered.
+Parsing & progression assistant for EverQuest Legends. Watches your `eqlog_<Character>_<Server>.txt`, replays what's already in it, keeps parsing live. Classes, AAs, spells, kills — all read off the log, nothing hand-entered. Runs entirely on your machine; nothing is uploaded.
 
-## Modules
+Website: [eqloracle.com](https://eqloracle.com)
 
-- **Combat** — real-time DPS meter. Team/incoming damage, per-fight and aggregated, follows the current fight.
-- **Character** — sheet, gear, AA log, known spells, and a spellbook builder that suggests spells (solo buff / team buff / combat rotation): respects your classes, dedupes same-line upgrades, credits DoT tick damage over the real window, folds AA crit chance/damage in as an expected-value bump. Settings page lets you reorder which spell wins when multiple classes upgrade the same line.
-- **Endgame** — raid boss/miniboss kill counts, drop tables vs. what you've looted, solo/group tiers tracked separately (different instances), fastest-clear times per difficulty, live off the log. Sky's class unlocks and quests.
-- **Game Data** — zones, items, NPCs, AAs, spells, cross-linked.
-- **Maps** — zone maps with markers.
+## Features
 
-Parsing rules are written against this game's actual log lines, not classic EQ's — the formats diverge (XP percentages, damage/heal message shapes, etc.).
+- **Combat** — live DPS meter, per-fight and aggregated views, team/incoming damage, fight timeline with scrub, ally table with pet attribution, per-ability breakdowns, cast outcomes (landed/resisted/interrupted/fizzled), parse history with per-loadout comparisons.
+- **Death Recap** — the 30 seconds before each death: incoming damage by source and ability, avoided swings, heals received, killing blow. Opens from a timed prompt when you die.
+- **Overlay** — separate always-on-top, click-through widgets over the game: DPS meter, Skill Tracker (status effects, cooldowns, target effects), Drop Watch, CC Tracker (stun/root/fear). Per-widget opacity and position, X11/XWayland.
+- **Drop Watch** — track items; when anything in the current engagement can drop one (its own drop table, NPC loot data, or a zone-wide drop), the overlay says so. Prompts to untrack once you loot it.
+- **Character** — sheet, gear planner, AA log, known spells, spellbook builder with damage-spell auto-suggest (rank-aware, invocation-aware, simulated rotation), inventory browser with "where is my X" item lookup from `/outputfile inventory` dumps.
+- **Class detection** — infers your active class trio from casts, stances, and AAs, per zone visit. No manual entry.
+- **Endgame** — raid boss/miniboss kill counts, drop tables vs. what you've looted, solo/group tiers separately, fastest clears. Plane of Sky class unlocks and quest tracking with confirmed turn-in detection.
+- **Tradeskill** — recipe catalog and a craft log built from your own combines.
+- **Game Data** — zones, items, NPCs, AAs, spells, cross-linked, with your own encounter and loot history per page.
+- **Maps** — zone maps with NPC markers, your position from `/loc`, teleport-aware routing between zones.
+- **Social** — guild/party/raid chat history and PM threads, read from the log.
+- **Session** — plat/hour, XP/hour, motes by tier, AA spent, ETA to next level. Resets on AFK return or on demand.
 
-## Running it
+Parsing rules are written against this game's actual log lines, not classic EQ's — the formats diverge.
 
-Grab a build from Releases, or:
+## Install
+
+Grab the newest build from [Releases](https://github.com/Thiole/EQLOracle/releases) (or the picker on [eqloracle.com](https://eqloracle.com)):
+
+- **Windows**: `EQL.Oracle_<version>_x64-setup.exe`
+- **Linux**: `.AppImage` (portable), `.deb`, or `.rpm`
+
+First launch: point it at the EverQuest Legends install folder — the one containing `Logs`, not `Logs` itself. That's also where `/outputfile inventory` writes.
+
+Updates are checked in-app. Two channels in Settings: `public` (deliberate releases) and `beta` (every push to the `testing` branch).
+
+### Building from source
+
+Rust stable and Node 20+.
 
 ```
 cd ui && npm install
 npm run tauri -- build
 ```
 
-Rust stable, Node 20+. First launch: point it at the EverQuest Legends install folder (the one containing `Logs`, not `Logs` itself — also where `/outputfile inventory` writes).
-
-Dev:
+Bundles land in `target/release/bundle/`. For development:
 
 ```
 cd ui && npm install
