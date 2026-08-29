@@ -761,6 +761,7 @@ dependencies = [
  "eqlp-session",
  "eqlp-source",
  "eqlp-store",
+ "libc",
  "regex",
  "serde",
  "serde_json",

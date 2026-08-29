@@ -1105,9 +1105,9 @@ fn fight_state_at_windowed(
                         .recent(s.0, ts_ms, EFFECT_RECENCY_MS)
                         .into_iter()
                         .map(|p| RecentEffectDto {
-                            source: p.source.clone(),
-                            skill: p.skill.clone(),
-                            text: p.text.clone(),
+                            source: p.source.as_deref().map(str::to_string),
+                            skill: p.skill.as_deref().map(str::to_string),
+                            text: p.text.to_string(),
                         })
                         .collect()
                 })

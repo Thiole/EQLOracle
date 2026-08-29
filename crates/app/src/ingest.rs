@@ -290,15 +290,19 @@ impl Levels {
 #[derive(Debug, Clone)]
 pub struct EffectPing {
     pub ts: Millis,
-    pub text: String,
+    /// why: interned Arc<str>, not String -- measured on the reference
+    /// log: 278,754 pings whose text/source/skill are drawn from a few
+    /// thousand distinct strings; per-ping owned Strings were ~34MB of
+    /// post-parse memory for what interning stores once
+    pub text: std::sync::Arc<str>,
     /// why: real, resolved caster name -- see `Ingest::attribute_effect`'s
     /// own doc for how this gets filled in; `None` is an honest "couldn't
     /// tell", not a guess
-    pub source: Option<String>,
+    pub source: Option<std::sync::Arc<str>>,
     /// why: real spell name explaining `text`, independent of whether
     /// `source` also resolved -- a spell can be identified even when
     /// exactly who cast it can't be (0 or 2+ real candidates nearby)
-    pub skill: Option<String>,
+    pub skill: Option<std::sync::Arc<str>>,
     /// why: false for a resisted-cast ping (Skill Tracker's target-effects
     /// section) -- everything else pushed through here is a real landing,
     /// see `Effects::push`'s own doc
@@ -310,21 +314,36 @@ pub struct EffectPing {
 #[derive(Debug, Clone, Default)]
 pub struct Effects {
     by_entity: HashMap<u32, Vec<EffectPing>>,
+    /// why: the intern pool behind EffectPing's Arc<str> fields --
+    /// Borrow<str> lets get() run on a bare &str with no allocation
+    pool: std::collections::HashSet<std::sync::Arc<str>>,
 }
 
 impl Effects {
     /// why: inserted in timestamp order, same safety Timeline::push uses.
     /// `landed` -- see EffectPing's own doc; every call site before the
     /// Skill Tracker's target-effects section existed was a real landing.
+    fn intern(&mut self, s: &str) -> std::sync::Arc<str> {
+        if let Some(a) = self.pool.get(s) {
+            return a.clone();
+        }
+        let a: std::sync::Arc<str> = std::sync::Arc::from(s);
+        self.pool.insert(a.clone());
+        a
+    }
+
     fn push(
         &mut self,
         entity: u32,
         ts: Millis,
-        text: String,
-        source: Option<String>,
-        skill: Option<String>,
+        text: &str,
+        source: Option<&str>,
+        skill: Option<&str>,
         landed: bool,
     ) {
+        let text = self.intern(text);
+        let source = source.map(|s| self.intern(s));
+        let skill = skill.map(|s| self.intern(s));
         let v = self.by_entity.entry(entity).or_default();
         let at = v.partition_point(|p| p.ts <= ts);
         v.insert(
@@ -357,7 +376,7 @@ impl Effects {
     fn recent_text(&self, entity: u32, ts: Millis, window_ms: Millis) -> Vec<&str> {
         self.recent(entity, ts, window_ms)
             .into_iter()
-            .map(|p| p.text.as_str())
+            .map(|p| &*p.text)
             .collect()
     }
 
@@ -367,6 +386,22 @@ impl Effects {
             .get(&entity)
             .map(|v| v.as_slice())
             .unwrap_or(&[])
+    }
+
+    /// why: memory accounting for the probe/debug view -- (entities,
+    /// total pings, total heap bytes across text/source/skill strings)
+    pub fn stats(&self) -> (usize, usize, usize) {
+        let mut pings = 0;
+        let mut bytes = 0;
+        for v in self.by_entity.values() {
+            pings += v.len();
+            for p in v {
+                bytes += p.text.len()
+                    + p.source.as_ref().map_or(0, |s| s.len())
+                    + p.skill.as_ref().map_or(0, |s| s.len());
+            }
+        }
+        (self.by_entity.len(), pings, bytes)
     }
 
     /// why: Skill Tracker's target-effects fallback -- real bug, caught
@@ -875,6 +910,15 @@ pub struct Ingest {
     /// why: filenames from Outputfile Complete lines pending drain; only
     /// records that a dump exists, tail_worker.rs reads and acts on it
     pub pending_inventory_files: Vec<String>,
+    /// why: dropwatch::loot_status's own incremental checkpoint --
+    /// measured inefficiency (full-app walk 2026-08-29): it rescanned
+    /// every store row on EVERY parse-tick whenever any Drop Watch item
+    /// was tracked; ~1.9M rows at a 3s cadence, forever. The store is
+    /// append-only within one Ingest lifetime, so a fold from the last
+    /// scanned row + running per-item totals answers identically at
+    /// O(new rows). Reset with the rest of Ingest on a file switch.
+    pub loot_scan_next_row: usize,
+    pub loot_scan_counts: std::collections::HashMap<String, (u64, Millis)>,
 }
 
 impl Default for Ingest {
@@ -943,6 +987,8 @@ impl Default for Ingest {
             pending_notifications: Vec::new(),
             pending_history: Vec::new(),
             pending_inventory_files: Vec::new(),
+            loot_scan_next_row: 0,
+            loot_scan_counts: std::collections::HashMap::new(),
         }
     }
 }
@@ -1025,6 +1071,16 @@ impl Ingest {
     pub fn mark_live(&mut self) {
         self.live = true;
         self.last_wall_ms = None; // why: next tick sets the baseline, not a jump
+                                  // why: measured on the full-app walk 2026-08-29 -- after
+                                  // backfill, accounted live data was ~110MB but RSS sat near
+                                  // 300MB: glibc keeps freed backfill scratch (line batches,
+                                  // per-thread classify results) in its arenas instead of
+                                  // returning it to the OS. One trim at the replay->live boundary
+                                  // hands it back; runs once per tailed file.
+        #[cfg(target_os = "linux")]
+        unsafe {
+            libc::malloc_trim(0);
+        }
     }
 
     /// why: live-path unmatched line, folded directly -- no per-thread copy to merge
@@ -1335,7 +1391,7 @@ impl Ingest {
                     let resolved = self.resolve_name(&target);
                     let sym = self.sym(&resolved).0;
                     self.effects
-                        .push(sym, ts, spell.clone(), Some(source), Some(spell), false);
+                        .push(sym, ts, &spell, Some(&source), Some(&spell), false);
                 }
             }
             Action::PetSpellWoreOff { spell } => {
@@ -1384,14 +1440,8 @@ impl Ingest {
                 );
                 let resolved = self.resolve_name(&who);
                 let sym = self.sym(&resolved).0;
-                self.effects.push(
-                    sym,
-                    ts,
-                    spell.clone(),
-                    Some("You".to_string()),
-                    Some(spell.clone()),
-                    true,
-                );
+                self.effects
+                    .push(sym, ts, &spell, Some("You"), Some(&spell), true);
                 // why: also feeds Skill Tracker's own recovery-clock
                 // tracking (skilltracker.rs's own doc), same as every
                 // other real landing confirmation (record_damage's
@@ -2369,7 +2419,7 @@ impl Ingest {
         let sym = self.sym(&resolved).0;
         let (source, skill) = self.attribute_effect(ts, text);
         self.effects
-            .push(sym, ts, text.to_string(), source, skill, true);
+            .push(sym, ts, text, source.as_deref(), skill.as_deref(), true);
 
         // why: strong group evidence -- a landing on someone else while
         // "You" have an open Quick Buff window is suggestive, but alone
@@ -2473,7 +2523,7 @@ impl Ingest {
             .effects
             .recent(sym, ts, PULSE_WINDOW_MS)
             .iter()
-            .filter(|p| p.text == text)
+            .filter(|p| &*p.text == text)
             .count()
             > 1; // why: > 1 because text's own current landing is already in there
         if group_cast_already || already_pulsing {

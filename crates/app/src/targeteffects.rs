@@ -289,7 +289,7 @@ pub fn target_effects(ing: &Ingest) -> TargetEffectsDto {
         if !source.eq_ignore_ascii_case("you") {
             continue;
         }
-        note(skill.clone(), p.ts, p.landed);
+        note(skill.to_string(), p.ts, p.landed);
     }
 
     let mut effects: Vec<TargetEffectDto> = latest

@@ -535,7 +535,7 @@ pub fn get_tracked_loot_status(
     state: State<AppState>,
     items: Vec<String>,
 ) -> Vec<crate::dropwatch::TrackedLootDto> {
-    crate::dropwatch::loot_status(&state.ingest.lock().unwrap(), &items)
+    crate::dropwatch::loot_status(&mut state.ingest.lock().unwrap(), &items)
 }
 
 /// why: Skill Tracker widget's target-effects section -- see targeteffects.rs's own doc

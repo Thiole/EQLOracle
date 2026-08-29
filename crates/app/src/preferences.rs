@@ -257,13 +257,28 @@ fn preferences_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join(FILE_NAME))
 }
 
+/// why: measured inefficiency, full-app walk 2026-08-29 -- load() was a
+/// disk read + JSON parse on EVERY call, and callers call it per
+/// parse-tick from the worker (emit_tick) plus per tick from EACH open
+/// overlay window's own refreshPrefs -- 5+ redundant disk reads per
+/// tick at steady state. One process, one config file: a module cache
+/// filled on first load and updated by save() makes every later load a
+/// clone. The file is never edited externally while running (and if it
+/// were, the old code's racing readers had no coherent answer either).
+static CACHE: std::sync::RwLock<Option<Preferences>> = std::sync::RwLock::new(None);
+
 /// why: missing or unreadable both mean "nothing saved yet", fall back quietly
 pub fn load(app: &AppHandle) -> Preferences {
-    preferences_path(app)
+    if let Some(p) = CACHE.read().unwrap().as_ref() {
+        return p.clone();
+    }
+    let loaded: Preferences = preferences_path(app)
         .ok()
         .and_then(|p| std::fs::read(p).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    *CACHE.write().unwrap() = Some(loaded.clone());
+    loaded
 }
 
 pub fn save(app: &AppHandle, prefs: &Preferences) -> Result<(), String> {
@@ -272,7 +287,11 @@ pub fn save(app: &AppHandle, prefs: &Preferences) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_vec_pretty(prefs).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    // why: cache updated only after the write succeeded -- a failed save
+    // must not leave readers seeing state the disk doesn't have
+    *CACHE.write().unwrap() = Some(prefs.clone());
+    Ok(())
 }
 
 #[cfg(test)]

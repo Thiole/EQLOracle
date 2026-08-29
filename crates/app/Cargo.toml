@@ -28,6 +28,8 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# why: malloc_trim at the backfill->live boundary, see Ingest::mark_live
+libc = "0.2"
 eqlp-core = { path = "../core" }
 eqlp-source = { path = "../source" }
 eqlp-session = { path = "../session" }

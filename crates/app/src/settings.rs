@@ -55,13 +55,22 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join(FILE_NAME))
 }
 
+/// why: same per-tick disk-read caching as preferences::load -- see its
+/// own doc; emit_tick loads this on every tick carrying a notification
+static CACHE: std::sync::RwLock<Option<NotificationSettings>> = std::sync::RwLock::new(None);
+
 /// why: missing or unreadable both mean "no preferences saved yet", quiet fallback
 pub fn load(app: &AppHandle) -> NotificationSettings {
-    settings_path(app)
+    if let Some(s) = CACHE.read().unwrap().as_ref() {
+        return s.clone();
+    }
+    let loaded: NotificationSettings = settings_path(app)
         .ok()
         .and_then(|p| std::fs::read(p).ok())
         .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    *CACHE.write().unwrap() = Some(loaded.clone());
+    loaded
 }
 
 pub fn save(app: &AppHandle, settings: &NotificationSettings) -> Result<(), String> {
@@ -70,7 +79,10 @@ pub fn save(app: &AppHandle, settings: &NotificationSettings) -> Result<(), Stri
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_vec_pretty(settings).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    // why: cache follows a successful write only, same as preferences::save
+    *CACHE.write().unwrap() = Some(settings.clone());
+    Ok(())
 }
 
 fn sounds_dir(app: &AppHandle) -> Result<PathBuf, String> {

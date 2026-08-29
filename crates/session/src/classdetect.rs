@@ -161,8 +161,14 @@ impl Detector {
                 return;
             }
             if visit.confirmed.len() != CLASS_COUNT - 1 {
-                // why: too early to narrow -- kept, not dropped, see pending_pools
-                visit.pending_pools.push(candidates);
+                // why: too early to narrow -- kept, not dropped, see pending_pools.
+                // Deduped: the same broad invocation pool recast hundreds of
+                // times in one visit used to buffer hundreds of identical
+                // BTreeSets (measured inefficiency, full-app walk 2026-08-29);
+                // replay only needs each distinct pool once.
+                if !visit.pending_pools.contains(&candidates) {
+                    visit.pending_pools.push(candidates);
+                }
                 return;
             }
             Self::narrow(visit, candidates)
