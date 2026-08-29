@@ -1,6 +1,6 @@
 # EQL Oracle
 
-Companion app for EverQuest Legends. Watches your `eqlog_<Character>_<Server>.txt`, replays what's already in it, keeps parsing live. Classes, AAs, spells, kills — all read off the log, nothing hand-entered.
+Parsing & progression assistant for EverQuest Legends. Watches your `eqlog_<Character>_<Server>.txt`, replays what's already in it, keeps parsing live. Classes, AAs, spells, kills — all read off the log, nothing hand-entered.
 
 ## Modules
 
