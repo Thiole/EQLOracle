@@ -33,6 +33,10 @@ fn prefer_x11_backend() {
 }
 
 fn main() {
+    // why: before anything else -- may exec into the installed copy and
+    // never return; nothing (GTK included) should have initialized yet
+    #[cfg(target_os = "linux")]
+    eqlp_app::selfinstall::install_or_handoff();
     #[cfg(target_os = "linux")]
     prefer_x11_backend();
 

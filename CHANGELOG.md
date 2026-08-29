@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-29
+
+### Linux self-install
+
+- A downloaded AppImage now installs itself as a real app on first launch: copied to `~/Applications/EQL-Oracle.AppImage`, with an applications-menu entry and icon, then hands off to that installed copy.
+- Launching any old AppImage from Downloads afterwards also hands off to the installed copy instead of running its own stale code; a strictly newer download replaces the install, an older one never downgrades it. The downloaded file itself is never deleted.
+- The in-app updater keeps working unchanged; it now always updates the one installed copy, so the stable filename never goes stale.
+
 ## 2026-08-25
 
 ### Class detection

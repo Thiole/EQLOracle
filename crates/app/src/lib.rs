@@ -39,6 +39,8 @@ pub mod profile;
 pub mod progression;
 pub mod raiding;
 pub mod routing;
+#[cfg(target_os = "linux")]
+pub mod selfinstall;
 pub mod settings;
 pub mod skilldata;
 pub mod skilltracker;
