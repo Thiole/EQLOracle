@@ -510,6 +510,23 @@ pub fn get_drop_watch(state: State<AppState>) -> Vec<crate::dropwatch::DropWatch
     crate::dropwatch::drop_watch(&state.ingest.lock().unwrap())
 }
 
+/// why: "why did I just die" -- see deathrecap.rs's own doc. `death_ts`
+/// picks a specific death from the returned list; None means the most
+/// recent. Both halves in one call: the recap plus every death
+/// timestamp this session, so the frontend's picker never needs a
+/// second round trip.
+#[tauri::command]
+pub fn get_death_recap(
+    state: State<AppState>,
+    death_ts: Option<i64>,
+) -> (Option<crate::deathrecap::DeathRecapDto>, Vec<i64>) {
+    let ing = state.ingest.lock().unwrap();
+    (
+        crate::deathrecap::recap(&ing, death_ts),
+        crate::deathrecap::death_timestamps(&ing),
+    )
+}
+
 /// why: Drop Watch's "you just got one, remove it?" prompt -- see
 /// TrackedLootDto's own doc. `items` is whatever the frontend is
 /// currently tracking, one call covers all of them.
@@ -650,7 +667,11 @@ pub fn set_overlay_opacity(app: AppHandle, widget: String, opacity: f64) {
 pub fn set_overlay_overall_opacity(app: AppHandle, widget: String, opacity: f64) {
     let label = overlay_label(&widget);
     if app.get_webview_window(&label).is_some() {
-        let _ = app.emit_to(&label, "overlay-overall-opacity", (widget, opacity.clamp(0.0, 1.0)));
+        let _ = app.emit_to(
+            &label,
+            "overlay-overall-opacity",
+            (widget, opacity.clamp(0.0, 1.0)),
+        );
     }
 }
 

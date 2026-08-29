@@ -1690,6 +1690,11 @@ impl Ingest {
         amount: u64,
         flags: Flags,
     ) {
+        // why: see canonical_you's own doc -- "YOU" must not intern as a
+        // second player identity; normalized here so the graph (link),
+        // store, and timeline all see one name
+        let src = canonical_you(src);
+        let dst = canonical_you(dst);
         // why: a charmed pet can attack enemies all session with no break
         // line, but it can never legitimately land a hit on "You" --
         // that alone proves the charm is gone (expired, backfired, or a
@@ -1809,6 +1814,9 @@ impl Ingest {
     }
 
     fn record_heal(&mut self, ts: Millis, src: &str, dst: &str, ability: &str, amount: u64) {
+        // why: same normalization as record_damage -- see canonical_you
+        let src = canonical_you(src);
+        let dst = canonical_you(dst);
         let enc = self
             .current_encounter_of(src)
             .or_else(|| self.current_encounter_of(dst));
@@ -1837,6 +1845,9 @@ impl Ingest {
     /// swing would, tagged with how it was avoided -- not a synthetic
     /// "Miss"/"Block"/... ability the defender "used"
     fn record_avoided(&mut self, ts: Millis, src: &str, dst: &str, verb: &str, mitigation: Flags) {
+        // why: same normalization as record_damage -- see canonical_you
+        let src = canonical_you(src);
+        let dst = canonical_you(dst);
         let enc = self
             .current_encounter_of(src)
             .or_else(|| self.current_encounter_of(dst));
@@ -1868,6 +1879,8 @@ impl Ingest {
     }
 
     fn record_death(&mut self, ts: Millis, victim: &str) {
+        // why: same normalization as record_damage -- see canonical_you
+        let victim = canonical_you(victim);
         self.encounters.death(ts, victim);
         // why: resolves pending_xp; must run after death() (encounter
         // findable) and before drain_closed (before eviction)
@@ -2112,6 +2125,9 @@ impl Ingest {
 
     /// why: canonical first-observed casing, registers the entity if this is the first sighting
     fn resolve_name(&mut self, name: &str) -> String {
+        // why: see canonical_you's own doc -- covers the effect/cast/
+        // pet paths the record_* heads don't
+        let name = canonical_you(name);
         self.encounters.entities.observe(name);
         self.encounters.entities.display_name(name).to_string()
     }
@@ -3431,6 +3447,23 @@ fn canonical_melee_ability(verb: &str) -> &'static str {
         "mauls" | "maul" => "Maul",
         "gores" | "gore" => "Gore",
         _ => "Melee",
+    }
+}
+
+/// why: real bug, proven against the reference log before fixing: the
+/// game writes the player as "You" (outgoing), "YOU" (incoming melee/
+/// spell targets), and "you" (heal targets). fold_key only folds the
+/// FIRST char, so "YOU" (key "yOU") interned as a second, separate
+/// identity from "You" (key "you") -- 149,871 target rows on the wrong
+/// Sym in eqlog_Manipulator_rivervale.txt alone. Never surfaced before
+/// because nothing queried incoming damage BY the player's own sym
+/// until deathrecap.rs did; every existing comparison was already
+/// eq_ignore_ascii_case. "you" never split (first-char fold covers it).
+fn canonical_you(name: &str) -> &str {
+    if name.eq_ignore_ascii_case("you") {
+        "You"
+    } else {
+        name
     }
 }
 

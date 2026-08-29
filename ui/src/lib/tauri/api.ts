@@ -117,6 +117,40 @@ export interface AllyDto {
   hit_pct: number | null;
   /** null when this ally never cast a resistable spell. */
   resist_pct: number | null;
+  /** why: portion of `total` that arrived via this ally's own pet(s) --
+   * possessive-named pets fold into their owner's row now, this is how
+   * much of it was theirs. 0 when none. */
+  pet_total: number;
+  /** why: a SUGGESTED ally (charm pet or co-occurrence), not a proven
+   * one -- rendered visibly tentative, see combat.rs AllyDto's own doc */
+  suggested: boolean;
+}
+
+/** why: one source+ability line of a death recap -- see deathrecap.rs */
+export interface RecapRowDto {
+  source: string;
+  ability: string;
+  total: number;
+  hits: number;
+  max_hit: number;
+  avoided: number;
+}
+
+export interface KillingBlowDto {
+  source: string;
+  ability: string;
+  amount: number;
+  ts_ms: number;
+}
+
+export interface DeathRecapDto {
+  death_ts_ms: number;
+  window_ms: number;
+  killing_blow: KillingBlowDto | null;
+  incoming: RecapRowDto[];
+  heals: RecapRowDto[];
+  total_incoming: number;
+  total_healed: number;
 }
 
 export interface EntitySeriesDto {
@@ -1470,6 +1504,10 @@ export const api = {
   /** why: Drop Watch's "you just got one, remove it?" prompt -- see
    * TrackedLootDto's own doc. One call covers every currently-tracked name. */
   getTrackedLootStatus: (items: string[]) => invoke<TrackedLootDto[]>('get_tracked_loot_status', { items }),
+  /** why: "why did I just die" -- recap (null before any death) plus
+   * every death timestamp this session, one call. See deathrecap.rs. */
+  getDeathRecap: (deathTs: number | null = null) =>
+    invoke<[DeathRecapDto | null, number[]]>('get_death_recap', { deathTs }),
   /** why: each widget is its own real OS window -- opens/closes just that
    * one; rejects with a plain-language reason if the session's
    * capability caps below click-through */

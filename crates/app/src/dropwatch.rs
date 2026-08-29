@@ -93,39 +93,65 @@ pub fn loot_status(ing: &Ingest, items: &[String]) -> Vec<TrackedLootDto> {
         .collect()
 }
 
-/// why: one row per currently-open enemy encounter `monsterdata` has any
-/// drop data for -- empty rows (a real mob wiki drops never recorded)
-/// are skipped, nothing to show for those regardless of tracking
+/// why: one row per living enemy ENTITY in any currently-live fight, not
+/// one per store-encounter anchor -- real gap, reported by the player:
+/// the store encounter carries a single anchor label, so a second mob
+/// joining an already-open pull (the exact moment "look out, this one
+/// drops X" is most useful) never showed at all. The session graph's
+/// own Live fights track every entity as it joins; this walks those.
+/// Empty drop lists (a real mob the wiki records no drops for) are
+/// skipped, nothing to show regardless of tracking.
 pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
     let now = ing.now_ms();
-    ing.store
-        .encounters
-        .iter()
-        .filter(|e| e.is_open())
-        .filter_map(|e| {
-            let name = ing.store.name(e.target);
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for live in ing.encounters.live_encounters() {
+        for name in &live.entities {
+            // why: the log owner is in every fight's entity list; never a drop source
+            if name.eq_ignore_ascii_case("you") {
+                continue;
+            }
+            // why: same-named mob in two fights (or twice via casing) is one row
+            if !seen.insert(name.to_ascii_lowercase()) {
+                continue;
+            }
+            // why: already slain in this fight -- old news, not a live heads-up
+            if live
+                .slain
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case(name.as_str()))
+            {
+                continue;
+            }
+            // why: read-only sym lookup, same shape is_ally uses -- a
+            // drop-watch query must never itself intern an identity
             let state = ing
-                .timeline
-                .state_at(e.target.0, now)
+                .store
+                .names
+                .get(ing.encounters.entities.display_name(name))
+                .and_then(|sym| ing.timeline.state_at(sym.0, now))
                 .map(|(s, _)| s)
                 .unwrap_or(State::Engaged);
             if state == State::Dead || state == State::Charmed {
-                return None;
+                continue;
             }
-            let kind = ing.encounters.entities.kind(name);
+            // why: effective_kind not raw kind -- a group-tracked ally
+            // (or charm-flip, caught above) must not read as a mob to watch
+            let kind = ing.effective_kind(name, now);
             if !Allegiance::of(kind, state).is_enemy() {
-                return None;
+                continue;
             }
             let drops = crate::monsterdata::known_drops(name);
             if drops.is_empty() {
-                return None;
+                continue;
             }
-            Some(DropWatchRowDto {
-                mob: name.to_string(),
+            out.push(DropWatchRowDto {
+                mob: name.clone(),
                 drops: drops.to_vec(),
-            })
-        })
-        .collect()
+            });
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -156,6 +182,38 @@ mod tests {
             rows[0].drops.iter().any(|d| d == "Light Woolen Mantle"),
             "real wiki drop, got {:?}",
             rows[0].drops
+        );
+    }
+
+    /// why: the real reported gap this rewrite fixes -- a known monster
+    /// JOINING an already-open fight (never the anchor) must still get
+    /// its heads-up row the moment it's in the fight
+    #[test]
+    fn a_known_monster_joining_an_open_fight_shows_up_without_being_the_anchor() {
+        let ing = run(concat!(
+            "[Tue Jul 28 15:01:00 2026] You hit a rat for 5 points of damage.\n",
+            "[Tue Jul 28 15:01:02 2026] Keeper of Souls hits YOU for 2 points of damage.\n",
+        ));
+        let rows = drop_watch(&ing);
+        assert!(
+            rows.iter().any(|r| r.mob == "Keeper of Souls"),
+            "joined mid-fight, never the anchor -- must still show, got {:?}",
+            rows.iter().map(|r| &r.mob).collect::<Vec<_>>()
+        );
+    }
+
+    /// why: a mob already slain inside a still-live fight is old news
+    #[test]
+    fn a_slain_entity_in_a_still_live_fight_is_excluded() {
+        let ing = run(concat!(
+            "[Tue Jul 28 15:01:00 2026] You hit a rat for 5 points of damage.\n",
+            "[Tue Jul 28 15:01:02 2026] Keeper of Souls hits YOU for 2 points of damage.\n",
+            "[Tue Jul 28 15:01:04 2026] Keeper of Souls has been slain by You!\n",
+        ));
+        let rows = drop_watch(&ing);
+        assert!(
+            !rows.iter().any(|r| r.mob == "Keeper of Souls"),
+            "slain mid-fight -- must drop off the watch list"
         );
     }
 

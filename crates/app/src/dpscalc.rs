@@ -2,9 +2,13 @@
 //! Parses each spell's `slots` effect text (151 real DoT candidates,
 //! never hand-curated) into a hit amount + shape, layers observed rank on top.
 //!
-//! - Nuke damage scales +10%/rank tier of base (measured: Ice Comet
-//!   rank 4->9->10, 10.04%/tier), not the wiki's unreliable 6% compounding.
-//!   Cast time/mana stay at catalog values.
+//! - Nuke damage scales +6% compounding per rank level (I-X) --
+//!   corrected per the game's own upgrade system (player-confirmed:
+//!   "6% damage per level in addition to other things"). The earlier
+//!   +10% linear/tier figure (measured 10.04%/tier off Ice Comet rank
+//!   4->9->10) conflated that 6% base with the "other things" stacked
+//!   on top of it; the raw measurement wasn't wrong, its attribution
+//!   was. Cast time/mana stay at catalog values.
 //! - A DoT's per-tick damage does NOT scale with rank; only a one-time
 //!   "on cast" component does. Duration/cast time/mana still scale per
 //!   wiki DoT-category rates (unverified, labeled separately).
@@ -27,7 +31,8 @@ use regex::Regex;
 use serde::Serialize;
 use std::sync::OnceLock;
 
-pub const RANK_DAMAGE_PER_TIER: f64 = 0.10;
+/// why: 6% compounding per rank level (I-X), not 10% linear -- see module doc
+pub const RANK_DAMAGE_PER_LEVEL: f64 = 0.06;
 pub const TICK_SECS: f64 = 6.0;
 
 // why: unverified, wiki-sourced -- see this module's own doc for why
@@ -256,7 +261,9 @@ fn build_dto(
     if base_hit <= 0.0 {
         return None;
     }
-    let hit_mult = 1.0 + RANK_DAMAGE_PER_TIER * rank as f64;
+    // why: compounding, not linear -- each rank level multiplies the
+    // previous, per the upgrade system's own 6%/level rule (module doc)
+    let hit_mult = (1.0 + RANK_DAMAGE_PER_LEVEL).powi(rank as i32);
     // why: upfront always gets the verified rate (mechanically a hit);
     // per-tick only does for a nuke, not a DoT -- see module doc. Gets
     // the direct-damage crit treatment for the same reason (a hit, not a tick).

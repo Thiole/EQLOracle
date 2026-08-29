@@ -720,6 +720,20 @@ pub struct AllyDto {
     /// why: None when this ally never cast a resistable spell, same
     /// reasoning as hit_pct
     pub resist_pct: Option<f64>,
+    /// why: how much of `total` arrived via this ally's own pet(s),
+    /// folded in by possessive-name ownership ("X's pet" -> X) -- 0 for
+    /// an ally with no attributed pet damage. Summon-matched pets were
+    /// already merged at ingest (Ingest::sym's pet_owner map); this
+    /// closes the possessive-name half that Entities::credit knew about
+    /// but nothing ever applied.
+    pub pet_total: u64,
+    /// why: this row is a SUGGESTED ally, not a proven one -- included
+    /// only because it's currently charm-flipped or group-tracked
+    /// (effective_kind), with no permanent Player/Pet proof behind it.
+    /// Charm pets land here by design (player's own spec: "pets should
+    /// be attributed, charm pets should be suggestions") -- the UI
+    /// renders these visibly tentative instead of silently equal.
+    pub suggested: bool,
 }
 
 /// why: Combat module's primary view, damage dealers sorted descending.
@@ -804,36 +818,91 @@ pub fn list_allies(
     let dur_secs = (duration_ms.max(0) as f64 / 1000.0).max(0.001);
     let total_damage: u64 = acc.values().map(|(dmg, _, _)| dmg).sum();
 
-    let mut out: Vec<AllyDto> = acc
+    // why: fold possessive-named pets ("X's pet") into their owner's own
+    // row before building DTOs -- Entities::owner_of has known this
+    // mapping all along, nothing ever applied it, so a pet-heavy ally
+    // read as two unrelated rows. Summon-matched pets never reach here
+    // as themselves (merged at ingest, Ingest::sym's own pet_owner map).
+    // Charm pets have no owner mapping and stay their own row, marked
+    // `suggested` below instead of silently equal.
+    #[derive(Default)]
+    struct Merged {
+        total: u64,
+        hits: u64,
+        crits: u64,
+        avoided: u64,
+        cast_attempts: u64,
+        cast_resisted: u64,
+        pet_total: u64,
+        /// why: true only while EVERY contributor was a pet row -- an
+        /// owner who also swings personally clears it
+        pet_only: bool,
+    }
+    let mut by_name: HashMap<String, Merged> = HashMap::new();
+    for (sym, (dmg, hits, crits)) in acc {
+        let name = ing.store.name(sym).to_string();
+        let owner = ing
+            .encounters
+            .entities
+            .owner_of(&name)
+            .map(|o| o.to_string());
+        let is_pet_row = owner.is_some();
+        let credited = owner.unwrap_or_else(|| name.clone());
+        let first = !by_name.contains_key(&credited);
+        let e = by_name.entry(credited).or_default();
+        if first {
+            e.pet_only = is_pet_row;
+        } else {
+            e.pet_only = e.pet_only && is_pet_row;
+        }
+        e.total += dmg;
+        e.hits += hits;
+        e.crits += crits;
+        if is_pet_row {
+            e.pet_total += dmg;
+        }
+        e.avoided += avoided.get(&sym).copied().unwrap_or(0);
+        if let Some(&(attempts, resisted)) = casts.get(&sym) {
+            e.cast_attempts += attempts;
+            e.cast_resisted += resisted;
+        }
+    }
+
+    let mut out: Vec<AllyDto> = by_name
         .into_iter()
-        .map(|(sym, (dmg, hits, crits))| {
-            let name = ing.store.name(sym).to_string();
+        .map(|(name, m)| {
             let kind = ing.effective_kind(&name, now);
+            // why: proven means a permanent Kind (player channel, or a
+            // real pet-name/summon match); Unproven-but-included means
+            // only the charm flip or GroupTracker let it in -- that's a
+            // suggestion, not a fact. "You" needs no proving.
+            let suggested = !name.eq_ignore_ascii_case("you")
+                && ing.encounters.entities.kind(&name) == Kind::Unproven;
             AllyDto {
                 is_player: kind == Kind::Player,
-                is_pet: kind == Kind::Pet,
-                total: dmg,
-                hits,
-                crits,
-                crit_pct: if hits > 0 {
-                    100.0 * crits as f64 / hits as f64
+                is_pet: kind == Kind::Pet || m.pet_only,
+                total: m.total,
+                hits: m.hits,
+                crits: m.crits,
+                crit_pct: if m.hits > 0 {
+                    100.0 * m.crits as f64 / m.hits as f64
                 } else {
                     0.0
                 },
-                dps: dmg as f64 / dur_secs,
+                dps: m.total as f64 / dur_secs,
                 pct: if total_damage > 0 {
-                    100.0 * dmg as f64 / total_damage as f64
+                    100.0 * m.total as f64 / total_damage as f64
                 } else {
                     0.0
                 },
                 hit_pct: {
-                    let attempts = hits + avoided.get(&sym).copied().unwrap_or(0);
-                    (attempts > 0).then(|| 100.0 * hits as f64 / attempts as f64)
+                    let attempts = m.hits + m.avoided;
+                    (attempts > 0).then(|| 100.0 * m.hits as f64 / attempts as f64)
                 },
-                resist_pct: casts
-                    .get(&sym)
-                    .filter(|&&(attempts, _)| attempts > 0)
-                    .map(|&(attempts, resisted)| 100.0 * resisted as f64 / attempts as f64),
+                resist_pct: (m.cast_attempts > 0)
+                    .then(|| 100.0 * m.cast_resisted as f64 / m.cast_attempts as f64),
+                pet_total: m.pet_total,
+                suggested,
                 name,
             }
         })

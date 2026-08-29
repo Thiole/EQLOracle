@@ -26,7 +26,19 @@
           style="background-image: linear-gradient(to right, color-mix(in srgb, var(--color-primary) 14%, transparent) {a.pct}%, transparent {a.pct}%)"
           onclick={() => toggleAlly(a.name)}
         >
-          <Table.Cell class={a.is_player || a.is_pet ? 'text-primary' : ''}>{a.name}</Table.Cell>
+          <!-- why: a suggested ally (charm pet / co-occurrence, no permanent
+               proof -- see AllyDto.suggested's own doc) reads visibly
+               tentative, not equal to a proven groupmate; pet_total > 0
+               notes how much of an owner's row came via their pet -->
+          <Table.Cell class={a.suggested ? 'text-muted-foreground italic' : a.is_player || a.is_pet ? 'text-primary' : ''}>
+            {a.name}{#if a.suggested}<span
+                class="ml-1 rounded-sm border border-border px-1 text-[9px] not-italic text-muted-foreground"
+                title="Suggested ally -- included via charm or repeated co-occurrence, not proven">suggested</span
+              >{/if}{#if a.pet_total > 0 && a.pet_total < a.total}<span
+                class="ml-1 text-[10px] text-muted-foreground"
+                title="Damage contributed by this ally's pet">(pet {a.pet_total.toLocaleString()})</span
+              >{/if}
+          </Table.Cell>
           <Table.Cell class="text-right tabular-nums">{a.total.toLocaleString()}</Table.Cell>
           <Table.Cell class="text-right tabular-nums">{a.pct.toFixed(1)}%</Table.Cell>
           <Table.Cell class="text-right tabular-nums">{a.dps.toFixed(1)}</Table.Cell>
