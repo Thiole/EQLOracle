@@ -2605,7 +2605,18 @@ impl Ingest {
             if let Some(&store_id) = self.enc_map.get(&c.id) {
                 // why: c.slain mixes both sides -- a confirmed kill needs a real enemy name, not just any
                 let confirmed_kill = c.slain.iter().any(|n| !self.is_ally(n, c.end_ms));
-                let wiped = !confirmed_kill && c.slain.iter().any(|n| self.is_ally(n, c.end_ms));
+                // why: a wipe means YOU died and no enemy kill was
+                // confirmed -- player's own correction: "a death doesnt
+                // mean a wipe". The old rule (ANY ally death) mislabeled
+                // constantly in practice: only ~21% of real kills get a
+                // confirmed death line (BACKLOG's own measurement), so a
+                // charm pet sacrificed mid-fight, or one groupmate
+                // dying, tagged the other 79%'s fights "wipe" whenever
+                // the enemy's own death went unlogged. A teammate or pet
+                // death is just a death inside the fight; the fight
+                // itself classifies on the log owner's own fate.
+                let wiped =
+                    !confirmed_kill && c.slain.iter().any(|n| n.eq_ignore_ascii_case("You"));
                 self.store
                     .close_encounter(store_id, c.end_ms, confirmed_kill, wiped);
                 self.record_history(store_id, &c, confirmed_kill);

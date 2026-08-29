@@ -1777,6 +1777,31 @@ mod outcome_tests {
         );
         assert!(e.wiped);
     }
+
+    /// why: player's own correction -- "a death doesnt mean a wipe". A
+    /// proven groupmate (or a charm pet) dying in a fight with no
+    /// confirmed enemy kill used to tag the whole fight "wipe"; only
+    /// ~21% of real kills get a confirmed death line at all, so this
+    /// mislabeled constantly. An ally death is a death inside the
+    /// fight, not the fight's own classification -- only the log
+    /// owner's own death makes a no-kill fight a wipe.
+    #[test]
+    fn an_allys_death_without_a_kill_is_a_reset_not_a_wipe() {
+        let ing = ingest_from(
+            // why: the chat line proves Dippinsauce is a real player (ally)
+            "[Tue Jul 28 15:00:00 2026] Dippinsauce tells the group, 'inc'\n\
+             [Tue Jul 28 15:01:00 2026] Dippinsauce slashes a rock golem for 20 points of damage.\n\
+             [Tue Jul 28 15:01:01 2026] a rock golem slashes Dippinsauce for 90 points of damage.\n\
+             [Tue Jul 28 15:01:02 2026] Dippinsauce has been slain by a rock golem!\n",
+        );
+        let list = list_encounters(&ing, None, 0, usize::MAX);
+        let e = find(&list, "a rock golem");
+        assert!(!e.slain, "no enemy kill was confirmed");
+        assert!(
+            !e.wiped,
+            "a groupmate's death alone must not read as a wipe -- You didn't die"
+        );
+    }
 }
 
 #[cfg(test)]
