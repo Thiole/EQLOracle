@@ -51,6 +51,10 @@ fn main() {
             if window.label() == "main"
                 && matches!(event, tauri::WindowEvent::CloseRequested { .. })
             {
+                // why: clean exit -- clears the unclean-exit sentinel so
+                // the next launch keeps its webview cache; a killed run
+                // never reaches this, see updater::mark_clean_exit
+                updater::mark_clean_exit(window.app_handle());
                 window.app_handle().exit(0);
             }
         })

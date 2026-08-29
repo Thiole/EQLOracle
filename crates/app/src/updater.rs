@@ -120,18 +120,40 @@ pub fn clear_stale_webview_cache_if_needed(app: &AppHandle) {
     };
     let marker = data_dir.join(".last_run_version");
     let current = app.package_info().version.to_string();
-    if std::fs::read_to_string(&marker).ok().as_deref() == Some(current.as_str()) {
-        return;
-    }
-    for sub in ["WebKitCache", "CacheStorage"] {
-        let _ = std::fs::remove_dir_all(data_dir.join(sub));
+    // why: a version change isn't the only way the cache goes bad -- a
+    // killed instance (real incident: a host memory policy SIGKILLing
+    // the app mid-run) leaves WebKitGTK's cache torn mid-write, and the
+    // next same-version launch rendered a white window with no error.
+    // The sentinel is written every startup and removed only by a clean
+    // exit (mark_clean_exit) -- present here means the last run died
+    // hard, so the cache can't be trusted regardless of version.
+    let unclean = data_dir.join(".unclean_exit");
+    let version_changed =
+        std::fs::read_to_string(&marker).ok().as_deref() != Some(current.as_str());
+    if version_changed || unclean.exists() {
+        for sub in ["WebKitCache", "CacheStorage"] {
+            let _ = std::fs::remove_dir_all(data_dir.join(sub));
+        }
     }
     let _ = std::fs::create_dir_all(&data_dir);
     let _ = std::fs::write(&marker, &current);
+    let _ = std::fs::write(&unclean, b"");
 }
 
 #[cfg(not(target_os = "linux"))]
 pub fn clear_stale_webview_cache_if_needed(_app: &AppHandle) {}
+
+/// why: the clean-exit half of the sentinel above -- called from the
+/// main window's own close path, the one deliberate way this app exits
+#[cfg(target_os = "linux")]
+pub fn mark_clean_exit(app: &AppHandle) {
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let _ = std::fs::remove_file(data_dir.join(".unclean_exit"));
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn mark_clean_exit(_app: &AppHandle) {}
 
 /// why: consumes whatever check_for_update last found -- an explicit
 /// error (not a silent no-op) if the frontend calls this without a real

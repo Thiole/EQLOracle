@@ -162,24 +162,53 @@ fn run(
         let mut tail_status: &'static str = "idle";
         if let Some(t) = tail.as_mut() {
             if backfilling {
-                // why: `Tail::poll` loops to current EOF, so this one call
-                // is "everything on disk" -- parsed with a bounded thread
-                // pool, not the incremental single-line live path
-                let mut raw = Vec::new();
-                let ev = t.poll(|chunk| raw.extend_from_slice(chunk));
+                // why: STREAMED, not slurped -- real incident: buffering
+                // the whole file plus a full line index put backfill's
+                // transient peak at ~1GiB on a 322MB log, and desktop
+                // launches (systemd user units) were getting SIGKILLed at
+                // almost exactly 1G by a host memory policy -- reproduced
+                // three times, then proven by the same binary surviving
+                // past 1.06G under an explicit MemoryMax=6G unit. Bounded
+                // batches of owned lines (~100k at a time, processed and
+                // dropped inside the poll sink) keep peak memory flat no
+                // matter how big the log grows. Bonus: the trailing
+                // partial line now stays buffered in the Framer and
+                // continues seamlessly into the live path, instead of
+                // being dropped for a possibly-misframed seam line.
+                let mut batch: Vec<Vec<u8>> = Vec::with_capacity(BACKFILL_CHUNK_LINES);
+                let mut aborted = false;
+                let ev = t.poll(|chunk| {
+                    if aborted {
+                        return; // why: stop requested mid-replay, drain the rest unprocessed
+                    }
+                    framer.push(chunk, |line| batch.push(line.to_vec()));
+                    while batch.len() >= BACKFILL_CHUNK_LINES {
+                        if stop.load(Ordering::Relaxed) {
+                            aborted = true;
+                            batch.clear();
+                            return;
+                        }
+                        let refs: Vec<&[u8]> = batch.iter().map(|v| v.as_slice()).collect();
+                        {
+                            let mut ing = ingest.lock().unwrap();
+                            ingest::backfill_lines(&mut ing, &engine, &refs, backfill_threads);
+                        }
+                        batch.clear();
+                        // why: unconditional -- the counting-up progress the UI shows
+                        last_emit = SystemClock.now_ms();
+                        emit_tick(&app, &log_dir, &target, "grew", true, &ingest, &status);
+                    }
+                });
                 tail_status = tail_event_str(ev);
-
-                // why: framed once, fed in bounded pieces -- see BACKFILL_CHUNK_LINES
-                let lines = ingest::framed_lines(&raw);
-                for chunk in lines.chunks(BACKFILL_CHUNK_LINES.max(1)) {
-                    if stop.load(Ordering::Relaxed) {
-                        return; // directory changed, or the app is closing, mid-replay
-                    }
-                    {
-                        let mut ing = ingest.lock().unwrap();
-                        ingest::backfill_lines(&mut ing, &engine, chunk, backfill_threads);
-                    }
-                    // why: unconditional -- this is the counting-up progress the UI shows
+                if aborted || stop.load(Ordering::Relaxed) {
+                    return; // directory changed, or the app is closing, mid-replay
+                }
+                // why: whatever's left under one full batch
+                if !batch.is_empty() {
+                    let refs: Vec<&[u8]> = batch.iter().map(|v| v.as_slice()).collect();
+                    let mut ing = ingest.lock().unwrap();
+                    ingest::backfill_lines(&mut ing, &engine, &refs, backfill_threads);
+                    drop(ing);
                     last_emit = clock.now_ms();
                     emit_tick(&app, &log_dir, &target, tail_status, true, &ingest, &status);
                 }
