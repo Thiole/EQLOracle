@@ -162,12 +162,14 @@ pub fn list_mobs(ing: &Ingest) -> Vec<MobDto> {
                 .get(&sym)
                 .filter(|&&(_, count)| count > 0)
                 .map(|&(sum_milli, count)| sum_milli as f64 / 1000.0 / count as f64);
-            let gotten: HashMap<String, u64> = loot_by_mob
-                .remove(&sym)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|r| (ing.store.ability_name(r.ability).to_string(), r.total))
-                .collect();
+            // why: tier-folded to the base item, tiers summed -- so a
+            // "+4" loot lands on the wiki's own untiered row instead of
+            // spawning a duplicate "+4" row beside a zero-count known one
+            let mut gotten: HashMap<String, u64> = HashMap::new();
+            for r in loot_by_mob.remove(&sym).unwrap_or_default() {
+                let (base, _tier) = crate::inventory::strip_tier(ing.store.ability_name(r.ability));
+                *gotten.entry(base.to_string()).or_insert(0) += r.total;
+            }
 
             let known_items = crate::monsterdata::known_drops(&name);
             let known = crate::monsterdata::is_known_monster(&name);
@@ -228,17 +230,19 @@ pub struct LootEventDto {
 /// why: every real loot event, oldest first, for an item page's history --
 /// individual events, not `list_mobs`' aggregate. Linear scan, runs once
 /// on page open not a 3s poll, so no O(store length) discipline needed.
+/// Tier-folded: the log loots "Fine Steel Rapier +4", the wiki page is
+/// the untiered base -- compared unnormalized this returned nothing for
+/// most real loot (same bug raiding.rs already fixed via strip_tier).
 pub fn item_loot_history(ing: &Ingest, item: &str) -> Vec<LootEventDto> {
+    let base_query = crate::inventory::strip_tier(item).0;
     let mut out = Vec::new();
     for i in 0..ing.store.len() {
         if ing.store.kind[i] != EventKind::Loot {
             continue;
         }
-        if !ing
-            .store
-            .ability_name(ing.store.ability[i])
-            .eq_ignore_ascii_case(item)
-        {
+        let (base, _tier) =
+            crate::inventory::strip_tier(ing.store.ability_name(ing.store.ability[i]));
+        if !base.eq_ignore_ascii_case(base_query) {
             continue;
         }
         let ts = ing.store.ts[i];
@@ -332,5 +336,27 @@ mod pull_credit_tests {
             "no personal damage and no party XP credit -- not the player's kill"
         );
         assert_eq!(stats.pulls, 0);
+    }
+
+    /// why: the log loots tiered instances ("Rusty Mace +2"), the wiki
+    /// item page is the untiered base -- history must attribute every
+    /// tier to the base item (same strip_tier fix raiding.rs already
+    /// carries), and querying by a tiered name folds the same way
+    #[test]
+    fn tiered_loot_attributes_to_the_base_items_history() {
+        let text = "\
+[Tue Jul 28 15:02:50 2026] You hit a patrolling gnoll for 5 points of damage.
+[Tue Jul 28 15:02:52 2026] You have slain a patrolling gnoll!
+[Tue Jul 28 15:02:55 2026] You looted a Rusty Mace +2 from a patrolling gnoll's corpse to create a Rusty Mace +3
+[Tue Jul 28 15:03:10 2026] You hit a patrolling gnoll for 5 points of damage.
+[Tue Jul 28 15:03:12 2026] You have slain a patrolling gnoll!
+[Tue Jul 28 15:03:15 2026] --You have looted a Rusty Mace from a patrolling gnoll's corpse.--";
+        let ing = run(text);
+        let events = item_loot_history(&ing, "Rusty Mace");
+        assert_eq!(events.len(), 2, "both the +2 and the untiered loot");
+        assert!(events.iter().all(|e| e.mob == "a patrolling gnoll"));
+        // why: a tiered query folds identically -- one item, one history
+        assert_eq!(item_loot_history(&ing, "Rusty Mace +2").len(), 2);
+        assert!(item_loot_history(&ing, "Fine Steel Rapier").is_empty());
     }
 }

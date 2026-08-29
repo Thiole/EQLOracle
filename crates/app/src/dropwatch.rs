@@ -76,9 +76,10 @@ pub fn loot_status(ing: &mut Ingest, items: &[String]) -> Vec<TrackedLootDto> {
         if ing.store.kind[i] != EventKind::Loot {
             continue;
         }
-        let key = ing
-            .store
-            .ability_name(ing.store.ability[i])
+        // why: tier-folded -- a tracked wiki name is untiered, the log
+        // loots "+N" instances; both sides fold to the base item
+        let key = crate::inventory::strip_tier(ing.store.ability_name(ing.store.ability[i]))
+            .0
             .to_ascii_lowercase();
         let amount = ing.store.amount[i];
         let ts = ing.store.ts[i];
@@ -91,7 +92,7 @@ pub fn loot_status(ing: &mut Ingest, items: &[String]) -> Vec<TrackedLootDto> {
         .iter()
         .filter_map(|it| {
             ing.loot_scan_counts
-                .get(&it.to_ascii_lowercase())
+                .get(&crate::inventory::strip_tier(it).0.to_ascii_lowercase())
                 .map(|&(count, last_looted_ms)| TrackedLootDto {
                     item: it.clone(),
                     count,

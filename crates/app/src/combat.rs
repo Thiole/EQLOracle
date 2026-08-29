@@ -422,16 +422,22 @@ pub fn encounter_detail(ing: &Ingest, encounter_id: u32) -> Option<EncounterDeta
     let lo = ing.store.ts.partition_point(|&t| t < e.start_ms);
     let hi = ing.store.ts.partition_point(|&t| t <= window_end);
     let target_name = ing.store.name(e.target).to_string();
-    let mut drops: Vec<EncounterDropDto> = (lo..hi)
-        .filter(|&i| ing.store.kind[i] == EventKind::Loot && ing.store.enc[i] == e.id.0)
-        .map(|i| {
-            let item = ing.store.ability_name(ing.store.ability[i]).to_string();
+    // why: tier-folded to the base item, same-fight tiers merged -- the
+    // wiki drop table (drop_chance's own lookup) only knows untiered
+    // names, and "Rusty Mace +2"/"+3" looted in one fight is one drop row
+    let mut by_item: HashMap<String, u64> = HashMap::new();
+    for i in
+        (lo..hi).filter(|&i| ing.store.kind[i] == EventKind::Loot && ing.store.enc[i] == e.id.0)
+    {
+        let (base, _tier) =
+            crate::inventory::strip_tier(ing.store.ability_name(ing.store.ability[i]));
+        *by_item.entry(base.to_string()).or_insert(0) += ing.store.amount[i];
+    }
+    let mut drops: Vec<EncounterDropDto> = by_item
+        .into_iter()
+        .map(|(item, qty)| {
             let chance = drop_chance(&target_name, &item);
-            EncounterDropDto {
-                qty: ing.store.amount[i],
-                item,
-                chance,
-            }
+            EncounterDropDto { item, qty, chance }
         })
         .collect();
     sort_drops_rarer_first(&mut drops);
