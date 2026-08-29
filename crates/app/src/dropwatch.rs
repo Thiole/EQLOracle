@@ -117,6 +117,22 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut out = Vec::new();
 
+    // why: the active zone's own zone-wide drop pool -- player's spec:
+    // "a mobs drops should be its individual drops + zone drops"; an
+    // item any mob in the zone can drop alerts on every engaged mob
+    // while that zone is active. Same label->wiki-zone matcher
+    // resolved_wiki_zone uses; 117 zones, one linear find per poll.
+    let zone_items: &[String] = ing
+        .zone
+        .at(now)
+        .and_then(|raw| {
+            crate::zonedata::zones()
+                .iter()
+                .find(|z| crate::zone::zone_matches(raw, &z.name))
+        })
+        .map(|z| z.unique_items.as_slice())
+        .unwrap_or(&[]);
+
     // why: shared filter for both sources -- one place decides what a
     // watchable engaged enemy is; `slain_in_fight` is only meaningful
     // for the graph source (a Miss row has no fight-scoped slain list)
@@ -142,7 +158,21 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         if !Allegiance::of(kind, state).is_enemy() {
             return None;
         }
-        let drops = crate::monsterdata::known_drops(name);
+        // why: three drop sources unioned per the player's spec --
+        // (1) monsters.json drop tables, (2) npcs.json known_loot (a
+        // DIFFERENT wiki scrape; measured: 2 of the player's 3 tracked
+        // items had their only dropper attribution there), (3) the
+        // active zone's own unique_items pool applied to every engaged
+        // mob. Deduped case-insensitively, mob-specific first.
+        let mut drops: Vec<String> = crate::monsterdata::known_drops(name).to_vec();
+        for d in crate::npcdata::known_loot_for(name)
+            .iter()
+            .chain(zone_items.iter())
+        {
+            if !drops.iter().any(|x| x.eq_ignore_ascii_case(d)) {
+                drops.push(d.clone());
+            }
+        }
         if drops.is_empty() {
             return None;
         }
@@ -153,7 +183,7 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         if seen.insert(name.to_ascii_lowercase()) {
             Some(DropWatchRowDto {
                 mob: name.to_string(),
-                drops: drops.to_vec(),
+                drops,
             })
         } else {
             None
@@ -289,6 +319,42 @@ mod tests {
         assert!(
             !rows.iter().any(|r| r.mob == "Keeper of Souls"),
             "a 4-minute-old whiff is not an active engagement"
+        );
+    }
+
+    /// why: 2 of the player's 3 real tracked items (Blood Sky Ruby,
+    /// Golden Coffer) have their ONLY dropper attribution in npcs.json's
+    /// known_loot, not monsters.json -- verified by replaying the
+    /// reference log with the old single-source lookup: those two could
+    /// never alert at all
+    #[test]
+    fn an_npc_catalog_only_drop_still_alerts() {
+        let ing =
+            run("[Tue Jul 28 15:01:00 2026] You hit Eye of Veeshan for 5 points of damage.\n");
+        let rows = drop_watch(&ing);
+        let eye = rows.iter().find(|r| r.mob == "Eye of Veeshan");
+        assert!(
+            eye.is_some_and(|r| r.drops.iter().any(|d| d == "Blood Sky Ruby")),
+            "npcs.json known_loot must union in, got {:?}",
+            rows.iter().map(|r| &r.mob).collect::<Vec<_>>()
+        );
+    }
+
+    /// why: player's spec -- "a mobs drops should be its individual
+    /// drops + zone drops": a zone-unique item alerts on ANY engaged
+    /// mob while that zone is active
+    #[test]
+    fn a_zone_unique_item_attaches_to_every_engaged_mob_in_that_zone() {
+        let ing = run(concat!(
+            "[Tue Jul 28 15:00:00 2026] You have entered Skyshrine.\n",
+            "[Tue Jul 28 15:01:00 2026] You hit a rat for 5 points of damage.\n",
+        ));
+        let rows = drop_watch(&ing);
+        let rat = rows.iter().find(|r| r.mob == "a rat");
+        assert!(
+            rat.is_some_and(|r| r.drops.iter().any(|d| d == "Brightwood Spear")),
+            "Skyshrine's own unique_items must attach to any engaged mob there, got {:?}",
+            rows
         );
     }
 

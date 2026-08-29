@@ -87,6 +87,36 @@ pub fn is_known_npc_name(name: &str) -> bool {
         .contains(&name.to_lowercase())
 }
 
+/// why: NPC name -> its known_loot item names, whole-string lowercased
+/// key same as is_known_npc_name. Drop Watch's second drop source --
+/// real gap, measured against the player's own tracked list: 2 of his 3
+/// tracked items (Blood Sky Ruby via Eye of Veeshan, Golden Coffer via
+/// The Spiroc Lord) have their ONLY dropper attribution here, not in
+/// packs/monsters.json's own drop tables -- the two wiki scrapes cover
+/// different pages and neither subsumes the other.
+pub fn known_loot_for(name: &str) -> &'static [String] {
+    static MAP: OnceLock<std::collections::HashMap<String, Vec<String>>> = OnceLock::new();
+    MAP.get_or_init(|| {
+        let mut m: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for n in npcs() {
+            if n.known_loot.is_empty() {
+                continue;
+            }
+            let e = m.entry(n.name.to_lowercase()).or_default();
+            for l in &n.known_loot {
+                if !e.iter().any(|x| x.eq_ignore_ascii_case(&l.item)) {
+                    e.push(l.item.clone());
+                }
+            }
+        }
+        m
+    })
+    .get(&name.to_lowercase())
+    .map(Vec::as_slice)
+    .unwrap_or(&[])
+}
+
 /// why: parses free-text spawn notation into real points; descriptive
 /// text ("Various", "Need Info") yields none. `%` weighting dropped --
 /// multiple spawns render as multiple equal markers.
