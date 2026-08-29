@@ -5,6 +5,7 @@
   import Sidebar from '$lib/shell/Sidebar.svelte';
   import Overview from '$lib/shell/Overview.svelte';
   import Combat from '$lib/combat/Combat.svelte';
+  import DeathRecap from '$lib/combat/DeathRecap.svelte';
   import Character from '$lib/character/Character.svelte';
   import Endgame from '$lib/endgame/Endgame.svelte';
   import Tradeskill from '$lib/tradeskill/Tradeskill.svelte';
@@ -18,6 +19,7 @@
   import InventoryDumpBanner from '$lib/shell/InventoryDumpBanner.svelte';
   import UpdateBanner from '$lib/shell/UpdateBanner.svelte';
   import DropWatchLootBanner from '$lib/shell/DropWatchLootBanner.svelte';
+  import DeathRecapBanner from '$lib/shell/DeathRecapBanner.svelte';
   import { status, refreshStatus } from '$lib/stores/status';
   import { loadPreferences } from '$lib/stores/settings';
   import { loadGameDataModule } from '$lib/stores/gamedata';
@@ -58,6 +60,11 @@
             <Overview />
           {:else if $activeModule === 'combat'}
             <Combat />
+          {:else if $activeModule === 'deathrecap'}
+            <!-- why: no sidebar tab of its own -- reached via
+                 DeathRecapBanner's toast, leaves via its own back
+                 button or any sidebar click -->
+            <DeathRecap />
           {:else if $activeModule === 'social'}
             <Social />
           {:else if $activeModule === 'character'}
@@ -85,5 +92,6 @@
     <InventoryDumpBanner />
     <UpdateBanner />
     <DropWatchLootBanner />
+    <DeathRecapBanner />
   {/if}
 </div>

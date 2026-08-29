@@ -4,7 +4,6 @@
   import { Card, CardContent } from '$lib/components/ui/card';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import AllyTable from './AllyTable.svelte';
-  import DeathRecap from './DeathRecap.svelte';
   import HistoryPane from './HistoryPane.svelte';
   import FightTimelineChart from './FightTimelineChart.svelte';
   import { buildCombatReport } from './report';
@@ -251,8 +250,6 @@
     <h2 class="panel-title mb-2">allies · click to see abilities</h2>
     <AllyTable />
   </div>
-
-  <DeathRecap />
 
   <HistoryPane />
 
