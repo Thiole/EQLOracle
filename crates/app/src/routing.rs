@@ -18,6 +18,7 @@
 
 use crate::mapsdata;
 use crate::pathfind;
+use crate::state::LockRecover;
 use crate::teleportdata;
 use crate::zonedata;
 use std::cmp::Ordering;
@@ -32,13 +33,12 @@ use std::sync::{Arc, Mutex, OnceLock};
 fn cached_map(base_dir: &Path, shortname: &str) -> Option<Arc<mapsdata::ParsedZoneMap>> {
     static CACHE: OnceLock<Mutex<HashMap<String, Arc<mapsdata::ParsedZoneMap>>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Some(m) = cache.lock().unwrap().get(shortname) {
+    if let Some(m) = cache.lock_recover().get(shortname) {
         return Some(m.clone());
     }
     let map = Arc::new(mapsdata::load_zone_map(base_dir, None, shortname).ok()?);
     cache
-        .lock()
-        .unwrap()
+        .lock_recover()
         .insert(shortname.to_string(), map.clone());
     Some(map)
 }
@@ -374,14 +374,14 @@ fn cached_hop_distance(
         to_zone.to_string(),
     );
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    if let Some(&v) = cache.lock().unwrap().get(&key) {
+    if let Some(&v) = cache.lock_recover().get(&key) {
         return v;
     }
     let (pos, outcome, truncated) = hop_distance(base_dir, from_zone, from, to_zone, deadline);
     // why: never cache a truncated answer -- it may be worse than a full
     // computation, and this cache is process-lifetime
     if !truncated {
-        cache.lock().unwrap().insert(key, (pos, outcome));
+        cache.lock_recover().insert(key, (pos, outcome));
     }
     (pos, outcome)
 }

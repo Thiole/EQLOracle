@@ -7,6 +7,31 @@
 //! while tailing because a poll can land mid-line.
 
 use crate::ingest::{self, Ingest, LineCounts, RecentLine};
+use crate::state::LockRecover;
+
+/// why: run one backfill batch so a single panicking parse line can't
+/// poison the ingest mutex (which every command locks) and brick the
+/// app. A panic leaves Ingest memory-safe, only mid-update -- we log,
+/// drop the batch, and keep tailing; the next full replay on restart
+/// rebuilds clean. AssertUnwindSafe: a &mut across catch_unwind is not
+/// UnwindSafe by default, but the recovery contract above accepts a
+/// logically-partial Ingest, so the assertion is sound here.
+fn backfill_guarded(
+    ing: &mut crate::ingest::Ingest,
+    engine: &eqlp_core::Engine,
+    refs: &[&[u8]],
+    threads: usize,
+) {
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ingest::backfill_lines(ing, engine, refs, threads);
+    }));
+    if res.is_err() {
+        eprintln!(
+            "[eqlp] a parse batch panicked and was skipped ({} lines) -- app stays live",
+            refs.len()
+        );
+    }
+}
 use crate::inventory::{inventory_character, is_inventory_dump};
 use eqlp_core::frame::Framer;
 use eqlp_source::{
@@ -129,7 +154,7 @@ fn run(
         .min(16);
 
     // why: fresh directory starts fresh -- old row/encounter ids mean nothing here
-    *ingest.lock().unwrap() = Ingest::default();
+    *ingest.lock_recover() = Ingest::default();
 
     let mut target: Option<PathBuf> = None;
     let mut tail: Option<Tail> = None;
@@ -153,7 +178,7 @@ fn run(
                     tail = Some(Tail::from_start(newest));
                     framer = Framer::default();
                     backfilling = true;
-                    *ingest.lock().unwrap() = Ingest::default();
+                    *ingest.lock_recover() = Ingest::default();
                     switched = true;
                 }
             }
@@ -190,8 +215,8 @@ fn run(
                         }
                         let refs: Vec<&[u8]> = batch.iter().map(|v| v.as_slice()).collect();
                         {
-                            let mut ing = ingest.lock().unwrap();
-                            ingest::backfill_lines(&mut ing, &engine, &refs, backfill_threads);
+                            let mut ing = ingest.lock_recover();
+                            backfill_guarded(&mut ing, &engine, &refs, backfill_threads);
                         }
                         batch.clear();
                         // why: unconditional -- the counting-up progress the UI shows
@@ -206,25 +231,43 @@ fn run(
                 // why: whatever's left under one full batch
                 if !batch.is_empty() {
                     let refs: Vec<&[u8]> = batch.iter().map(|v| v.as_slice()).collect();
-                    let mut ing = ingest.lock().unwrap();
-                    ingest::backfill_lines(&mut ing, &engine, &refs, backfill_threads);
+                    let mut ing = ingest.lock_recover();
+                    backfill_guarded(&mut ing, &engine, &refs, backfill_threads);
                     drop(ing);
                     last_emit = clock.now_ms();
                     emit_tick(&app, &log_dir, &target, tail_status, true, &ingest, &status);
                 }
 
-                let mut ing = ingest.lock().unwrap();
-                ing.mark_live();
-                ing.tick(now);
-                drop(ing);
+                {
+                    let mut ing = ingest.lock_recover();
+                    // why: same panic-isolation as the batch path -- a
+                    // bad line at the live seam must not kill the worker
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        ing.mark_live();
+                        ing.tick(now);
+                    }));
+                }
                 backfilling = false;
             } else {
-                let mut ing = ingest.lock().unwrap();
-                let ev = t.poll(|chunk| {
-                    framer.push(chunk, |line| {
-                        let outcome = matcher.classify(line);
-                        ing.route(&engine, line, &outcome);
+                let mut ing = ingest.lock_recover();
+                // why: catch a panic from any single live line (route ->
+                // apply's indexing/arith) so the worker keeps tailing
+                // and the mutex never poisons -- see backfill_guarded
+                let ev = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let ev = t.poll(|chunk| {
+                        framer.push(chunk, |line| {
+                            let outcome = matcher.classify(line);
+                            ing.route(&engine, line, &outcome);
+                        });
                     });
+                    ing.tick(now);
+                    ev
+                }))
+                .unwrap_or_else(|_| {
+                    eprintln!(
+                        "[eqlp] a live parse line panicked and was skipped -- app stays live"
+                    );
+                    TailEvent::Idle
                 });
                 tail_status = tail_event_str(ev);
                 // why: file changed identity mid-tail -- only the frame
@@ -233,7 +276,6 @@ fn run(
                 if matches!(ev, TailEvent::Truncated | TailEvent::Replaced) {
                     framer = Framer::default();
                 }
-                ing.tick(now);
             }
         }
 
@@ -267,7 +309,7 @@ fn emit_tick(
     status: &Arc<Mutex<TailStatus>>,
 ) {
     let identity = target.as_ref().and_then(|p| identity_from_filename(p));
-    let pets_attributed = ingest.lock().unwrap().pet_owner_count();
+    let pets_attributed = ingest.lock_recover().pet_owner_count();
     let st = TailStatus {
         log_dir: Some(log_dir.display().to_string()),
         file: target
@@ -281,9 +323,9 @@ fn emit_tick(
         backfilling,
         pets_attributed,
     };
-    *status.lock().unwrap() = st.clone();
+    *status.lock_recover() = st.clone();
 
-    let mut ing = ingest.lock().unwrap();
+    let mut ing = ingest.lock_recover();
     let counts = ing.counts.clone();
     let recent = std::mem::take(&mut ing.recent);
     let finished = std::mem::take(&mut ing.pending_history);

@@ -9,7 +9,11 @@
 
 // why: modules live in lib.rs -- a bin-side `mod ingest;` here would
 // silently produce a second, incompatible `Ingest` type
-use eqlp_app::{commands, config, history, state::AppState, tail_worker, updater};
+use eqlp_app::{
+    commands, config, history,
+    state::{AppState, LockRecover},
+    tail_worker, updater,
+};
 use tauri::Manager;
 
 /// why: GTK reads this env var lazily, at its own (first-use) init time --
@@ -86,14 +90,14 @@ fn main() {
             if let Some(cfg) = config::load(&handle) {
                 let log_dir = cfg.log_dir();
                 if log_dir.is_dir() {
-                    *state.config.lock().unwrap() = Some(cfg);
+                    *state.config.lock_recover() = Some(cfg);
                     let worker = tail_worker::spawn(
                         handle,
                         log_dir,
                         state.ingest.clone(),
                         state.status.clone(),
                     );
-                    *state.worker.lock().unwrap() = Some(worker);
+                    *state.worker.lock_recover() = Some(worker);
                 }
                 // why: dir on record but gone -- fall through to setup screen
             }

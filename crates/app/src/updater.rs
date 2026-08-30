@@ -5,7 +5,7 @@
 //! fallback for the rare caller that skips this and uses the plugin directly).
 
 use crate::preferences::{self, UpdateChannel};
-use crate::state::AppState;
+use crate::state::{AppState, LockRecover};
 use serde::Serialize;
 #[cfg(target_os = "linux")]
 use tauri::Manager;
@@ -98,7 +98,7 @@ pub async fn check_for_update(
         notes: u.body.clone(),
         release_url: release_url_for(channel),
     });
-    *state.pending_update.lock().unwrap() = found;
+    *state.pending_update.lock_recover() = found;
     Ok(dto)
 }
 
@@ -162,7 +162,7 @@ pub async fn install_pending_update(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let update = state.pending_update.lock().unwrap().clone();
+    let update = state.pending_update.lock_recover().clone();
     let Some(update) = update else {
         return Err("no pending update -- call check_for_update first".to_string());
     };

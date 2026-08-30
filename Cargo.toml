@@ -11,7 +11,15 @@ license = "MIT OR Apache-2.0"
 opt-level = 3
 lto = "thin"
 codegen-units = 1
-panic = "abort"
+# why: unwind, not abort -- the app tails log text forever while the
+# user games, and a single malformed/pathological line hitting a panic
+# (a classify-worker join, an allocation failure, a future indexing
+# slip) must NOT take down a live session. Unwind lets the tail worker's
+# catch_unwind isolate that one batch and keep going; abort would kill
+# the whole process (window and overlay vanish). The unwind-table size
+# cost is negligible for a desktop app. See tail_worker::backfill_guarded
+# and state::LockRecover for the resilience this enables.
+panic = "unwind"
 
 # Fuzzing and benching want debug assertions on but still fast.
 [profile.bench]

@@ -36,7 +36,7 @@ use crate::spellbookfiles;
 use crate::spelldata;
 use crate::spelleffect;
 use crate::stackingdata;
-use crate::state::AppState;
+use crate::state::{AppState, LockRecover};
 use crate::tail_worker::{self, TailStatus};
 use crate::tradeskilldata::{self, TradeskillSkill};
 use crate::uifiles;
@@ -58,9 +58,9 @@ pub struct StatusDto {
 #[tauri::command]
 pub fn get_status(state: State<AppState>) -> StatusDto {
     StatusDto {
-        configured: state.config.lock().unwrap().is_some(),
-        status: state.status.lock().unwrap().clone(),
-        counts: state.ingest.lock().unwrap().counts.clone(),
+        configured: state.config.lock_recover().is_some(),
+        status: state.status.lock_recover().clone(),
+        counts: state.ingest.lock_recover().counts.clone(),
     }
 }
 
@@ -110,9 +110,9 @@ pub fn set_log_directory(
     let cfg = AppConfig { base_dir: dir };
     config::save(&app, &cfg)?;
     let log_dir = cfg.log_dir();
-    *state.config.lock().unwrap() = Some(cfg);
+    *state.config.lock_recover() = Some(cfg);
 
-    if let Some(old) = state.worker.lock().unwrap().take() {
+    if let Some(old) = state.worker.lock_recover().take() {
         old.stop();
     }
     let handle = tail_worker::spawn(
@@ -121,12 +121,12 @@ pub fn set_log_directory(
         state.ingest.clone(),
         state.status.clone(),
     );
-    *state.worker.lock().unwrap() = Some(handle);
+    *state.worker.lock_recover() = Some(handle);
 
     Ok(StatusDto {
         configured: true,
-        status: state.status.lock().unwrap().clone(),
-        counts: state.ingest.lock().unwrap().counts.clone(),
+        status: state.status.lock_recover().clone(),
+        counts: state.ingest.lock_recover().counts.clone(),
     })
 }
 
@@ -134,7 +134,7 @@ pub fn set_log_directory(
 
 #[tauri::command]
 pub fn list_zone_visits(state: State<AppState>) -> Vec<ZoneVisitDto> {
-    combat::list_zone_visits(&state.ingest.lock().unwrap())
+    combat::list_zone_visits(&state.ingest.lock_recover())
 }
 
 /// why: Combat module's second dropdown, defaults to the whole list --
@@ -148,7 +148,7 @@ pub fn list_encounters(
     limit: Option<usize>,
 ) -> Vec<EncounterDto> {
     combat::list_encounters(
-        &state.ingest.lock().unwrap(),
+        &state.ingest.lock_recover(),
         zone_visit,
         offset.unwrap_or(0),
         limit.unwrap_or(usize::MAX),
@@ -163,7 +163,7 @@ pub fn list_zone_encounters(
     zone_id: String,
     limit: Option<usize>,
 ) -> Vec<ZoneEncounterDto> {
-    combat::list_zone_encounters(&state.ingest.lock().unwrap(), &zone_id, limit.unwrap_or(30))
+    combat::list_zone_encounters(&state.ingest.lock_recover(), &zone_id, limit.unwrap_or(30))
 }
 
 /// why: damage/drops fetched separately so the initial list never waits on them
@@ -173,14 +173,14 @@ pub fn get_encounter_detail(
     state: State<AppState>,
     encounter_id: u32,
 ) -> Option<EncounterDetailDto> {
-    combat::encounter_detail(&state.ingest.lock().unwrap(), encounter_id)
+    combat::encounter_detail(&state.ingest.lock_recover(), encounter_id)
 }
 
 /// why: NPC page's kills/pulls totals plus recent fights
 
 #[tauri::command]
 pub fn get_mob_stats(state: State<AppState>, mob_name: String) -> MobStatsDto {
-    monsters::mob_stats(&state.ingest.lock().unwrap(), &mob_name)
+    monsters::mob_stats(&state.ingest.lock_recover(), &mob_name)
 }
 
 #[tauri::command]
@@ -189,11 +189,7 @@ pub fn list_mob_encounters(
     mob_name: String,
     limit: Option<usize>,
 ) -> Vec<ZoneEncounterDto> {
-    combat::list_mob_encounters(
-        &state.ingest.lock().unwrap(),
-        &mob_name,
-        limit.unwrap_or(30),
-    )
+    combat::list_mob_encounters(&state.ingest.lock_recover(), &mob_name, limit.unwrap_or(30))
 }
 
 /// why: Debug module's table -- recent encounters with raw and resolved zone tags
@@ -203,14 +199,14 @@ pub fn list_debug_encounters(
     state: State<AppState>,
     limit: Option<usize>,
 ) -> Vec<DebugEncounterDto> {
-    debugview::list_debug_encounters(&state.ingest.lock().unwrap(), limit.unwrap_or(100))
+    debugview::list_debug_encounters(&state.ingest.lock_recover(), limit.unwrap_or(100))
 }
 
 /// why: Debug module's "Unparsed" tab -- unmatched shapes ranked by count
 
 #[tauri::command]
 pub fn get_unmatched_coverage(state: State<AppState>, top: Option<usize>) -> UnmatchedCoverageDto {
-    debugview::unmatched_coverage(&state.ingest.lock().unwrap(), top.unwrap_or(100))
+    debugview::unmatched_coverage(&state.ingest.lock_recover(), top.unwrap_or(100))
 }
 
 /// why: Debug module's "Game State" tab -- compact live dump of current
@@ -218,7 +214,7 @@ pub fn get_unmatched_coverage(state: State<AppState>, top: Option<usize>) -> Unm
 
 #[tauri::command]
 pub fn get_game_state(state: State<AppState>) -> GameStateDto {
-    debugview::game_state(&state.ingest.lock().unwrap())
+    debugview::game_state(&state.ingest.lock_recover())
 }
 
 /// why: Combat module's primary view -- allies sorted by total damage descending
@@ -229,7 +225,7 @@ pub fn list_allies(
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
 ) -> Vec<AllyDto> {
-    combat::list_allies(&state.ingest.lock().unwrap(), zone_visit, encounter_id)
+    combat::list_allies(&state.ingest.lock_recover(), zone_visit, encounter_id)
 }
 
 /// why: Combat module's drill-down -- one ally's breakdown, or the whole selection's
@@ -242,7 +238,7 @@ pub fn get_combat_summary(
     actor: Option<String>,
 ) -> CombatSummaryDto {
     combat::summarize(
-        &state.ingest.lock().unwrap(),
+        &state.ingest.lock_recover(),
         zone_visit,
         encounter_id,
         actor.as_deref(),
@@ -252,7 +248,7 @@ pub fn get_combat_summary(
 /// Per-entity damage-over-time bars for one fight's scrub bar.
 #[tauri::command]
 pub fn get_fight_timeline(state: State<AppState>, encounter_id: u32) -> Option<FightTimelineDto> {
-    combat::fight_timeline(&state.ingest.lock().unwrap(), encounter_id)
+    combat::fight_timeline(&state.ingest.lock_recover(), encounter_id)
 }
 
 /// What clicking a point on the scrub bar shows: every entity's state and a
@@ -263,21 +259,21 @@ pub fn get_fight_state_at(
     encounter_id: u32,
     ts_ms: i64,
 ) -> Vec<EntityStateDto> {
-    combat::fight_state_at(&state.ingest.lock().unwrap(), encounter_id, ts_ms)
+    combat::fight_state_at(&state.ingest.lock_recover(), encounter_id, ts_ms)
 }
 
 /// why: every configuration for one entity, most zone visits first; empty if nothing confirmed yet
 
 #[tauri::command]
 pub fn get_class_configurations(state: State<AppState>, name: String) -> ClassConfigurationsDto {
-    combat::class_configurations(&state.ingest.lock().unwrap(), &name)
+    combat::class_configurations(&state.ingest.lock_recover(), &name)
 }
 
 /// why: Endgame's Raiding tab, curated list with confirmed kills/tiers/loot
 
 #[tauri::command]
 pub fn get_raids(state: State<AppState>) -> Vec<RaidRowDto> {
-    raiding::list_raid_rows(&state.ingest.lock().unwrap())
+    raiding::list_raid_rows(&state.ingest.lock_recover())
 }
 
 /// why: "Sky - Primary Class Unlocks" tab -- final reward items only, not raw materials
@@ -286,11 +282,10 @@ pub fn get_raids(state: State<AppState>) -> Vec<RaidRowDto> {
 pub fn get_sky_class_unlocks(state: State<AppState>) -> Vec<skyquests::SkyClassUnlockDto> {
     let base_dir = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .map(|c| c.base_dir.clone());
-    skyquests::list_class_unlocks(&state.ingest.lock().unwrap(), base_dir.as_deref())
+    skyquests::list_class_unlocks(&state.ingest.lock_recover(), base_dir.as_deref())
 }
 
 /// why: "Sky - Quests" tab -- every material turn-in, full detail
@@ -299,11 +294,10 @@ pub fn get_sky_class_unlocks(state: State<AppState>) -> Vec<skyquests::SkyClassU
 pub fn get_sky_quests(state: State<AppState>) -> Vec<skyquests::SkyClassDto> {
     let base_dir = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .map(|c| c.base_dir.clone());
-    skyquests::list_quests(&state.ingest.lock().unwrap(), base_dir.as_deref())
+    skyquests::list_quests(&state.ingest.lock_recover(), base_dir.as_deref())
 }
 
 /// why: drills from a configuration row down to its own zone visits
@@ -316,7 +310,7 @@ pub fn get_configuration_zone_visits(
     level_range: Option<(u8, u8)>,
 ) -> Vec<ZoneVisitDto> {
     combat::zone_visits_for_configuration(
-        &state.ingest.lock().unwrap(),
+        &state.ingest.lock_recover(),
         &name,
         &classes,
         level_range,
@@ -338,7 +332,7 @@ pub fn get_mob_history(
     confirmed_only: bool,
 ) -> Vec<ParseRecord> {
     let mut records = history::all(&app);
-    let ing = state.ingest.lock().unwrap();
+    let ing = state.ingest.lock_recover();
     if let Some(you) = you_sym(&ing) {
         history::refresh_loadouts(&mut records, &ing.classes, you);
     }
@@ -356,7 +350,7 @@ pub fn get_loadout_summary(
     confirmed_only: bool,
 ) -> Vec<history::LoadoutSummary> {
     let mut records = history::for_target(&app, &target);
-    let ing = state.ingest.lock().unwrap();
+    let ing = state.ingest.lock_recover();
     if let Some(you) = you_sym(&ing) {
         history::refresh_loadouts(&mut records, &ing.classes, you);
     }
@@ -371,7 +365,7 @@ pub fn get_loadout_summary(
 
 #[tauri::command]
 pub fn get_session(state: State<AppState>) -> SessionDto {
-    overview::session(&state.ingest.lock().unwrap())
+    overview::session(&state.ingest.lock_recover())
 }
 
 /// why: Overview Session card's own "restart" button -- see
@@ -379,7 +373,7 @@ pub fn get_session(state: State<AppState>) -> SessionDto {
 
 #[tauri::command]
 pub fn reset_session(state: State<AppState>) -> SessionDto {
-    let mut ing = state.ingest.lock().unwrap();
+    let mut ing = state.ingest.lock_recover();
     ing.reset_session();
     overview::session(&ing)
 }
@@ -413,77 +407,77 @@ pub fn get_tradeskill_catalog() -> Vec<TradeskillSkill> {
 /// the static catalog above -- see craftlog's own doc
 #[tauri::command]
 pub fn get_craft_log(state: State<AppState>) -> Vec<CraftLogEntryDto> {
-    craftlog::craft_log(&state.ingest.lock().unwrap())
+    craftlog::craft_log(&state.ingest.lock_recover())
 }
 
 /// why: every AA purchase this session plus total spent; no UI consumes this yet
 
 #[tauri::command]
 pub fn get_aa_log(state: State<AppState>) -> AaLogDto {
-    progression::aa_log(&state.ingest.lock().unwrap())
+    progression::aa_log(&state.ingest.lock_recover())
 }
 
 /// why: Character module's Spellbook subpage -- known spells enriched with catalog stats
 
 #[tauri::command]
 pub fn get_spellbook(state: State<AppState>) -> Vec<SpellbookEntryDto> {
-    progression::spellbook(&state.ingest.lock().unwrap())
+    progression::spellbook(&state.ingest.lock_recover())
 }
 
 /// why: Spellbook builder's picker -- shows an already-ranked spell's real rank
 
 #[tauri::command]
 pub fn get_spell_ranks(state: State<AppState>) -> HashMap<String, u8> {
-    progression::spell_ranks(&state.ingest.lock().unwrap())
+    progression::spell_ranks(&state.ingest.lock_recover())
 }
 
 /// why: every damage-capable spell, rank-adjusted, unfiltered -- caller applies its own filtering
 
 #[tauri::command]
 pub fn get_damage_spells(state: State<AppState>, assume_max_rank: bool) -> Vec<DamageSpellDto> {
-    dpscalc::list_damage_spells(&state.ingest.lock().unwrap(), assume_max_rank)
+    dpscalc::list_damage_spells(&state.ingest.lock_recover(), assume_max_rank)
 }
 
 /// why: Loot History module's one view -- mob types, kills, loot
 
 #[tauri::command]
 pub fn list_mobs(state: State<AppState>) -> Vec<MobDto> {
-    monsters::list_mobs(&state.ingest.lock().unwrap())
+    monsters::list_mobs(&state.ingest.lock_recover())
 }
 
 /// why: Social tab's Guild sub-channel
 
 #[tauri::command]
 pub fn get_guild_chat(state: State<AppState>) -> Vec<ChatMessageDto> {
-    chat::guild_chat(&state.ingest.lock().unwrap())
+    chat::guild_chat(&state.ingest.lock_recover())
 }
 
 /// why: Social tab's Party sub-channel
 
 #[tauri::command]
 pub fn get_party_chat(state: State<AppState>) -> Vec<ChatMessageDto> {
-    chat::party_chat(&state.ingest.lock().unwrap())
+    chat::party_chat(&state.ingest.lock_recover())
 }
 
 /// why: Social tab's Raid sub-channel
 
 #[tauri::command]
 pub fn get_raid_chat(state: State<AppState>) -> Vec<ChatMessageDto> {
-    chat::raid_chat(&state.ingest.lock().unwrap())
+    chat::raid_chat(&state.ingest.lock_recover())
 }
 
 /// why: Social tab's PM player list, most-recent-message first
 
 #[tauri::command]
 pub fn list_pm_threads(state: State<AppState>) -> Vec<PmThreadDto> {
-    chat::pm_threads(&state.ingest.lock().unwrap())
+    chat::pm_threads(&state.ingest.lock_recover())
 }
 
 /// why: one PM thread's whole history, oldest first
 
 #[tauri::command]
 pub fn get_pm_history(state: State<AppState>, player: String) -> Vec<ChatMessageDto> {
-    chat::pm_history(&state.ingest.lock().unwrap(), &player)
+    chat::pm_history(&state.ingest.lock_recover(), &player)
 }
 
 /// why: Overlay tab's own capability check -- see windowcap.rs's own doc
@@ -499,20 +493,20 @@ pub fn get_window_capability() -> WindowCapabilityDto {
 
 #[tauri::command]
 pub fn get_live_meter(state: State<AppState>) -> Option<combat::LiveMeterDto> {
-    combat::live_meter(&state.ingest.lock().unwrap())
+    combat::live_meter(&state.ingest.lock_recover())
 }
 
 /// why: overlay's timed-effects widget -- same polled-on-tick shape as
 /// get_live_meter, see effects.rs's own doc
 #[tauri::command]
 pub fn get_status_effects(state: State<AppState>) -> crate::effects::StatusEffectsDto {
-    crate::effects::status_effects(&state.ingest.lock().unwrap())
+    crate::effects::status_effects(&state.ingest.lock_recover())
 }
 
 /// why: Skill Tracker widget's own-cooldowns section -- see skilltracker.rs's own doc
 #[tauri::command]
 pub fn get_skill_status(state: State<AppState>) -> Vec<crate::skilltracker::SkillStatusDto> {
-    crate::skilltracker::skill_status(&state.ingest.lock().unwrap())
+    crate::skilltracker::skill_status(&state.ingest.lock_recover())
 }
 
 /// why: Drop Watch widget -- see dropwatch.rs's own doc. Unfiltered
@@ -520,7 +514,7 @@ pub fn get_skill_status(state: State<AppState>) -> Vec<crate::skilltracker::Skil
 /// intersects against tracked_drop_items, same split get_skill_status uses.
 #[tauri::command]
 pub fn get_drop_watch(state: State<AppState>) -> Vec<crate::dropwatch::DropWatchRowDto> {
-    crate::dropwatch::drop_watch(&state.ingest.lock().unwrap())
+    crate::dropwatch::drop_watch(&state.ingest.lock_recover())
 }
 
 /// why: "why did I just die" -- see deathrecap.rs's own doc. `death_ts`
@@ -533,7 +527,7 @@ pub fn get_death_recap(
     state: State<AppState>,
     death_ts: Option<i64>,
 ) -> (Option<crate::deathrecap::DeathRecapDto>, Vec<i64>) {
-    let ing = state.ingest.lock().unwrap();
+    let ing = state.ingest.lock_recover();
     (
         crate::deathrecap::recap(&ing, death_ts),
         crate::deathrecap::death_timestamps(&ing),
@@ -548,13 +542,13 @@ pub fn get_tracked_loot_status(
     state: State<AppState>,
     items: Vec<String>,
 ) -> Vec<crate::dropwatch::TrackedLootDto> {
-    crate::dropwatch::loot_status(&mut state.ingest.lock().unwrap(), &items)
+    crate::dropwatch::loot_status(&mut state.ingest.lock_recover(), &items)
 }
 
 /// why: Skill Tracker widget's target-effects section -- see targeteffects.rs's own doc
 #[tauri::command]
 pub fn get_target_effects(state: State<AppState>) -> crate::targeteffects::TargetEffectsDto {
-    crate::targeteffects::target_effects(&state.ingest.lock().unwrap())
+    crate::targeteffects::target_effects(&state.ingest.lock_recover())
 }
 
 /// why: each widget is its own real OS window now, not content stacked
@@ -972,7 +966,7 @@ pub fn list_aa() -> Vec<aadata::Aa> {
 
 #[tauri::command]
 pub fn get_item_loot_history(state: State<AppState>, item: String) -> Vec<LootEventDto> {
-    monsters::item_loot_history(&state.ingest.lock().unwrap(), &item)
+    monsters::item_loot_history(&state.ingest.lock_recover(), &item)
 }
 
 /// why: Character Planner's one call -- full attribute sheet + mana
@@ -992,7 +986,7 @@ pub fn get_character_estimate(
 
 #[tauri::command]
 pub fn get_default_gear_classes(state: State<AppState>, name: String) -> Vec<String> {
-    gearplanner::default_classes(&state.ingest.lock().unwrap(), &name)
+    gearplanner::default_classes(&state.ingest.lock_recover(), &name)
 }
 
 /// why: item browser; `owned`/`owned_tier` are the frontend's already-
@@ -1166,7 +1160,7 @@ pub fn get_app_version(app: AppHandle) -> String {
 /// level the whole file", not "unknown"
 #[tauri::command]
 pub fn get_current_level(state: State<AppState>) -> Option<u8> {
-    state.ingest.lock().unwrap().levels.latest()
+    state.ingest.lock_recover().levels.latest()
 }
 
 /// why: reads and parses an inventory dump, matches equipped rows against the item catalog
@@ -1177,7 +1171,7 @@ pub fn get_inventory_dump(
     file: String,
 ) -> Result<InventoryDumpDto, String> {
     let base_dir = {
-        let cfg = state.config.lock().unwrap();
+        let cfg = state.config.lock_recover();
         cfg.as_ref()
             .ok_or("no install folder configured yet")?
             .base_dir
@@ -1185,7 +1179,7 @@ pub fn get_inventory_dump(
     };
     let path = inventory::dump_path(&base_dir, &file).map_err(|e| e.to_string())?;
     let parsed = inventory::parse(&path).map_err(|e| e.to_string())?;
-    let ing = state.ingest.lock().unwrap();
+    let ing = state.ingest.lock_recover();
     Ok(gearplanner::resolve_inventory(
         &parsed,
         Some(&ing.exaltation_procs),
@@ -1202,7 +1196,7 @@ pub struct ExistingInventoryDumpDto {
 
 #[tauri::command]
 pub fn find_existing_inventory_dump(state: State<AppState>) -> Option<ExistingInventoryDumpDto> {
-    let base_dir = state.config.lock().unwrap().as_ref()?.base_dir.clone();
+    let base_dir = state.config.lock_recover().as_ref()?.base_dir.clone();
     let (file, character) = inventory::find_existing_dump(&base_dir)?;
     Some(ExistingInventoryDumpDto { file, character })
 }
@@ -1214,7 +1208,7 @@ pub fn find_existing_inventory_dump(state: State<AppState>) -> Option<ExistingIn
 /// inventory-derived read already takes, not worth distinguishing for a
 /// read-only view.
 fn latest_parsed_inventory(state: &State<AppState>) -> Option<inventory::ParsedInventory> {
-    let base_dir = state.config.lock().unwrap().as_ref()?.base_dir.clone();
+    let base_dir = state.config.lock_recover().as_ref()?.base_dir.clone();
     let (file, _character) = inventory::find_existing_dump(&base_dir)?;
     let path = inventory::dump_path(&base_dir, &file).ok()?;
     inventory::parse(&path).ok()
@@ -1245,8 +1239,7 @@ pub fn get_inventory_browser(state: State<AppState>) -> Vec<inventory::Inventory
 pub fn list_map_packs(state: State<AppState>) -> Vec<String> {
     let Some(base_dir) = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .map(|c| c.base_dir.clone())
     else {
@@ -1261,8 +1254,7 @@ pub fn list_map_packs(state: State<AppState>) -> Vec<String> {
 pub fn list_map_zones(state: State<AppState>, pack: Option<String>) -> Vec<String> {
     let Some(base_dir) = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .map(|c| c.base_dir.clone())
     else {
@@ -1277,8 +1269,7 @@ pub fn list_map_zones(state: State<AppState>, pack: Option<String>) -> Vec<Strin
 pub fn list_all_map_zones(state: State<AppState>) -> Vec<String> {
     let Some(base_dir) = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .map(|c| c.base_dir.clone())
     else {
@@ -1294,8 +1285,7 @@ pub fn list_all_map_zones(state: State<AppState>) -> Vec<String> {
 pub fn list_zone_versions(state: State<AppState>, zone: String) -> Vec<Option<String>> {
     let Some(base_dir) = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .map(|c| c.base_dir.clone())
     else {
@@ -1313,7 +1303,7 @@ pub fn get_map_file(
     zone: String,
 ) -> Result<mapsdata::MapFileDto, String> {
     let base_dir = {
-        let cfg = state.config.lock().unwrap();
+        let cfg = state.config.lock_recover();
         cfg.as_ref()
             .ok_or("no install folder configured yet")?
             .base_dir
@@ -1342,7 +1332,7 @@ pub fn find_walk_path(
     to: [f32; 3],
 ) -> Result<PathDto, String> {
     let base_dir = {
-        let cfg = state.config.lock().unwrap();
+        let cfg = state.config.lock_recover();
         cfg.as_ref()
             .ok_or("no install folder configured yet")?
             .base_dir
@@ -1457,14 +1447,14 @@ pub fn find_zone_route(
     to_zone: String,
 ) -> Result<ZoneRouteDto, String> {
     let base_dir = {
-        let cfg = state.config.lock().unwrap();
+        let cfg = state.config.lock_recover();
         cfg.as_ref()
             .ok_or("no install folder configured yet")?
             .base_dir
             .clone()
     };
     let (player_classes, player_level, known_start) = {
-        let ing = state.ingest.lock().unwrap();
+        let ing = state.ingest.lock_recover();
         let dto = combat::class_configurations(&ing, "You");
         let (live_classes, level) = dto
             .configurations
@@ -1489,8 +1479,7 @@ pub fn find_zone_route(
         } else if preferences::load(&app).save_profile {
             state
                 .status
-                .lock()
-                .unwrap()
+                .lock_recover()
                 .character
                 .as_deref()
                 .and_then(|c| profile::for_character(&app, c))
@@ -1535,7 +1524,7 @@ pub struct LastLocationDto {
 
 #[tauri::command]
 pub fn get_last_location(state: State<AppState>) -> Option<LastLocationDto> {
-    let ing = state.ingest.lock().unwrap();
+    let ing = state.ingest.lock_recover();
     let (ts_ms, x, y, z) = ing.last_loc?;
     let zone = ing.zone.at(ts_ms).map(str::to_string);
     let map_zones = map_zones_for_raw_label(zone.as_deref());
@@ -1583,7 +1572,7 @@ fn map_zones_for_raw_label(raw: Option<&str>) -> Vec<String> {
 /// confirms the open map is really current, `previous`/`teleport_landing` decide the guess
 #[tauri::command]
 pub fn get_zone_context(state: State<AppState>) -> ZoneContextDto {
-    let ing = state.ingest.lock().unwrap();
+    let ing = state.ingest.lock_recover();
     let ts = ing.now_ms();
     let current = ing.zone.at(ts).map(str::to_string);
     let current_map_zones = map_zones_for_raw_label(current.as_deref());
@@ -1596,7 +1585,7 @@ pub fn get_zone_context(state: State<AppState>) -> ZoneContextDto {
         if !crate::zone::zone_matches(raw, current.as_deref()?) {
             return None;
         }
-        let base_dir = state.config.lock().unwrap().as_ref()?.base_dir.clone();
+        let base_dir = state.config.lock_recover().as_ref()?.base_dir.clone();
         let (x, y, z) = routing::best_start_position(&base_dir, current.as_deref()?);
         Some((
             *origin_ts,
@@ -1783,8 +1772,7 @@ pub fn get_notification_sound_data(app: AppHandle, kind: String) -> Option<Strin
 pub fn list_ui_files(state: State<AppState>) -> Result<Vec<uifiles::UiFileInfoDto>, String> {
     let base_dir = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .ok_or("no install folder configured yet")?
         .base_dir
@@ -1801,8 +1789,7 @@ pub fn get_ui_file(
 ) -> Result<uifiles::ParsedUiFileDto, String> {
     let base_dir = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .ok_or("no install folder configured yet")?
         .base_dir
@@ -1821,8 +1808,7 @@ pub fn load_spellbook_file(
 ) -> Result<spellbookfiles::SpellbookFileDto, String> {
     let base_dir = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .ok_or("no install folder configured yet")?
         .base_dir
@@ -1838,8 +1824,7 @@ pub fn save_spellbook_file(
 ) -> Result<(), String> {
     let base_dir = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .ok_or("no install folder configured yet")?
         .base_dir
@@ -1859,8 +1844,7 @@ pub fn save_spellbook_file_as(
 ) -> Result<String, String> {
     let base_dir = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .ok_or("no install folder configured yet")?
         .base_dir
@@ -1881,8 +1865,7 @@ pub fn resolve_spellbook_spell_ids(
 ) -> Result<Vec<Option<i64>>, String> {
     let base_dir = state
         .config
-        .lock()
-        .unwrap()
+        .lock_recover()
         .as_ref()
         .ok_or("no install folder configured yet")?
         .base_dir
