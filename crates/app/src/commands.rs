@@ -635,9 +635,16 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
             .shadow(false);
     // why: restore a widget's last saved position -- see
     // preferences::OverlayPosition's doc (captured in set_overlay_locked
-    // below); absent until then, opens at the OS default position.
+    // below); absent until then, opens at the OS default position. Only
+    // restored when the point still lands on a CURRENT monitor -- a
+    // position saved against an unplugged second display or an old
+    // resolution otherwise opens the window fully off-screen, which
+    // reads as "overlay enabled but not showing at all" (the likely
+    // shape of the Windows report; same failure exists everywhere).
     if let Some(pos) = preferences::load(&app).overlay_positions.get(&widget) {
-        builder = builder.position(pos.x, pos.y);
+        if position_on_some_monitor(&app, pos.x, pos.y) {
+            builder = builder.position(pos.x, pos.y);
+        }
     }
     let window = builder.build().map_err(|e| e.to_string())?;
     // why: one main-thread closure, strict internal order -- three real
@@ -667,9 +674,58 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
         // game underneath it
         if click_through {
             let _ = w.set_ignore_cursor_events(true);
+            ensure_layered_still_renders(&w);
         }
     });
     Ok(())
+}
+
+/// why: a saved LOGICAL position is only worth restoring if it still
+/// lands on a live monitor -- checked against each monitor's own
+/// logical rect (physical geometry / its scale factor), with a small
+/// margin so a window whose top-left sits a few px past an edge (a
+/// drag that hugged the border) still counts. Monitor enumeration
+/// failing falls back to "don't restore", never "restore blind".
+fn position_on_some_monitor(app: &AppHandle, x: f64, y: f64) -> bool {
+    const MARGIN: f64 = 32.0;
+    let Ok(monitors) = app.available_monitors() else {
+        return false;
+    };
+    monitors.iter().any(|m| {
+        let scale = m.scale_factor();
+        let pos = m.position().to_logical::<f64>(scale);
+        let size = m.size().to_logical::<f64>(scale);
+        x >= pos.x - MARGIN
+            && x <= pos.x + size.width + MARGIN
+            && y >= pos.y - MARGIN
+            && y <= pos.y + size.height + MARGIN
+    })
+}
+
+/// why: tao's Windows click-through adds WS_EX_LAYERED but never calls
+/// SetLayeredWindowAttributes -- and MSDN is explicit that a layered
+/// window "will not become visible until SetLayeredWindowAttributes or
+/// UpdateLayeredWindow has been called". So enabling an overlay on
+/// Windows produced a running, permanently INVISIBLE window ("maybe
+/// its not showing at all" -- the report, and the player's own read:
+/// "what if its just how the overlay is set to work on windows
+/// incorrectly"). Full alpha keeps the window rendered; the webview's
+/// own per-pixel transparency is DWM composition, unaffected by the
+/// layered alpha. Winit fixes the same gap the same way. No-op off
+/// Windows.
+fn ensure_layered_still_renders(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{SetLayeredWindowAttributes, LWA_ALPHA};
+        if let Ok(hwnd) = window.hwnd() {
+            let hwnd = hwnd.0 as isize;
+            unsafe {
+                SetLayeredWindowAttributes(hwnd as _, 0, 255, LWA_ALPHA);
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = window;
 }
 
 /// why: skip_taskbar alone covers the TASKBAR, not the alt-tab
@@ -805,13 +861,22 @@ pub fn locate_overlay(app: AppHandle, widget: String) {
 
 #[tauri::command]
 pub fn set_overlay_locked(app: AppHandle, widget: String, locked: bool) -> Result<(), String> {
-    eprintln!("[DEBUG set_overlay_locked] widget={widget:?} locked={locked}");
     if windowcap::detect().capability != WindowCapability::ClickThrough {
         return Ok(());
     }
     if let Some(w) = app.get_webview_window(&overlay_label(&widget)) {
         w.set_ignore_cursor_events(locked)
             .map_err(|e| e.to_string())?;
+        if locked {
+            // why: this command runs OFF the event-loop thread, so the
+            // style change above was POSTED, not applied -- the attribute
+            // call must queue behind it (same PostMessage FIFO) or it
+            // lands on a not-yet-layered window as a no-op. The enable
+            // path's call sits inside run_on_main_thread already, where
+            // tao executes inline and ordering is direct.
+            let w2 = w.clone();
+            let _ = w.run_on_main_thread(move || ensure_layered_still_renders(&w2));
+        }
         w.set_decorations(!locked).map_err(|e| e.to_string())?;
         if locked {
             if let (Ok(pos), Ok(scale)) = (w.outer_position(), w.scale_factor()) {
