@@ -117,30 +117,52 @@ pub fn known_loot_for(name: &str) -> &'static [String] {
     .unwrap_or(&[])
 }
 
-/// why: a zone's real drop pool -- union of known_loot across every NPC
-/// attributed to that wiki zone. zonedata's own unique_items comes from
-/// the zone page's HEADER table, which many zones (Plane of Sky) simply
-/// don't have a row for even though their mobs' loot is fully attributed
-/// per NPC -- reported live: "still see no tracked drops nearby, after
-/// killing hand of veeshan". Takes the RAW log zone name ("The Plane of
-/// Sky") and resolves it against Npc::zone values via the same
-/// `zone_matches` alias fold everything else uses. Deduped
-/// case-insensitively.
+/// why: an item counts as a ZONE drop only when this many distinct NPCs
+/// in the zone are attributed with it -- the first cut unioned every
+/// NPC's whole table, which smeared 167 single-mob drops onto every
+/// engaged Sky mob (272 "known drops" on a trash mob, caught by the
+/// player: "verify individual drops for mobs arent being attributed to
+/// everything in zone"). Measured on Plane of Sky: >=3 keeps the 41
+/// genuinely common drops (spiroc feathers/totems, figurines) and
+/// leaves every boss- and quest-specific item to its own dropper.
+const MIN_ZONE_DROPPERS: usize = 3;
+
+/// why: a zone's broadly-dropped pool -- items attributed to at least
+/// MIN_ZONE_DROPPERS distinct NPCs in that wiki zone. zonedata's own
+/// unique_items (the zone page's HEADER table) stays the other half;
+/// many zones (Plane of Sky) don't have that row even though their
+/// mobs' loot is attributed per NPC. Takes the RAW log zone name ("The
+/// Plane of Sky"), resolved via the same `zone_matches` alias fold
+/// everything else uses. Deduped case-insensitively.
 pub fn zone_loot_pool(raw_zone: &str) -> &'static [String] {
     static MAP: OnceLock<std::collections::HashMap<String, Vec<String>>> = OnceLock::new();
     let map = MAP.get_or_init(|| {
-        let mut m: std::collections::HashMap<String, Vec<String>> =
-            std::collections::HashMap::new();
+        // per zone: item (lowercased) -> (display name, distinct droppers)
+        let mut counts: std::collections::HashMap<
+            String,
+            std::collections::HashMap<String, (String, std::collections::HashSet<String>)>,
+        > = std::collections::HashMap::new();
         for n in npcs() {
             let Some(zone) = &n.zone else { continue };
-            let e = m.entry(zone.clone()).or_default();
+            let per_zone = counts.entry(zone.clone()).or_default();
             for l in &n.known_loot {
-                if !e.iter().any(|x| x.eq_ignore_ascii_case(&l.item)) {
-                    e.push(l.item.clone());
-                }
+                let e = per_zone
+                    .entry(l.item.to_lowercase())
+                    .or_insert_with(|| (l.item.clone(), std::collections::HashSet::new()));
+                e.1.insert(n.name.to_lowercase());
             }
         }
-        m
+        counts
+            .into_iter()
+            .map(|(zone, items)| {
+                let broad: Vec<String> = items
+                    .into_values()
+                    .filter(|(_, droppers)| droppers.len() >= MIN_ZONE_DROPPERS)
+                    .map(|(name, _)| name)
+                    .collect();
+                (zone, broad)
+            })
+            .collect()
     });
     map.iter()
         .find(|(k, _)| crate::zone::zone_matches(raw_zone, k))
@@ -230,6 +252,17 @@ pub fn markers_for_zone(zone: &str) -> Vec<(String, f32, f32, Option<f32>)> {
 #[cfg(test)]
 mod location_tests {
     use super::*;
+
+    /// why: real breadth data, Plane of Sky -- Spiroc Wind Totem has 7
+    /// attributed droppers (zone-common), Golden Coffer exactly one (The
+    /// Spiroc Lord); the pool must carry the first and never the second
+    #[test]
+    fn zone_pool_is_breadth_gated() {
+        let pool = zone_loot_pool("The Plane of Sky");
+        assert!(pool.iter().any(|i| i == "Spiroc Wind Totem"));
+        assert!(!pool.iter().any(|i| i == "Golden Coffer"));
+        assert!(!pool.iter().any(|i| i == "Blood Sky Ruby"));
+    }
 
     /// why: real npcs.json entries -- Eye of Veeshan has one exact 3D
     /// spawn point; Gorgalosk's location is prose ("3rd Island"), no

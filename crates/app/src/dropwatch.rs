@@ -144,10 +144,10 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         })
         .map(|z| z.unique_items.as_slice())
         .unwrap_or(&[]);
-    // why: second pool -- union of the zone's own NPCs' known_loot. The
+    // why: second pool -- the zone's broadly-dropped items (>=3 distinct
+    // NPC attributions; single-mob drops stay the mob's own). The
     // zonedata pool reads the zone page's header table, which whole
-    // zones lack (Plane of Sky: empty, yet every island boss's loot is
-    // attributed per NPC) -- see zone_loot_pool's own doc
+    // zones lack (Plane of Sky: empty) -- see zone_loot_pool's own doc
     let npc_zone_items: &[String] = ing
         .zone
         .at(now)
@@ -402,25 +402,30 @@ mod tests {
         );
     }
 
-    /// why: the real reported gap -- "still see no tracked drops nearby,
-    /// after killing hand of veeshan". Plane of Sky's zonedata
-    /// unique_items is EMPTY (its wiki page keeps loot in body sections
-    /// the zone scraper's header-table parse never sees), so the only
-    /// zone pool was blank; the NPC-attributed pool must cover it: an
-    /// item only attributed to The Spiroc Lord attaches to any engaged
-    /// Sky mob
+    /// why: both halves of the zone-pool contract, player-corrected
+    /// twice. Sky's zonedata unique_items is EMPTY (its loot lives in
+    /// body sections the zone scraper's header parse never sees), so
+    /// the NPC-attributed pool covers it -- but ONLY genuinely common
+    /// drops (>=3 distinct droppers, e.g. Spiroc Wind Totem at 7):
+    /// "verify individual drops for mobs arent being attributed to
+    /// everything in zone" -- a single-dropper quest item (Golden
+    /// Coffer, The Spiroc Lord only) must never smear onto a rat
     #[test]
-    fn a_zone_with_no_header_table_pool_still_attaches_its_npcs_loot() {
+    fn zone_pool_carries_common_drops_but_never_single_mob_attribution() {
         let ing = run(concat!(
             "[Tue Jul 28 15:00:00 2026] You have entered The Plane of Sky.\n",
             "[Tue Jul 28 15:01:00 2026] You hit a rat for 5 points of damage.\n",
         ));
         let rows = drop_watch(&ing);
-        let rat = rows.iter().find(|r| r.mob == "a rat");
+        let rat = rows.iter().find(|r| r.mob == "a rat").expect("rat row");
         assert!(
-            rat.is_some_and(|r| r.drops.iter().any(|d| d == "Golden Coffer")),
-            "Spiroc Lord's own attribution must reach every engaged Sky mob via the npc pool, got {:?}",
-            rows.iter().map(|r| &r.mob).collect::<Vec<_>>()
+            rat.drops.iter().any(|d| d == "Spiroc Wind Totem"),
+            "a 7-dropper zone-common item must attach, got {} drops",
+            rat.drops.len()
+        );
+        assert!(
+            !rat.drops.iter().any(|d| d == "Golden Coffer"),
+            "a single-dropper quest item must NOT smear zone-wide"
         );
     }
 
