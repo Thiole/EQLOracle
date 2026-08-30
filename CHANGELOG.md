@@ -19,6 +19,7 @@
 
 ### Versioning
 
+- Bumped to 0.5.0 for the public release carrying the two-step updater (background install, restart when ready), the Drop Watch 30s post-fight loot grace, Sky class-unlock material ownership chips and resize-stable grids, navigate-to-an-NPC from its info page, the pathfinding fix for string-pulled legs cutting through walls, your own guild sends parsing into guild chat, and the backfill worker-count ceiling. Minor bump per the same updater strict-greater-than convention as every main release.
 - Bumped to 0.4.0: fixes a crash in 0.3.0 where enabling any overlay widget panicked the whole app (click-through applied to a not-yet-realized window -- introduced by the same change that hid overlays from the alt-tab switcher), and folds loot to the base item ("+N" instances) on item pages, mob loot tables, encounter drops, and drop watch. Minor bump not patch, per the convention the testing channel's synthetic versions lean on.
 - Bumped to 0.3.0 for the public release carrying the game-state truth pass, encounter involvement, the overlay alt-tab fix, and the new icon -- same reason as every main bump: the updater's strict greater-than comparison means a re-published 0.2.0 would never be offered to existing installs.
 - Bumped the app to 0.2.0 -- the first hand-bumped version; public releases were stuck at 0.1.0, which the updater's strict greater-than comparison could never offer as an update.
