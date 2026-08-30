@@ -5,7 +5,7 @@
   import BellIcon from '@lucide/svelte/icons/bell';
   import GdLink from '$lib/gamedata/GdLink.svelte';
   import ItemLocateLabel from '$lib/gamedata/ItemLocateLabel.svelte';
-  import { api, type SkyClassUnlockDto, type SkyRewardDto } from '$lib/tauri/api';
+  import { api, type SkyClassUnlockDto, type SkyRewardDto, type TurnInItemDto } from '$lib/tauri/api';
   import { trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
 
   let classes = $state<SkyClassUnlockDto[] | null>(null);
@@ -28,7 +28,9 @@
   // looted" -- an item can only ever be in one of these states at a
   // time from the tracker's own point of view (see skyquests.rs's own
   // doc on why sold is notated separately from ever_looted).
-  function itemStatus(it: SkyRewardDto): { label: string; classes: string; inHand: boolean } {
+  function itemStatus(
+    it: Pick<SkyRewardDto, 'ever_looted' | 'currently_owned' | 'sold_without_keeping'>
+  ): { label: string; classes: string; inHand: boolean } {
     if (it.sold_without_keeping) return { label: 'sold, not usable', classes: 'border-bad/40 bg-bad/10 text-bad', inHand: false };
     if (it.currently_owned != null && it.currently_owned > 0) return { label: `have ×${it.currently_owned}`, classes: 'border-good/40 bg-good/10 text-good', inHand: true };
     if (it.ever_looted) return { label: 'looted, not on hand', classes: 'border-caution/40 bg-caution/10 text-caution', inHand: false };
@@ -87,10 +89,45 @@
   });
 </script>
 
+{#snippet materialChip(m: TurnInItemDto)}
+  {@const status = itemStatus(m)}
+  {@const tracked = $trackedDropItems.includes(m.item)}
+  {@const trackable = !m.item.startsWith('Wind Rune ')}
+  <!-- why: same chip the Quests tab renders -- player's ask: "notate
+       which component items are owned, similarly to how you have it
+       for the sky quests". Bell leading in its own overlap slot, runes
+       skipped, solid yes/no fill -- see SkyQuests.svelte's own doc. -->
+  <span class="relative inline-flex">
+    {#if trackable}
+      <button
+        type="button"
+        class="absolute -top-2 -left-2 z-10 flex size-4 items-center justify-center rounded-full border {tracked
+          ? 'border-good bg-good text-background'
+          : 'border-bad bg-bad text-background'}"
+        title={tracked ? `Stop tracking ${m.item} in the Drop Watch overlay` : `Track ${m.item} in the Drop Watch overlay`}
+        onclick={() => void toggleTrackedDropItem(m.item)}
+      >
+        <BellIcon class="size-3" />
+      </button>
+    {/if}
+    <span
+      class="inline-flex items-center gap-1 rounded-sm border bg-background/60 px-1.5 py-0.5 text-[10px] {status.classes}"
+      title="{m.item}{m.source ? ` (${m.source})` : ''} -- {status.label}"
+    >
+      <GdLink kind="item" name={m.item} />
+      <span class="opacity-80">· <ItemLocateLabel item={m.item} label={status.label} owned={status.inHand} /></span>
+    </span>
+  </span>
+{/snippet}
+
 {#snippet rewardChip(r: SkyRewardDto)}
   {@const status = itemStatus(r)}
   {@const secured = r.completed === true || status.inHand}
-  <div class="flex flex-col gap-0.5 rounded-sm border px-2 py-1 {status.classes}">
+  <!-- why: a reward still needing materials takes the full card row
+       (col-span-full) while secured ones pack two-up -- material chips
+       get the whole card's width so they wrap rarely and as whole
+       units, the resize-stability half of the player's ask -->
+  <div class="flex flex-col gap-0.5 rounded-sm border px-2 py-1 {status.classes} {secured ? '' : 'col-span-full'}">
     <div class="flex items-center justify-between gap-2">
       <span class="text-[11px] font-medium"><GdLink kind="item" name={r.name} /></span>
       {#if r.completed === true}
@@ -104,40 +141,15 @@
     <span class="text-[10px] opacity-80"><ItemLocateLabel item={r.name} label={status.label} owned={status.inHand} /></span>
     {#if !secured}
       <!-- why: asked directly -- a reward that isn't sitting in hand yet
-           has to say where it actually comes from, not just a bare
-           quest name: which quest, which materials, which mob/island
-           each one drops from. Each material is its own Drop Watch
-           track button (see dropwatch.rs's doc) -- the runes here
-           mostly aren't mob drops at all, but the drop items are. -->
-      <p class="flex flex-wrap items-center gap-x-1 text-[10px] opacity-80">
-        from <span class="font-medium">{r.quest}</span>:
-        {#each r.materials as m, i (m.item)}
-          {@const tracked = $trackedDropItems.includes(m.item)}
-          {@const trackable = !m.item.startsWith('Wind Rune ')}
-          <span class="inline-flex items-center gap-0.5">
-            {i > 0 ? ',' : ''}
-            <!-- why: leading, before the material name -- its own visual
-                 slot rather than one more element trailing after the
-                 text. Runes skipped -- see SkyQuests.svelte's own doc,
-                 same reasoning. Solid fill in the theme's own yes/no
-                 colors, not just a color swap -- on/off must be
-                 unmistakable at this size. -->
-            {#if trackable}
-            <button
-              type="button"
-              class="flex size-4 shrink-0 items-center justify-center rounded-full border {tracked
-                ? 'border-good bg-good text-background'
-                : 'border-bad bg-bad text-background'}"
-              title={tracked ? `Stop tracking ${m.item} in the Drop Watch overlay` : `Track ${m.item} in the Drop Watch overlay`}
-              onclick={() => void toggleTrackedDropItem(m.item)}
-            >
-              <BellIcon class="size-3" />
-            </button>
-            {/if}
-            <GdLink kind="item" name={m.item} />{#if m.source}<span class="opacity-70"> ({m.source})</span>{/if}
-          </span>
+           has to say where it actually comes from: which quest, which
+           materials, which mob/island each one drops from, and now
+           whether each is already owned. -->
+      <div class="text-[10px] opacity-80">from <span class="font-medium">{r.quest}</span>:</div>
+      <div class="flex flex-wrap gap-1.5 pt-2 pb-0.5 pl-2">
+        {#each r.materials as m (m.item)}
+          {@render materialChip(m)}
         {/each}
-      </p>
+      </div>
     {/if}
   </div>
 {/snippet}
@@ -169,7 +181,12 @@
         </Select.Root>
       </label>
     </div>
-    <div class="grid grid-cols-2 gap-3">
+    <!-- why: auto-fill with a real minimum, not a hard two columns --
+         player's ask: line breaks shouldn't jump around on resize. A
+         card never drops below a width its chips wrap sanely at; the
+         column count steps at predictable thresholds instead of two
+         crushed columns rewrapping continuously. -->
+    <div class="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(340px,1fr))]">
       {#each sortedClasses ?? [] as c (c.class)}
         <Card class="rounded-sm">
           <CardContent class="px-3 py-2.5">
@@ -186,7 +203,11 @@
                 <Badge class="h-5 text-[10px] text-muted-foreground" variant="outline" title="no Achievements.txt found yet">?</Badge>
               {/if}
             </div>
-            <div class="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+            <!-- why: fixed two columns, not a viewport breakpoint --
+                 sm: keys off the WINDOW, so chips reflowed at a size
+                 unrelated to the card's own width; the card's minmax
+                 floor already guarantees room for two -->
+            <div class="grid grid-cols-2 gap-1.5">
               {#each c.rewards as r (r.name)}
                 {@render rewardChip(r)}
               {/each}

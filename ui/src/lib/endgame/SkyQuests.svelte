@@ -154,7 +154,10 @@
         </Select.Root>
       </label>
     </div>
-    <div class="grid grid-cols-2 gap-2">
+    <!-- why: same auto-fill floor as the Unlocks tab -- resize changes
+         the column count at thresholds instead of continuously
+         rewrapping two crushed columns -->
+    <div class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(340px,1fr))]">
       {#each sortedQuests ?? [] as q (q.class + '::' + q.quest)}
         <Card class="rounded-sm">
           <CardContent class="px-3 py-2 pb-2.5">

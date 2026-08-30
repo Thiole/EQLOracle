@@ -155,16 +155,10 @@ pub struct SkyRewardDto {
     pub sold_without_keeping: bool,
     /// why: real achievement-confirmed "Obtain <name>." line
     pub completed: Option<bool>,
-    /// why: raw materials (rune first, then drops) so a not-yet-owned
-    /// reward says where it actually comes from; no own tracking here
-    pub materials: Vec<QuestMaterialDto>,
-}
-
-/// why: name + wiki source, nothing else -- no loot/ownership tracking here
-#[derive(Debug, Clone, Serialize)]
-pub struct QuestMaterialDto {
-    pub item: String,
-    pub source: Option<String>,
+    /// why: raw materials (rune first, then drops) with full ownership
+    /// status -- player's ask: notate which components are owned, same
+    /// as the Quests tab's own item chips
+    pub materials: Vec<TurnInItemDto>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -386,14 +380,15 @@ pub fn list_class_unlocks(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClass
                     let materials = q
                         .rune
                         .as_deref()
-                        .map(|r| QuestMaterialDto {
-                            item: r.to_string(),
-                            source: None,
-                        })
+                        .map(|r| resolve_item(r, None, &ctx.looted, ctx.owned_ci.as_ref()))
                         .into_iter()
-                        .chain(q.items.iter().map(|qi| QuestMaterialDto {
-                            item: qi.item.clone(),
-                            source: qi.source.clone(),
+                        .chain(q.items.iter().map(|qi| {
+                            resolve_item(
+                                &qi.item,
+                                qi.source.as_deref(),
+                                &ctx.looted,
+                                ctx.owned_ci.as_ref(),
+                            )
                         }))
                         .collect();
                     let completed = completed_status(

@@ -502,13 +502,6 @@ export interface CraftLogEntryDto {
 
 /** why: one final reward item -- what "Primary Class Unlocks" tracks, never the raw
  * materials a quest is built from */
-/** why: name plus where the wiki says it comes from -- no loot/ownership tracking of its
- * own, that's the Sky Quests tab's own job */
-export interface QuestMaterialDto {
-  item: string;
-  source: string | null;
-}
-
 export interface SkyRewardDto {
   name: string;
   /** why: which quest earns this reward -- context only */
@@ -518,9 +511,9 @@ export interface SkyRewardDto {
   currently_owned: number | null;
   sold_without_keeping: boolean;
   completed: boolean | null;
-  /** why: rune first, then drop items, in quest order -- where a not-yet-secured reward
-   * actually comes from */
-  materials: QuestMaterialDto[];
+  /** why: rune first, then drop items, in quest order, with full ownership status --
+   * same shape the Quests tab's own chips render */
+  materials: TurnInItemDto[];
 }
 
 export interface SkyClassUnlockDto {
