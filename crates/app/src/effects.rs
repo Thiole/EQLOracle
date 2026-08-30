@@ -448,6 +448,7 @@ mod tests {
             "[Tue Jul 28 15:01:20 2026] You are no longer charmed.",
             "[Tue Jul 28 15:01:20 2026] You are no longer captivated.",
             "[Tue Jul 28 15:01:20 2026] You are no longer afraid.",
+            "[Tue Jul 28 15:01:20 2026] You have control of yourself again.",
         ] {
             let ing = run(&[
                 "[Tue Jul 28 15:01:00 2026] You lose control of yourself!",

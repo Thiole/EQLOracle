@@ -2156,17 +2156,18 @@ impl Ingest {
         use crate::effects::MomentaryOutcome::{Ended, Success, Uncertain};
         // why: your own death ends every CC outright -- nothing survives it
         if victim.eq_ignore_ascii_case("you") {
-            for st in [
+            for m in [
                 &mut self.root,
                 &mut self.fear,
                 &mut self.control,
                 &mut self.stun,
-            ] {
-                if let Some(m) = st {
-                    if !matches!(m.outcome, Ended) {
-                        m.outcome = Ended;
-                        m.since_ms = ts;
-                    }
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if !matches!(m.outcome, Ended) {
+                    m.outcome = Ended;
+                    m.since_ms = ts;
                 }
             }
             return;
