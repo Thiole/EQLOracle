@@ -231,14 +231,18 @@ export interface InvisStatusDto {
 }
 
 export interface MomentaryStatusDto {
-  outcome: 'success' | 'failure' | 'ended';
+  /** why: 'uncertain' is root/fear only -- an enemy death that MIGHT
+   * have been the caster's (same-named mobs are ambiguous); resolved by
+   * the effect's own wear-off line, a fresh landing, or every enemy dying */
+  outcome: 'success' | 'failure' | 'ended' | 'uncertain';
   since_ms: number;
 }
 
 /** why: Charm/Invisibility/Hide/Sneak/CC (Stun/Root/Fear) -- see
  * effects.rs's own doc. Each field null when nothing of that kind has
- * happened yet this session. CC fields only ever carry 'success'
- * (landed/on) or 'ended' (off) -- no 'failure' case exists for them. */
+ * happened yet this session. CC fields carry 'success' (landed/on),
+ * 'ended' (off), or -- root/fear only -- 'uncertain' (a possible-caster
+ * death, see MomentaryStatusDto); no 'failure' case exists for them. */
 export interface StatusEffectsDto {
   charm: CharmStatusDto | null;
   invis: InvisStatusDto | null;

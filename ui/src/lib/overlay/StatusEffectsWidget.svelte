@@ -78,11 +78,14 @@
   // (8s), long gone by the time anyone actually checks the overlay
   // ("i just hid and sneaked and its not showing up"). Now persistent
   // like charmRow above: no recent() gate, just a blink on the moment.
-  function momentaryRow(key: string, m: { outcome: 'success' | 'failure' | 'ended'; since_ms: number } | null | undefined) {
+  function momentaryRow(key: string, m: import('$lib/tauri/api').MomentaryStatusDto | null | undefined) {
     if (!m) return null;
     const blink = nowMs - m.since_ms < BLINK_MS;
     if (m.outcome === 'success') return { key, label: `${key}: SUCCESS`, tone: 'good' as const, blink };
     if (m.outcome === 'failure') return { key, label: `${key}: FAILURE`, tone: 'bad' as const, blink };
+    // why: 'uncertain' is root/fear only, never hide/sneak -- shown as
+    // MAYBE if these rows ever carry it rather than lying ENDED
+    if (m.outcome === 'uncertain') return { key, label: `${key}: MAYBE ENDED`, tone: 'dim' as const, blink };
     return { key, label: `${key}: ENDED`, tone: 'dim' as const, blink };
   }
 

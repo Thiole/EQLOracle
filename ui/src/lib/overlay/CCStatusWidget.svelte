@@ -25,7 +25,7 @@
 
   let { status, size = 'small' }: { status: StatusEffectsDto | null; size?: CcSize } = $props();
 
-  type CcEffect = { key: string; label: string; active: boolean };
+  type CcEffect = { key: string; label: string; active: boolean; uncertain: boolean };
 
   const effects = $derived(
     (
@@ -34,7 +34,16 @@
         ['stun', 'Stun', status?.stun],
         ['fear', 'Fear', status?.fear],
       ] as const
-    ).map(([key, label, m]): CcEffect => ({ key, label, active: m?.outcome === 'success' })),
+    ).map(
+      ([key, label, m]): CcEffect => ({
+        key,
+        label,
+        active: m?.outcome === 'success',
+        // why: "maybe?" -- an enemy that MIGHT have been the caster died
+        // (see MomentaryStatusDto's own doc); caution-toned, not cleared
+        uncertain: m?.outcome === 'uncertain',
+      }),
+    ),
   );
 </script>
 
@@ -43,10 +52,14 @@
     <span
       class="flex flex-1 items-center justify-center rounded-sm border font-medium uppercase tracking-wide transition-colors {CC_SIZE_CLASSES[
         size
-      ].square} {e.active ? 'border-bad bg-bad text-background' : 'border-border text-muted-foreground'}"
-      title="{e.label}: {e.active ? 'active' : 'off'}"
+      ].square} {e.active
+        ? 'border-bad bg-bad text-background'
+        : e.uncertain
+          ? 'border-caution bg-caution/60 text-background'
+          : 'border-border text-muted-foreground'}"
+      title="{e.label}: {e.active ? 'active' : e.uncertain ? 'maybe ended -- a mob that may have cast it died' : 'off'}"
     >
-      {e.label}
+      {e.label}{e.uncertain ? '?' : ''}
     </span>
   {/each}
 </div>

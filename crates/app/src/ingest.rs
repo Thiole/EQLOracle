@@ -840,6 +840,11 @@ pub struct Ingest {
     pub stun: Option<crate::effects::MomentaryStatus>,
     pub root: Option<crate::effects::MomentaryStatus>,
     pub fear: Option<crate::effects::MomentaryStatus>,
+    /// why: probable caster of the active root/fear (newest non-You cast
+    /// right before the landing line) -- lets a death resolve the effect
+    /// the way the game does, see clear_cc_on_death
+    pub root_caster: Option<String>,
+    pub fear_caster: Option<String>,
     /// why: Sky Quests' own real turn-in detector -- see skyquests.rs's
     /// own doc, and Action::TradeOffered's own doc for why a
     /// trade-complete line alone never proves success. Live-only, one
@@ -972,6 +977,8 @@ impl Default for Ingest {
             stun: None,
             root: None,
             fear: None,
+            root_caster: None,
+            fear_caster: None,
             pending_turnin: None,
             turn_ins: Vec::new(),
             disposed_items: std::collections::HashSet::new(),
@@ -1709,6 +1716,7 @@ impl Ingest {
                     outcome: crate::effects::MomentaryOutcome::Success,
                     since_ms: ts,
                 });
+                self.root_caster = self.probable_cc_caster(ts);
             }
             Action::RootEnded => {
                 self.root = Some(crate::effects::MomentaryStatus {
@@ -1721,6 +1729,7 @@ impl Ingest {
                     outcome: crate::effects::MomentaryOutcome::Success,
                     since_ms: ts,
                 });
+                self.fear_caster = self.probable_cc_caster(ts);
             }
             Action::FearEnded => {
                 self.fear = Some(crate::effects::MomentaryStatus {
@@ -2083,7 +2092,75 @@ impl Ingest {
         }
         let sym = self.sym(victim);
         self.timeline.observed(ts, sym.0, State::Dead);
+        self.clear_cc_on_death(ts, victim);
         self.drain_closed();
+    }
+
+    /// why: the game drops root/fear (never stun) when their caster
+    /// dies, but the log names no caster on the landing and the graph is
+    /// name-keyed -- the instance that just died may not be the caster.
+    /// Player's spec: a matching (or unattributed) enemy death flips the
+    /// effect to Uncertain ("maybe?"), and once no living enemy remains
+    /// anywhere ("combat ends with all targets dead") both clear
+    /// outright. The effect's own wear-off line stays authoritative
+    /// either way.
+    fn clear_cc_on_death(&mut self, ts: Millis, victim: &str) {
+        use crate::effects::MomentaryOutcome::{Ended, Success, Uncertain};
+        let root_live = self
+            .root
+            .is_some_and(|m| matches!(m.outcome, Success | Uncertain));
+        let fear_live = self
+            .fear
+            .is_some_and(|m| matches!(m.outcome, Success | Uncertain));
+        if !root_live && !fear_live {
+            return;
+        }
+        if !self.allegiance_at(victim, ts).is_enemy() {
+            return; // an ally's death says nothing about enemy-cast CC
+        }
+        let any_enemy_left = self.encounters.live_encounters().any(|f| {
+            f.entities.iter().any(|n| {
+                !f.slain.iter().any(|s| s.eq_ignore_ascii_case(n))
+                    && self.allegiance_at(n, ts).is_enemy()
+            })
+        });
+        let resolve = |status: &mut Option<crate::effects::MomentaryStatus>,
+                       caster: &Option<String>| {
+            let Some(m) = status else { return };
+            if !matches!(m.outcome, Success | Uncertain) {
+                return;
+            }
+            if !any_enemy_left {
+                m.outcome = Ended;
+                m.since_ms = ts;
+            } else if caster
+                .as_deref()
+                .is_none_or(|c| c.eq_ignore_ascii_case(victim))
+            {
+                m.outcome = Uncertain;
+                m.since_ms = ts;
+            }
+        };
+        if root_live {
+            resolve(&mut self.root, &self.root_caster);
+        }
+        if fear_live {
+            resolve(&mut self.fear, &self.fear_caster);
+        }
+    }
+
+    /// why: newest non-You begun cast just before a CC landing line --
+    /// the landing itself names no caster; a short window keeps a stale
+    /// unrelated cast from claiming it
+    fn probable_cc_caster(&self, ts: Millis) -> Option<String> {
+        const CC_CASTER_WINDOW_MS: Millis = 6_000;
+        let you = self.store.names.get("You").map(|s| s.0);
+        self.recent_casts
+            .entries
+            .iter()
+            .rev()
+            .find(|e| Some(e.caster) != you && ts - e.ts <= CC_CASTER_WINDOW_MS)
+            .map(|e| self.store.name(eqlp_store::Sym(e.caster)).to_string())
     }
 
     /// why: most recent encounter targeting victim, for pending_xp

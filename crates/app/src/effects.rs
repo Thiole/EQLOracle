@@ -51,6 +51,14 @@ pub enum MomentaryOutcome {
     /// why: a `hide.broken`/`hide.stopped`-shaped line -- was active, now
     /// isn't, distinct from a fresh failed attempt
     Ended,
+    /// why: root/fear only -- the game drops these when their caster
+    /// dies, but a death is AMBIGUOUS evidence: the name-keyed graph
+    /// can't tell same-named instances apart, so the mob that just died
+    /// may not be the one that cast it. Player's own spec: "maybe it
+    /// needs a state of 'maybe?'". Resolved by the effect's own wear-off
+    /// line, a fresh landing, or every enemy dying (nothing left that
+    /// could be maintaining it).
+    Uncertain,
 }
 
 impl MomentaryOutcome {
@@ -59,6 +67,7 @@ impl MomentaryOutcome {
             MomentaryOutcome::Success => "success",
             MomentaryOutcome::Failure => "failure",
             MomentaryOutcome::Ended => "ended",
+            MomentaryOutcome::Uncertain => "uncertain",
         }
     }
 }
@@ -347,6 +356,76 @@ mod tests {
             "[Tue Jul 28 15:03:00 2026] You are no longer ensnared.",
         ]);
         assert_eq!(status_effects(&ing).root.expect("tracked").outcome, "ended");
+    }
+
+    /// why: the game drops root/fear when their caster dies, but a death
+    /// is ambiguous (same-named mobs) -- player's spec: a possible-caster
+    /// death goes to "maybe" (uncertain), never a confident clear, while
+    /// other enemies still live
+    #[test]
+    fn a_possible_caster_death_marks_root_uncertain_not_ended() {
+        let ing = run(&[
+            "[Tue Jul 28 15:00:58 2026] a shimmering spirit begins casting a spell.",
+            "[Tue Jul 28 15:01:00 2026] You are ensnared.",
+            "[Tue Jul 28 15:01:05 2026] You hit a shimmering spirit for 50 points of damage.",
+            "[Tue Jul 28 15:01:06 2026] a gust wisp hits YOU for 10 points of damage.",
+            "[Tue Jul 28 15:01:10 2026] You have slain a shimmering spirit!",
+        ]);
+        assert_eq!(
+            status_effects(&ing).root.expect("tracked").outcome,
+            "uncertain",
+            "caster-name death with another enemy alive is a maybe, not a clear"
+        );
+    }
+
+    /// why: the other half of the spec -- "if a combat ends with all
+    /// targets dead, it should clear all root/fear effects": nothing
+    /// left alive that could be maintaining them
+    #[test]
+    fn all_enemies_dead_clears_root_and_fear_outright() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You are ensnared.",
+            "[Tue Jul 28 15:01:01 2026] Your mind fills with fear.",
+            "[Tue Jul 28 15:01:05 2026] You hit a shimmering spirit for 50 points of damage.",
+            "[Tue Jul 28 15:01:10 2026] You have slain a shimmering spirit!",
+        ]);
+        let s = status_effects(&ing);
+        assert_eq!(s.root.expect("tracked").outcome, "ended");
+        assert_eq!(s.fear.expect("tracked").outcome, "ended");
+    }
+
+    /// why: stun is explicitly out of the death-clear ("not stun",
+    /// player's own spec) -- it runs on its own short clock
+    #[test]
+    fn stun_is_untouched_by_enemy_deaths() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You are stunned!",
+            "[Tue Jul 28 15:01:02 2026] You hit a shimmering spirit for 50 points of damage.",
+            "[Tue Jul 28 15:01:03 2026] You have slain a shimmering spirit!",
+        ]);
+        assert_eq!(
+            status_effects(&ing).stun.expect("tracked").outcome,
+            "success"
+        );
+    }
+
+    /// why: an unrelated enemy dying while the KNOWN caster still lives
+    /// must not shake the state -- the maybe is only for a death that
+    /// could actually have been the caster's
+    #[test]
+    fn an_unrelated_death_with_a_known_living_caster_changes_nothing() {
+        let ing = run(&[
+            "[Tue Jul 28 15:00:58 2026] a shimmering spirit begins casting a spell.",
+            "[Tue Jul 28 15:01:00 2026] You are ensnared.",
+            "[Tue Jul 28 15:01:05 2026] a shimmering spirit hits YOU for 5 points of damage.",
+            "[Tue Jul 28 15:01:06 2026] You hit a gust wisp for 50 points of damage.",
+            "[Tue Jul 28 15:01:10 2026] You have slain a gust wisp!",
+        ]);
+        assert_eq!(
+            status_effects(&ing).root.expect("tracked").outcome,
+            "success",
+            "the attributed caster is alive -- the root stands"
+        );
     }
 
     /// why: real, curated set -- any of several different real fear
