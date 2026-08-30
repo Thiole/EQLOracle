@@ -114,7 +114,7 @@
       class="inline-flex items-center gap-1 rounded-sm border bg-background/60 px-1.5 py-0.5 text-[10px] {status.classes}"
       title="{m.item}{m.source ? ` (${m.source})` : ''} -- {status.label}"
     >
-      <GdLink kind="item" name={m.item} />
+      <GdLink kind="item" name={m.item} bell={false} />
       <span class="opacity-80">· <ItemLocateLabel item={m.item} label={status.label} owned={status.inHand} /></span>
     </span>
   </span>
@@ -129,7 +129,7 @@
        units, the resize-stability half of the player's ask -->
   <div class="flex flex-col gap-0.5 rounded-sm border px-2 py-1 {status.classes} {secured ? '' : 'col-span-full'}">
     <div class="flex items-center justify-between gap-2">
-      <span class="text-[11px] font-medium"><GdLink kind="item" name={r.name} /></span>
+      <span class="text-[11px] font-medium"><GdLink kind="item" name={r.name} bell={false} /></span>
       {#if r.completed === true}
         <Badge class="h-4 border-good/40 bg-good/10 px-1 text-[9px] text-good" variant="outline">done</Badge>
       {:else if r.completed === false}

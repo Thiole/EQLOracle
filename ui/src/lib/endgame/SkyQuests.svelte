@@ -119,7 +119,7 @@
       </button>
     {/if}
     <span class="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] {status.classes}" title="{it.item}{it.source ? ` (${it.source})` : ''} -- {status.label}">
-      <GdLink kind="item" name={it.item} />
+      <GdLink kind="item" name={it.item} bell={false} />
       <span class="opacity-80">· <ItemLocateLabel item={it.item} label={status.label} owned={status.inHand} /></span>
     </span>
   </span>
@@ -164,11 +164,11 @@
             <div class="mb-0.5 flex items-baseline justify-between gap-2">
               <span class="text-[12px] font-medium text-foreground">{q.quest}</span>
               {#if q.completed === true}
-                <span class="shrink-0 text-[10px] text-good">done · {#if q.reward}<GdLink kind="item" name={q.reward} />{/if}</span>
+                <span class="shrink-0 text-[10px] text-good">done · {#if q.reward}<GdLink kind="item" name={q.reward} bell={false} />{/if}</span>
               {:else if q.completed === false}
-                <span class="shrink-0 text-[10px] text-muted-foreground">open · {#if q.reward}<GdLink kind="item" name={q.reward} />{/if}</span>
+                <span class="shrink-0 text-[10px] text-muted-foreground">open · {#if q.reward}<GdLink kind="item" name={q.reward} bell={false} />{/if}</span>
               {:else}
-                <span class="shrink-0 text-[10px] text-muted-foreground">? · {#if q.reward}<GdLink kind="item" name={q.reward} />{/if}</span>
+                <span class="shrink-0 text-[10px] text-muted-foreground">? · {#if q.reward}<GdLink kind="item" name={q.reward} bell={false} />{/if}</span>
               {/if}
             </div>
             <div class="mb-1.5 text-[10px] text-muted-foreground">
