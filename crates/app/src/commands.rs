@@ -71,12 +71,20 @@ pub fn get_status(state: State<AppState>) -> StatusDto {
 pub async fn pick_log_directory(app: AppHandle) -> Option<String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
+    let mut dialog = app
+        .dialog()
         .file()
-        .set_title("Select your EverQuest Legends install folder")
-        .pick_folder(move |folder| {
-            let _ = tx.send(folder);
-        });
+        .set_title("Select your EverQuest Legends install folder");
+    // why: parent to the main window -- an unparented Windows dialog can
+    // open BEHIND the app and never get focus, which reads as "the
+    // button does nothing" (real Windows first-launch report); the
+    // FirstLaunch paste-a-path fallback covers whatever this doesn't
+    if let Some(win) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&win);
+    }
+    dialog.pick_folder(move |folder| {
+        let _ = tx.send(folder);
+    });
     rx.await.ok().flatten().map(|p| p.to_string())
 }
 
@@ -93,6 +101,11 @@ pub fn set_log_directory(
     if !dir.is_dir() {
         return Err(format!("{path} is not a directory"));
     }
+    // why: validate AND repair before persisting -- picking `Logs`
+    // itself resolves to its parent ("figure it out for them", the
+    // player's ask), and an unrecognizable folder errors instead of
+    // saving a config that wedges the next launch (real Windows report)
+    let dir = config::normalize_base_dir(&dir)?;
 
     let cfg = AppConfig { base_dir: dir };
     config::save(&app, &cfg)?;

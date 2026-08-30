@@ -14,6 +14,17 @@
 
   let picking = $state(false);
   let error = $state<string | null>(null);
+  let manualPath = $state('');
+
+  async function applyPath(path: string) {
+    error = null;
+    try {
+      const result = await api.setLogDirectory(path);
+      status.set(result);
+    } catch (e) {
+      error = String(e);
+    }
+  }
 
   async function chooseFolder() {
     picking = true;
@@ -21,8 +32,7 @@
     try {
       const path = await api.pickLogDirectory();
       if (!path) return; // user cancelled -- not an error
-      const result = await api.setLogDirectory(path);
-      status.set(result);
+      await applyPath(path);
     } catch (e) {
       error = String(e);
     } finally {
@@ -93,6 +103,19 @@
         own replay reconfirms them itself. Change this anytime in Settings.
       </p>
       <Button onclick={chooseFolder} disabled={picking}>{picking ? 'Choosing…' : 'Choose folder…'}</Button>
+      <!-- why: real Windows first-launch report -- the native dialog can
+           open behind the window (or its callback never resolve), which
+           reads as "the button does nothing" and hard-blocks setup with
+           no other way in. Pasting the path is the way in that cannot
+           break; picking Logs itself is auto-repaired backend-side. -->
+      <div class="flex items-center gap-2">
+        <input
+          class="h-8 flex-1 rounded-md border border-border bg-background px-2 text-[12px] text-foreground"
+          placeholder="…or paste the install folder path here"
+          bind:value={manualPath}
+        />
+        <Button variant="outline" disabled={!manualPath.trim()} onclick={() => void applyPath(manualPath.trim())}>Use</Button>
+      </div>
       {#if error}
         <p class="text-destructive">{error}</p>
       {/if}
