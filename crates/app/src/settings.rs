@@ -79,7 +79,7 @@ pub fn save(app: &AppHandle, settings: &NotificationSettings) -> Result<(), Stri
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_vec_pretty(settings).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    crate::diskwrite::write_atomic(&path, &json).map_err(|e| e.to_string())?;
     // why: cache follows a successful write only, same as preferences::save
     *CACHE.write().unwrap() = Some(settings.clone());
     Ok(())

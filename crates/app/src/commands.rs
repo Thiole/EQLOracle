@@ -1724,13 +1724,20 @@ pub async fn pick_notification_sound(
 ) -> Result<Option<settings::NotificationSettings>, String> {
     use tauri_plugin_dialog::DialogExt;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog()
+    let mut dialog = app
+        .dialog()
         .file()
         .set_title("Choose a notification sound")
-        .add_filter("Audio", &["mp3", "wav", "ogg", "m4a"])
-        .pick_file(move |file| {
-            let _ = tx.send(file);
-        });
+        .add_filter("Audio", &["mp3", "wav", "ogg", "m4a"]);
+    // why: same Windows behind-the-window failure pick_log_directory
+    // already parents against -- unparented, this reads as "the button
+    // does nothing"
+    if let Some(win) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&win);
+    }
+    dialog.pick_file(move |file| {
+        let _ = tx.send(file);
+    });
     let Some(file) = rx.await.ok().flatten() else {
         return Ok(None); // user cancelled
     };

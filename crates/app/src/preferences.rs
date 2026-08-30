@@ -287,7 +287,7 @@ pub fn save(app: &AppHandle, prefs: &Preferences) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_vec_pretty(prefs).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    crate::diskwrite::write_atomic(&path, &json).map_err(|e| e.to_string())?;
     // why: cache updated only after the write succeeded -- a failed save
     // must not leave readers seeing state the disk doesn't have
     *CACHE.write().unwrap() = Some(prefs.clone());

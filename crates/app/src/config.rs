@@ -78,7 +78,7 @@ pub fn save(app: &AppHandle, cfg: &AppConfig) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_vec_pretty(cfg).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    crate::diskwrite::write_atomic(&path, &json).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

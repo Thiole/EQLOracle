@@ -37,6 +37,11 @@ eqlp-store = { path = "../store" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
+# why: a second launch (double-click twice, shortcut while minimized)
+# otherwise runs a whole second app -- two tail workers on the same log,
+# duplicate overlay windows, and two in-memory preference caches whose
+# last save wins wholesale. Second launch focuses the first instead.
+tauri-plugin-single-instance = "2"
 # why: already in the lockfile as a transitive dep of tauri-plugin-updater
 # itself -- promoted to a direct dep for endpoint parsing, same precedent
 # as base64 above

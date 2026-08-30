@@ -20,7 +20,7 @@
   import UpdateBanner from '$lib/shell/UpdateBanner.svelte';
   import DropWatchLootBanner from '$lib/shell/DropWatchLootBanner.svelte';
   import DeathRecapBanner from '$lib/shell/DeathRecapBanner.svelte';
-  import { status, refreshStatus } from '$lib/stores/status';
+  import { status, refreshStatusUntilUp } from '$lib/stores/status';
   import { loadPreferences } from '$lib/stores/settings';
   import { loadGameDataModule } from '$lib/stores/gamedata';
   import { activeModule } from '$lib/stores/shell';
@@ -28,7 +28,7 @@
   import { checkForUpdates } from '$lib/stores/updater';
 
   onMount(() => {
-    void refreshStatus();
+    void refreshStatusUntilUp();
     void initTauriEvents();
     void loadPreferences();
     // why: loaded here, not on-demand when Game Data first mounts -- the
@@ -47,7 +47,9 @@
      "exactly one app root is mounted" case looks for. -->
 <div data-app-root class="h-screen w-screen overflow-hidden bg-background text-foreground">
   {#if $status === null}
-    <!-- Loading -- refreshStatus() hasn't resolved yet. -->
+    <!-- why: visible, not a blank frame -- if this ever sticks, the
+         backend isn't answering and "Loading" beats an empty window -->
+    <div class="flex h-full items-center justify-center text-sm text-muted-foreground">Loading…</div>
   {:else if !$status.configured}
     <FirstLaunch />
   {:else}

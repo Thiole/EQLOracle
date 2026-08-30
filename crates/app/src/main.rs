@@ -55,6 +55,17 @@ fn main() {
     prefer_x11_backend();
 
     tauri::Builder::default()
+        // why: registered FIRST, upstream's own requirement, so the
+        // duplicate process exits before any of its own state spins up.
+        // A second launch focuses the running instance's main window
+        // instead of starting a second app -- see Cargo.toml's own doc
+        // on what a real duplicate breaks.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(AppState::new())

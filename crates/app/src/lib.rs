@@ -13,6 +13,7 @@ pub mod config;
 pub mod craftlog;
 pub mod deathrecap;
 pub mod debugview;
+pub mod diskwrite;
 pub mod dpscalc;
 pub mod dropwatch;
 pub mod effects;

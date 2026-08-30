@@ -11,6 +11,22 @@ export async function refreshStatus() {
   status.set(await api.getStatus());
 }
 
+// why: App.svelte's mount call, hardened -- get_status is infallible
+// backend-side, so a rejection here is IPC/webview startup flake, and
+// one unlucky first call must not leave $status null (a permanently
+// blank window with no error and no retry). Keeps trying quietly; the
+// first success renders the app.
+export async function refreshStatusUntilUp() {
+  for (;;) {
+    try {
+      await refreshStatus();
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+}
+
 // `parse-tick`'s own payload shape -- applied in place rather than a
 // full `refreshStatus()` round trip, since the tick already carries
 // everything this store needs.
