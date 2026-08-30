@@ -2770,7 +2770,7 @@ impl Ingest {
     /// charming your groupmate really does turn them), while an Unproven
     /// name is an ally while charmed (your pet) or currently grouped --
     /// and a charmed grouped mob stays an ally either way.
-    pub(crate) fn allegiance_at(&self, name: &str, ts: Millis) -> Allegiance {
+    pub fn allegiance_at(&self, name: &str, ts: Millis) -> Allegiance {
         if name.eq_ignore_ascii_case("you") {
             return Allegiance::Ally;
         }
@@ -4603,7 +4603,10 @@ pub fn backfill_lines(ing: &mut Ingest, engine: &Engine, lines: &[&[u8]], thread
         return;
     }
 
-    let threads = threads.max(1).min(lines.len());
+    // why: hard ceiling -- a probe passing lines.len() here spawned one
+    // thread per log line (3.5M stacks, ~28TB reserved, machine-killing
+    // OOM twice before the kernel caught it); no gain past core count
+    let threads = threads.clamp(1, 64).min(lines.len());
     let chunk_size = lines.len().div_ceil(threads);
 
     let results: Vec<ChunkResult> = std::thread::scope(|scope| {

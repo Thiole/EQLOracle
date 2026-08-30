@@ -24,7 +24,14 @@ fn main() {
     let bytes = std::fs::read(&path).expect("read log");
     let lines: Vec<&[u8]> = framed_lines(&bytes);
     let mut ing = Ingest::default();
-    backfill_lines(&mut ing, &engine, &lines, lines.len());
+    backfill_lines(
+        &mut ing,
+        &engine,
+        &lines,
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4),
+    );
 
     // why: interned Sym, not a cloned String per row -- keeps this
     // O(store length) pass cheap on a multi-million-row store. Target

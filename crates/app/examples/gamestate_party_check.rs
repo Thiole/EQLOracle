@@ -21,7 +21,14 @@ fn main() {
         lines.truncate(n);
     }
     let mut ing = Ingest::default();
-    backfill_lines(&mut ing, &engine, &lines, lines.len());
+    backfill_lines(
+        &mut ing,
+        &engine,
+        &lines,
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4),
+    );
 
     let players: Vec<&str> = ing.encounters.entities.players().collect();
     println!("entities with Kind::Player (permanent):  {}", players.len());
