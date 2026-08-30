@@ -253,9 +253,15 @@ pub fn load_zone_map(
         if zone_stem(stem) != zone {
             continue;
         }
-        let Ok(text) = std::fs::read_to_string(entry.path()) else {
+        // why: lossy, not strict-UTF8 -- a community map file with a
+        // Latin-1 label (or an editor's stray bytes) used to be
+        // SILENTLY skipped here, dropping the whole layer: "maps not
+        // displaying" with no error anywhere. A replacement char in one
+        // label beats losing the geometry.
+        let Ok(bytes) = std::fs::read(entry.path()) else {
             continue;
         };
+        let text = String::from_utf8_lossy(&bytes);
         let parsed = parse_map_text(&text);
         out.lines.extend(parsed.lines);
         out.markers.extend(parsed.markers);

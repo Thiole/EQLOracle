@@ -23,6 +23,8 @@
   import { lastLocation } from '$lib/stores/maps';
   import { zoneMatches, looksLikeEntranceFor } from './zoneMatch';
 
+  let webglError = $state<string | null>(null);
+
   let {
     map,
     zone,
@@ -364,7 +366,17 @@
     scene = localScene;
 
     const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100_000);
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    // why: WebGL can genuinely be absent (Remote Desktop, VMs,
+    // blocklisted GPUs, WebView2 with acceleration disabled) -- an
+    // unguarded constructor throw left the map tab a silent blank
+    // canvas; a visible reason beats a mystery
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    } catch {
+      webglError = 'The 3D map view needs WebGL, which this system reports unavailable (common over Remote Desktop, in VMs, or with GPU acceleration disabled).';
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -646,7 +658,8 @@
 </script>
 
 <div bind:this={container} class="relative h-full w-full">
-  <canvas bind:this={canvas} class="block h-full w-full cursor-grab active:cursor-grabbing"></canvas>
+  <canvas bind:this={canvas} class="block h-full w-full cursor-grab active:cursor-grabbing" class:hidden={webglError !== null}></canvas>
+  {#if webglError}<p class="p-3 text-[12px] text-bad">{webglError}</p>{/if}
   {#if hovered}
     <div
       class="pointer-events-none absolute flex items-center gap-1.5 rounded-sm border border-border bg-card px-2 py-1 text-[11px] shadow-md"
