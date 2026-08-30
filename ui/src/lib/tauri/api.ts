@@ -251,6 +251,18 @@ export interface StatusEffectsDto {
   stun: MomentaryStatusDto | null;
   root: MomentaryStatusDto | null;
   fear: MomentaryStatusDto | null;
+  /** why: the generic "You lose control of yourself!" landing -- fear,
+   * charm-on-you, or captivate; see the pack's state.you_lose_control doc */
+  control: ControlStatusDto | null;
+}
+
+/** why: MomentaryStatusDto plus the probable enemy caster/spell -- mob
+ * casts name their spells, so the Ctrl square can say what took you */
+export interface ControlStatusDto {
+  outcome: 'success' | 'failure' | 'ended' | 'uncertain';
+  since_ms: number;
+  caster: string | null;
+  spell: string | null;
 }
 
 /** why: Skill Tracker's own-cooldowns section -- see skilltracker.rs's own doc */

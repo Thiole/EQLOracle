@@ -1478,6 +1478,34 @@ pattern = '''^You are no longer afraid\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You are no longer afraid."]
 
 [[rule]]
+# why: the game's GENERIC loss-of-control landing -- fear, charm-on-you,
+# and captivate all open with this one line, and only the ender reveals
+# which (measured on the reference log: 127 landings; 82 resolved "no
+# longer afraid", 18 "captivated", 14 "charmed", the rest died
+# controlled). Its own CC square (Ctrl), never folded into Fear -- that
+# mapping would be wrong ~35% of the time.
+id = "state.you_lose_control"
+kind = "state"
+priority = 50
+anchors = ["You lose control of yourself"]
+pattern = '''^You lose control of yourself!$'''
+examples = ["[Tue Jul 28 15:02:15 2026] You lose control of yourself!"]
+
+[[rule]]
+# why: the charm/captivate enders of the generic landing; the fear ender
+# ("no longer afraid") already exists as state.you_fear_ended and ends
+# both squares -- see ingest's FearEnded arm
+id = "state.you_control_ended"
+kind = "state"
+priority = 50
+anchors = ["no longer c"]
+pattern = '''^You are no longer (?:charmed|captivated)\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You are no longer charmed.",
+  "[Tue Jul 28 15:02:15 2026] You are no longer captivated.",
+]
+
+[[rule]]
 id = "noise.auto_attack"
 kind = "noise"
 priority = 60

@@ -25,7 +25,7 @@
 
   let { status, size = 'small' }: { status: StatusEffectsDto | null; size?: CcSize } = $props();
 
-  type CcEffect = { key: string; label: string; active: boolean; uncertain: boolean };
+  type CcEffect = { key: string; label: string; active: boolean; uncertain: boolean; detail: string | null };
 
   const effects = $derived(
     (
@@ -33,6 +33,10 @@
         ['root', 'Root', status?.root],
         ['stun', 'Stun', status?.stun],
         ['fear', 'Fear', status?.fear],
+        // why: the generic lose-control landing (fear/charm-you/
+        // captivate, ender-disambiguated) -- its own square, see
+        // MomentaryStatusDto's own doc
+        ['control', 'Ctrl', status?.control],
       ] as const
     ).map(
       ([key, label, m]): CcEffect => ({
@@ -42,6 +46,12 @@
         // why: "maybe?" -- an enemy that MIGHT have been the caster died
         // (see MomentaryStatusDto's own doc); caution-toned, not cleared
         uncertain: m?.outcome === 'uncertain',
+        // why: Ctrl carries the probable enemy spell/caster ("Dragon
+        // Fear by A dracoliche") -- tooltip only, the square stays terse
+        detail:
+          m && 'spell' in m && (m.spell || m.caster)
+            ? [m.spell, m.caster && `by ${m.caster}`].filter(Boolean).join(' ')
+            : null,
       }),
     ),
   );
@@ -57,7 +67,7 @@
         : e.uncertain
           ? 'border-caution bg-caution/60 text-background'
           : 'border-border text-muted-foreground'}"
-      title="{e.label}: {e.active ? 'active' : e.uncertain ? 'maybe ended -- a mob that may have cast it died' : 'off'}"
+      title="{e.label}: {e.active ? 'active' : e.uncertain ? 'maybe ended -- a mob that may have cast it died' : 'off'}{e.detail ? ` (${e.detail})` : ''}"
     >
       {e.label}{e.uncertain ? '?' : ''}
     </span>

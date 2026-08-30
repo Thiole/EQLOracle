@@ -109,6 +109,23 @@ pub struct StatusEffectsDto {
     pub stun: Option<MomentaryDto>,
     pub root: Option<MomentaryDto>,
     pub fear: Option<MomentaryDto>,
+    /// why: the game's generic "You lose control of yourself!" landing --
+    /// shared by fear, charm-on-you, and captivate; the ender line
+    /// reveals which. Its own square, since mapping it to Fear would be
+    /// wrong ~35% of the time (measured: 127 landings in the reference
+    /// log -- 82 ended "afraid", 18 "captivated", 14 "charmed").
+    pub control: Option<ControlDto>,
+}
+
+/// why: MomentaryDto plus the probable enemy caster/spell -- mob casts
+/// name their spells, so "Dragon Fear by A dracoliche" is knowable and
+/// worth showing where a bare Ctrl square isn't
+#[derive(Debug, Clone, Serialize)]
+pub struct ControlDto {
+    pub outcome: &'static str,
+    pub since_ms: Millis,
+    pub caster: Option<String>,
+    pub spell: Option<String>,
 }
 
 /// why: the overlay's own poll -- same shape as combat::live_meter,
@@ -144,6 +161,12 @@ pub fn status_effects(ing: &Ingest) -> StatusEffectsDto {
         fear: ing.fear.map(|s| MomentaryDto {
             outcome: s.outcome.label(),
             since_ms: s.since_ms,
+        }),
+        control: ing.control.map(|s| ControlDto {
+            outcome: s.outcome.label(),
+            since_ms: s.since_ms,
+            caster: ing.control_caster.clone(),
+            spell: ing.control_spell.clone(),
         }),
     }
 }
@@ -407,6 +430,85 @@ mod tests {
             status_effects(&ing).stun.expect("tracked").outcome,
             "success"
         );
+    }
+
+    /// why: the generic lose-control landing lights its own square and
+    /// each real ender resolves it -- charm-you/captivate via their own
+    /// lines, fear via the shared "no longer afraid" (which ends both
+    /// squares). All three measured real in the reference log
+    #[test]
+    fn lose_control_lands_then_resolves_by_each_real_ender() {
+        let ing = run(&["[Tue Jul 28 15:01:00 2026] You lose control of yourself!"]);
+        assert_eq!(
+            status_effects(&ing).control.expect("tracked").outcome,
+            "success"
+        );
+
+        for ender in [
+            "[Tue Jul 28 15:01:20 2026] You are no longer charmed.",
+            "[Tue Jul 28 15:01:20 2026] You are no longer captivated.",
+            "[Tue Jul 28 15:01:20 2026] You are no longer afraid.",
+        ] {
+            let ing = run(&[
+                "[Tue Jul 28 15:01:00 2026] You lose control of yourself!",
+                ender,
+            ]);
+            assert_eq!(
+                status_effects(&ing).control.expect("tracked").outcome,
+                "ended",
+                "ender: {ender}"
+            );
+        }
+    }
+
+    /// why: same caster-death ambiguity treatment root/fear get -- a
+    /// possible-caster kill goes to maybe, all-enemies-dead clears
+    #[test]
+    fn lose_control_resolves_on_deaths_like_root_and_fear() {
+        let ing = run(&[
+            "[Tue Jul 28 15:00:58 2026] a shimmering spirit begins casting a spell.",
+            "[Tue Jul 28 15:01:00 2026] You lose control of yourself!",
+            "[Tue Jul 28 15:01:05 2026] You hit a shimmering spirit for 50 points of damage.",
+            "[Tue Jul 28 15:01:06 2026] a gust wisp hits YOU for 10 points of damage.",
+            "[Tue Jul 28 15:01:10 2026] You have slain a shimmering spirit!",
+        ]);
+        assert_eq!(
+            status_effects(&ing).control.expect("tracked").outcome,
+            "uncertain"
+        );
+    }
+
+    /// why: player's spec -- "fear and charm depend on what the enemy is
+    /// casting": the newest enemy cast whose spell classifies as the
+    /// mechanic wins the attribution; a groupmate's interleaved heal
+    /// (real shape in the log: Lifespike right before a landing) never does
+    #[test]
+    fn control_attributes_the_enemy_fear_cast_not_a_groupmate_heal() {
+        let ing = run(&[
+            "[Tue Jul 28 15:00:57 2026] A dracoliche begins casting Dragon Fear.",
+            "[Tue Jul 28 15:00:58 2026] A dracoliche hits YOU for 100 points of damage.",
+            "[Tue Jul 28 15:00:59 2026] Bravesirrobin begins casting Lifespike.",
+            "[Tue Jul 28 15:01:00 2026] You lose control of yourself!",
+        ]);
+        let c = status_effects(&ing).control.expect("tracked");
+        assert_eq!(c.outcome, "success");
+        assert_eq!(c.spell.as_deref(), Some("Dragon Fear"));
+        assert_eq!(c.caster.as_deref(), Some("A dracoliche"));
+    }
+
+    /// why: your own death ends every CC outright -- nothing survives it
+    #[test]
+    fn your_own_death_clears_all_cc() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] You are ensnared.",
+            "[Tue Jul 28 15:01:01 2026] You lose control of yourself!",
+            "[Tue Jul 28 15:01:02 2026] You are stunned!",
+            "[Tue Jul 28 15:01:10 2026] You have been slain by a sonic bat!",
+        ]);
+        let s = status_effects(&ing);
+        assert_eq!(s.root.expect("tracked").outcome, "ended");
+        assert_eq!(s.control.expect("tracked").outcome, "ended");
+        assert_eq!(s.stun.expect("tracked").outcome, "ended");
     }
 
     /// why: an unrelated enemy dying while the KNOWN caster still lives

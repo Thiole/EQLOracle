@@ -32,6 +32,14 @@ fn main() {
     println!("zone at now: {:?}", ing.zone.at(now));
     println!("charm: {:?}", ing.charm);
     println!(
+        "control: {:?} caster={:?} spell={:?}  root: {:?}  fear: {:?}",
+        ing.control.map(|m| m.outcome),
+        ing.control_caster,
+        ing.control_spell,
+        ing.root.map(|m| m.outcome),
+        ing.fear.map(|m| m.outcome)
+    );
+    println!(
         "{mob:?}: allegiance={}, currently_grouped={}, evidence={:?}",
         ing.allegiance_at(&mob, now).name(),
         ing.groups.currently_grouped(&mob, now),

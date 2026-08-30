@@ -845,6 +845,14 @@ pub struct Ingest {
     /// the way the game does, see clear_cc_on_death
     pub root_caster: Option<String>,
     pub fear_caster: Option<String>,
+    /// why: the generic lose-control landing (fear/charm-you/captivate,
+    /// disambiguated only by its ender) -- see effects.rs's control doc
+    pub control: Option<crate::effects::MomentaryStatus>,
+    pub control_caster: Option<String>,
+    /// why: the enemy spell that likely caused it ("Dragon Fear") --
+    /// shown on the Ctrl square, and the closest the log gets to saying
+    /// WHICH mechanic took you
+    pub control_spell: Option<String>,
     /// why: Sky Quests' own real turn-in detector -- see skyquests.rs's
     /// own doc, and Action::TradeOffered's own doc for why a
     /// trade-complete line alone never proves success. Live-only, one
@@ -979,6 +987,9 @@ impl Default for Ingest {
             fear: None,
             root_caster: None,
             fear_caster: None,
+            control: None,
+            control_caster: None,
+            control_spell: None,
             pending_turnin: None,
             turn_ins: Vec::new(),
             disposed_items: std::collections::HashSet::new(),
@@ -1716,7 +1727,9 @@ impl Ingest {
                     outcome: crate::effects::MomentaryOutcome::Success,
                     since_ms: ts,
                 });
-                self.root_caster = self.probable_cc_caster(ts);
+                self.root_caster = self
+                    .probable_cc_source(ts, &["ensnare", "snare", "root", "entomb", "grasp"])
+                    .map(|(who, _)| who);
             }
             Action::RootEnded => {
                 self.root = Some(crate::effects::MomentaryStatus {
@@ -1729,13 +1742,48 @@ impl Ingest {
                     outcome: crate::effects::MomentaryOutcome::Success,
                     since_ms: ts,
                 });
-                self.fear_caster = self.probable_cc_caster(ts);
+                self.fear_caster = self
+                    .probable_cc_source(
+                        ts,
+                        &[
+                            "fear",
+                            "terror",
+                            "panic",
+                            "scream",
+                            "flee",
+                            "dread",
+                            "trepidation",
+                        ],
+                    )
+                    .map(|(who, _)| who);
             }
             Action::FearEnded => {
                 self.fear = Some(crate::effects::MomentaryStatus {
                     outcome: crate::effects::MomentaryOutcome::Ended,
                     since_ms: ts,
                 });
+                // why: "no longer afraid" also ends a lose-control episode
+                // that was really a fear -- the generic landing's most
+                // common resolution (82 of 127 measured)
+                self.end_control(ts);
+            }
+            Action::ControlOn => {
+                self.control = Some(crate::effects::MomentaryStatus {
+                    outcome: crate::effects::MomentaryOutcome::Success,
+                    since_ms: ts,
+                });
+                let src = self.probable_cc_source(
+                    ts,
+                    &[
+                        "fear", "terror", "panic", "scream", "flee", "dread", "charm", "allure",
+                        "beguile", "captivat", "dominat", "control",
+                    ],
+                );
+                self.control_caster = src.as_ref().map(|(who, _)| who.clone());
+                self.control_spell = src.and_then(|(_, spell)| spell);
+            }
+            Action::ControlEnded => {
+                self.end_control(ts);
             }
             Action::Loot {
                 item,
@@ -2106,13 +2154,33 @@ impl Ingest {
     /// either way.
     fn clear_cc_on_death(&mut self, ts: Millis, victim: &str) {
         use crate::effects::MomentaryOutcome::{Ended, Success, Uncertain};
+        // why: your own death ends every CC outright -- nothing survives it
+        if victim.eq_ignore_ascii_case("you") {
+            for st in [
+                &mut self.root,
+                &mut self.fear,
+                &mut self.control,
+                &mut self.stun,
+            ] {
+                if let Some(m) = st {
+                    if !matches!(m.outcome, Ended) {
+                        m.outcome = Ended;
+                        m.since_ms = ts;
+                    }
+                }
+            }
+            return;
+        }
         let root_live = self
             .root
             .is_some_and(|m| matches!(m.outcome, Success | Uncertain));
         let fear_live = self
             .fear
             .is_some_and(|m| matches!(m.outcome, Success | Uncertain));
-        if !root_live && !fear_live {
+        let control_live = self
+            .control
+            .is_some_and(|m| matches!(m.outcome, Success | Uncertain));
+        if !root_live && !fear_live && !control_live {
             return;
         }
         if !self.allegiance_at(victim, ts).is_enemy() {
@@ -2147,20 +2215,69 @@ impl Ingest {
         if fear_live {
             resolve(&mut self.fear, &self.fear_caster);
         }
+        if control_live {
+            resolve(&mut self.control, &self.control_caster);
+        }
     }
 
-    /// why: newest non-You begun cast just before a CC landing line --
-    /// the landing itself names no caster; a short window keeps a stale
-    /// unrelated cast from claiming it
-    fn probable_cc_caster(&self, ts: Millis) -> Option<String> {
+    /// why: shared ender -- "no longer charmed"/"captivated" and (via
+    /// FearEnded) "no longer afraid" all resolve the one generic landing
+    fn end_control(&mut self, ts: Millis) {
+        if let Some(m) = &mut self.control {
+            if !matches!(m.outcome, crate::effects::MomentaryOutcome::Ended) {
+                m.outcome = crate::effects::MomentaryOutcome::Ended;
+                m.since_ms = ts;
+            }
+        }
+    }
+
+    /// why: newest ENEMY begun cast just before a CC landing line -- the
+    /// landing itself names no caster, but mob casts name their spells
+    /// ("A dracoliche begins casting Dragon Fear."), so an entry whose
+    /// spell classifies as the landing's own mechanic wins outright;
+    /// otherwise the newest enemy cast at all. Enemy-only -- the first
+    /// cut took any non-You cast and would have blamed a groupmate's
+    /// heal (player: "fear and charm depend on what the enemy is
+    /// casting, so you need ways to track that"). A short window keeps a
+    /// stale cast from claiming it.
+    fn probable_cc_source(
+        &self,
+        ts: Millis,
+        kind_words: &[&str],
+    ) -> Option<(String, Option<String>)> {
         const CC_CASTER_WINDOW_MS: Millis = 6_000;
         let you = self.store.names.get("You").map(|s| s.0);
-        self.recent_casts
-            .entries
-            .iter()
-            .rev()
-            .find(|e| Some(e.caster) != you && ts - e.ts <= CC_CASTER_WINDOW_MS)
-            .map(|e| self.store.name(eqlp_store::Sym(e.caster)).to_string())
+        let is_kind = |spell: &str| {
+            let name_l = spell.to_lowercase();
+            let desc_l = crate::spelldata::spell_by_name(spell)
+                .and_then(|sp| sp.description.as_deref())
+                .map(str::to_lowercase)
+                .unwrap_or_default();
+            kind_words
+                .iter()
+                .any(|w| name_l.contains(w) || desc_l.contains(w))
+        };
+        // why: only a mechanic-classified cast may claim the SPELL --
+        // the fallback (newest enemy cast of any kind) still suggests a
+        // caster, but naming e.g. an enemy heal as what feared you is an
+        // over-claim, caught replaying a real duel
+        let mut fallback: Option<(String, Option<String>)> = None;
+        for e in self.recent_casts.entries.iter().rev() {
+            if Some(e.caster) == you || ts - e.ts > CC_CASTER_WINDOW_MS {
+                continue;
+            }
+            let name = self.store.name(eqlp_store::Sym(e.caster)).to_string();
+            if !self.allegiance_at(&name, ts).is_enemy() {
+                continue;
+            }
+            if is_kind(&e.spell) {
+                return Some((name, Some(e.spell.clone())));
+            }
+            if fallback.is_none() {
+                fallback = Some((name, None));
+            }
+        }
+        fallback
     }
 
     /// why: most recent encounter targeting victim, for pending_xp
@@ -3320,6 +3437,8 @@ enum Action {
     RootEnded,
     FearOn,
     FearEnded,
+    ControlOn,
+    ControlEnded,
     /// why: always the player, no third-person loot line exists. corpse
     /// keeps its raw suffix (stripped in record_loot, not here); sold_for
     /// present only for an auto-sell, raw and unparsed
@@ -3738,6 +3857,8 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "sneak.broken" => Some(Action::SneakEnded),
         "state.you_stunned" => Some(Action::StunOn),
         "state.you_stun_ended" => Some(Action::StunEnded),
+        "state.you_lose_control" => Some(Action::ControlOn),
+        "state.you_control_ended" => Some(Action::ControlEnded),
         "state.you_ensnared" => Some(Action::RootOn),
         "state.you_ensnared_ended" => Some(Action::RootEnded),
         "state.you_feared" => Some(Action::FearOn),
