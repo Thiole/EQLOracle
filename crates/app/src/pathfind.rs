@@ -152,12 +152,23 @@ impl Grid {
     }
 
     /// why: real segment-segment intersection, not "inside a wall" --
-    /// these files are open line obstacles, not filled polygons
+    /// these files are open line obstacles, not filled polygons.
+    /// Consults every cell ALONG the leg, sampled at half-cell steps --
+    /// the old version read only the two endpoint cells' buckets, fine
+    /// for adjacent A* steps but not for `simplify`'s long string-pulled
+    /// legs, whose middle crossed walls bucketed in cells neither
+    /// endpoint touched: the simplified path cut straight through walls
+    /// (player: "jumps lines a lot... doesn't account for in map
+    /// topology"). The +/-1 bucket expansion at build makes half-cell
+    /// sampling sufficient: an intersection's cell is never more than
+    /// one cell from the nearest sample's.
     fn blocked(&self, x1: f32, y1: f32, x2: f32, y2: f32) -> bool {
-        let c1 = self.cell_of(x1, y1);
-        let c2 = self.cell_of(x2, y2);
         let mut checked = std::collections::HashSet::new();
-        for c in [c1, c2] {
+        let len = ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
+        let steps = ((len / (self.cell * 0.5)).ceil() as usize).max(1);
+        for s in 0..=steps {
+            let t = s as f32 / steps as f32;
+            let c = self.cell_of(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t);
             let Some(bucket) = self.buckets.get(&c) else {
                 continue;
             };
@@ -173,6 +184,22 @@ impl Grid {
         }
         false
     }
+}
+
+/// why: examples/pathfind_check.rs's brute-force crossing audit needs the
+/// same predicate the grid uses -- a reimplementation could silently disagree
+#[allow(clippy::too_many_arguments)]
+pub fn segments_intersect_for_test(
+    ax1: f32,
+    ay1: f32,
+    ax2: f32,
+    ay2: f32,
+    bx1: f32,
+    by1: f32,
+    bx2: f32,
+    by2: f32,
+) -> bool {
+    segments_intersect(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2)
 }
 
 /// why: standard orientation-based intersection test, proper crossing or endpoint-on-segment
@@ -437,16 +464,59 @@ mod tests {
         };
         let path =
             find_path(&map, (-50.0, 0.0, 0.0), (50.0, 0.0, 0.0)).expect("route exists via the gap");
-        // why: every leg must itself be unobstructed -- not just "a path was returned"
-        let grid = Grid::build(&map.lines, 0.0);
+        assert_no_leg_crosses_a_wall(&map.lines, &path);
+    }
+
+    /// why: independent brute-force check over EVERY wall -- validating
+    /// legs with `grid.blocked` itself is circular (the long-leg bug
+    /// below passed exactly that way)
+    fn assert_no_leg_crosses_a_wall(lines: &[MapLine], path: &[(f32, f32, f32)]) {
         for w in path.windows(2) {
-            assert!(
-                !grid.blocked(w[0].0, w[0].1, w[1].0, w[1].1),
-                "leg {:?}->{:?} crosses the wall",
-                w[0],
-                w[1]
-            );
+            for l in lines {
+                assert!(
+                    !segments_intersect(w[0].0, w[0].1, w[1].0, w[1].1, l.a.x, l.a.y, l.b.x, l.b.y),
+                    "leg {:?}->{:?} crosses wall ({},{})->({},{})",
+                    w[0],
+                    w[1],
+                    l.a.x,
+                    l.a.y,
+                    l.b.x,
+                    l.b.y
+                );
+            }
         }
+    }
+
+    /// why: the real reported bug -- "jumps lines a lot". A narrow
+    /// doorway: while the pull leg threads the gap it's honestly
+    /// unblocked, but as the probe advances far past the door the leg
+    /// swings sideways and clips the door frame -- at that moment the
+    /// probe is many cells from the wall, so the endpoint-only
+    /// `blocked` consulted buckets that didn't hold it and committed a
+    /// wall-crossing leg. (A wall turn can't reproduce this: there the
+    /// first crossing probe sits right next to the offending wall and
+    /// its own bucket catches it.)
+    #[test]
+    fn a_pull_leg_swinging_past_a_doorway_cannot_clip_the_frame() {
+        let lines = vec![
+            line(-1000.0, -1000.0, 1000.0, -1000.0),
+            line(1000.0, -1000.0, 1000.0, 1000.0),
+            line(1000.0, 1000.0, -1000.0, 1000.0),
+            line(-1000.0, 1000.0, -1000.0, -1000.0),
+            // why: dividing wall with a 20-unit doorway at the origin
+            line(-1000.0, 0.0, -10.0, 0.0),
+            line(10.0, 0.0, 1000.0, 0.0),
+        ];
+        let map = ParsedZoneMap {
+            lines,
+            markers: vec![],
+        };
+        // why: start far southwest, goal far northeast -- the straight
+        // line crosses the wall west of the door, so an honest route
+        // must dogleg through the doorway and keep the dogleg
+        let path = find_path(&map, (-400.0, -400.0, 0.0), (300.0, 400.0, 0.0))
+            .expect("route exists via the doorway");
+        assert_no_leg_crosses_a_wall(&map.lines, &path);
     }
 
     /// why: two rooms on different floors, same XY -- must never route through the upper one
