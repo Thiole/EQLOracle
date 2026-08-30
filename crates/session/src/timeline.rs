@@ -93,12 +93,17 @@ impl Timeline {
 
     /// why: the scrub primitive -- last transition at or before `ts`
     pub fn state_at(&self, entity: u32, ts: Millis) -> Option<(State, Cause)> {
+        self.state_since(entity, ts).map(|(s, c, _)| (s, c))
+    }
+
+    /// why: state plus when it began -- drop_watch's loot grace needs "dead how long"
+    pub fn state_since(&self, entity: u32, ts: Millis) -> Option<(State, Cause, Millis)> {
         let v = self.by_entity.get(&entity)?;
         let i = v.partition_point(|x| x.ts <= ts);
         if i == 0 {
             None
         } else {
-            Some((v[i - 1].state, v[i - 1].cause))
+            Some((v[i - 1].state, v[i - 1].cause, v[i - 1].ts))
         }
     }
 

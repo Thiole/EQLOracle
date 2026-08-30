@@ -15,14 +15,15 @@
 //!
 //! State checked as of *now* (`ing.now_ms()`), not the encounter's own
 //! `start_ms` -- `counts_as_pull`'s at-start check is right for scoring
-//! a past pull, wrong here: a target charmed or slain mid-fight must
-//! drop off this live list immediately, not read as its allegiance back
-//! when the fight opened. Real gap found writing this: the store's own
-//! `Encounter::is_open()` lags a confirmed kill (it only closes on the
-//! session graph's own idle-timeout expiry, see `Entities::death`'s
-//! doc) -- so `State::Dead` is checked directly too, same as
-//! `target_effects`'s own doc on why `Allegiance::of` alone doesn't
-//! special-case a dead Unproven mob.
+//! a past pull, wrong here: a charm-flip must drop off this live list
+//! immediately, not read as its allegiance back when the fight opened.
+//! Death and fight-end do NOT clear immediately -- player's spec: "it
+//! should stay open 15-30 seconds after ENCOUNTER ends, not instantly
+//! clear"; the row is a loot reminder and the corpse gets looted right
+//! after the kill, so a dead mob holds its row for `CLEAR_GRACE_MS`
+//! from the death line, and a fight that ends without a kill (fled,
+//! disengaged) holds via the graph's closed list for the same grace
+//! past its `end_ms`.
 //!
 //! `loot_status` is the other half of the same feature: once a tracked
 //! item is actually looted, the frontend prompts to remove it from the
@@ -102,18 +103,20 @@ pub fn loot_status(ing: &mut Ingest, items: &[String]) -> Vec<TrackedLootDto> {
         .collect()
 }
 
-/// why: how long a swing that never landed still counts as "actively
-/// engaged" -- matches the graph's own 10s idle window (Policy::idle_ms
-/// default), so a swings-only engagement goes stale on the same clock a
-/// landed-damage fight would
-const ENGAGED_MISS_WINDOW_MS: Millis = 10_000;
+/// why: player's spec -- "stay open 15-30 seconds after ENCOUNTER
+/// ends"; rows are loot reminders, corpses get looted after the kill.
+/// Runs from the death line / fight end_ms / last whiffed swing, so
+/// every source's row lives ~30s past its fight's last real event
+const CLEAR_GRACE_MS: Millis = 30_000;
 
-/// why: one row per living enemy ENTITY actively engaged right now --
-/// two sources, both real gaps the player reported in turn:
+/// why: one row per enemy ENTITY engaged now or in a just-ended fight --
+/// three sources, all real gaps/specs the player reported in turn:
 /// 1. every entity in any currently-live graph fight (not one row per
 ///    store-encounter anchor -- a mob JOINING an open pull is exactly
 ///    when the heads-up matters);
-/// 2. either side of a recent Miss row -- fight-graph membership only
+/// 2. every entity in a fight that ended within CLEAR_GRACE_MS -- the
+///    loot-window linger, see the const's own doc;
+/// 3. either side of a recent Miss row -- fight-graph membership only
 ///    comes from LANDED damage, so a mob trading swings that all miss
 ///    (or one you keep whiffing at) is genuinely engaged yet in no live
 ///    fight at all ("it shouldnt have to hit back, just be an active
@@ -142,24 +145,30 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         .map(|z| z.unique_items.as_slice())
         .unwrap_or(&[]);
 
-    // why: shared filter for both sources -- one place decides what a
-    // watchable engaged enemy is; `slain_in_fight` is only meaningful
-    // for the graph source (a Miss row has no fight-scoped slain list)
-    let mut consider = |name: &str, slain_in_fight: bool| {
-        if name.eq_ignore_ascii_case("you") || slain_in_fight {
+    // why: shared filter for all three sources -- one place decides
+    // what a watchable enemy is
+    let mut consider = |name: &str| {
+        if name.eq_ignore_ascii_case("you") {
             return None;
         }
         // why: read-only sym lookup, same shape is_ally uses -- a
         // drop-watch query must never itself intern an identity
-        let state = ing
+        let since = ing
             .store
             .names
             .get(ing.encounters.entities.display_name(name))
-            .and_then(|sym| ing.timeline.state_at(sym.0, now))
-            .map(|(s, _)| s)
-            .unwrap_or(State::Engaged);
-        if state == State::Dead || state == State::Charmed {
-            return None;
+            .and_then(|sym| ing.timeline.state_since(sym.0, now));
+        if let Some((state, _, since_ts)) = since {
+            if state == State::Charmed {
+                return None;
+            }
+            // why: death starts the loot grace, doesn't clear -- the
+            // per-name death timestamp also handles a mob slain inside
+            // a still-live fight (long AE pull) going stale on its own
+            // clock, not the fight's
+            if state == State::Dead && now - since_ts > CLEAR_GRACE_MS {
+                return None;
+            }
         }
         // why: allegiance_at not raw kind -- a group-tracked ally
         // (or charm-flip, caught above) must not read as a mob to watch
@@ -184,10 +193,8 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         if drops.is_empty() {
             return None;
         }
-        // why: dedupe at PUSH time, not at loop entry -- real bug in
-        // the first cut: a slain instance in one fight inserted the
-        // name before its own slain-skip, shadowing a genuinely live
-        // same-named mob in another fight out of the list entirely
+        // why: dedupe by name across sources -- a mob in a live fight
+        // AND a just-closed one (re-engage) is one row, not two
         if seen.insert(name.to_ascii_lowercase()) {
             Some(DropWatchRowDto {
                 mob: name.to_string(),
@@ -200,21 +207,40 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
 
     for live in ing.encounters.live_encounters() {
         for name in &live.entities {
-            let slain = live
-                .slain
-                .iter()
-                .any(|s| s.eq_ignore_ascii_case(name.as_str()));
-            if let Some(row) = consider(name, slain) {
+            if let Some(row) = consider(name) {
                 out.push(row);
             }
         }
     }
 
-    // why: source 2 -- recent swings that never landed. Both sides of
+    // why: source 2 -- fights ended within the grace. `closed` is in
+    // close order and end_ms trails close time by at most the idle
+    // window, so the rev take_while bound carries that slack before
+    // the exact filter; fled survivors read Lost (drain_closed marks
+    // them), which still classifies enemy.
+    let slack = CLEAR_GRACE_MS + ing.encounters.policy.idle_ms;
+    for closed in ing
+        .encounters
+        .closed
+        .iter()
+        .rev()
+        .take_while(|e| now - e.end_ms <= slack)
+        .filter(|e| now - e.end_ms <= CLEAR_GRACE_MS)
+    {
+        for name in &closed.entities {
+            if let Some(row) = consider(name) {
+                out.push(row);
+            }
+        }
+    }
+
+    // why: source 3 -- recent swings that never landed. Both sides of
     // the Miss row: the mob missing "You" AND the mob "You" keep
-    // whiffing at are each engaged. partition_point over the store's
-    // time column, same suffix-scan shape overview.rs uses.
-    let cutoff = now - ENGAGED_MISS_WINDOW_MS;
+    // whiffing at are each engaged. The window is the same grace clock
+    // the other sources run on, from the last swing. partition_point
+    // over the store's time column, same suffix-scan shape overview.rs
+    // uses.
+    let cutoff = now - CLEAR_GRACE_MS;
     let from = ing.store.ts.partition_point(|&t| t < cutoff);
     for i in from..ing.store.len() {
         if ing.store.kind[i] != EventKind::Miss {
@@ -222,7 +248,7 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         }
         for sym in [ing.store.actor[i], ing.store.target[i]] {
             let name = ing.store.name(sym).to_string();
-            if let Some(row) = consider(&name, false) {
+            if let Some(row) = consider(&name) {
                 out.push(row);
             }
         }
@@ -315,7 +341,7 @@ mod tests {
     }
 
     /// why: a swing from ages ago isn't a live engagement -- the miss
-    /// source goes stale on the same 10s clock a real fight idles out on
+    /// source goes stale on the same grace clock the other sources use
     #[test]
     fn a_stale_missed_swing_does_not_keep_a_mob_on_the_list() {
         let ing = run(concat!(
@@ -366,29 +392,67 @@ mod tests {
         );
     }
 
-    /// why: a mob already slain inside a still-live fight is old news
+    /// why: player's spec -- "stay open 15-30 seconds after ENCOUNTER
+    /// ends, not instantly clear": the corpse gets looted right after
+    /// the kill, the row is the reminder
     #[test]
-    fn a_slain_entity_in_a_still_live_fight_is_excluded() {
-        let ing = run(concat!(
-            "[Tue Jul 28 15:01:00 2026] You hit a rat for 5 points of damage.\n",
-            "[Tue Jul 28 15:01:02 2026] Keeper of Souls hits YOU for 2 points of damage.\n",
-            "[Tue Jul 28 15:01:04 2026] Keeper of Souls has been slain by You!\n",
-        ));
-        let rows = drop_watch(&ing);
-        assert!(
-            !rows.iter().any(|r| r.mob == "Keeper of Souls"),
-            "slain mid-fight -- must drop off the watch list"
-        );
-    }
-
-    /// why: a closed (already-resolved) fight is old news, not a live "you're fighting this" signal
-    #[test]
-    fn a_closed_encounter_never_shows_up() {
+    fn a_freshly_slain_mob_lingers_through_the_loot_grace() {
         let ing = run(concat!(
             "[Tue Jul 28 15:01:00 2026] You hit Keeper of Souls for 5 points of damage.\n",
             "[Tue Jul 28 15:01:05 2026] Keeper of Souls has been slain by You!\n",
         ));
-        assert!(drop_watch(&ing).is_empty());
+        let rows = drop_watch(&ing);
+        assert!(
+            rows.iter().any(|r| r.mob == "Keeper of Souls"),
+            "just slain -- must hold through the loot grace, got {:?}",
+            rows.iter().map(|r| &r.mob).collect::<Vec<_>>()
+        );
+    }
+
+    /// why: the grace is a window, not forever -- past it the kill is
+    /// old news even inside a fight that never closed. The per-name
+    /// death timestamp, not the fight's clock, decides
+    #[test]
+    fn a_long_dead_mob_clears_once_the_grace_expires() {
+        let ing = run(concat!(
+            "[Tue Jul 28 15:01:00 2026] You hit Keeper of Souls for 5 points of damage.\n",
+            "[Tue Jul 28 15:01:05 2026] Keeper of Souls has been slain by You!\n",
+            "[Tue Jul 28 15:02:00 2026] You hit a rat for 5 points of damage.\n",
+        ));
+        let rows = drop_watch(&ing);
+        assert!(
+            !rows.iter().any(|r| r.mob == "Keeper of Souls"),
+            "dead 55s -- grace over, must clear"
+        );
+    }
+
+    /// why: a fight ending WITHOUT a kill (fled, disengaged) lingers
+    /// the same grace via the graph's closed list, then clears --
+    /// expire only runs off tick (see monsters.rs's own doc), so the
+    /// tick is explicit here
+    #[test]
+    fn an_idled_out_fight_lingers_then_clears() {
+        let mut ing = run(concat!(
+            "[Tue Jul 28 15:01:00 2026] You hit Keeper of Souls for 5 points of damage.\n",
+            "[Tue Jul 28 15:01:20 2026] You hit a rat for 5 points of damage.\n",
+        ));
+        ing.tick(0);
+        let rows = drop_watch(&ing);
+        assert!(
+            rows.iter().any(|r| r.mob == "Keeper of Souls"),
+            "fight ended 20s ago -- within grace, got {:?}",
+            rows.iter().map(|r| &r.mob).collect::<Vec<_>>()
+        );
+
+        let mut ing = run(concat!(
+            "[Tue Jul 28 15:01:00 2026] You hit Keeper of Souls for 5 points of damage.\n",
+            "[Tue Jul 28 15:02:00 2026] You hit a rat for 5 points of damage.\n",
+        ));
+        ing.tick(0);
+        assert!(
+            drop_watch(&ing).is_empty(),
+            "fight ended 60s ago -- past grace, must clear"
+        );
     }
 
     /// why: a real mob with no recorded wiki drops at all contributes

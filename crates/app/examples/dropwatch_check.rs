@@ -39,6 +39,11 @@ fn main() {
     let rows = dropwatch::drop_watch(&ing);
     println!("drop_watch rows: {}", rows.len());
     for r in rows.iter().take(10) {
-        println!("  {} -> {} known drops: {:?}", r.mob, r.drops.len(), r.drops);
+        println!(
+            "  {} -> {} known drops: {:?}",
+            r.mob,
+            r.drops.len(),
+            r.drops
+        );
     }
 }
