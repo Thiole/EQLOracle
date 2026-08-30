@@ -82,6 +82,22 @@ mod tests {
         ing
     }
 
+    /// why: real reported gap -- your own guild send logs as "You say to
+    /// your guild" (214 real lines in the reference log), a shape the
+    /// rule's speculative "You tell the guild" never covered, so the
+    /// Social tab's guild history showed everyone's messages but yours
+    #[test]
+    fn your_own_guild_send_lands_in_guild_history() {
+        let ing = run(&[
+            b"[Tue Jul 28 17:09:40 2026] Kaeus tells the guild, 'hi'",
+            b"[Tue Jul 28 17:09:49 2026] You say to your guild, 'hallo'",
+        ]);
+        let guild = ing.chat.guild();
+        assert_eq!(guild.len(), 2);
+        assert_eq!(guild[1].who, "You");
+        assert_eq!(guild[1].text, "hallo");
+    }
+
     #[test]
     fn pm_threads_sorts_most_recent_first() {
         let ing = run(&[

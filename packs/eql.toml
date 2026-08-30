@@ -48,10 +48,11 @@ id = "chat.directed"
 kind = "chat"
 priority = 90
 anchors = ["'"]
-pattern = '''^(?P<who>.+?) (?P<chan>tells you|tells the guild|tells the group|tells the raid|tell your party|tell your raid|tell the guild|tell the group|says out of character|say out of character|auctions|auction|shouts|shout|says|say), '(?P<text>.*)'$'''
+pattern = '''^(?P<who>.+?) (?P<chan>tells you|tells the guild|tells the group|tells the raid|tell your party|tell your raid|tell the guild|tell the group|say to your guild|says out of character|say out of character|auctions|auction|shouts|shout|says|say), '(?P<text>.*)'$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Kaeus tells you, 'I'm busy right now.'",
   "[Tue Jul 28 15:02:15 2026] You tell your party, 'yo'",
+  "[Tue Jul 28 17:09:49 2026] You say to your guild, 'hallo'",
   "[Wed Aug 05 21:44:57 2026] Mits tells the raid, 'I'm down for D0-D4 tbh.'",
   "[Wed Aug 05 21:45:11 2026] You tell your raid, 'yo!'",
   "[Tue Jul 28 15:02:15 2026] Honeybadger says out of character, 'where can i buy pet supplies'",

@@ -3703,7 +3703,12 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             let (who, chan) = (str_field("who")?, str_field("chan")?);
             let channel = match chan.as_str() {
                 "tells you" => Some(ChatChannel::Pm { with: who.clone() }),
-                "tells the guild" | "tell the guild" => Some(ChatChannel::Guild),
+                // why: your own guild send is "You say to your guild" --
+                // 214 real lines in the reference log, zero of the
+                // speculative "tell the guild" shape
+                "tells the guild" | "tell the guild" | "say to your guild" => {
+                    Some(ChatChannel::Guild)
+                }
                 "tells the group" | "tell your party" | "tell the group" => {
                     Some(ChatChannel::Party)
                 }
