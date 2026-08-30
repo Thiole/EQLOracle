@@ -1,6 +1,8 @@
 <script lang="ts">
   import { Card, CardContent } from '$lib/components/ui/card';
-  import { api, type NpcDto, type MobStatsDto } from '$lib/tauri/api';
+  import NavigationIcon from '@lucide/svelte/icons/navigation';
+  import { api, type NpcDto, type MobStatsDto, type NpcNavPointDto } from '$lib/tauri/api';
+  import { navigateToNpc } from '$lib/stores/maps';
   import { wikiLinkText } from './wikitext';
   import GdField from './GdField.svelte';
   import GdLink from './GdLink.svelte';
@@ -27,6 +29,25 @@
       if (my === token) stats = s;
     });
   });
+
+  // why: "click the information, set a path" -- the player's own ask.
+  // Spawn points come from the same wiki coordinates the map's npc
+  // overlay plots; empty (multi-zone NPC, or no parseable coordinates)
+  // means no button, nothing to route to.
+  let navPoints = $state<NpcNavPointDto[]>([]);
+  $effect(() => {
+    const name = npc.name;
+    navPoints = [];
+    api.getNpcNavPoints(name).then((p) => {
+      if (name === npc.name) navPoints = p ?? [];
+    });
+  });
+
+  function setPathHere() {
+    const p = navPoints[0];
+    if (!p) return;
+    void navigateToNpc(p.route_zone ?? p.zone, { name: npc.name, zone: p.zone, x: p.x, y: p.y, z: p.z });
+  }
 </script>
 
 <Card class="rounded-sm">
@@ -56,9 +77,29 @@
       <GdField label="Special" value={npc.special} />
     </div>
 
-    <a class="mt-3 inline-block text-[11px] text-brand-soft hover:text-primary hover:underline" href={npc.url} target="_blank" rel="noopener">
-      eqlwiki ↗ (backup / full page)
-    </a>
+    <div class="mt-3 flex items-center gap-3">
+      {#if navPoints.length > 0}
+        <!-- why: sets the Maps module's GPS destination to this NPC's own
+             spawn point, exactly the way picking a destination zone does,
+             plus the final in-zone walk leg -- see stores/maps.ts's
+             navigateToNpc. First spawn point wins for a multi-spawn mob;
+             the title says so rather than hiding it. -->
+        <button
+          type="button"
+          class="inline-flex cursor-pointer items-center gap-1 rounded-full border border-primary bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20"
+          title={navPoints.length > 1
+            ? `Set as navigation destination (${navPoints.length} known spawn points -- routing to the first)`
+            : 'Set as navigation destination'}
+          onclick={setPathHere}
+        >
+          <NavigationIcon class="size-3" />
+          set path here
+        </button>
+      {/if}
+      <a class="text-[11px] text-brand-soft hover:text-primary hover:underline" href={npc.url} target="_blank" rel="noopener">
+        eqlwiki ↗ (backup / full page)
+      </a>
+    </div>
   </CardContent>
 </Card>
 

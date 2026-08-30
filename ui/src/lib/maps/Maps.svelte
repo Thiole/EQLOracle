@@ -33,6 +33,7 @@
     liveFollow,
     setLiveFollow,
     navigationTarget,
+    navigationPoi,
     activeRoute,
     setNavigationTarget,
   } from '$lib/stores/maps';
@@ -250,7 +251,31 @@
       .catch((e) => (gpsError = e instanceof Error ? e.message : String(e)));
   });
 
-  const displayedPath = $derived(gpsWalkPath ?? manualWalkPath);
+  // ---- entity poi path: navigation set from an NPC's info page carries
+  // the entity's own spawn point -- once the loaded map is the poi's
+  // zone (same wiki-zone bridge the npc overlay uses), draw the final
+  // walk leg to it instead of stopping at zone arrival. Takes precedence
+  // over the GPS exit-hop path: on the destination map, the leg to the
+  // entity IS the next step.
+  let poiWalkPath = $state<PathDto | null>(null);
+  let poiError = $state<string | null>(null);
+  $effect(() => {
+    const poi = $navigationPoi;
+    const map = $currentMap;
+    poiWalkPath = null;
+    poiError = null;
+    if (!poi || !map || !$selectedZone) return;
+    if (!$npcZoneCandidates.includes(poi.zone)) return;
+    const from = walkStartPosition();
+    if (!from) return;
+    // Same `/loc`-space -> map-file transform every other position gets.
+    api
+      .findWalkPath($selectedVersion, $selectedZone, from, [-poi.y, -poi.x, poi.z ?? 0])
+      .then((p) => (poiWalkPath = p))
+      .catch((e) => (poiError = e instanceof Error ? e.message : String(e)));
+  });
+
+  const displayedPath = $derived(poiWalkPath ?? gpsWalkPath ?? manualWalkPath);
 
   // A walk-path drawn on one zone's map is meaningless on another -- clear
   // the moment the loaded zone changes, rather than leaving a stale line
@@ -371,7 +396,7 @@
             <span class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">destination</span>
             {#if $navigationTarget}
               <span class="flex items-center gap-1.5 rounded-full border border-primary bg-primary/15 py-1 pl-2.5 pr-1.5 text-[12px] font-medium text-primary">
-                {displayZoneName($navigationTarget)}
+                {displayZoneName($navigationTarget)}{#if $navigationPoi}<span class="text-primary/80">&rarr; {$navigationPoi.name}</span>{/if}
                 <button
                   type="button"
                   class="cursor-pointer rounded-full p-0.5 text-primary/70 hover:bg-primary/20 hover:text-primary"
@@ -408,7 +433,9 @@
           {:else if $activeRoute === 'error'}
             <p class="border-b border-border px-2 py-1.5 text-[11px] text-bad">couldn't find a route to {displayZoneName($navigationTarget)}.</p>
           {:else if $activeRoute && $activeRoute.hops.length === 0}
-            <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">you're already here.</p>
+            <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">
+              {#if $navigationPoi}you're in the zone -- walking leg to {$navigationPoi.name} below.{:else}you're already here.{/if}
+            </p>
           {:else if $activeRoute}
             <!-- why: each hop's kind is shown plainly, never blended into a
                  generic "shortcut" -- a teleport hop names its own spell so
@@ -432,7 +459,13 @@
               <li class="ml-2">total: {$activeRoute.total_distance.toFixed(0)}</li>
             </ol>
           {/if}
-          {#if gpsError}
+          {#if poiError}
+            <p class="border-b border-border px-2 py-1.5 text-[11px] text-bad">couldn't draw the path to {$navigationPoi?.name}: {poiError}</p>
+          {:else if poiWalkPath}
+            <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">
+              path to {$navigationPoi?.name} drawn on the map (green) -- {poiWalkPath.waypoints.length} waypoints.
+            </p>
+          {:else if gpsError}
             <p class="border-b border-border px-2 py-1.5 text-[11px] text-bad">couldn't draw the next step: {gpsError}</p>
           {:else if gpsWalkPath}
             <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">next-step path drawn on the map (green).</p>

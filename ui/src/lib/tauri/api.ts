@@ -935,6 +935,17 @@ export interface NpcMarkerDto {
   z: number | null;
 }
 
+/** why: one spawn point for "navigate to this NPC" -- zone is the raw wiki
+ * value (what the map's npc-overlay bridge matches), route_zone the
+ * zonedata name find_zone_route accepts, null when unroutable. */
+export interface NpcNavPointDto {
+  zone: string;
+  route_zone: string | null;
+  x: number;
+  y: number;
+  z: number | null;
+}
+
 // ---------------------------------------------------------------- game data
 
 export interface ZoneDto {
@@ -1458,6 +1469,7 @@ export const api = {
   /** why: fuzzy candidates only -- see npcdata::candidate_zones' own doc for why this can't be exact */
   listNpcZoneCandidates: (mapZoneName: string) => invoke<string[]>('list_npc_zone_candidates', { mapZoneName }),
   getNpcMarkersForZone: (zone: string) => invoke<NpcMarkerDto[]>('get_npc_markers_for_zone', { zone }),
+  getNpcNavPoints: (name: string) => invoke<NpcNavPointDto[]>('get_npc_nav_points', { name }),
 
   /** why: the item browser's unfiltered catalog -- Game Data's Items tab */
   listGearItems: (classes: string[] = [], slot: string | null = null, maxEra: string | null = null) =>

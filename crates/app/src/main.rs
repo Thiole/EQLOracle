@@ -170,6 +170,7 @@ fn main() {
             commands::get_zone_context,
             commands::list_npc_zone_candidates,
             commands::get_npc_markers_for_zone,
+            commands::get_npc_nav_points,
             commands::get_current_level,
             commands::list_zones,
             commands::list_npcs,

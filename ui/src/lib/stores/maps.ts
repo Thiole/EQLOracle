@@ -13,6 +13,7 @@
 import { writable, get } from 'svelte/store';
 import { api, type MapFileDto, type LastLocationDto, type NpcMarkerDto, type ZoneContextDto, type ZoneDto, type ZoneRouteDto } from '../tauri/api';
 import { mapShortnames } from '../maps/zoneMatch';
+import { activeModule } from './shell';
 
 /** why: Settings' "N packs known" display only -- the zone picker itself
  * no longer asks the user to choose a pack up front, see `mapZones`. */
@@ -119,14 +120,44 @@ export async function zoneNameForShortname(shortname: string): Promise<string | 
  * should trigger a new `find_zone_route` call. */
 let lastRoutedFrom: string | null = null;
 
+/** why: an in-zone endpoint for the navigation -- a real entity ("go to
+ * Gorgalosk"), not just a zone. Rides along with `navigationTarget`:
+ * cross-zone hops come from the route as usual, and once the loaded map
+ * is the poi's own zone, Maps.svelte draws the final walk leg to these
+ * coordinates instead of stopping at "you're already here". `zone` is
+ * the raw wiki zone -- the same value the npc-overlay candidate bridge
+ * matches maps against. Coordinates are `/loc`-space, transformed at
+ * draw time like every other position. */
+export interface NavigationPoi {
+  name: string;
+  zone: string;
+  x: number;
+  y: number;
+  z: number | null;
+}
+export const navigationPoi = writable<NavigationPoi | null>(null);
+
 /** why: called by `Maps.svelte`'s destination field -- sets (or clears,
  * passing `null`) the persistent target and immediately computes the
- * first route from wherever the player currently is. */
-export async function setNavigationTarget(zoneName: string | null) {
+ * first route from wherever the player currently is. A plain zone pick
+ * clears any entity poi -- the poi only ever arrives together with its
+ * own zone via `navigateToNpc`. */
+export async function setNavigationTarget(zoneName: string | null, poi: NavigationPoi | null = null) {
+  navigationPoi.set(poi);
   navigationTarget.set(zoneName);
   activeRoute.set(null);
   lastRoutedFrom = null;
   await recomputeActiveRoute();
+}
+
+/** why: the "click the information, set a path" entry point -- called
+ * from an NPC's info page. Same mechanism as picking a destination zone
+ * (route recomputes on every real zone change), plus the entity's own
+ * spawn point as the final walk leg; jumps to the Maps module so the
+ * result is visible, same reasoning gdOpenPage gives for switching. */
+export async function navigateToNpc(routeZone: string, poi: NavigationPoi) {
+  activeModule.set('maps');
+  await setNavigationTarget(routeZone, poi);
 }
 
 /** why: the actual GPS behavior -- called here on every real zone change

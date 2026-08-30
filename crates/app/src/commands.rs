@@ -1554,6 +1554,43 @@ pub fn get_npc_markers_for_zone(zone: String) -> Vec<NpcMarkerDto> {
         .collect()
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct NpcNavPointDto {
+    /// why: raw wiki zone -- what the map's own npc-overlay bridge matches on
+    pub zone: String,
+    /// why: the zonedata name `find_zone_route` routes on -- exact hit
+    /// first, alias-folded second; None means unroutable (walk path in
+    /// the zone itself still works)
+    pub route_zone: Option<String>,
+    pub x: f32,
+    pub y: f32,
+    pub z: Option<f32>,
+}
+
+/// why: "set a path to this NPC, same way pick-destination does" -- the
+/// player's own ask. Coordinates come from the wiki spawn points the
+/// npc-overlay markers already plot; zone resolution reuses the same
+/// alias fold `zone_matches` applies everywhere else.
+#[tauri::command]
+pub fn get_npc_nav_points(name: String) -> Vec<NpcNavPointDto> {
+    npcdata::nav_points_for(&name)
+        .into_iter()
+        .map(|(zone, x, y, z)| {
+            let route_zone = crate::zonedata::zones()
+                .iter()
+                .find(|zd| zd.name == zone || crate::zone::zone_matches(&zone, &zd.name))
+                .map(|zd| zd.name.clone());
+            NpcNavPointDto {
+                zone,
+                route_zone,
+                x,
+                y,
+                z,
+            }
+        })
+        .collect()
+}
+
 /// why: kind + label pairs, so a new kind shows up automatically once added
 
 #[derive(Debug, Clone, Serialize)]
@@ -1832,5 +1869,22 @@ mod cc_tracker_dims_tests {
     fn an_unrecognized_size_falls_back_to_small() {
         assert_eq!(cc_tracker_dims("huge"), cc_tracker_dims("small"));
         assert_eq!(cc_tracker_dims(""), cc_tracker_dims("small"));
+    }
+
+    /// why: real data both ways -- "Plane of Sky" resolves to a routable
+    /// zonedata name for find_zone_route; the raw wiki zone survives
+    /// untouched for the npc-overlay bridge either way
+    #[test]
+    fn npc_nav_points_resolve_a_routable_zone_where_one_exists() {
+        let pts = get_npc_nav_points("Eye of Veeshan".into());
+        assert_eq!(pts.len(), 1);
+        assert_eq!(pts[0].zone, "Plane of Sky");
+        assert!(
+            pts[0].route_zone.is_some(),
+            "Plane of Sky must resolve to a routable zonedata name"
+        );
+        let zintrin = get_npc_nav_points("Guard Zintrin".into());
+        assert_eq!(zintrin.len(), 2);
+        assert_eq!(zintrin[0].zone, "East Freeport");
     }
 }

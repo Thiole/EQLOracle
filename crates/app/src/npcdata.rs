@@ -161,6 +161,25 @@ pub fn candidate_zones(target: &str) -> Vec<String> {
     candidates.into_iter().collect()
 }
 
+/// why: "navigate to this NPC" -- every spawn point for one wiki NPC,
+/// (zone, x, y, z) per parsed coordinate; multi-zone NPCs (zone None)
+/// have no single place to route to and contribute nothing
+pub fn nav_points_for(name: &str) -> Vec<(String, f32, f32, Option<f32>)> {
+    let mut out = Vec::new();
+    for n in npcs() {
+        if !n.name.eq_ignore_ascii_case(name) {
+            continue;
+        }
+        let (Some(zone), Some(loc)) = (&n.zone, &n.location) else {
+            continue;
+        };
+        for (x, y, z) in parse_locations(loc) {
+            out.push((zone.clone(), x, y, z));
+        }
+    }
+    out
+}
+
 /// why: exact match -- fuzzy work already happened in `candidate_zones`;
 /// multi-spawn mobs contribute one marker per point, not deduplicated
 pub fn markers_for_zone(zone: &str) -> Vec<(String, f32, f32, Option<f32>)> {
@@ -180,6 +199,27 @@ pub fn markers_for_zone(zone: &str) -> Vec<(String, f32, f32, Option<f32>)> {
 #[cfg(test)]
 mod location_tests {
     use super::*;
+
+    /// why: real npcs.json entries -- Eye of Veeshan has one exact 3D
+    /// spawn point; Gorgalosk's location is prose ("3rd Island"), no
+    /// coordinates, so it must contribute nothing rather than a junk point
+    #[test]
+    fn nav_points_come_from_real_coordinates_only() {
+        let eye = nav_points_for("Eye of Veeshan");
+        assert_eq!(
+            eye,
+            vec![("Plane of Sky".to_string(), -267.0, -1370.0, Some(1250.0))]
+        );
+        assert!(nav_points_for("Gorgalosk").is_empty());
+    }
+
+    /// why: multi-spawn mob, real entry -- one point per coordinate pair
+    #[test]
+    fn a_multi_spawn_npc_yields_every_point() {
+        let pts = nav_points_for("Guard Zintrin");
+        assert_eq!(pts.len(), 2);
+        assert!(pts.iter().all(|(z, _, _, _)| z == "East Freeport"));
+    }
 
     /// why: real strings pulled straight from packs/npcs.json
     #[test]
