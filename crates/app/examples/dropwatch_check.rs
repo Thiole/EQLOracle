@@ -30,6 +30,7 @@ fn main() {
 
     let now = ing.now_ms();
     println!("zone at now: {:?}", ing.zone.at(now));
+    println!("charm: {:?}", ing.charm);
     println!(
         "{mob:?}: allegiance={}, currently_grouped={}, evidence={:?}",
         ing.allegiance_at(&mob, now).name(),

@@ -1582,22 +1582,56 @@ impl Ingest {
             Action::Charm { who } => {
                 let sym = self.sym(&who);
                 self.timeline.observed(ts, sym.0, State::Charmed);
+                // why: remember which spell established the charm -- your
+                // newest begun cast (the "has been charmed." confirm
+                // follows your own charm cast within the retention
+                // window) -- so Recovered below can tell the charm's own
+                // wear-off from every other spell fading off that NAME
+                let spell = self.store.names.get("You").and_then(|you| {
+                    self.recent_casts
+                        .entries
+                        .iter()
+                        .rev()
+                        .find(|e| e.caster == you.0 && ts - e.ts <= RECENT_CAST_RETENTION_MS)
+                        .map(|e| e.spell.clone())
+                });
                 self.charm = Some(crate::effects::CharmStatus {
                     who,
                     active: true,
                     since_ms: ts,
+                    spell,
                 });
             }
-            Action::Recovered { who } => {
-                let sym = self.sym(&who);
-                self.timeline.observed(ts, sym.0, State::Engaged);
-                // why: state.charm_broken's own pattern is generic (any
-                // spell wearing off of any target) -- only clear the
-                // tracked charm if this is really that same target
-                if let Some(c) = &mut self.charm {
-                    if c.who == who && c.active {
-                        c.active = false;
-                        c.since_ms = ts;
+            Action::Recovered { who, spell } => {
+                // why: state.charm_broken's pattern is generic -- ANY
+                // spell wearing off ANY target. Real false breaks,
+                // replayed from the live log (19 of 52 wear-offs on
+                // "heart harpie"): Tashania/Mesmerization fading off a
+                // same-named ADD, and Burnout/Boon buffs fading off the
+                // pet itself, each read as the charm ending while the
+                // pet fought on loyally. When both spell names are
+                // known, only the charm's own spell breaks it -- and a
+                // non-break must not overwrite Charmed with Engaged in
+                // the timeline either (that write is what flipped the
+                // UI). Unknown on either side falls back to the old
+                // name-only behavior: missing the real break line is
+                // worse than a false break.
+                let false_break = self.charm.as_ref().is_some_and(|c| {
+                    c.active
+                        && c.who == who
+                        && matches!(
+                            (&c.spell, &spell),
+                            (Some(cs), Some(ws)) if !cs.eq_ignore_ascii_case(ws)
+                        )
+                });
+                if !false_break {
+                    let sym = self.sym(&who);
+                    self.timeline.observed(ts, sym.0, State::Engaged);
+                    if let Some(c) = &mut self.charm {
+                        if c.who == who && c.active {
+                            c.active = false;
+                            c.since_ms = ts;
+                        }
                     }
                 }
             }
@@ -2869,7 +2903,15 @@ impl Ingest {
             }
 
             // why: alive-and-unaccounted-for left for an unreported reason
-            // (blur, pacify, fleeing) -- marked Lost/Inferred not stuck Engaged. Players excluded.
+            // (blur, pacify, fleeing) -- marked Lost/Inferred not stuck
+            // Engaged. Players excluded. Charmed excluded too -- real
+            // false break, replayed from the live log: the charm pet
+            // fights every pull, so every between-pull idle close
+            // stamped Lost over its Charmed state and the pet read
+            // enemy ("UI thought my charm broke... they were still
+            // charmed no problem"). A charmed pet leaving a closing
+            // fight isn't lost, it's following you; the charm's own
+            // break signals handle the real end.
             for name in &c.entities {
                 if c.slain.iter().any(|s| s == name)
                     || self.encounters.entities.kind(name) == Kind::Player
@@ -2879,7 +2921,7 @@ impl Ingest {
                 let sym = self.sym(name);
                 if !matches!(
                     self.timeline.state_at(sym.0, c.end_ms),
-                    Some((State::Dead, _))
+                    Some((State::Dead, _)) | Some((State::Charmed, _))
                 ) {
                     self.timeline.inferred(c.end_ms, sym.0, State::Lost);
                 }
@@ -3176,6 +3218,9 @@ enum Action {
     /// why: charm wearing off, or the player's own mez ending
     Recovered {
         who: String,
+        /// why: which spell wore off -- None for the self-mez line, which
+        /// names no spell
+        spell: Option<String>,
     },
     /// why: self-only overlay signals -- see effects.rs's own doc. No
     /// payload: which literal variant fired (regular/undead/animal invis,
@@ -3599,6 +3644,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         }),
         "state.charm_broken" | "state.you_mesmerized" => Some(Action::Recovered {
             who: str_field("who").unwrap_or_else(|| "You".to_string()),
+            spell: str_field("spell"),
         }),
         "invis.fading" => Some(Action::InvisFading),
         "invis.landed.vanish" | "invis.landed.tingle" | "invis.landed.fade" => {
@@ -4349,6 +4395,85 @@ mod charm_reaffirm_tests {
         let ing = run(&["[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed."]);
         let now = ing.now_ms();
         assert!(!ing.allegiance_at("an abhorrent", now).is_enemy());
+    }
+
+    /// why: real reported false break, replayed from the live log -- a
+    /// DIFFERENT spell (Tashania on a same-named add, or a Burnout-style
+    /// buff on the pet itself) wearing off the charm's name read as the
+    /// charm ending while the pet fought on. Only the charm's own spell
+    /// breaks it
+    #[test]
+    fn another_spells_wearoff_on_the_charm_name_is_not_a_break() {
+        let ing = run(&[
+            "[Sat Aug 29 19:11:20 2026] You begin casting Allure.",
+            "[Sat Aug 29 19:11:32 2026] heart harpie has been charmed.",
+            "[Sat Aug 29 19:23:58 2026] Your Tashania spell has worn off of heart harpie.",
+            "[Sat Aug 29 19:24:10 2026] Your Burnout III spell has worn off of heart harpie.",
+        ]);
+        let c = ing.charm.as_ref().expect("charm still tracked");
+        assert!(c.active, "Tashania/Burnout fading is not the charm ending");
+        let now = ing.now_ms();
+        assert!(
+            !ing.allegiance_at("heart harpie", now).is_enemy(),
+            "timeline must still read Charmed, not Engaged"
+        );
+    }
+
+    /// why: the charm's own spell wearing off IS the break -- the guard
+    /// must not eat the real signal
+    #[test]
+    fn the_charm_spells_own_wearoff_still_breaks_it() {
+        let ing = run(&[
+            "[Sat Aug 29 19:11:20 2026] You begin casting Allure.",
+            "[Sat Aug 29 19:11:32 2026] heart harpie has been charmed.",
+            "[Sat Aug 29 19:23:58 2026] Your Allure spell has worn off of heart harpie.",
+        ]);
+        let c = ing.charm.as_ref().expect("charm still tracked");
+        assert!(
+            !c.active,
+            "the charm spell's own wear-off is the real break"
+        );
+        let now = ing.now_ms();
+        assert!(ing.allegiance_at("heart harpie", now).is_enemy());
+    }
+
+    /// why: no recent cast at confirm time (log started mid-session,
+    /// retention expired) -- unknown charm spell falls back to the old
+    /// name-only clear: missing a real break is worse than a false one
+    #[test]
+    fn an_unknown_charm_spell_still_breaks_on_any_wearoff() {
+        let ing = run(&[
+            "[Sat Aug 29 19:11:32 2026] heart harpie has been charmed.",
+            "[Sat Aug 29 19:23:58 2026] Your Tashania spell has worn off of heart harpie.",
+        ]);
+        let c = ing.charm.as_ref().expect("charm still tracked");
+        assert!(
+            !c.active,
+            "unknown charm spell keeps the conservative clear"
+        );
+    }
+
+    /// why: the between-pulls half of the same reported false break --
+    /// the charm pet is in every fight, so each idle close used to stamp
+    /// Lost over its Charmed state and the pet read enemy until the next
+    /// charm line. Fights close only off tick (see monsters.rs's doc),
+    /// so the tick is explicit
+    #[test]
+    fn a_fight_idling_out_does_not_stamp_lost_over_a_charmed_pet() {
+        let mut ing = run(&[
+            "[Sat Aug 29 19:11:32 2026] heart harpie has been charmed.",
+            "[Sat Aug 29 19:11:40 2026] An avenging gazer has been slain by heart harpie!",
+            "[Sat Aug 29 19:11:41 2026] heart harpie hits an avenging gazer for 50 points of damage.",
+            // why: quiet line 20s later -- the pull's fight idles out
+            "[Sat Aug 29 19:12:01 2026] You say, 'med break'",
+        ]);
+        ing.tick(0);
+        let now = ing.now_ms();
+        assert!(
+            !ing.allegiance_at("heart harpie", now).is_enemy(),
+            "idle close must not overwrite Charmed with Lost"
+        );
+        assert!(ing.charm.as_ref().is_some_and(|c| c.active));
     }
 }
 

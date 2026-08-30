@@ -31,6 +31,10 @@ pub struct CharmStatus {
     pub who: String,
     pub active: bool,
     pub since_ms: Millis,
+    /// why: the spell that established the charm (your newest begun cast
+    /// at confirm time) -- lets a wear-off line for some OTHER spell on
+    /// the same name not read as a break; None when no recent cast
+    pub spell: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
