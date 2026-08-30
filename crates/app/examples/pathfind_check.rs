@@ -32,7 +32,7 @@ fn main() {
     let mut none = 0;
     let mut crossings = 0;
     let mut endpoint_crossings = 0;
-    let t0 = std::time::Instant::now();
+    let t0 = std::time::Instant::now(); // clock-exempt: perf probe measuring real wall time
     let markers = &map.markers;
     for i in 0..markers.len() {
         for j in (i + 1)..markers.len() {
