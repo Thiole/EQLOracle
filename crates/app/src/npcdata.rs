@@ -117,6 +117,37 @@ pub fn known_loot_for(name: &str) -> &'static [String] {
     .unwrap_or(&[])
 }
 
+/// why: a zone's real drop pool -- union of known_loot across every NPC
+/// attributed to that wiki zone. zonedata's own unique_items comes from
+/// the zone page's HEADER table, which many zones (Plane of Sky) simply
+/// don't have a row for even though their mobs' loot is fully attributed
+/// per NPC -- reported live: "still see no tracked drops nearby, after
+/// killing hand of veeshan". Takes the RAW log zone name ("The Plane of
+/// Sky") and resolves it against Npc::zone values via the same
+/// `zone_matches` alias fold everything else uses. Deduped
+/// case-insensitively.
+pub fn zone_loot_pool(raw_zone: &str) -> &'static [String] {
+    static MAP: OnceLock<std::collections::HashMap<String, Vec<String>>> = OnceLock::new();
+    let map = MAP.get_or_init(|| {
+        let mut m: std::collections::HashMap<String, Vec<String>> =
+            std::collections::HashMap::new();
+        for n in npcs() {
+            let Some(zone) = &n.zone else { continue };
+            let e = m.entry(zone.clone()).or_default();
+            for l in &n.known_loot {
+                if !e.iter().any(|x| x.eq_ignore_ascii_case(&l.item)) {
+                    e.push(l.item.clone());
+                }
+            }
+        }
+        m
+    });
+    map.iter()
+        .find(|(k, _)| crate::zone::zone_matches(raw_zone, k))
+        .map(|(_, v)| v.as_slice())
+        .unwrap_or(&[])
+}
+
 /// why: parses free-text spawn notation into real points; descriptive
 /// text ("Various", "Need Info") yields none. `%` weighting dropped --
 /// multiple spawns render as multiple equal markers.

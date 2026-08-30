@@ -144,6 +144,15 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         })
         .map(|z| z.unique_items.as_slice())
         .unwrap_or(&[]);
+    // why: second pool -- union of the zone's own NPCs' known_loot. The
+    // zonedata pool reads the zone page's header table, which whole
+    // zones lack (Plane of Sky: empty, yet every island boss's loot is
+    // attributed per NPC) -- see zone_loot_pool's own doc
+    let npc_zone_items: &[String] = ing
+        .zone
+        .at(now)
+        .map(crate::npcdata::zone_loot_pool)
+        .unwrap_or(&[]);
 
     // why: shared filter for all three sources -- one place decides
     // what a watchable enemy is
@@ -185,6 +194,7 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         for d in crate::npcdata::known_loot_for(name)
             .iter()
             .chain(zone_items.iter())
+            .chain(npc_zone_items.iter())
         {
             if !drops.iter().any(|x| x.eq_ignore_ascii_case(d)) {
                 drops.push(d.clone());
@@ -389,6 +399,28 @@ mod tests {
             rat.is_some_and(|r| r.drops.iter().any(|d| d == "Brightwood Spear")),
             "Skyshrine's own unique_items must attach to any engaged mob there, got {:?}",
             rows
+        );
+    }
+
+    /// why: the real reported gap -- "still see no tracked drops nearby,
+    /// after killing hand of veeshan". Plane of Sky's zonedata
+    /// unique_items is EMPTY (its wiki page keeps loot in body sections
+    /// the zone scraper's header-table parse never sees), so the only
+    /// zone pool was blank; the NPC-attributed pool must cover it: an
+    /// item only attributed to The Spiroc Lord attaches to any engaged
+    /// Sky mob
+    #[test]
+    fn a_zone_with_no_header_table_pool_still_attaches_its_npcs_loot() {
+        let ing = run(concat!(
+            "[Tue Jul 28 15:00:00 2026] You have entered The Plane of Sky.\n",
+            "[Tue Jul 28 15:01:00 2026] You hit a rat for 5 points of damage.\n",
+        ));
+        let rows = drop_watch(&ing);
+        let rat = rows.iter().find(|r| r.mob == "a rat");
+        assert!(
+            rat.is_some_and(|r| r.drops.iter().any(|d| d == "Golden Coffer")),
+            "Spiroc Lord's own attribution must reach every engaged Sky mob via the npc pool, got {:?}",
+            rows.iter().map(|r| &r.mob).collect::<Vec<_>>()
         );
     }
 
