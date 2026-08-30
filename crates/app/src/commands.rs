@@ -716,10 +716,29 @@ fn position_on_some_monitor(app: &AppHandle, x: f64, y: f64) -> bool {
 fn ensure_layered_still_renders(window: &tauri::WebviewWindow) {
     #[cfg(target_os = "windows")]
     {
-        use windows_sys::Win32::UI::WindowsAndMessaging::{SetLayeredWindowAttributes, LWA_ALPHA};
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetLayeredWindowAttributes, SetWindowLongPtrW, GWL_EXSTYLE,
+            LWA_ALPHA, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TRANSPARENT,
+        };
         if let Ok(hwnd) = window.hwnd() {
             let hwnd = hwnd.0 as isize;
             unsafe {
+                // why: self-asserted, not trusted to tao's posted flag
+                // application -- an overlay opens at the OS default
+                // position, ON TOP of the main window, and a
+                // click-through that silently failed to stick leaves an
+                // invisible topmost window eating every click under it
+                // ("cant click anything in the app", the Windows
+                // report). TRANSPARENT passes clicks through,
+                // LAYERED+alpha keeps it rendering (tao sets the styles
+                // but never the attributes), NOACTIVATE keeps it from
+                // ever taking focus -- the standard overlay triple.
+                let ex = GetWindowLongPtrW(hwnd as _, GWL_EXSTYLE);
+                SetWindowLongPtrW(
+                    hwnd as _,
+                    GWL_EXSTYLE,
+                    ex | (WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_NOACTIVATE) as isize,
+                );
                 SetLayeredWindowAttributes(hwnd as _, 0, 255, LWA_ALPHA);
             }
         }
