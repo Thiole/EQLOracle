@@ -224,8 +224,14 @@ pub fn list_allies(
     state: State<AppState>,
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
+    confirmed_only: Option<bool>,
 ) -> Vec<AllyDto> {
-    combat::list_allies(&state.ingest.lock_recover(), zone_visit, encounter_id)
+    combat::list_allies(
+        &state.ingest.lock_recover(),
+        zone_visit,
+        encounter_id,
+        confirmed_only.unwrap_or(false),
+    )
 }
 
 /// why: Combat module's drill-down -- one ally's breakdown, or the whole selection's
@@ -236,12 +242,14 @@ pub fn get_combat_summary(
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
     actor: Option<String>,
+    confirmed_only: Option<bool>,
 ) -> CombatSummaryDto {
     combat::summarize(
         &state.ingest.lock_recover(),
         zone_visit,
         encounter_id,
         actor.as_deref(),
+        confirmed_only.unwrap_or(false),
     )
 }
 

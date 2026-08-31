@@ -76,13 +76,19 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  /* why: borders render at 65% of the theme's own --border -- the app
-     draws a LOT of hairlines (cards, tables, stat strips), and at full
-     strength they read as boxes-in-boxes. Softened here at the usage
-     mapping so every theme preset inherits it without redefining
-     anything. Inputs keep the full-strength value: a form control's
-     edge is an affordance, not decoration. */
-  --color-border: color-mix(in srgb, var(--border) 65%, transparent);
+  /* why: every hairline is the theme's grey WARMED toward its own
+     accent (30% primary -- brass on the default theme), then softened
+     to 65% alpha. Both twists live here at the one usage mapping, so
+     every theme preset and every border in the app inherits them: grey
+     borders in a dark grey context read as dead chrome, an
+     accent-tinted edge reads as the app's own light. Inputs keep the
+     untinted full-strength value: a form control's edge is an
+     affordance, not decoration. */
+  --color-border: color-mix(
+    in srgb,
+    color-mix(in srgb, var(--border) 70%, var(--primary) 30%) 65%,
+    transparent
+  );
   --color-input: var(--input);
   --color-ring: var(--ring);
 

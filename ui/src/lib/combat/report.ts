@@ -13,6 +13,10 @@ export interface ReportHeader {
   target: string | null;
   tag: 'kill' | 'wipe' | 'reset' | 'ongoing' | null;
   fightCount: number;
+  /** why: aggregates copy with reset fights dropped (see Combat.svelte's
+   * copyReport) -- said in the title so pasted numbers are honest about
+   * what they cover. */
+  resetsExcluded?: boolean;
 }
 
 /** why: matches "the pasted mock and any real block of numbers" the
@@ -30,7 +34,7 @@ const MAX_ALLIES = 8;
 export function buildCombatReport(header: ReportHeader, summary: CombatSummaryDto, allies: AllyDto[]): string {
   const title =
     header.target === null
-      ? `Aggregate (${header.fightCount} fight${header.fightCount === 1 ? '' : 's'}, ${fmtDuration(summary.duration_ms)})`
+      ? `Aggregate (${header.fightCount} fight${header.fightCount === 1 ? '' : 's'}, ${fmtDuration(summary.duration_ms)}${header.resetsExcluded ? ', resets excluded' : ''})`
       : `${header.target} (${header.tag ?? '?'}, ${fmtDuration(summary.duration_ms)})`;
 
   const teamLine = `Team ${fmtCompact(summary.total_damage)} dmg, ${fmtCompact(summary.dps)} dps`;

@@ -126,12 +126,12 @@ fn main() {
     let mut summary_by_selection: Map<String, Value> = Map::new();
     summary_by_selection.insert(
         "zoneVisit=null&encounterId=null".to_string(),
-        json!(combat::summarize(&ing, None, None, None)),
+        json!(combat::summarize(&ing, None, None, None, false)),
     );
     for id in [richest_id, latest_id] {
         summary_by_selection.insert(
             format!("zoneVisit=null&encounterId={id}"),
-            json!(combat::summarize(&ing, None, Some(id), None)),
+            json!(combat::summarize(&ing, None, Some(id), None, false)),
         );
     }
     out.insert(
@@ -142,12 +142,12 @@ fn main() {
     let mut allies_by_selection: Map<String, Value> = Map::new();
     allies_by_selection.insert(
         "zoneVisit=null&encounterId=null".to_string(),
-        json!(combat::list_allies(&ing, None, None)),
+        json!(combat::list_allies(&ing, None, None, false)),
     );
     for id in [richest_id, latest_id] {
         allies_by_selection.insert(
             format!("zoneVisit=null&encounterId={id}"),
-            json!(combat::list_allies(&ing, None, Some(id))),
+            json!(combat::list_allies(&ing, None, Some(id), false)),
         );
     }
     out.insert(

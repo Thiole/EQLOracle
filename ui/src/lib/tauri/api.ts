@@ -1362,11 +1362,17 @@ export const api = {
   listEncounters: (zoneVisit: number | null, offset?: number, limit?: number) =>
     invoke<EncounterDto[]>('list_encounters', { zoneVisit, offset, limit }),
 
-  getCombatSummary: (zoneVisit: number | null, encounterId: number | null, actor: string | null = null) =>
-    invoke<CombatSummaryDto>('get_combat_summary', { zoneVisit, encounterId, actor }),
+  /** confirmedOnly drops closed "reset" fights from an aggregate --
+   * the copy-report path; on-screen views pass nothing and keep all. */
+  getCombatSummary: (
+    zoneVisit: number | null,
+    encounterId: number | null,
+    actor: string | null = null,
+    confirmedOnly = false,
+  ) => invoke<CombatSummaryDto>('get_combat_summary', { zoneVisit, encounterId, actor, confirmedOnly }),
 
-  listAllies: (zoneVisit: number | null, encounterId: number | null) =>
-    invoke<AllyDto[]>('list_allies', { zoneVisit, encounterId }),
+  listAllies: (zoneVisit: number | null, encounterId: number | null, confirmedOnly = false) =>
+    invoke<AllyDto[]>('list_allies', { zoneVisit, encounterId, confirmedOnly }),
 
   getFightTimeline: (encounterId: number) => invoke<FightTimelineDto | null>('get_fight_timeline', { encounterId }),
 

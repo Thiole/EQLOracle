@@ -10,8 +10,24 @@ pub type Millis = i64;
 /// why: game-grounded defaults, but every judgement call stays settable
 #[derive(Debug, Clone, Copy)]
 pub struct Policy {
-    /// why: matches the real out-of-combat recovery boundary, default 10s
+    /// why: 10s, for RESOLVED fights only (every non-ally entity dead)
+    /// -- matches the real out-of-combat recovery boundary, and closing
+    /// fast here is what keeps back-to-back pulls from merging into one
+    /// mega-encounter (measured: a flat 30s window halved the log's
+    /// kill count exactly that way). Unresolved fights use
+    /// idle_unresolved_ms instead -- see its own doc.
     pub idle_ms: Millis,
+
+    /// why: 60s, for fights with a LIVE mob still in them -- "it's not
+    /// if anyone dies, all the ones there have to be killed" (the
+    /// reported semantics). A mezz lull or med break writes zero lines
+    /// for way past 10s, and at a flat 10s a quarter of a real 5,864-
+    /// fight log closed as "reset", 355 re-engaging the same target
+    /// within 2 minutes (144 of those chains ended in a KILL); a 60s
+    /// window absorbed 284 of the 355 splits (reset_check.rs,
+    /// 2026-08-31). Safe on duration: closes stamp end_ms at the last
+    /// activity, so patience never inflates a fight's length.
+    pub idle_unresolved_ms: Millis,
 
     /// why: a re-engaged fled mob within this window is one kill, not two
     pub link_ms: Millis,
@@ -27,6 +43,7 @@ impl Default for Policy {
     fn default() -> Self {
         Policy {
             idle_ms: 10_000,
+            idle_unresolved_ms: 60_000,
             link_ms: 60_000,
             transitive: true,
             max_entities: None,
@@ -37,6 +54,10 @@ impl Default for Policy {
 impl Policy {
     pub fn idle_secs(mut self, s: f64) -> Self {
         self.idle_ms = (s * 1000.0) as Millis;
+        self
+    }
+    pub fn idle_unresolved_secs(mut self, s: f64) -> Self {
+        self.idle_unresolved_ms = (s * 1000.0) as Millis;
         self
     }
     pub fn link_secs(mut self, s: f64) -> Self {
@@ -345,12 +366,43 @@ impl Builder {
         // why: not cleared from `recent` -- would break the backward link
     }
 
-    /// why: call every event/tick, or a quiet fight never closes
+    /// why: active CC on a fight's own entity means the fight is paused,
+    /// not over -- a mezzed mob writes no damage lines, and the idle
+    /// clock alone would close the fight mid-mezz as a bogus "reset"
+    /// (7.6% of a real log's resets had the target mezzed within 20s of
+    /// the close -- reset_check.rs). Refreshing last_ms buys the fight
+    /// another idle window from the CC line itself.
+    pub fn touch_entity(&mut self, name: &str, ts: Millis) {
+        if let Some(&id) = self.of.get(&fold_key(name)) {
+            if let Some(e) = self.live.get_mut(&id) {
+                if ts > e.last_ms {
+                    e.last_ms = ts;
+                }
+            }
+        }
+    }
+
+    /// why: call every event/tick, or a quiet fight never closes.
+    /// Two idle windows -- see Policy: a fight where SOMETHING has died
+    /// closes on the short one (a concluded pull goes quiet because it's
+    /// over, and closing fast is what keeps the next pull from merging
+    /// in); a fight with zero kills yet gets the long one -- quiet there
+    /// means mezz, a fled mob, or a med break, not "over". NOT keyed on
+    /// "every entity slain": an unspoken groupmate reads Unproven (the
+    /// documented detection ceiling) and held every fight to the long
+    /// window, merging back-to-back pulls -- measured, reset_check.rs.
     pub fn expire(&mut self, now: Millis) {
         let stale: Vec<EncId> = self
             .live
             .iter()
-            .filter(|(_, e)| now - e.last_ms > self.policy.idle_ms)
+            .filter(|(_, e)| {
+                let idle = if e.slain.is_empty() {
+                    self.policy.idle_unresolved_ms
+                } else {
+                    self.policy.idle_ms
+                };
+                now - e.last_ms > idle
+            })
             .map(|(&id, _)| id)
             .collect();
         for id in stale {

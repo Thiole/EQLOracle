@@ -21,6 +21,8 @@
     followCurrent,
     loadZoneVisitsThenJumpOrReset,
   } from '$lib/stores/combat';
+  import { api } from '$lib/tauri/api';
+  import { get } from 'svelte/store';
   import { fmtDuration } from '$lib/format';
 
   // why: also the entry point for Game Data's "open in Combat →" -- see
@@ -154,7 +156,29 @@
     if (!$summary) return;
     const e = $selectedEncounterId === null ? null : $encounters.find((e) => e.id === $selectedEncounterId);
     const tag = e ? (e.open ? 'ongoing' : e.slain ? 'kill' : e.wiped ? 'wipe' : 'reset') : null;
-    const report = buildCombatReport({ target: e?.target ?? null, tag, fightCount: $summary.fight_count }, $summary, $allies);
+    // why: an aggregate COPY drops reset fights (abandoned/fled fragments
+    // dilute shared numbers -- the reported ask); fetched fresh with
+    // confirmedOnly rather than filtering the displayed stores, and the
+    // title says so. A single-fight copy stays exactly what's on screen.
+    let sum = $summary;
+    let allyRows = $allies;
+    const aggregate = $selectedEncounterId === null;
+    if (aggregate) {
+      // get(), not $ -- a store read after an await inside this async
+      // handler is a scoped subscription Svelte rejects at compile time
+      const zv = get(selectedZoneVisit);
+      const [s, a] = await Promise.all([
+        api.getCombatSummary(zv, null, null, true),
+        api.listAllies(zv, null, true),
+      ]);
+      if (s) sum = s;
+      if (a) allyRows = a;
+    }
+    const report = buildCombatReport(
+      { target: e?.target ?? null, tag, fightCount: sum.fight_count, resetsExcluded: aggregate },
+      sum,
+      allyRows,
+    );
     try {
       await navigator.clipboard.writeText(report);
     } catch {

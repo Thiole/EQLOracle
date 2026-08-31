@@ -1596,6 +1596,9 @@ impl Ingest {
             Action::Mez { who } => {
                 let sym = self.sym(&who);
                 self.timeline.observed(ts, sym.0, State::Mezzed);
+                // why: a mezzed mob is a paused fight, not an over one --
+                // see Builder::touch_entity's own doc
+                self.encounters.touch_entity(&who, ts);
             }
             Action::Charm { who } => {
                 let sym = self.sym(&who);

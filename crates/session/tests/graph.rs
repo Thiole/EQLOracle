@@ -34,7 +34,7 @@ fn disjoint_fights_stay_separate() {
 
 #[test]
 fn silence_closes_after_the_configured_idle() {
-    let mut b = Builder::new(Policy::default().idle_secs(10.0));
+    let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(10.0));
     b.damage(0, "You", "a gnoll");
     b.expire(9_000);
     assert_eq!(b.live_count(), 1, "closed before idle elapsed");
@@ -48,7 +48,7 @@ fn silence_closes_after_the_configured_idle() {
 #[test]
 fn a_longer_idle_keeps_a_lull_in_one_encounter() {
     let run = |idle: f64| {
-        let mut b = Builder::new(Policy::default().idle_secs(idle));
+        let mut b = Builder::new(Policy::default().idle_secs(idle).idle_unresolved_secs(idle));
         b.damage(0, "You", "a gnoll");
         b.damage(20_000, "You", "a gnoll");
         b.close_all(30_000);
@@ -79,7 +79,7 @@ fn a_multi_mob_pull_is_one_encounter_and_survives_a_death() {
 
 #[test]
 fn an_interrupted_fight_links_to_its_predecessor() {
-    let mut b = Builder::new(Policy::default().idle_secs(10.0).link_secs(60.0));
+    let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(10.0).link_secs(60.0));
     b.entities.note_player_channel("You");
     b.damage(0, "You", "a gnoll");
     b.expire(11_000); // mob fled; encounter closes, nothing slain
@@ -114,7 +114,7 @@ fn a_slain_target_does_not_link_forward() {
 /// session into a single encounter.
 #[test]
 fn consecutive_fights_do_not_link_through_the_player() {
-    let mut b = Builder::new(Policy::default().idle_secs(10.0).link_secs(60.0));
+    let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(10.0).link_secs(60.0));
     b.entities.note_player_channel("You");
     b.damage(0, "You", "gnoll A");
     b.death(1000, "gnoll A");
@@ -254,4 +254,27 @@ fn classification_is_monotonic() {
     e.note_player_channel("Kaeus");
     e.observe("Kaeus");
     assert_eq!(e.kind("Kaeus"), Kind::Player, "observe must not demote");
+}
+
+/// why: the two-tier idle contract (Policy's own docs) -- a fight where
+/// something DIED goes quiet because it's over (short window, keeps the
+/// next pull separate); a fight with zero kills yet goes quiet because
+/// of mezz/fled/medding (long window, a pause is not an end). The
+/// real-log measurement behind it: examples/reset_check.rs.
+#[test]
+fn a_no_kill_lull_outlasts_the_short_idle_but_a_kill_closes_fast() {
+    // no kill: still live past the short window, closes after the long one
+    let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(60.0));
+    b.damage(0, "You", "a gnoll");
+    b.expire(30_000);
+    assert_eq!(b.live_count(), 1, "no kill yet -- 30s of mezz quiet must not close it");
+    b.expire(61_000);
+    assert_eq!(b.live_count(), 0, "past the unresolved window it really is over");
+
+    // kill: the short window applies
+    let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(60.0));
+    b.damage(0, "You", "a gnoll");
+    b.death(1_000, "a gnoll");
+    b.expire(12_000);
+    assert_eq!(b.live_count(), 0, "concluded pull closes on the short idle");
 }

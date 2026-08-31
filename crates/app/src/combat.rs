@@ -456,6 +456,7 @@ fn resolve_ids(
     ing: &Ingest,
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
+    confirmed_only: bool,
 ) -> Vec<EncounterId> {
     if let Some(eid) = encounter_id {
         // why: an explicit id is honored involved-or-not -- the caller
@@ -463,11 +464,16 @@ fn resolve_ids(
         vec![EncounterId(eid)]
     } else {
         // why: aggregates scope to the player's own fights -- a stranger
-        // group's fight in the same visit is backend data, not "your combat"
+        // group's fight in the same visit is backend data, not "your combat".
+        // confirmed_only additionally drops closed "reset" fights (neither
+        // slain nor wiped) -- the copy-report ask: an abandoned/fled fight
+        // fragment shouldn't dilute a shared aggregate's numbers. Open
+        // fights and wipes stay: both are real combat.
         ing.store
             .encounters
             .iter()
             .filter(|e| e.involves_you && matches_visit(ing, e.start_ms, zone_visit))
+            .filter(|e| !confirmed_only || e.is_open() || e.slain || e.wiped)
             .map(|e| e.id)
             .collect()
     }
@@ -593,9 +599,10 @@ pub fn summarize(
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
     actor: Option<&str>,
+    confirmed_only: bool,
 ) -> CombatSummaryDto {
     let now = ing.now_ms();
-    let ids = resolve_ids(ing, zone_visit, encounter_id);
+    let ids = resolve_ids(ing, zone_visit, encounter_id, confirmed_only);
     if ids.is_empty() {
         return CombatSummaryDto::default();
     }
@@ -762,8 +769,9 @@ pub fn list_allies(
     ing: &Ingest,
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
+    confirmed_only: bool,
 ) -> Vec<AllyDto> {
-    let ids = resolve_ids(ing, zone_visit, encounter_id);
+    let ids = resolve_ids(ing, zone_visit, encounter_id, confirmed_only);
     if ids.is_empty() {
         return Vec::new();
     }
@@ -1839,7 +1847,7 @@ mod ability_mitigation_dto_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let summary = summarize(&ing, None, None, Some("You"));
+        let summary = summarize(&ing, None, None, Some("You"), false);
         let punch = summary
             .abilities
             .iter()
@@ -1869,7 +1877,7 @@ mod ability_mitigation_dto_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let summary = summarize(&ing, None, None, None);
+        let summary = summarize(&ing, None, None, None, false);
         let punch = summary
             .abilities
             .iter()
@@ -1910,7 +1918,7 @@ mod ally_report_tests {
             "[Tue Jul 28 15:01:00 2026] You punch a target for 5 points of damage.",
             "[Tue Jul 28 15:01:01 2026] You try to punch a target, but a target blocks!",
         ]);
-        let allies = list_allies(&ing, None, None);
+        let allies = list_allies(&ing, None, None, false);
         let you = allies
             .iter()
             .find(|a| a.name == "You")
@@ -1931,7 +1939,7 @@ mod ally_report_tests {
             "[Tue Jul 28 15:01:03 2026] You begin casting Lifetap.",
             "[Tue Jul 28 15:01:05 2026] a target resisted your Lifetap!",
         ]);
-        let allies = list_allies(&ing, None, None);
+        let allies = list_allies(&ing, None, None, false);
         let you = allies
             .iter()
             .find(|a| a.name == "You")
@@ -1945,7 +1953,7 @@ mod ally_report_tests {
             "[Tue Jul 28 15:01:00 2026] You punch a target for 5 points of damage.",
             "[Tue Jul 28 15:01:01 2026] a target healed itself for 20 hit points by Lifetap.",
         ]);
-        let summary = summarize(&ing, None, None, None);
+        let summary = summarize(&ing, None, None, None, false);
         assert_eq!(
             summary.enemy_heal, 20,
             "healing landed on the target, not folded into total_damage"
