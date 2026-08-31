@@ -170,10 +170,15 @@ pub struct SkyClassUnlockDto {
     pub rewards: Vec<SkyRewardDto>,
 }
 
-/// why: one pass, keyed by item name -> (qty, any auto-sold); not scoped
-/// to a mob, since a quest item can come from more than one source
-fn build_item_loot_index(ing: &Ingest) -> HashMap<String, (u64, bool)> {
-    let mut out: HashMap<String, (u64, bool)> = HashMap::new();
+/// why: one pass, keyed by item name -> (qty, any auto-sold, qty AFTER
+/// the newest inventory dump); not scoped to a mob, since a quest item
+/// can come from more than one source. The after-dump count is what
+/// lets a live pickup read as owned NOW ("picked up a Blood Sky Ruby
+/// and it didn't update", the report) instead of waiting for the next
+/// /outputfile -- kept per-key here so resolve_item can apply it.
+fn build_item_loot_index(ing: &Ingest) -> HashMap<String, (u64, bool, u64)> {
+    let dump_ts = ing.last_inventory_dump_ts;
+    let mut out: HashMap<String, (u64, bool, u64)> = HashMap::new();
     for i in 0..ing.store.len() {
         if ing.store.kind[i] != EventKind::Loot {
             continue;
@@ -182,34 +187,55 @@ fn build_item_loot_index(ing: &Ingest) -> HashMap<String, (u64, bool)> {
         let (base, _tier) = inventory::strip_tier(raw_name);
         let key = base.to_ascii_lowercase();
         let sold = ing.store.flags[i] & flag::LOOT_AUTO_SOLD != 0;
-        let entry = out.entry(key).or_insert((0, false));
+        let entry = out.entry(key).or_insert((0, false, 0));
         entry.0 += ing.store.amount[i];
         entry.1 |= sold;
+        // why: auto-sold loot never reached the bags -- no ownership boost
+        if !sold && dump_ts.is_some_and(|d| ing.store.ts[i] > d) {
+            entry.2 += ing.store.amount[i];
+        }
     }
     out
 }
 
 fn resolve_item(
+    ing: &Ingest,
     name: &str,
     source: Option<&str>,
-    looted: &HashMap<String, (u64, bool)>,
+    looted: &HashMap<String, (u64, bool, u64)>,
     owned_ci: Option<&HashMap<String, u32>>,
 ) -> TurnInItemDto {
     let key = name.to_ascii_lowercase();
-    let (looted_count, sold_without_keeping) = looted.get(&key).copied().unwrap_or((0, false));
+    let (looted_count, sold_without_keeping, after_dump) =
+        looted.get(&key).copied().unwrap_or((0, false, 0));
     TurnInItemDto {
         item: name.to_string(),
         source: source.map(str::to_string),
         ever_looted: looted_count > 0,
         looted_count,
-        currently_owned: owned_ci.map(|o| o.get(&key).copied().unwrap_or(0)),
+        // why: dump count + post-dump pickups -- a live loot line is
+        // real ownership the stale dump can't see. Conservative on the
+        // way down: an item disposed at any point this session gets no
+        // boost (disposed_items carries no timestamps to be finer with,
+        // same caution infer_reward_owned takes), and no dump at all
+        // stays None/unknown rather than pretending loot history is a
+        // full inventory.
+        currently_owned: owned_ci.map(|o| {
+            let base = o.get(&key).copied().unwrap_or(0);
+            let boost = if ing.disposed_items.contains(&key) {
+                0
+            } else {
+                after_dump as u32
+            };
+            base + boost
+        }),
         sold_without_keeping,
     }
 }
 
 /// why: everything both tabs need, built once and shared, not per-tab
 struct Context {
-    looted: HashMap<String, (u64, bool)>,
+    looted: HashMap<String, (u64, bool, u64)>,
     owned_ci: Option<HashMap<String, u32>>,
     achievements: Option<crate::achievements::Achievements>,
 }
@@ -332,12 +358,13 @@ pub fn list_quests(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClassDto> {
                     rune: q
                         .rune
                         .as_deref()
-                        .map(|r| resolve_item(r, None, &ctx.looted, ctx.owned_ci.as_ref())),
+                        .map(|r| resolve_item(ing, r, None, &ctx.looted, ctx.owned_ci.as_ref())),
                     items: q
                         .items
                         .iter()
                         .map(|it| {
                             resolve_item(
+                                ing,
                                 &it.item,
                                 it.source.as_deref(),
                                 &ctx.looted,
@@ -376,14 +403,15 @@ pub fn list_class_unlocks(ing: &Ingest, base_dir: Option<&Path>) -> Vec<SkyClass
                 .iter()
                 .filter_map(|q| {
                     let reward = q.reward.as_deref()?;
-                    let it = resolve_item(reward, None, &ctx.looted, ctx.owned_ci.as_ref());
+                    let it = resolve_item(ing, reward, None, &ctx.looted, ctx.owned_ci.as_ref());
                     let materials = q
                         .rune
                         .as_deref()
-                        .map(|r| resolve_item(r, None, &ctx.looted, ctx.owned_ci.as_ref()))
+                        .map(|r| resolve_item(ing, r, None, &ctx.looted, ctx.owned_ci.as_ref()))
                         .into_iter()
                         .chain(q.items.iter().map(|qi| {
                             resolve_item(
+                                ing,
                                 &qi.item,
                                 qi.source.as_deref(),
                                 &ctx.looted,

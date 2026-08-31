@@ -892,6 +892,11 @@ pub struct Ingest {
     /// confirmed_by_turnin uses), so a quest reward with no loot line of
     /// its own isn't assumed still owned once it's provably gone.
     pub disposed_items: std::collections::HashSet<String>,
+    /// why: when the newest inventory dump was written, on the log's own
+    /// clock (the Outputfile Complete line's ts) -- lets skyquests count
+    /// post-dump loot as owned instead of waiting for the next dump.
+    /// None until a dump line is seen this replay.
+    pub last_inventory_dump_ts: Option<Millis>,
     /// why: overlay's Skill Tracker widget -- see skilltracker.rs's own doc
     pub skills: std::collections::HashMap<String, crate::skilltracker::SkillTrack>,
     /// why: every AA rank purchase this session, see AaLog
@@ -1030,6 +1035,7 @@ impl Default for Ingest {
             pending_turnin: None,
             turn_ins: Vec::new(),
             disposed_items: std::collections::HashSet::new(),
+            last_inventory_dump_ts: None,
             skills: std::collections::HashMap::new(),
             aa: AaLog::default(),
             spellbook: SpellLog::default(),
@@ -1414,6 +1420,13 @@ impl Ingest {
                 self.spellbook.observe_finished(ts, name);
             }
             Action::OutputfileComplete { file } => {
+                // why: log-clock timestamp of the freshest inventory
+                // dump -- skyquests' owned counts come from that dump,
+                // and loot lines AFTER it are pickups the dump can't
+                // know about (see skyquests' live-owned boost)
+                if crate::inventory::is_inventory_dump(&file) {
+                    self.last_inventory_dump_ts = Some(ts);
+                }
                 self.pending_inventory_files.push(file);
             }
             Action::ExaltationProc { item } => {

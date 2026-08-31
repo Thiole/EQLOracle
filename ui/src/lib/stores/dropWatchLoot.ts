@@ -6,6 +6,7 @@
 // live panel already uses (see tauri/events.ts), not its own interval.
 import { get, writable } from 'svelte/store';
 import { api } from '../tauri/api';
+import { logClockNowMs } from '../overlay/logClock';
 import { status } from './status';
 import {
   trackedDropItems,
@@ -76,7 +77,16 @@ export async function pollTrackedLoot() {
   if (!rows.length) return;
   const seen = get(trackedDropSeenCounts);
   const alreadyPending = new Set(get(pendingLootPrompts).map((p) => p.item));
-  const checkpointMs = get(dropWatchCheckpointMs) ?? Date.now();
+  // why: logClockNowMs, NOT Date.now() -- last_looted_ms is on the
+  // log's own timezone-less clock (core's LocalTs), and comparing it
+  // against a real UTC epoch skews by the machine's UTC offset: in any
+  // US timezone the checkpoint sat hours AHEAD of every loot timestamp
+  // and the "you just got one" prompt could never fire at all. Same
+  // bug, same fix as the Skill Tracker's timers -- see logClock.ts's
+  // own doc. The persisted checkpoint below moves to the same basis;
+  // an old real-epoch checkpoint reads as "hours in the future" for
+  // one poll at most, until the first save rewrites it.
+  const checkpointMs = get(dropWatchCheckpointMs) ?? logClockNowMs();
   const fresh = rows.filter(
     (r) => r.count > (seen[r.item] ?? 0) && !alreadyPending.has(r.item) && r.last_looted_ms > checkpointMs,
   );
@@ -92,7 +102,9 @@ export async function pollTrackedLoot() {
   const backfilling = get(status)?.status.backfilling ?? true;
   if (!backfilling && now - lastCheckpointSaveAt >= CHECKPOINT_SAVE_INTERVAL_MS) {
     lastCheckpointSaveAt = now;
-    void setDropWatchCheckpointMs(now);
+    // why: stored on the log-clock basis -- it's only ever compared
+    // against log timestamps (see checkpointMs above)
+    void setDropWatchCheckpointMs(logClockNowMs());
   }
 }
 

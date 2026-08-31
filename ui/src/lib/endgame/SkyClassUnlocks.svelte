@@ -5,7 +5,8 @@
   import BellIcon from '@lucide/svelte/icons/bell';
   import GdLink from '$lib/gamedata/GdLink.svelte';
   import ItemLocateLabel from '$lib/gamedata/ItemLocateLabel.svelte';
-  import { api, type SkyClassUnlockDto, type SkyRewardDto, type TurnInItemDto } from '$lib/tauri/api';
+  import { api, type SkyClassUnlockDto, type SkyRewardDto, type TurnInItemDto, type LineCounts, type TailStatus } from '$lib/tauri/api';
+  import { listen } from '$lib/tauri/invoke';
   import { trackedDropItems, toggleTrackedDropItem, trackDropItems } from '$lib/stores/settings';
 
   let classes = $state<SkyClassUnlockDto[] | null>(null);
@@ -20,8 +21,20 @@
     }
   }
 
+  // why: same live reload as the Quests tab -- see its own doc
+  let lastLootCount = $state(-1);
   $effect(() => {
     void load();
+    const unTick = listen<{ status: TailStatus; counts: LineCounts }>('parse-tick', (e) => {
+      const loot = e.payload.counts.by_kind['loot'] ?? 0;
+      if (lastLootCount !== -1 && loot !== lastLootCount) void load();
+      lastLootCount = loot;
+    });
+    const unDump = listen('inventory-dump', () => void load());
+    return () => {
+      void unTick.then((f) => f());
+      void unDump.then((f) => f());
+    };
   });
 
   // why: sold-without-keeping beats "owned" beats "looted" beats "never

@@ -5,7 +5,8 @@
   import BellIcon from '@lucide/svelte/icons/bell';
   import GdLink from '$lib/gamedata/GdLink.svelte';
   import ItemLocateLabel from '$lib/gamedata/ItemLocateLabel.svelte';
-  import { api, type SkyClassDto, type TurnInDto, type TurnInItemDto } from '$lib/tauri/api';
+  import { api, type SkyClassDto, type TurnInDto, type TurnInItemDto, type LineCounts, type TailStatus } from '$lib/tauri/api';
+  import { listen } from '$lib/tauri/invoke';
   import { trackedDropItems, toggleTrackedDropItem, trackDropItems } from '$lib/stores/settings';
 
   let classes = $state<SkyClassDto[] | null>(null);
@@ -20,8 +21,24 @@
     }
   }
 
+  // why: live, not load-once -- "picked up a Blood Sky Ruby and it
+  // didn't update" (the report). Reloaded only when the tick's own loot
+  // counter moves (or a fresh inventory dump lands), not on every tick:
+  // get_sky_quests re-reads the dump + achievements files each call, too
+  // heavy to run 20x/minute for nothing.
+  let lastLootCount = $state(-1);
   $effect(() => {
     void load();
+    const unTick = listen<{ status: TailStatus; counts: LineCounts }>('parse-tick', (e) => {
+      const loot = e.payload.counts.by_kind['loot'] ?? 0;
+      if (lastLootCount !== -1 && loot !== lastLootCount) void load();
+      lastLootCount = loot;
+    });
+    const unDump = listen('inventory-dump', () => void load());
+    return () => {
+      void unTick.then((f) => f());
+      void unDump.then((f) => f());
+    };
   });
 
   // why: sold-without-keeping beats "owned" beats "looted" beats "never
