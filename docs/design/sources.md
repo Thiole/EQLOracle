@@ -34,7 +34,7 @@ not. Under Wine — half the target audience — the notification layer is a
 translation of a translation and drops or coalesces events. A meter that silently
 stops updating mid-raid is worse than one costing 0.1% of a core.
 
-Polling a file's length is one `stat` per interval. At 250ms that is four
+Polling a file's length is one `stat` per interval. At 100ms that is ten
 syscalls a second and behaves identically on Windows, Linux, Wine and a network
 share.
 

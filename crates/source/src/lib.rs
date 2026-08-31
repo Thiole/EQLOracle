@@ -10,6 +10,8 @@ pub use clock::{Clock, Millis, SystemClock, VirtualClock};
 pub use replay::{Replay, Speed};
 pub use tail::{identity_from_filename, newest_log_in, Tail, TailEvent};
 
-/// why: below laggy-meter threshold, not configurable to zero on purpose
-pub const POLL_MS: u64 = 250;
+/// why: 100ms -- line latency reads as instant on the live meter.
+/// Cost per idle poll is one fs::metadata call (no read when size is
+/// unchanged), so 10/s is noise. Not configurable to zero on purpose.
+pub const POLL_MS: u64 = 100;
 pub const MIN_POLL_MS: u64 = 50;

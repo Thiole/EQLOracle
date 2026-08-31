@@ -27,7 +27,7 @@ eqlog_*.txt → Tail::poll → Framer → Engine::classify → Outcome
 - `newest_log_in(dir)`: most-recently-modified `eqlog_*.txt` in the
   configured `Logs/` directory. Rescanned every 5s (`RESCAN_MS`). Target
   change ⇒ `Ingest` reset, full replay of the new file.
-- `Tail::poll` every 250ms (`POLL_MS`). Compares `fs::metadata` length
+- `Tail::poll` every 100ms (`POLL_MS`). Compares `fs::metadata` length
   against a saved offset and `FileId` (inode on unix, creation time on
   Windows). Returns `Grew(n) | Truncated | Replaced | Missing | Idle`.
   Reads 256KB chunks into a sink.
