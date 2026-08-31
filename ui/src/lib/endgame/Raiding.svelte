@@ -168,6 +168,11 @@
   </div>
 {:else if !$raidRows}
   <p class="text-[12px] text-muted-foreground">Loading…</p>
+{:else if !$raidRows.length}
+  <!-- why: an empty payload renders a sentence, not a blank page --
+       "Loading…" forever and silent blankness are the two shapes the
+       stuck-tab report could take; both now say something true -->
+  <p class="text-[12px] text-muted-foreground">No raid data yet — it fills in as the log replays.</p>
 {:else}
   <div class="flex flex-col gap-5">
     {#each $raidRows as row (row.row)}
