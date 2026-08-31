@@ -35,7 +35,7 @@
   --border: #363b43;
   --input: #363b43;
   --ring: #c9a15a;
-  --radius: 0.5rem;
+  --radius: 1.3rem;
 }
 
 :root[data-theme="amber-minimal"] {

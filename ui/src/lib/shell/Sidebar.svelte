@@ -32,19 +32,18 @@
 
 <nav class="flex w-40 shrink-0 flex-col gap-1 border-r border-border bg-card p-2" data-slot="sidebar">
   {#each items as item (item.id)}
-    <!-- why: active = brass inset bar + faint wash, not a filled pill --
-         the bar echoes panel-title's own tick mark (one visual language)
-         and keeps the rail quiet; inset shadow, not border-l, so text
-         never shifts on selection -->
+    <!-- why: active = quiet brass pill (wash + primary text). An inset
+         accent bar was tried and reverted: at the app's large corner
+         radius it bent around the curve into a crescent (seen in the
+         screenshot harness). Idle items rest at muted so the rail stays
+         quiet either way. -->
     <button
       type="button"
       data-module={item.id}
       class={cn(
-        'rounded-md px-2.5 py-1.5 text-left text-[13px] text-muted-foreground transition-colors',
+        'rounded-lg px-2.5 py-1.5 text-left text-[13px] text-muted-foreground transition-colors',
         item.enabled ? 'cursor-pointer hover:bg-accent hover:text-accent-foreground' : 'cursor-not-allowed opacity-40',
-        active === item.id &&
-          item.enabled &&
-          'bg-primary/8 font-medium text-primary shadow-[inset_2px_0_0_var(--color-primary)]',
+        active === item.id && item.enabled && 'bg-primary/10 font-medium text-primary',
       )}
       disabled={!item.enabled}
       onclick={() => item.enabled && (active = item.id)}

@@ -13,10 +13,12 @@
    over this bare :root, regardless of import order) -- see themes.css's
    own doc for where the presets come from. */
 :root {
-  /* why: 0.5rem, up from 0.25 -- at 0.25 the radius-sm most cards ask
-     for computed to literally 0px (calc(--radius - 4px)), rendering
-     every panel dead-square. sm now lands at 4px: sleeker, still crisp. */
-  --radius: 0.5rem;
+  /* why: 1.3rem -- the twitter preset's roundness, adopted as the
+     default look on Spencer's own call ("that style was awesome
+     despite the colors"). Cards land ~17px, controls pill toward it.
+     (History: 0.25 made radius-sm compute to literally 0px --
+     dead-square panels by arithmetic accident.) */
+  --radius: 1.3rem;
 
   /* why: warm brass/gold identity, not generic SaaS blue */
   --bg: #15171b;
