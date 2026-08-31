@@ -7,10 +7,15 @@
 //! The game's own `maps/<zone>.txt` line files stay the VIEW; these two
 //! feed pathfinding and ground snapping only.
 //!
-//! Coordinates, established empirically against blackburrow
-//! (docs/architecture.md): game(x,y,z) -> emu(-x,-y,z); nav = emu with
-//! y/z swapped (Detour is Y-up). All public APIs here take and return
-//! GAME coordinates.
+//! Coordinates. Three spaces meet here: /loc space (what `last_loc`,
+//! POI conversions, and every caller of this module use -- "game
+//! coords"), map-file space (the .txt view: map = (-locY, -locX, z),
+//! pinned by MapViewer's own brute-forced player-dot comment), and the
+//! EQEmu spaces. Established empirically against blackburrow bounds:
+//! emu = (-mapX, -mapY, z) = (locY, locX, z), and nav = emu with y/z
+//! swapped (Detour is Y-up), i.e. nav = (locY, z, locX). All public
+//! APIs here take and return LOC coordinates -- pure axis swaps, no
+//! negation.
 //!
 //! Adjacency is rebuilt geometrically (shared tile-edge matching by
 //! quantized endpoints) instead of decoding Detour's link/side tables --
@@ -57,17 +62,51 @@ pub struct ZoneGeo {
 
 const CELL: f32 = 32.0;
 
+// ------------------------------------------------------------ zone links
+
+/// why: traversal the mesh can't know -- teleporter pads, magic doors,
+/// lifts (packs/zone_links.json). Directed, loc coords. Plane of Sky is
+/// the proving case: its navmesh is 45 disconnected islands, so without
+/// these edges no cross-island path can exist at all.
+#[derive(serde::Deserialize, Clone)]
+pub struct ZoneLink {
+    pub from: [f32; 3],
+    pub to: [f32; 3],
+    #[allow(dead_code)]
+    pub label: String,
+}
+
+#[derive(serde::Deserialize)]
+struct ZoneLinksDoc {
+    links: HashMap<String, Vec<ZoneLink>>,
+}
+
+const ZONE_LINKS_JSON: &str = include_str!("../../../packs/zone_links.json");
+
+pub fn zone_links(zone: &str) -> &'static [ZoneLink] {
+    static DOC: OnceLock<ZoneLinksDoc> = OnceLock::new();
+    DOC.get_or_init(|| {
+        serde_json::from_str(ZONE_LINKS_JSON)
+            .unwrap_or_else(|e| panic!("packs/zone_links.json failed to parse: {e}"))
+    })
+    .links
+    .get(zone)
+    .map(Vec::as_slice)
+    .unwrap_or(&[])
+}
+
 pub fn nav_to_game(p: [f32; 3]) -> [f32; 3] {
-    // nav(x, y_up, z) -> emu(x, z, y_up) -> game(-x, -z, y_up)
-    [-p[0], -p[2], p[1]]
+    // nav(locY, z, locX) -> loc(navZ, navX, navY)
+    [p[2], p[0], p[1]]
 }
 
 pub fn game_to_nav(p: [f32; 3]) -> [f32; 3] {
-    [-p[0], p[2], -p[1]]
+    [p[1], p[2], p[0]]
 }
 
 fn emu_to_game(p: [f32; 3]) -> [f32; 3] {
-    [-p[0], -p[1], p[2]]
+    // emu(locY, locX, z) -> loc: swap x/y
+    [p[1], p[0], p[2]]
 }
 
 fn rd_u32(b: &[u8], o: usize) -> u32 {
@@ -348,6 +387,21 @@ impl ZoneGeo {
 // ---------------------------------------------------------------- pathfinding
 
 impl ZoneNav {
+    /// why: inject directed traversal links (teleporters/doors/lifts) as
+    /// zero-width portal edges between the polys nearest each endpoint --
+    /// the funnel then routes THROUGH the pad point. Reverse edges are
+    /// deliberately not added: a one-way port is one-way.
+    pub fn apply_links(&mut self, links: &[ZoneLink]) {
+        for l in links {
+            let (Some(pa), Some(pb)) = (self.nearest_poly(l.from), self.nearest_poly(l.to)) else {
+                continue;
+            };
+            if pa != pb {
+                self.polys[pa as usize].edges.push((pb, l.from, l.from));
+            }
+        }
+    }
+
     fn nearest_poly(&self, p: [f32; 3]) -> Option<u32> {
         self.polys
             .iter()
@@ -527,7 +581,11 @@ pub fn load_nav(app_data: &Path, zone: &str) -> Option<Arc<ZoneNav>> {
     let parsed = std::fs::read(cache_dir(app_data).join(format!("{zone}.nav")))
         .ok()
         .and_then(|b| parse_nav(&b))
-        .map(Arc::new);
+        .map(|mut nav| {
+            // why: pack-declared teleporter/door edges -- see zone_links
+            nav.apply_links(zone_links(zone));
+            Arc::new(nav)
+        });
     nav_cache()
         .lock_recover()
         .insert(zone.to_string(), parsed.clone());
@@ -622,15 +680,15 @@ mod tests {
     #[test]
     fn blackburrow_path_exists_and_stays_in_bounds() {
         let nav = parse_nav(&fixture("blackburrow.nav")).expect("parses");
-        // two far-apart points inside the zone (game coords, from the
-        // real map bounds X[-489,397] Y[-349,254])
+        // two far-apart points inside the zone, LOC coords: locX = -mapY
+        // in [-254,349], locY = -mapX in [-397,489]
         let from = [-50.0, -30.0, 0.0];
-        let to = [300.0, 100.0, -50.0];
+        let to = [250.0, 300.0, -50.0];
         let path = nav.find_path(from, to).expect("route exists");
         assert!(path.len() >= 2);
         for p in &path {
             assert!(
-                (-500.0..=400.0).contains(&p[0]) && (-350.0..=260.0).contains(&p[1]),
+                (-260.0..=355.0).contains(&p[0]) && (-400.0..=495.0).contains(&p[1]),
                 "point off the map: {p:?}"
             );
         }
@@ -660,5 +718,57 @@ mod tests {
     fn coordinate_transforms_round_trip() {
         let p = [123.5, -42.25, 7.0];
         assert_eq!(nav_to_game(game_to_nav(p)), p);
+    }
+}
+
+#[cfg(test)]
+mod link_tests {
+    use super::*;
+
+    fn fixture(name: &str) -> Vec<u8> {
+        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/emumaps");
+        std::fs::read(p.join(name)).expect("fixture present")
+    }
+
+    /// why: the whole reason zone links exist -- Plane of Sky's mesh is
+    /// 45 disconnected islands (measured), so island 1 to island 3 has
+    /// no path without the portal edges, and a real path with them
+    #[test]
+    fn sky_islands_route_only_through_portal_links() {
+        let mut nav = parse_nav(&fixture("airplane.nav")).expect("parses");
+        // island 1 spawn area -> island 3 (loc coords from the map's own
+        // portal labels, nudged off the pads themselves)
+        let from = [1400.0, 800.0, -671.0];
+        let to = [200.0, 240.0, -120.0];
+        assert!(
+            nav.find_path(from, to).is_none(),
+            "no path without links -- disconnected islands"
+        );
+        nav.apply_links(zone_links("airplane"));
+        let path = nav.find_path(from, to).expect("portal-linked path exists");
+        assert!(path.len() >= 3, "got {} waypoints", path.len());
+    }
+
+    /// why: one-way stays one-way -- island 2 back to island 1 has no
+    /// reverse edge (progression ports don't run backwards)
+    #[test]
+    fn portal_links_are_directed() {
+        let mut nav = parse_nav(&fixture("airplane.nav")).expect("parses");
+        nav.apply_links(zone_links("airplane"));
+        let island2 = [-460.0, -580.0, -364.0];
+        let island1 = [1400.0, 800.0, -671.0];
+        // forward ring reaches island 8's return pad eventually, but the
+        // DIRECT reverse hop 2 -> 1 must not exist as an edge; a route
+        // may still exist the long way around the ring, which is
+        // correct -- so assert on the immediate-edge level instead
+        let p2 = nav.nearest_poly(island2).unwrap();
+        let p1 = nav.nearest_poly(island1).unwrap();
+        assert!(
+            !nav.polys[p2 as usize]
+                .edges
+                .iter()
+                .any(|(nb, _, _)| *nb == p1),
+            "no direct reverse edge island2 -> island1"
+        );
     }
 }
