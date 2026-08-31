@@ -915,6 +915,16 @@ export interface ZoneContextDto {
  * *starting* point's own floor) and its stated limits (a route needing a
  * floor change within the zone isn't found, and a narrow enough real
  * structure can still be missed by the grid's own resolution). */
+export interface ZoneNpcDto {
+  name: string;
+  /** raw wiki string -- "37-39" is a real shape; con math is ours */
+  level: string | null;
+  race: string | null;
+  class: string | null;
+  drops: string[];
+  has_markers: boolean;
+}
+
 export interface PathDto {
   waypoints: [number, number, number][];
   /** why: which engine routed -- 'navmesh' (EQEmu Detour mesh, true
@@ -1490,6 +1500,9 @@ export const api = {
    * cache -- fire-and-forget on zone open; pathfinding upgrades itself
    * once cached. */
   ensureEmuZone: (zone: string) => invoke<{ nav: boolean; geo: boolean }>('ensure_emu_zone', { zone }),
+  /** why: the Maps left panel's NPC browser -- catalog NPCs whose wiki
+   * zone matches the open map, with drops for the selection expansion */
+  listZoneNpcs: (mapZoneName: string) => invoke<ZoneNpcDto[]>('list_zone_npcs', { mapZoneName }),
   /** why: a real cross-zone route, weighted by real in-zone walking distance -- see ZoneRouteDto's own doc */
   findZoneRoute: (fromZone: string, toZone: string) => invoke<ZoneRouteDto>('find_zone_route', { fromZone, toZone }),
   /** why: the most recent "/loc" reading this session, if any -- a snapshot, not live tracking */

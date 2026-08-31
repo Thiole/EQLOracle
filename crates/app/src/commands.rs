@@ -1750,6 +1750,49 @@ pub fn list_npc_zone_candidates(map_zone_name: String) -> Vec<String> {
     npcdata::candidate_zones(&map_zone_name)
 }
 
+/// why: the Maps module's left-panel NPC browser -- every catalog NPC
+/// whose wiki zone matches the open map (same candidate_zones fold the
+/// marker overlay uses), with what the browser row and its drops
+/// expansion need. `level` stays the wiki's raw string ("37-39" is a
+/// real shape); con coloring is the frontend's job (it owns the
+/// player-level comparison).
+#[derive(Debug, Clone, Serialize)]
+pub struct ZoneNpcDto {
+    pub name: String,
+    pub level: Option<String>,
+    pub race: Option<String>,
+    pub class: Option<String>,
+    pub drops: Vec<String>,
+    /// why: whether the marker overlay has plottable spots for it
+    pub has_markers: bool,
+}
+
+#[tauri::command]
+pub fn list_zone_npcs(map_zone_name: String) -> Vec<ZoneNpcDto> {
+    let zones: std::collections::HashSet<String> = npcdata::candidate_zones(&map_zone_name)
+        .into_iter()
+        .collect();
+    let marker_names: std::collections::HashSet<String> = npcdata::markers_for_zone(&map_zone_name)
+        .into_iter()
+        .map(|(name, _, _, _)| name)
+        .collect();
+    let mut out: Vec<ZoneNpcDto> = npcdata::npcs()
+        .iter()
+        .filter(|n| n.zone.as_ref().is_some_and(|z| zones.contains(z)))
+        .map(|n| ZoneNpcDto {
+            name: n.name.clone(),
+            level: n.level.clone(),
+            race: n.race.clone(),
+            class: n.class.clone(),
+            drops: n.known_loot.iter().map(|l| l.item.clone()).collect(),
+            has_markers: marker_names.contains(&n.name),
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out.dedup_by(|a, b| a.name == b.name);
+    out
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct NpcMarkerDto {
     pub name: String,

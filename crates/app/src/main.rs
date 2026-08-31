@@ -233,6 +233,7 @@ fn main() {
             commands::get_last_location,
             commands::get_zone_context,
             commands::list_npc_zone_candidates,
+            commands::list_zone_npcs,
             commands::get_npc_markers_for_zone,
             commands::get_npc_nav_points,
             commands::get_current_level,

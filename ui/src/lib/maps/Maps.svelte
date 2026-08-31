@@ -11,7 +11,8 @@
   import XIcon from '@lucide/svelte/icons/x';
   import MapViewer from './MapViewer.svelte';
   import { zoneMatches, looksLikeEntranceFor } from './zoneMatch';
-  import { api, type MapLineDto, type MapMarkerDto, type PathDto, type ZoneDto } from '$lib/tauri/api';
+  import { api, type MapLineDto, type MapMarkerDto, type PathDto, type ZoneDto, type ZoneNpcDto } from '$lib/tauri/api';
+  import GdLink from '$lib/gamedata/GdLink.svelte';
   import { displayZoneName } from '$lib/utils';
   import {
     mapZones,
@@ -44,7 +45,43 @@
 
   let search = $state('');
   const q = $derived(search.trim().toLowerCase());
-  const filteredZones = $derived($mapZones.filter((z) => !q || z.toLowerCase().includes(q)));
+  // why: the zone LIST is gone (asked directly) -- the one search box
+  // doubles as the zone switcher: typing surfaces matching maps above
+  // the NPC list, clicking one loads it. Empty query = no zone rows.
+  const zoneHits = $derived(q ? $mapZones.filter((z) => z.toLowerCase().includes(q)).slice(0, 6) : []);
+
+  // ---- left-panel NPC browser: this zone's catalog NPCs, con-colored,
+  // click for drops. Same wiki-zone fold the marker overlay uses.
+  let zoneNpcs = $state<ZoneNpcDto[]>([]);
+  let selectedNpc = $state<string | null>(null);
+  let playerLevel = $state<number | null>(null);
+  $effect(() => {
+    const zone = $selectedZone;
+    selectedNpc = null;
+    zoneNpcs = [];
+    if (!zone) return;
+    void api.listZoneNpcs(zone).then((n) => (zoneNpcs = n ?? []));
+    void api.getCurrentLevel().then((l) => (playerLevel = l));
+  });
+  const filteredNpcs = $derived(zoneNpcs.filter((n) => !q || n.name.toLowerCase().includes(q)));
+
+  /** why: classic con colors off the wiki level string's HIGHEST number
+   * (the dangerous read of "37-39"). Green/blue/white/yellow/red are
+   * game-canonical semantics, not theme decoration -- the two blues are
+   * fixed classes on purpose, the rest ride the theme's own
+   * good/caution/bad. Unknown player or NPC level cons neutral. */
+  function conClass(level: string | null): string {
+    if (!level || playerLevel == null) return 'text-foreground/80';
+    const nums = level.match(/\d+/g)?.map(Number) ?? [];
+    if (!nums.length) return 'text-foreground/80';
+    const diff = Math.max(...nums) - playerLevel;
+    if (diff >= 3) return 'text-bad';
+    if (diff >= 1) return 'text-caution';
+    if (diff === 0) return 'text-foreground';
+    if (diff >= -5) return 'text-blue-400';
+    if (diff >= -8) return 'text-cyan-400';
+    return 'text-good';
+  }
 
   /** why: real files are internal shortnames ("befallen") -- title-cased
    * for display, the underlying value stays the real filename stem so
@@ -289,7 +326,7 @@
 
 <div class="flex flex-col gap-3 p-3">
   <div class="flex items-center gap-3">
-    <Input bind:value={search} placeholder="filter zones…" class="h-7 w-56 text-[12px]" />
+    <Input bind:value={search} placeholder="search zones / filter NPCs…" class="h-7 w-56 text-[12px]" />
     <label class="flex items-center gap-1.5 text-[11px] text-muted-foreground" title="Switches to your current zone's map automatically when you zone -- only once you've picked that zone's map manually at least once this session.">
       <Checkbox checked={$liveFollow} onCheckedChange={(v: boolean) => setLiveFollow(v)} />
       live: follow me
@@ -297,21 +334,64 @@
   </div>
 
   <div class="flex gap-3">
-    <Card class="h-[520px] w-56 shrink-0 overflow-y-auto rounded-sm">
+    <!-- why: left panel is the NPC browser now (asked directly) -- the
+         zone list is gone; the search box up top switches maps when its
+         query matches zone names, and filters this NPC list otherwise. -->
+    <Card class="h-[520px] w-64 shrink-0 overflow-y-auto rounded-sm">
       <CardContent class="px-2 py-2">
-        {#if filteredZones.length === 0}
-          <p class="p-2 text-[11px] text-muted-foreground">No zones match.</p>
+        {#if zoneHits.length}
+          <div class="mb-1.5 border-b border-border pb-1.5">
+            <p class="px-2 pb-0.5 text-[10px] tracking-wide text-muted-foreground uppercase">maps</p>
+            {#each zoneHits as z (z)}
+              <button
+                type="button"
+                class="w-full cursor-pointer rounded-sm px-2 py-0.5 text-left text-[12px] hover:bg-muted/40 {$selectedZone === z ? 'font-medium text-primary' : ''}"
+                onclick={() => {
+                  search = '';
+                  void selectZone(z);
+                }}
+              >
+                {displayName(z)}
+              </button>
+            {/each}
+          </div>
+        {/if}
+        {#if !$selectedZone}
+          <p class="p-2 text-[11px] text-muted-foreground">Search a zone above to open its map.</p>
+        {:else if !filteredNpcs.length}
+          <p class="p-2 text-[11px] text-muted-foreground">
+            {zoneNpcs.length ? 'No NPCs match.' : 'No catalog NPCs known for this zone.'}
+          </p>
         {:else}
           <ul class="flex flex-col">
-            {#each filteredZones as z (z)}
-              <li>
+            {#each filteredNpcs as n (n.name)}
+              {@const open = selectedNpc === n.name}
+              <li class="border-b border-border/40 last:border-b-0">
                 <button
                   type="button"
-                  class="w-full cursor-pointer rounded-sm px-2 py-1 text-left text-[12px] hover:bg-muted/40 {$selectedZone === z ? 'bg-primary/15 font-medium text-primary' : ''}"
-                  onclick={() => selectZone(z)}
+                  class="flex w-full cursor-pointer items-baseline justify-between gap-2 rounded-sm px-2 py-1 text-left hover:bg-muted/40 {open ? 'bg-primary/10' : ''}"
+                  onclick={() => (selectedNpc = open ? null : n.name)}
+                  title="{n.name}{n.level ? ` (level ${n.level})` : ''} — click for drops"
                 >
-                  {displayName(z)}
+                  <span class="truncate text-[12px] font-light {conClass(n.level)}">{n.name}</span>
+                  <span class="shrink-0 text-[10px] text-muted-foreground tabular-nums">{n.level ?? ''}</span>
                 </button>
+                {#if open}
+                  <div class="px-2 pt-0.5 pb-1.5 text-[10px] text-muted-foreground">
+                    {#if n.race || n.class}
+                      <p>{[n.race, n.class].filter(Boolean).join(' · ')}{n.has_markers ? ' · on map' : ''}</p>
+                    {/if}
+                    {#if n.drops.length}
+                      <div class="flex flex-wrap gap-1 pt-1">
+                        {#each n.drops as d (d)}
+                          <span class="rounded-sm border border-border px-1 py-0.5 text-[10px]"><GdLink kind="item" name={d} /></span>
+                        {/each}
+                      </div>
+                    {:else}
+                      <p class="pt-0.5 italic">no recorded drops</p>
+                    {/if}
+                  </div>
+                {/if}
               </li>
             {/each}
           </ul>
