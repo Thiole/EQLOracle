@@ -6,7 +6,7 @@
   import GdLink from '$lib/gamedata/GdLink.svelte';
   import ItemLocateLabel from '$lib/gamedata/ItemLocateLabel.svelte';
   import { api, type SkyClassUnlockDto, type SkyRewardDto, type TurnInItemDto } from '$lib/tauri/api';
-  import { trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
+  import { trackedDropItems, toggleTrackedDropItem, trackDropItems } from '$lib/stores/settings';
 
   let classes = $state<SkyClassUnlockDto[] | null>(null);
   let error = $state<string | null>(null);
@@ -86,6 +86,29 @@
     if (sortBy === 'alpha') return withSortedRewards;
     // why: ties broken alphabetically, same reason Raiding's own sort does.
     return withSortedRewards.sort((a, b) => classSortKey(a) - classSortKey(b) || a.class.localeCompare(b.class));
+  });
+
+  // why: the one-click bulk bell, same rules as the Quests tab's own --
+  // and nothing auto-selected for anything already owned (asked
+  // directly): a SECURED reward (confirmed done, or the reward item
+  // itself in hand) contributes no materials at all, and an in-hand
+  // material is skipped even inside a still-open reward. Runes excluded
+  // (not mob drops), already-tracked excluded.
+  const untrackedNeeded = $derived.by((): string[] => {
+    if (!classes) return [];
+    const names = new Set<string>();
+    for (const c of classes) {
+      for (const r of c.rewards) {
+        if (r.completed === true || itemStatus(r).inHand) continue;
+        for (const m of r.materials) {
+          if (m.item.startsWith('Wind Rune ')) continue;
+          if (itemStatus(m).inHand) continue;
+          if ($trackedDropItems.includes(m.item)) continue;
+          names.add(m.item);
+        }
+      }
+    }
+    return [...names];
   });
 </script>
 
@@ -170,6 +193,22 @@
         from your own <code class="rounded bg-muted px-1 py-0.5">Achievements.txt</code>; item status from your loot history and
         latest <code class="rounded bg-muted px-1 py-0.5">/outputfile inventory</code> dump.
       </p>
+      <!-- why: same bulk bell as the Quests tab -- disabled (not hidden)
+           at zero so it stays discoverable and explains itself -->
+      <button
+        type="button"
+        class="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[11px] transition-colors {untrackedNeeded.length
+          ? 'text-foreground hover:border-good/60 hover:bg-good/10 hover:text-good'
+          : 'cursor-not-allowed text-muted-foreground opacity-50'}"
+        disabled={!untrackedNeeded.length}
+        title={untrackedNeeded.length
+          ? `Track ${untrackedNeeded.length} still-needed material${untrackedNeeded.length === 1 ? '' : 's'} from unsecured rewards in the Drop Watch overlay`
+          : 'Every still-needed material from unsecured rewards is already tracked'}
+        onclick={() => void trackDropItems(untrackedNeeded)}
+      >
+        <BellIcon class="size-3.5" />
+        notify for all unsecured rewards{untrackedNeeded.length ? ` (${untrackedNeeded.length})` : ''}
+      </button>
       <label class="flex shrink-0 items-center gap-1.5 text-[11px]">
         <span class="text-muted-foreground">sort</span>
         <Select.Root type="single" value={sortBy} onValueChange={(v) => v && (sortBy = v as SortMode)}>
