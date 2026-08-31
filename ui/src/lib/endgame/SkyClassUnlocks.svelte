@@ -91,24 +91,27 @@
   // why: the one-click bulk bell, same rules as the Quests tab's own --
   // and nothing auto-selected for anything already owned (asked
   // directly): a SECURED reward (confirmed done, or the reward item
-  // itself in hand) contributes no materials at all, and an in-hand
-  // material is skipped even inside a still-open reward. Runes excluded
-  // (not mob drops), already-tracked excluded.
+  // itself in hand) contributes no materials at all. Materials are
+  // demand-aware like the Quests tab: a material wanted by two open
+  // rewards with one copy owned is still needed (see that tab's own
+  // doc); one Set entry per name, never duplicates.
   const untrackedNeeded = $derived.by((): string[] => {
     if (!classes) return [];
-    const names = new Set<string>();
+    const demand = new Map<string, { needed: number; owned: number }>();
     for (const c of classes) {
       for (const r of c.rewards) {
         if (r.completed === true || itemStatus(r).inHand) continue;
         for (const m of r.materials) {
           if (m.item.startsWith('Wind Rune ')) continue;
-          if (itemStatus(m).inHand) continue;
-          if ($trackedDropItems.includes(m.item)) continue;
-          names.add(m.item);
+          const d = demand.get(m.item) ?? { needed: 0, owned: m.currently_owned ?? 0 };
+          d.needed += 1;
+          demand.set(m.item, d);
         }
       }
     }
-    return [...names];
+    return [...demand.entries()]
+      .filter(([name, d]) => d.owned < d.needed && !$trackedDropItems.includes(name))
+      .map(([name]) => name);
   });
 </script>
 

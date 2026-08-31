@@ -88,23 +88,29 @@
   });
 
   // why: the one-click bulk bell -- every trackable material still
-  // NEEDED (not in hand) from every quest not confirmed done, minus
-  // what's already tracked. Same per-item rules the chip bells use:
-  // runes excluded (not mob drops, Drop Watch can never match one),
-  // in-hand items excluded (nothing left to be notified about).
+  // NEEDED from every quest not confirmed done, minus what's already
+  // tracked. Runes excluded (not mob drops, Drop Watch can never match
+  // one). Needed is DEMAND-AWARE, not a per-chip in-hand check: 14 real
+  // materials are each wanted by two quests, and owning one copy makes
+  // every chip read "have ×1" while a second is still required -- so an
+  // item stays needed until owned covers how many open quests want it.
+  // De-duplicated by construction (a Set), so a multi-quest material is
+  // one tracked entry, never several.
   const untrackedNeeded = $derived.by((): string[] => {
     if (!flatQuests) return [];
-    const names = new Set<string>();
+    const demand = new Map<string, { needed: number; owned: number }>();
     for (const q of flatQuests) {
       if (q.completed === true) continue;
       for (const it of [q.rune, ...q.items]) {
         if (!it || it.item.startsWith('Wind Rune ')) continue;
-        if (itemStatus(it).inHand) continue;
-        if ($trackedDropItems.includes(it.item)) continue;
-        names.add(it.item);
+        const d = demand.get(it.item) ?? { needed: 0, owned: it.currently_owned ?? 0 };
+        d.needed += 1;
+        demand.set(it.item, d);
       }
     }
-    return [...names];
+    return [...demand.entries()]
+      .filter(([name, d]) => d.owned < d.needed && !$trackedDropItems.includes(name))
+      .map(([name]) => name);
   });
 </script>
 
