@@ -8,6 +8,7 @@
     race,
     activeClasses,
     levels,
+    userLevels,
     defaultClasses,
     estimate,
     setRace,
@@ -114,6 +115,7 @@
         {#each ALL_CLASSES as c (c)}
           {@const on = $activeClasses.includes(c)}
           {@const atCap = $activeClasses.length >= MAX_ACTIVE_CLASSES}
+          {@const userSet = c in $userLevels}
           <div class="flex items-center gap-1.5 py-0.5">
             <button
               type="button"
@@ -128,17 +130,35 @@
             >
               {c}
             </button>
-            <Input
-              type="number"
-              min="1"
-              max="50"
-              class="h-6 w-14 px-1.5 text-[11px] tabular-nums"
-              value={$levels[c] ?? 1}
-              oninput={(e) => setLevel(c, Number((e.target as HTMLInputElement).value))}
-            />
+            <!-- why: brass ring + dot = "set by you" -- a typed level is
+                 persisted and never re-estimated; the estimate keeps
+                 filling only untouched classes. See stores/character.ts
+                 userLevels' own doc. -->
+            <div class="relative">
+              <Input
+                type="number"
+                min="1"
+                max="50"
+                class="h-6 w-14 px-1.5 text-[11px] tabular-nums {userSet ? 'border-primary/60' : ''}"
+                value={$levels[c] ?? 1}
+                title={userSet
+                  ? 'Set by you — kept across launches. "Estimate levels" hands it back to the estimator.'
+                  : 'Estimated from the log — type a level to set it yourself.'}
+                oninput={(e) => setLevel(c, Number((e.target as HTMLInputElement).value))}
+              />
+              {#if userSet}
+                <span class="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-primary" aria-hidden="true"></span>
+              {/if}
+            </div>
           </div>
         {/each}
       </div>
+      {#if Object.keys($userLevels).length}
+        <p class="mt-1.5 text-[10px] text-muted-foreground">
+          <span class="mr-0.5 inline-block size-1.5 rounded-full bg-primary align-middle"></span>
+          set by you — kept across launches; “Estimate levels” resets all of them
+        </p>
+      {/if}
 
       <Separator class="my-2" />
 

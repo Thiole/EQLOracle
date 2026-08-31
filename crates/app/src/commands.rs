@@ -1138,9 +1138,50 @@ pub fn set_preferences(app: AppHandle, mut prefs: Preferences) -> Result<Prefere
     // the field exists) gets overwritten here with what's actually on
     // disk. Without this, changing something as unrelated as volume
     // would silently wipe every saved window position.
-    prefs.overlay_positions = preferences::load(&app).overlay_positions;
+    let on_disk = preferences::load(&app);
+    prefs.overlay_positions = on_disk.overlay_positions;
+    // why: same backend-only stance -- planner state has its own
+    // commands (get/set_planner_state); an unrelated Settings save must
+    // not wipe a hand-set race/level
+    prefs.planner_race = on_disk.planner_race;
+    prefs.planner_levels = on_disk.planner_levels;
     preferences::save(&app, &prefs)?;
     Ok(prefs)
+}
+
+/// why: Character Planner persistence -- hand-set race plus ONLY the
+/// levels the user typed over the estimate (presence = "user updated",
+/// the flag the planner shows). Its own pair of commands, not part of
+/// PreferencesDto, so Settings round trips can never clobber it -- see
+/// set_preferences' own doc.
+#[derive(Serialize)]
+pub struct PlannerStateDto {
+    pub race: Option<String>,
+    pub levels: HashMap<String, u8>,
+}
+
+#[tauri::command]
+pub fn get_planner_state(app: AppHandle) -> PlannerStateDto {
+    let p = preferences::load(&app);
+    PlannerStateDto {
+        race: p.planner_race,
+        levels: p.planner_levels,
+    }
+}
+
+/// why: whole-state write -- the frontend owns the merge (it knows which
+/// edit happened); race None clears, empty levels clears (the "Estimate
+/// levels" reset path).
+#[tauri::command]
+pub fn set_planner_state(
+    app: AppHandle,
+    race: Option<String>,
+    levels: HashMap<String, u8>,
+) -> Result<(), String> {
+    let mut prefs = preferences::load(&app);
+    prefs.planner_race = race;
+    prefs.planner_levels = levels;
+    preferences::save(&app, &prefs)
 }
 
 /// why: Settings module's update-channel toggle -- see `updater`'s own doc

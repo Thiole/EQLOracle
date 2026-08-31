@@ -58,6 +58,26 @@
     background-color: var(--ink-muted);
   }
 
+  /* why: every panel-shaped zone gets a quiet edge treatment -- a 1px
+     light catch along the top inside edge (reads as ambient light, not
+     a line) plus a whisper of drop shadow for lift off the ground.
+     Token-driven (foreground mix) so it tracks every theme; deliberately
+     faint -- the ask was "nice highlighting of edges, nothing too
+     contrasting". Targets cards and the bare bordered/rounded divs
+     modules use as table wrappers and stat strips. */
+  [data-slot='card'],
+  main .border.rounded-sm,
+  main .border.rounded-lg,
+  main .border.rounded-md {
+    /* why: the edge light is a BRAND tint, not a brighter grey -- brass
+       against the panel grey ("yellow to grey" -- complements without
+       clashing, but definitely highlights). var(--primary) so every
+       theme rims its panels in its own accent. */
+    box-shadow:
+      inset 0 1px 0 0 color-mix(in srgb, var(--primary) 28%, transparent),
+      0 1px 3px 0 rgb(0 0 0 / 0.28);
+  }
+
   /* why: selection in the brand color, not the engine's default blue --
      same "part of the app, not a web page" reasoning as the scrollbars */
   ::selection {

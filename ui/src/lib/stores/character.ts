@@ -20,6 +20,18 @@ export const race = writable<string>('');
 export const activeClasses = writable<string[]>([]);
 /** Class name -> level (1-50), for all 16, not just the active trio. */
 export const levels = writable<Record<string, number>>({});
+/** why: ONLY the levels the user typed over the estimate -- presence in
+ * this map IS the "user updated" flag the planner shows, and the part
+ * that persists across launches (backend planner_levels). Estimates are
+ * recomputed fresh each launch and never stored. */
+export const userLevels = writable<Record<string, number>>({});
+
+/** why: race + user levels saved together, whole-state -- see backend
+ * set_planner_state's own doc. Best-effort: a failed save must not
+ * break planner interaction. */
+function savePlannerState() {
+  void api.setPlannerState(get(race) || null, get(userLevels)).catch(() => {});
+}
 
 export const classConfigurations = writable<ClassConfigurationsDto | null>(null);
 export const defaultClasses = writable<string[]>([]);
@@ -143,7 +155,7 @@ async function checkForExistingInventoryDump() {
 
 /** why: loaded once on entering Character; input: none; output: void */
 export async function loadCharacterModule() {
-  const [cfgs, defaults, lvl, aa, catalog, book, ranks, dmg] = await Promise.all([
+  const [cfgs, defaults, lvl, aa, catalog, book, ranks, dmg, planner] = await Promise.all([
     api.getClassConfigurations(),
     api.getDefaultGearClasses(),
     api.getCurrentLevel(),
@@ -152,7 +164,16 @@ export async function loadCharacterModule() {
     api.getSpellbook(),
     api.getSpellRanks(),
     api.getDamageSpells(false),
+    api.getPlannerState().catch(() => null),
   ]);
+  // why: persisted planner state seeds BEFORE the estimate runs, so
+  // user-set levels survive the launch-time auto-estimate below
+  if (planner) {
+    if (planner.race && !get(race)) race.set(planner.race);
+    if (planner.levels && !Object.keys(get(userLevels)).length) {
+      userLevels.set(planner.levels);
+    }
+  }
   classConfigurations.set(cfgs);
   defaultClasses.set(defaults);
   currentLevel.set(lvl);
@@ -183,6 +204,7 @@ export async function loadCharacterModule() {
 
 export function setRace(r: string) {
   race.set(r);
+  savePlannerState();
   void refreshEstimate();
   void refreshGear();
 }
@@ -203,6 +225,11 @@ export function toggleActiveClass(className: string) {
 export function setLevel(className: string, level: number) {
   const clamped = Math.min(MAX_CHARACTER_LEVEL, Math.max(1, Math.round(level) || 1));
   levels.update((l) => ({ ...l, [className]: clamped }));
+  // why: a typed level is a user fact from here on -- flagged, persisted,
+  // and never overwritten by a launch-time estimate again ("Estimate
+  // levels" is the explicit way back)
+  userLevels.update((l) => ({ ...l, [className]: clamped }));
+  savePlannerState();
   if (get(activeClasses).includes(className)) {
     void refreshEstimate();
     void refreshGear();
@@ -235,12 +262,18 @@ function applyEstimatedLevels() {
       }
     }
   }
-  levels.set(next);
+  // why: user-set levels win over the estimate, always -- the estimate
+  // only fills classes the user never touched
+  levels.set({ ...next, ...get(userLevels) });
 }
 
 /** why: fills levels from confirmed log evidence; a guess, not fact --
- * the manual "Estimate levels" button's own handler. */
+ * the manual "Estimate levels" button's own handler. Explicitly CLEARS
+ * every user-set level first: this button is the one deliberate way to
+ * hand a class back to the estimator once you've typed over it. */
 export function estimateLevelsFromLog() {
+  userLevels.set({});
+  savePlannerState();
   applyEstimatedLevels();
   void refreshEstimate();
   void refreshGear();

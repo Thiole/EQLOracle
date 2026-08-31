@@ -200,6 +200,20 @@ pub struct Preferences {
     /// at least once.
     #[serde(default)]
     pub overlay_positions: HashMap<String, OverlayPosition>,
+    /// why: Character Planner's hand-set race -- the log never states
+    /// race, so losing it every launch means re-picking it every launch.
+    /// Backend-only, same never-round-tripped-through-PreferencesDto
+    /// stance as overlay_positions (see set_preferences); reachable via
+    /// get_planner_state/set_planner_state only.
+    #[serde(default)]
+    pub planner_race: Option<String>,
+    /// why: ONLY the levels the user typed over the estimate -- presence
+    /// in this map IS the "user updated" flag the UI shows. Estimated
+    /// levels are recomputed fresh each launch and never stored;
+    /// "Estimate levels" clears this map (the explicit reset lever).
+    /// Backend-only, same as planner_race.
+    #[serde(default)]
+    pub planner_levels: HashMap<String, u8>,
     /// why: real epoch ms (`Date.now()` on the frontend, which owns this
     /// entirely -- backend just stores whatever it's given), refreshed
     /// roughly every 5 minutes while Drop Watch has anything tracked
@@ -245,6 +259,8 @@ impl Default for Preferences {
             tracked_drop_items: Vec::new(),
             tracked_drop_seen_counts: HashMap::new(),
             overlay_positions: HashMap::new(),
+            planner_race: None,
+            planner_levels: HashMap::new(),
             drop_watch_checkpoint_ms: None,
         }
     }
@@ -349,6 +365,11 @@ mod tests {
             p.overlay_positions.is_empty(),
             "no widget has a saved position until it's been dragged and re-locked at least once"
         );
+        assert_eq!(p.planner_race, None, "race is hand-set, never guessed");
+        assert!(
+            p.planner_levels.is_empty(),
+            "empty until the user types over an estimate -- presence IS the user-updated flag"
+        );
     }
 
     #[test]
@@ -380,6 +401,8 @@ mod tests {
             tracked_drop_items: vec!["Light Woolen Mask".to_string()],
             tracked_drop_seen_counts,
             overlay_positions,
+            planner_race: Some("Halfling".to_string()),
+            planner_levels: HashMap::from([("Wizard".to_string(), 34u8)]),
             drop_watch_checkpoint_ms: Some(1_700_000_000_000),
         };
         let json = serde_json::to_string(&p).unwrap();
@@ -410,6 +433,8 @@ mod tests {
             .get("dps_meter")
             .expect("round-tripped");
         assert_eq!((pos.x, pos.y), (12.5, -4.0));
+        assert_eq!(back.planner_race.as_deref(), Some("Halfling"));
+        assert_eq!(back.planner_levels.get("Wizard"), Some(&34));
         assert_eq!(back.drop_watch_checkpoint_ms, Some(1_700_000_000_000));
     }
 

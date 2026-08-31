@@ -1521,6 +1521,13 @@ export const api = {
    * bar (Windows only) -- a backend platform fact, see get_ui_shell's
    * own doc on the Linux drag-region limitation. */
   getUiShell: () => invoke<{ custom_titlebar: boolean }>('get_ui_shell'),
+  /** why: Character Planner persistence -- hand-set race + ONLY the
+   * user-typed levels (presence = the "user updated" flag). Its own
+   * commands, deliberately outside PreferencesDto -- see backend
+   * set_preferences' doc on clobber-proofing. */
+  getPlannerState: () => invoke<{ race: string | null; levels: Record<string, number> }>('get_planner_state'),
+  setPlannerState: (race: string | null, levels: Record<string, number>) =>
+    invoke<void>('set_planner_state', { race, levels }),
   /** why: the DPS meter overlay's whole data source */
   getLiveMeter: () => invoke<LiveMeterDto | null>('get_live_meter'),
   /** why: the timed-effects overlay's whole data source */

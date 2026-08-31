@@ -270,6 +270,8 @@ fn main() {
             commands::get_era_options,
             commands::get_preferences,
             commands::set_preferences,
+            commands::get_planner_state,
+            commands::set_planner_state,
             commands::check_for_update,
             commands::install_pending_update,
             commands::restart_app,
