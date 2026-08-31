@@ -383,6 +383,24 @@ export async function setDropWatchCheckpointMs(ms: number) {
  * shape as toggleTrackedSkill. Newly tracking something seeds its
  * prompt baseline to whatever's already been looted so far -- tracking
  * an item you already have shouldn't immediately prompt to remove it. */
+/** why: Sky Quests' one-click "notify for all uncompleted quests" --
+ * the batch version of toggleTrackedDropItem's add path: one prefs
+ * save, one loot-status round trip to seed every seen count (see the
+ * backend's tracked_drop_seen_counts doc on why seeding at track time
+ * matters -- an item you already have must not immediately prompt). */
+export async function trackDropItems(names: string[]) {
+  const current = get(trackedDropItems);
+  const adding = [...new Set(names)].filter((n) => !current.includes(n));
+  if (!adding.length) return;
+  await setTrackedDropItems([...current, ...adding]);
+  const statuses = await api.getTrackedLootStatus(adding).catch(() => [] as TrackedLootDto[]);
+  const counts = { ...get(trackedDropSeenCounts) };
+  for (const n of adding) {
+    counts[n] = statuses.find((s) => s.item === n)?.count ?? 0;
+  }
+  await setTrackedDropSeenCounts(counts);
+}
+
 export async function toggleTrackedDropItem(name: string) {
   const current = get(trackedDropItems);
   const adding = !current.includes(name);

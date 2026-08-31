@@ -6,7 +6,7 @@
   import GdLink from '$lib/gamedata/GdLink.svelte';
   import ItemLocateLabel from '$lib/gamedata/ItemLocateLabel.svelte';
   import { api, type SkyClassDto, type TurnInDto, type TurnInItemDto } from '$lib/tauri/api';
-  import { trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
+  import { trackedDropItems, toggleTrackedDropItem, trackDropItems } from '$lib/stores/settings';
 
   let classes = $state<SkyClassDto[] | null>(null);
   let error = $state<string | null>(null);
@@ -86,6 +86,26 @@
     }
     return sorted;
   });
+
+  // why: the one-click bulk bell -- every trackable material still
+  // NEEDED (not in hand) from every quest not confirmed done, minus
+  // what's already tracked. Same per-item rules the chip bells use:
+  // runes excluded (not mob drops, Drop Watch can never match one),
+  // in-hand items excluded (nothing left to be notified about).
+  const untrackedNeeded = $derived.by((): string[] => {
+    if (!flatQuests) return [];
+    const names = new Set<string>();
+    for (const q of flatQuests) {
+      if (q.completed === true) continue;
+      for (const it of [q.rune, ...q.items]) {
+        if (!it || it.item.startsWith('Wind Rune ')) continue;
+        if (itemStatus(it).inHand) continue;
+        if ($trackedDropItems.includes(it.item)) continue;
+        names.add(it.item);
+      }
+    }
+    return [...names];
+  });
 </script>
 
 {#snippet itemChip(it: TurnInItemDto)}
@@ -143,6 +163,22 @@
         unlocked, see the <b class="text-foreground">Sky - Primary Class Unlocks</b> tab -- that's tracked separately, off your own
         <code class="rounded bg-muted px-1 py-0.5">Achievements.txt</code>.
       </p>
+      <!-- why: the bulk version of the chip bells -- disabled (not
+           hidden) at zero so it's discoverable and explains itself -->
+      <button
+        type="button"
+        class="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[11px] transition-colors {untrackedNeeded.length
+          ? 'text-foreground hover:border-good/60 hover:bg-good/10 hover:text-good'
+          : 'cursor-not-allowed text-muted-foreground opacity-50'}"
+        disabled={!untrackedNeeded.length}
+        title={untrackedNeeded.length
+          ? `Track ${untrackedNeeded.length} still-needed item${untrackedNeeded.length === 1 ? '' : 's'} from uncompleted quests in the Drop Watch overlay`
+          : 'Every still-needed item from uncompleted quests is already tracked'}
+        onclick={() => void trackDropItems(untrackedNeeded)}
+      >
+        <BellIcon class="size-3.5" />
+        notify for all uncompleted quests{untrackedNeeded.length ? ` (${untrackedNeeded.length})` : ''}
+      </button>
       <label class="flex shrink-0 items-center gap-1.5 text-[11px]">
         <span class="text-muted-foreground">sort</span>
         <Select.Root type="single" value={sortBy} onValueChange={(v) => v && (sortBy = v as SortMode)}>
