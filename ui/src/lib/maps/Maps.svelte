@@ -11,7 +11,7 @@
   import XIcon from '@lucide/svelte/icons/x';
   import MapViewer from './MapViewer.svelte';
   import { zoneMatches, looksLikeEntranceFor } from './zoneMatch';
-  import { api, type MapLineDto, type MapMarkerDto, type PathDto, type ZoneDto, type ZoneNpcDto } from '$lib/tauri/api';
+  import { api, type MapLineDto, type MapMarkerDto, type NpcNavPointDto, type PathDto, type ZoneDto, type ZoneNpcDto } from '$lib/tauri/api';
   import GdLink from '$lib/gamedata/GdLink.svelte';
   import { displayZoneName } from '$lib/utils';
   import {
@@ -37,6 +37,7 @@
     navigationPoi,
     activeRoute,
     setNavigationTarget,
+    navigateToNpc,
   } from '$lib/stores/maps';
 
   $effect(() => {
@@ -64,6 +65,20 @@
     void api.getCurrentLevel().then((l) => (playerLevel = l));
   });
   const filteredNpcs = $derived(zoneNpcs.filter((n) => !q || n.name.toLowerCase().includes(q)));
+
+  // why: the selected NPC's routable spawn point -- fetched on expand,
+  // feeds the same navigateToNpc entry the Game Data info page uses, so
+  // "click an NPC, get a path from where I stand" works from this panel
+  // too (cross-zone hops + navmesh walk legs included).
+  let selectedNavPoint = $state<NpcNavPointDto | null>(null);
+  $effect(() => {
+    const name = selectedNpc;
+    selectedNavPoint = null;
+    if (!name) return;
+    void api.getNpcNavPoints(name).then((p) => {
+      if (name === selectedNpc) selectedNavPoint = p?.[0] ?? null;
+    });
+  });
 
   /** why: classic con colors off the wiki level string's HIGHEST number
    * (the dangerous read of "37-39"). Green/blue/white/yellow/red are
@@ -380,6 +395,20 @@
                   <div class="px-2 pt-0.5 pb-1.5 text-[10px] text-muted-foreground">
                     {#if n.race || n.class}
                       <p>{[n.race, n.class].filter(Boolean).join(' · ')}{n.has_markers ? ' · on map' : ''}</p>
+                    {/if}
+                    {#if selectedNavPoint}
+                      <button
+                        type="button"
+                        class="mt-0.5 flex items-center gap-1 rounded-sm border border-primary/40 px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
+                        title="Route from your current position -- zone hops if needed, then the walk to this spawn point"
+                        onclick={() => {
+                          const p = selectedNavPoint;
+                          if (p) void navigateToNpc(p.route_zone ?? p.zone, { name: n.name, zone: p.zone, x: p.x, y: p.y, z: p.z });
+                        }}
+                      >
+                        <NavigationIcon class="size-3" />
+                        set path here
+                      </button>
                     {/if}
                     {#if n.drops.length}
                       <div class="flex flex-wrap gap-1 pt-1">
