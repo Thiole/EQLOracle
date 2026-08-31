@@ -79,7 +79,12 @@ fn a_multi_mob_pull_is_one_encounter_and_survives_a_death() {
 
 #[test]
 fn an_interrupted_fight_links_to_its_predecessor() {
-    let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(10.0).link_secs(60.0));
+    let mut b = Builder::new(
+        Policy::default()
+            .idle_secs(10.0)
+            .idle_unresolved_secs(10.0)
+            .link_secs(60.0),
+    );
     b.entities.note_player_channel("You");
     b.damage(0, "You", "a gnoll");
     b.expire(11_000); // mob fled; encounter closes, nothing slain
@@ -114,7 +119,12 @@ fn a_slain_target_does_not_link_forward() {
 /// session into a single encounter.
 #[test]
 fn consecutive_fights_do_not_link_through_the_player() {
-    let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(10.0).link_secs(60.0));
+    let mut b = Builder::new(
+        Policy::default()
+            .idle_secs(10.0)
+            .idle_unresolved_secs(10.0)
+            .link_secs(60.0),
+    );
     b.entities.note_player_channel("You");
     b.damage(0, "You", "gnoll A");
     b.death(1000, "gnoll A");
@@ -267,9 +277,17 @@ fn a_no_kill_lull_outlasts_the_short_idle_but_a_kill_closes_fast() {
     let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(60.0));
     b.damage(0, "You", "a gnoll");
     b.expire(30_000);
-    assert_eq!(b.live_count(), 1, "no kill yet -- 30s of mezz quiet must not close it");
+    assert_eq!(
+        b.live_count(),
+        1,
+        "no kill yet -- 30s of mezz quiet must not close it"
+    );
     b.expire(61_000);
-    assert_eq!(b.live_count(), 0, "past the unresolved window it really is over");
+    assert_eq!(
+        b.live_count(),
+        0,
+        "past the unresolved window it really is over"
+    );
 
     // kill: the short window applies
     let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(60.0));

@@ -117,8 +117,7 @@ fn main() {
                         }
                         if let Ok(hwnd) = w.hwnd() {
                             use windows_sys::Win32::UI::WindowsAndMessaging::{
-                                SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE,
-                                SWP_NOSIZE,
+                                SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
                             };
                             // why: double cast -- same HWND version
                             // tolerance as hide_from_window_switcher

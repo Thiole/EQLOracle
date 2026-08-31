@@ -28,7 +28,10 @@ mod tests {
         std::fs::write(&path, b"old").unwrap();
         write_atomic(&path, b"new").unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"new");
-        assert!(!dir.join("config.json.tmp").exists(), "temp file cleaned up by rename");
+        assert!(
+            !dir.join("config.json.tmp").exists(),
+            "temp file cleaned up by rename"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

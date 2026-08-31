@@ -164,7 +164,10 @@ fn main() {
             json!(combat::fight_timeline(&ing, latest_id)),
         );
     }
-    out.insert("get_fight_timeline".to_string(), Value::Object(timeline_by_id));
+    out.insert(
+        "get_fight_timeline".to_string(),
+        Value::Object(timeline_by_id),
+    );
 
     // why: real bucket timestamps for the click-to-scrub interaction
     if let Some(t) = &timeline {

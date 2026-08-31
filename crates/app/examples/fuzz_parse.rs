@@ -12,7 +12,10 @@ fn try_line(engine: &eqlp_core::Engine, raw: &[u8], label: &str) {
         backfill_lines(&mut ing, engine, &lines, 1);
     }));
     if res.is_err() {
-        println!("PANIC on {label}: {:?}", String::from_utf8_lossy(&raw[..raw.len().min(80)]));
+        println!(
+            "PANIC on {label}: {:?}",
+            String::from_utf8_lossy(&raw[..raw.len().min(80)])
+        );
     }
 }
 
@@ -25,29 +28,66 @@ fn main() {
         (b"[".to_vec(), "lone bracket"),
         (ts.to_string().into_bytes(), "ts only"),
         (format!("{ts}You hit ").into_bytes(), "truncated hit"),
-        (format!("{ts}You hit  for  points of damage.").into_bytes(), "empty fields"),
-        (format!("{ts}You hit X for 999999999999999999999999 points of damage.").into_bytes(), "huge number"),
-        (format!("{ts}You hit X for -5 points of damage.").into_bytes(), "negative dmg"),
-        (format!("{ts}{} slain", "A".repeat(200000)).into_bytes(), "200k name"),
-        (format!("{ts}\u{0}\u{0}\u{0} hits YOU").into_bytes(), "null bytes"),
+        (
+            format!("{ts}You hit  for  points of damage.").into_bytes(),
+            "empty fields",
+        ),
+        (
+            format!("{ts}You hit X for 999999999999999999999999 points of damage.").into_bytes(),
+            "huge number",
+        ),
+        (
+            format!("{ts}You hit X for -5 points of damage.").into_bytes(),
+            "negative dmg",
+        ),
+        (
+            format!("{ts}{} slain", "A".repeat(200000)).into_bytes(),
+            "200k name",
+        ),
+        (
+            format!("{ts}\u{0}\u{0}\u{0} hits YOU").into_bytes(),
+            "null bytes",
+        ),
         (vec![0xff, 0xfe, 0xfd, b' '], "invalid utf8 leading"),
-        (format!("{ts}\u{1F480}\u{1F600} has been slain by You!").into_bytes(), "emoji names"),
-        (format!("{ts}You are no longer ").into_bytes(), "truncated state"),
-        (format!("{ts}Your  spell has worn off of .").into_bytes(), "empty spell/target"),
-        (format!("{ts}You looted a  from a 's corpse.").into_bytes(), "empty loot"),
+        (
+            format!("{ts}\u{1F480}\u{1F600} has been slain by You!").into_bytes(),
+            "emoji names",
+        ),
+        (
+            format!("{ts}You are no longer ").into_bytes(),
+            "truncated state",
+        ),
+        (
+            format!("{ts}Your  spell has worn off of .").into_bytes(),
+            "empty spell/target",
+        ),
+        (
+            format!("{ts}You looted a  from a 's corpse.").into_bytes(),
+            "empty loot",
+        ),
         (format!("{ts}{}", "\t".repeat(5000)).into_bytes(), "tabs"),
-        (format!("{ts}You gain experience! (999999.999%)").into_bytes(), "huge xp"),
+        (
+            format!("{ts}You gain experience! (999999.999%)").into_bytes(),
+            "huge xp",
+        ),
     ];
     for (raw, label) in &cases {
         try_line(&engine, raw, label);
     }
     // random fuzz
     let mut seed: u64 = 0x12345678;
-    let mut rng = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; seed };
+    let mut rng = || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed
+    };
     for i in 0..20000u32 {
         let n = (rng() % 300) as usize;
         let mut b: Vec<u8> = ts.bytes().collect();
-        for _ in 0..n { b.push((rng() % 256) as u8); }
+        for _ in 0..n {
+            b.push((rng() % 256) as u8);
+        }
         try_line(&engine, &b, &format!("fuzz#{i}"));
     }
     println!("done: 16 crafted + 20000 fuzz lines");

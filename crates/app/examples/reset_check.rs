@@ -15,8 +15,18 @@ fn parse_ts(line: &[u8]) -> Option<i64> {
     // [Tue Jul 28 15:02:15 2026]  -- cheap fixed-offset parse, probe-only
     let s = std::str::from_utf8(line.get(1..25)?).ok()?;
     let mon = match &s[4..7] {
-        "Jan" => 1, "Feb" => 2, "Mar" => 3, "Apr" => 4, "May" => 5, "Jun" => 6,
-        "Jul" => 7, "Aug" => 8, "Sep" => 9, "Oct" => 10, "Nov" => 11, "Dec" => 12,
+        "Jan" => 1,
+        "Feb" => 2,
+        "Mar" => 3,
+        "Apr" => 4,
+        "May" => 5,
+        "Jun" => 6,
+        "Jul" => 7,
+        "Aug" => 8,
+        "Sep" => 9,
+        "Oct" => 10,
+        "Nov" => 11,
+        "Dec" => 12,
         _ => return None,
     };
     let day: i64 = s[8..10].trim().parse().ok()?;
@@ -58,7 +68,12 @@ fn main() {
         backfill_lines(&mut ing, &engine, chunk, 8);
     }
 
-    let encs: Vec<_> = ing.store.encounters.iter().filter(|e| e.end_ms.is_some()).collect();
+    let encs: Vec<_> = ing
+        .store
+        .encounters
+        .iter()
+        .filter(|e| e.end_ms.is_some())
+        .collect();
     let slain = encs.iter().filter(|e| e.slain).count();
     let wiped = encs.iter().filter(|e| e.wiped && !e.slain).count();
     let resets: Vec<_> = encs.iter().filter(|e| !e.slain && !e.wiped).collect();
