@@ -45,16 +45,20 @@
 
 <!-- data-app-root: what ui/tests/interaction/window-identity.spec.ts's
      "exactly one app root is mounted" case looks for. -->
-<div data-app-root class="h-screen w-screen overflow-hidden bg-background text-foreground">
+<!-- why: Toolbar renders in every state, not just configured -- on
+     Windows it IS the title bar (drag region + close button), and a
+     first-launch or still-loading frameless window without it would be
+     undraggable and unclosable. -->
+<div data-app-root class="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
+  <Toolbar />
   {#if $status === null}
     <!-- why: visible, not a blank frame -- if this ever sticks, the
          backend isn't answering and "Loading" beats an empty window -->
-    <div class="flex h-full items-center justify-center text-sm text-muted-foreground">Loading…</div>
+    <div class="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading…</div>
   {:else if !$status.configured}
-    <FirstLaunch />
+    <div class="flex-1 overflow-y-auto"><FirstLaunch /></div>
   {:else}
-    <div class="flex h-full flex-col">
-      <Toolbar />
+    <div class="flex min-h-0 flex-1 flex-col">
       <div class="flex flex-1 overflow-hidden">
         <Sidebar bind:active={$activeModule} />
         <main class="flex-1 overflow-y-auto">

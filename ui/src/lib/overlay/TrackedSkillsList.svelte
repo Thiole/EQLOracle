@@ -9,13 +9,17 @@
   // own × removes it independent of selection.
   import XIcon from '@lucide/svelte/icons/x';
 
+  // why: items defaults to [] -- this leaf is shared by three call
+  // sites, and one passing a not-yet-loaded (undefined) list must
+  // render the empty state, not crash the module (caught live by
+  // tests/render/responsive.spec.ts)
   let {
-    items,
+    items = [],
     onRemove,
     ariaLabel,
     emptyLabel,
   }: {
-    items: string[];
+    items?: string[];
     onRemove: (name: string) => void;
     ariaLabel: string;
     emptyLabel: string;

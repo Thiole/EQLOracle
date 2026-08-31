@@ -2,5 +2,14 @@
   "identifier": "default",
   "description": "IPC the main window and every overlay widget window are allowed to use: core invoke/event plumbing, the dialog plugin's Rust-side API that pick_log_directory calls on the window's behalf, and the updater plugin backing the in-app update check/install flow (restart itself is a core AppHandle call, not a separate plugin). Each overlay widget is its own real OS window labeled `overlay-<widget>` (see commands::overlay_label) -- 'overlay-*' is a glob so a new widget never needs a capabilities edit to get IPC. Each only ever calls a few read-only commands and listens for parse-tick/overlay-opacity, but there's no narrower stock permission bundle than core:default to hand it -- see windowcap.rs's own doc for why it exists behind a runtime capability check regardless of what IPC it's allowed.",
   "windows": ["main", "overlay-*"],
-  "permissions": ["core:default", "dialog:default", "updater:default"]
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "updater:default",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging"
+  ]
 }

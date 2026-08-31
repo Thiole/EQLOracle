@@ -8,7 +8,11 @@ export const raidRowsError = writable<string | null>(null);
 
 export async function refreshRaidRows() {
   try {
-    raidRows.set(await api.getRaids());
+    // why: ?? [] -- a resolved-but-null payload otherwise leaves the
+    // Raiding tab on "Loading…" forever (same stuck-loading shape as
+    // the 2026-08-21 field report; null-tolerance at the store boundary,
+    // same stance as tradeskill/settings)
+    raidRows.set((await api.getRaids()) ?? []);
     raidRowsError.set(null);
   } catch (e) {
     raidRowsError.set(e instanceof Error ? e.message : String(e));

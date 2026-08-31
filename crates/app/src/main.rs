@@ -90,6 +90,54 @@ fn main() {
         .setup(|app| {
             let handle = app.handle().clone();
             let state = app.state::<AppState>();
+            // why: frameless with the in-app title bar, Windows only --
+            // Linux keeps native decorations (KWin/XWayland drops the
+            // drag-region move request, see commands::get_ui_shell).
+            // Runtime, not tauri.conf: the window config is shared
+            // across platforms.
+            #[cfg(target_os = "windows")]
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_decorations(false);
+            }
+            // why: a borderless game that raises itself topmost wins the
+            // z-fight until someone raises back (both sit in the same
+            // topmost band, last raise wins) -- re-raise every overlay
+            // on a slow timer. Raw SetWindowPos, not tao's
+            // set_always_on_top: tao diffs its flag state and a repeated
+            // `true` is a no-op that never re-raises. Windows-only; on
+            // X11 keep-above is compositor-enforced, no fight to referee.
+            #[cfg(target_os = "windows")]
+            {
+                let handle2 = app.handle().clone();
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    for (label, w) in handle2.webview_windows() {
+                        if !label.starts_with("overlay-") {
+                            continue;
+                        }
+                        if let Ok(hwnd) = w.hwnd() {
+                            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                                SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE,
+                                SWP_NOSIZE,
+                            };
+                            // why: double cast -- same HWND version
+                            // tolerance as hide_from_window_switcher
+                            let hwnd = hwnd.0 as isize;
+                            unsafe {
+                                SetWindowPos(
+                                    hwnd as _,
+                                    HWND_TOPMOST,
+                                    0,
+                                    0,
+                                    0,
+                                    0,
+                                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                                );
+                            }
+                        }
+                    }
+                });
+            }
             // why: before anything else, and before this process's own
             // window/webview exist at all -- see updater::
             // clear_stale_webview_cache_if_needed's own doc for why this
@@ -145,6 +193,7 @@ fn main() {
             commands::get_loadout_summary,
             commands::list_mobs,
             commands::get_window_capability,
+            commands::get_ui_shell,
             commands::get_live_meter,
             commands::get_status_effects,
             commands::get_skill_status,

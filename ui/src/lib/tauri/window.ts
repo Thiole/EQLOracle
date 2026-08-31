@@ -24,3 +24,22 @@ export function currentOverlayWidget(): string | null {
   const label = getCurrentWindow().label;
   return label.startsWith(OVERLAY_LABEL_PREFIX) ? label.slice(OVERLAY_LABEL_PREFIX.length) : null;
 }
+
+/* why: the custom title bar's three window controls (Toolbar.svelte,
+ * Windows-frameless only -- see api.getUiShell). Mock mode has no real
+ * window to control; guarded no-ops keep the harness clickable without a
+ * mock/real branch in the component itself. */
+export function minimizeWindow(): void {
+  if (isMock) return;
+  void getCurrentWindow().minimize();
+}
+
+export function toggleMaximizeWindow(): void {
+  if (isMock) return;
+  void getCurrentWindow().toggleMaximize();
+}
+
+export function closeWindow(): void {
+  if (isMock) return;
+  void getCurrentWindow().close();
+}

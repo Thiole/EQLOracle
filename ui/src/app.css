@@ -31,6 +31,59 @@
     -webkit-appearance: none;
     margin: 0;
   }
+
+  /* why: the stock webview scrollbar is the single loudest "web page in
+     a frame" tell -- slim, track-less, theme-token thumbs read as part
+     of the app on every theme. Overlay windows share these via
+     overlay.css importing tokens; gutter stays transparent so panels
+     keep their own background. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--line);
+    border-radius: 5px;
+    /* content-box + transparent border = a 4px thumb that fattens on
+       hover without layout shift */
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    border-width: 2px;
+    background-color: var(--ink-muted);
+  }
+
+  /* why: selection in the brand color, not the engine's default blue --
+     same "part of the app, not a web page" reasoning as the scrollbars */
+  ::selection {
+    background: color-mix(in srgb, var(--brand) 30%, transparent);
+  }
+
+  /* why: keyboard focus is a visible ring everywhere, mouse clicks stay
+     clean -- :focus-visible does the discrimination, one rule app-wide
+     instead of per-component opt-ins that drift */
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--brand) 60%, transparent);
+    outline-offset: 1px;
+  }
+
+  /* why: an OS-level "reduce motion" preference wins over every blink/
+     flash/transition this app ships, one rule -- accessibility isn't a
+     per-animation decision */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 @layer components {

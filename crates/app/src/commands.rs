@@ -909,6 +909,24 @@ pub fn set_overlay_locked(app: AppHandle, widget: String, locked: bool) -> Resul
     Ok(())
 }
 
+/// why: the frontend can't cfg(target_os) -- whether the main window
+/// runs frameless with an in-app title bar is a backend platform fact.
+/// Windows only: a custom title bar was tried everywhere and reverted
+/// on Linux -- KWin/XWayland silently drops the drag-region move
+/// request on an undecorated window (see Toolbar.svelte's own doc), so
+/// Linux keeps native decorations.
+#[derive(Serialize)]
+pub struct UiShellDto {
+    pub custom_titlebar: bool,
+}
+
+#[tauri::command]
+pub fn get_ui_shell() -> UiShellDto {
+    UiShellDto {
+        custom_titlebar: cfg!(target_os = "windows"),
+    }
+}
+
 /// why: Game Data's Zones tab, 117 zones small enough to ship whole
 
 #[tauri::command]

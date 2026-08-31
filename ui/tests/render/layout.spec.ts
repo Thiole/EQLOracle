@@ -39,7 +39,9 @@ test.describe('layout', () => {
     // the real backend actually produces.
     await page.setViewportSize({ width: 900, height: 700 });
     await page.goto('/');
-    await page.getByText('Kaeus', { exact: true }).click();
+    // The ally TABLE row specifically -- 'Kaeus' also appears as a
+    // fight-participant chip now, so a bare text match is ambiguous.
+    await page.getByRole('cell', { name: 'Kaeus' }).click();
     await page.waitForSelector('text=ABILITIES');
 
     const overflow = await page.evaluate(() => {

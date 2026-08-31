@@ -117,8 +117,14 @@ export function loadPreferences(): Promise<void> {
   if (loading) return loading;
   loading = (async () => {
     const [opts, prefs] = await Promise.all([api.getEraOptions(), api.getPreferences()]);
-    eraOptions.set(opts.eras);
-    currentEra.set(opts.current);
+    // why: list/map fields tolerate an absent value at this boundary --
+    // a prefs blob older than a field (or a harness fixture predating
+    // it) otherwise feeds undefined into components that .length/.map
+    // it, crashing whole modules (caught by tests/render/responsive.
+    // spec.ts on tracked_target_effects). Scalars keep their backend
+    // #[serde(default)] guarantee; collections get the same here.
+    eraOptions.set(opts?.eras ?? []);
+    if (opts?.current) currentEra.set(opts.current);
     volume.set(prefs.volume);
     era.set(prefs.era);
     saveProfile.set(prefs.save_profile);
@@ -128,15 +134,15 @@ export function loadPreferences(): Promise<void> {
     dpsMeterOverallOpacity.set(prefs.overlay_dps_meter_overall_opacity);
     skillTrackerOpacity.set(prefs.overlay_skill_tracker_opacity);
     skillTrackerOverallOpacity.set(prefs.overlay_skill_tracker_overall_opacity);
-    trackedSkills.set(prefs.tracked_skills);
-    trackedTargetEffects.set(prefs.tracked_target_effects);
+    trackedSkills.set(prefs.tracked_skills ?? []);
+    trackedTargetEffects.set(prefs.tracked_target_effects ?? []);
     dropWatchOpacity.set(prefs.overlay_drop_watch_opacity);
     dropWatchOverallOpacity.set(prefs.overlay_drop_watch_overall_opacity);
     ccTrackerOpacity.set(prefs.overlay_cc_tracker_opacity);
     ccTrackerOverallOpacity.set(prefs.overlay_cc_tracker_overall_opacity);
     ccTrackerSize.set(asCcSize(prefs.overlay_cc_tracker_size));
-    trackedDropItems.set(prefs.tracked_drop_items);
-    trackedDropSeenCounts.set(prefs.tracked_drop_seen_counts);
+    trackedDropItems.set(prefs.tracked_drop_items ?? []);
+    trackedDropSeenCounts.set(prefs.tracked_drop_seen_counts ?? {});
     dropWatchCheckpointMs.set(prefs.drop_watch_checkpoint_ms);
     settingsLoaded.set(true);
   })();

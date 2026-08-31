@@ -134,6 +134,12 @@ function keyFor(cmd: string, args: Record<string, unknown> | undefined): string 
 }
 
 export async function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  // why: not fixture data -- a platform fact. True here so the harness
+  // exercises the custom title bar (drag region, window controls); the
+  // control clicks themselves no-op via window.ts's mock guards.
+  if (cmd === 'get_ui_shell') {
+    return { custom_titlebar: true } as T;
+  }
   const table = data[cmd];
   if (!table) {
     console.warn(`[mock] no fixture table for command "${cmd}" -- returning null`);

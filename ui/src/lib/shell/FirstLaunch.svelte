@@ -49,7 +49,9 @@
   </span>
 {/snippet}
 
-<div class="flex min-h-screen items-center justify-center p-8">
+<!-- min-h-full, not min-h-screen: rendered below the always-present
+     Toolbar row now, so "screen" would force a needless scrollbar -->
+<div class="flex min-h-full items-center justify-center p-8">
   <Card class="max-w-md">
     <CardHeader>
       <CardTitle>Find your install folder</CardTitle>

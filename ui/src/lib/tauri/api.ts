@@ -1517,6 +1517,10 @@ export const api = {
 
   /** why: Overlay tab's own runtime capability check -- see windowcap.rs's own doc */
   getWindowCapability: () => invoke<WindowCapabilityDto>('get_window_capability'),
+  /** why: whether the main window is frameless with the in-app title
+   * bar (Windows only) -- a backend platform fact, see get_ui_shell's
+   * own doc on the Linux drag-region limitation. */
+  getUiShell: () => invoke<{ custom_titlebar: boolean }>('get_ui_shell'),
   /** why: the DPS meter overlay's whole data source */
   getLiveMeter: () => invoke<LiveMeterDto | null>('get_live_meter'),
   /** why: the timed-effects overlay's whole data source */

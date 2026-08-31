@@ -16,9 +16,13 @@ let loading: Promise<void> | null = null;
 export function loadTradeskillModule(): Promise<void> {
   if (get(tradeskillLoaded)) return Promise.resolve();
   if (loading) return loading;
+  // why: null-tolerant at the store boundary so every consumer's
+  // .length/.map stays safe -- a null here (IPC hiccup, mock harness
+  // without this fixture) crashed the whole Tradeskill module, caught
+  // by tests/render/responsive.spec.ts
   loading = Promise.all([api.getTradeskillCatalog(), api.getCraftLog()]).then(([catalog, log]) => {
-    tradeskillCatalog.set(catalog);
-    craftLog.set(log);
+    tradeskillCatalog.set(catalog ?? []);
+    craftLog.set(log ?? []);
     tradeskillLoaded.set(true);
   });
   return loading;
@@ -27,7 +31,7 @@ export function loadTradeskillModule(): Promise<void> {
 /** why: Overview's own "restart"-adjacent refresh -- craft log is real
  * session data, the catalog itself never changes without a rebuild */
 export async function refreshCraftLog() {
-  craftLog.set(await api.getCraftLog());
+  craftLog.set((await api.getCraftLog()) ?? []);
 }
 
 let byOutputName: Map<string, string> | null = null;

@@ -111,16 +111,29 @@ fn main() {
         .max_by_key(|e| e.total_damage)
         .expect("reference log has at least one real encounter");
     let richest_id = richest.id;
+    // why: the Combat view auto-selects the MOST RECENT encounter on
+    // load (not the richest), so its keys must exist too or the mock
+    // harness renders an empty ally table on first paint -- the exact
+    // gap that silently broke layout.spec's Kaeus test when auto-select
+    // landed. Highest id = latest; equal to richest_id is fine, the
+    // map just carries one entry.
+    let latest_id = all_encounters
+        .iter()
+        .map(|e| e.id)
+        .max()
+        .expect("reference log has at least one real encounter");
 
     let mut summary_by_selection: Map<String, Value> = Map::new();
     summary_by_selection.insert(
         "zoneVisit=null&encounterId=null".to_string(),
         json!(combat::summarize(&ing, None, None, None)),
     );
-    summary_by_selection.insert(
-        format!("zoneVisit=null&encounterId={richest_id}"),
-        json!(combat::summarize(&ing, None, Some(richest_id), None)),
-    );
+    for id in [richest_id, latest_id] {
+        summary_by_selection.insert(
+            format!("zoneVisit=null&encounterId={id}"),
+            json!(combat::summarize(&ing, None, Some(id), None)),
+        );
+    }
     out.insert(
         "get_combat_summary".to_string(),
         Value::Object(summary_by_selection),
@@ -131,20 +144,27 @@ fn main() {
         "zoneVisit=null&encounterId=null".to_string(),
         json!(combat::list_allies(&ing, None, None)),
     );
-    allies_by_selection.insert(
-        format!("zoneVisit=null&encounterId={richest_id}"),
-        json!(combat::list_allies(&ing, None, Some(richest_id))),
-    );
+    for id in [richest_id, latest_id] {
+        allies_by_selection.insert(
+            format!("zoneVisit=null&encounterId={id}"),
+            json!(combat::list_allies(&ing, None, Some(id))),
+        );
+    }
     out.insert(
         "list_allies".to_string(),
         Value::Object(allies_by_selection),
     );
 
     let timeline = combat::fight_timeline(&ing, richest_id);
-    out.insert(
-        "get_fight_timeline".to_string(),
-        json!({ format!("encounterId={richest_id}"): timeline }),
-    );
+    let mut timeline_by_id: Map<String, Value> = Map::new();
+    timeline_by_id.insert(format!("encounterId={richest_id}"), json!(timeline));
+    if latest_id != richest_id {
+        timeline_by_id.insert(
+            format!("encounterId={latest_id}"),
+            json!(combat::fight_timeline(&ing, latest_id)),
+        );
+    }
+    out.insert("get_fight_timeline".to_string(), Value::Object(timeline_by_id));
 
     // why: real bucket timestamps for the click-to-scrub interaction
     if let Some(t) = &timeline {
