@@ -379,7 +379,13 @@
             walk mode: click a marker
           </label>
           {#if manualWalkError}<span class="text-[11px] text-bad">{manualWalkError}</span>{/if}
-          {#if manualWalkPath}<span class="text-[11px] text-muted-foreground">route drawn -- {manualWalkPath.waypoints.length} waypoints</span>{/if}
+          {#if manualWalkPath}<span
+              class="text-[11px] text-muted-foreground"
+              title={manualWalkPath.source === 'navmesh'
+                ? 'Routed over the EQEmu navigation mesh — true walkable surfaces, floor-aware'
+                : 'Routed over map wall geometry — mesh for this zone not cached yet'}
+              >route drawn -- {manualWalkPath.waypoints.length} waypoints · {manualWalkPath.source}</span
+            >{/if}
         </div>
 
         <!-- why: GPS destination gets its own visually distinct block --

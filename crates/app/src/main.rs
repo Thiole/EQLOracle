@@ -228,6 +228,7 @@ fn main() {
             commands::list_zone_versions,
             commands::get_map_file,
             commands::find_walk_path,
+            commands::ensure_emu_zone,
             commands::find_zone_route,
             commands::get_last_location,
             commands::get_zone_context,

@@ -917,6 +917,10 @@ export interface ZoneContextDto {
  * structure can still be missed by the grid's own resolution). */
 export interface PathDto {
   waypoints: [number, number, number][];
+  /** why: which engine routed -- 'navmesh' (EQEmu Detour mesh, true
+   * walkable surfaces) or 'lines' (grid A* over map wall geometry, the
+   * fallback while a zone's mesh isn't cached). */
+  source: 'navmesh' | 'lines';
 }
 
 /** why: one leg of a ZoneRouteDto -- a teleport hop always names its own
@@ -1482,6 +1486,10 @@ export const api = {
   /** why: a real walking route within one zone's map -- rejects (not just empty-array) when no route exists, see PathDto's own doc */
   findWalkPath: (pack: string | null, zone: string, from: [number, number, number], to: [number, number, number]) =>
     invoke<PathDto>('find_walk_path', { pack, zone, from, to }),
+  /** why: fetches a zone's EQEmu nav+collision files into the app-data
+   * cache -- fire-and-forget on zone open; pathfinding upgrades itself
+   * once cached. */
+  ensureEmuZone: (zone: string) => invoke<{ nav: boolean; geo: boolean }>('ensure_emu_zone', { zone }),
   /** why: a real cross-zone route, weighted by real in-zone walking distance -- see ZoneRouteDto's own doc */
   findZoneRoute: (fromZone: string, toZone: string) => invoke<ZoneRouteDto>('find_zone_route', { fromZone, toZone }),
   /** why: the most recent "/loc" reading this session, if any -- a snapshot, not live tracking */

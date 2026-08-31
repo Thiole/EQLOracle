@@ -220,6 +220,27 @@ tags`. Aggregators (linear scans over the filtered range):
 Measured at 750k damage events: `by_ability` on one encounter 39µs;
 whole-store `by_ability` 27ms.
 
+## EQEmu navigation data (`crates/app/src/emumaps.rs`)
+
+- Sources: `https://github.com/EQEmu/maps` — `nav/<zone>.nav`
+  (Recast/Detour tiled navmesh, `EQNAVMESH` zlib wrapper, DNAV v7
+  tiles) and `base/<zone>.map` (v2 collision triangle mesh, zlib).
+- Coordinates: game(x,y,z) → emu(−x,−y,z); nav = emu with y/z swapped
+  (Detour Y-up). Public APIs take and return game coordinates.
+- `parse_nav` → `ZoneNav`: poly graph; adjacency rebuilt geometrically
+  (quantized shared-edge matching), off-mesh connections added as
+  edges. `find_path` = A* over poly adjacency + funnel smoothing.
+- `parse_map` → `ZoneGeo`: triangle mesh + XY grid index.
+  `best_z(x, y, z_hint)` = surface nearest `z_hint` among triangles
+  containing (x,y).
+- Cache: `<app_data>/emu_maps/<zone>.{nav,map}`. `ensure_zone`
+  downloads per zone (async, fired by the Maps view on zone open);
+  path/best-Z call sites read the disk cache only. Missing mesh ⇒
+  `find_walk_path` falls back to the line-grid pathfinder
+  (`PathDto.source`: `navmesh | lines`); `get_last_location` snaps z
+  via `best_z` when geo is cached.
+- The game's `maps/<zone>.txt` line files remain the rendering source.
+
 ## Egress
 
 - `parse-tick` event: 3s heartbeat, immediate on news. Payload:

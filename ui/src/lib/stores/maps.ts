@@ -262,6 +262,10 @@ function pickVersion(versions: (string | null)[]): string | null {
 
 export async function selectZone(zone: string) {
   selectedZone.set(zone);
+  // why: fire-and-forget nav/collision fetch for this zone -- see
+  // api.ensureEmuZone. Walk paths route over the mesh once cached;
+  // until then the line-grid fallback answers.
+  void api.ensureEmuZone(zone).catch(() => {});
   // why: the user picking a zone map while a specific raw zone label is
   // current is the strongest possible training signal for `learnedZoneMap`
   // -- not a guess, their own explicit action -- see that map's own doc.

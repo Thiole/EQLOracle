@@ -17,6 +17,7 @@ pub mod diskwrite;
 pub mod dpscalc;
 pub mod dropwatch;
 pub mod effects;
+pub mod emumaps;
 pub mod flavordata;
 pub mod gearplanner;
 pub mod history;

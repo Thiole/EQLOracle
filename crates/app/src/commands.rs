@@ -13,6 +13,7 @@ use crate::config::{self, AppConfig};
 use crate::craftlog::{self, CraftLogEntryDto};
 use crate::debugview::{self, DebugEncounterDto, GameStateDto, UnmatchedCoverageDto};
 use crate::dpscalc::{self, DamageSpellDto};
+use crate::emumaps;
 use crate::gearplanner::{self, InventoryDumpDto, ItemDto, SlotRecommendationDto};
 use crate::history::{self, ParseRecord};
 use crate::ingest::LineCounts;
@@ -1381,23 +1382,43 @@ pub fn get_map_file(
     Ok(parsed.into())
 }
 
-/// why: real walking route waypoints -- grid A* over wall geometry, Z-banded to the start floor
+/// why: real walking route waypoints. `source` says which engine
+/// produced them: "navmesh" (EQEmu Detour mesh -- true walkable
+/// surfaces, multi-floor correct; see emumaps.rs) or "lines" (the
+/// original grid A* over the game map's wall geometry, the fallback
+/// when a zone's mesh isn't cached yet).
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PathDto {
     pub waypoints: Vec<[f32; 3]>,
+    pub source: &'static str,
 }
 
 /// why: missing route is a real retryable outcome, not folded into an empty result
 
 #[tauri::command]
 pub fn find_walk_path(
+    app: AppHandle,
     state: State<AppState>,
     pack: Option<String>,
     zone: String,
     from: [f32; 3],
     to: [f32; 3],
 ) -> Result<PathDto, String> {
+    // why: navmesh first -- the mesh knows floors/ramps/water the line
+    // maps can't; disk-cache-only (ensure_emu_zone owns the download)
+    if let Ok(app_data) = app.path().app_data_dir() {
+        if let Some(nav) = emumaps::load_nav(&app_data, &zone) {
+            if let Some(waypoints) = nav.find_path(from, to) {
+                return Ok(PathDto {
+                    waypoints,
+                    source: "navmesh",
+                });
+            }
+            // why: fall through -- endpoints off the mesh (a bad click
+            // in the void) can still resolve on the line grid
+        }
+    }
     let base_dir = {
         let cfg = state.config.lock_recover();
         cfg.as_ref()
@@ -1411,7 +1432,31 @@ pub fn find_walk_path(
         .ok_or("no walkable route found between those points")?;
     Ok(PathDto {
         waypoints: path.into_iter().map(|(x, y, z)| [x, y, z]).collect(),
+        source: "lines",
     })
+}
+
+/// why: fetches a zone's EQEmu nav+collision files into the app-data
+/// cache -- fired by the Maps view when a zone opens, so the
+/// pathfinding/best-Z call sites never block on network. Returns which
+/// halves are now available.
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EmuZoneStatusDto {
+    pub nav: bool,
+    pub geo: bool,
+}
+
+#[tauri::command]
+pub async fn ensure_emu_zone(app: AppHandle, zone: String) -> EmuZoneStatusDto {
+    let Ok(app_data) = app.path().app_data_dir() else {
+        return EmuZoneStatusDto {
+            nav: false,
+            geo: false,
+        };
+    };
+    let (nav, geo) = emumaps::ensure_zone(&app_data, &zone).await;
+    EmuZoneStatusDto { nav, geo }
 }
 
 /// why: names its own spell so the player judges real access, not the backend assuming it
@@ -1590,16 +1635,33 @@ pub struct LastLocationDto {
 /// why: "you are here" marker, rare -- a timestamped snapshot, not live tracking
 
 #[tauri::command]
-pub fn get_last_location(state: State<AppState>) -> Option<LastLocationDto> {
+pub fn get_last_location(app: AppHandle, state: State<AppState>) -> Option<LastLocationDto> {
     let ing = state.ingest.lock_recover();
     let (ts_ms, x, y, z) = ing.last_loc?;
     let zone = ing.zone.at(ts_ms).map(str::to_string);
     let map_zones = map_zones_for_raw_label(zone.as_deref());
+    drop(ing);
+    // why: best-Z snap -- /loc's own z is the character's origin (often
+    // mid-model, mid-jump, or on a mount) and the map view picks its
+    // floor level from it; the collision mesh's nearest surface is the
+    // real ground. Only when the zone's geo is cached (see emumaps.rs);
+    // raw z stands otherwise.
+    let mut ground_z = None;
+    if let Ok(app_data) = app.path().app_data_dir() {
+        for shortname in &map_zones {
+            if let Some(geo) = emumaps::load_geo(&app_data, shortname) {
+                ground_z = geo.best_z(x as f32, y as f32, z as f32).map(|g| g as f64);
+                if ground_z.is_some() {
+                    break;
+                }
+            }
+        }
+    }
     Some(LastLocationDto {
         ts_ms,
         x,
         y,
-        z,
+        z: ground_z.unwrap_or(z),
         zone,
         map_zones,
     })

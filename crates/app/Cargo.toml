@@ -59,6 +59,12 @@ base64 = "0.22"
 # rule engine) -- promoted here too rather than hand-rolling parsers for
 # spelldata's own messy duration/effect-text formats (see spelleffect.rs).
 regex = "1"
+# Both already in the lockfile as transitive deps (flate2 via tauri's
+# asset handling, reqwest via tauri-plugin-updater) -- promoted direct
+# for emumaps.rs: zlib-wrapped EQEmu nav/map payloads, and the per-zone
+# lazy download into the app-data cache. No new dependency trees.
+flate2 = "1"
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 
 # Already in the lockfile as tauri's own transitive dep (gtk 0.18) --
 # promoted direct only to set the overlay windows' GTK type hint to
