@@ -85,9 +85,15 @@ pub enum Kind {
     Unproven,
 }
 
-/// why: owner name from a possessive "<Owner>'s pet" suffix, else None
+/// why: owner name from a possessive "<Owner>'s pet" suffix, else None.
+/// "warder" too -- a Beastlord's warder logs as "X`s warder", never
+/// "X`s pet", and the miss put real warders on the ENEMY side of the
+/// meter ("Michele`s warder", 38k damage into enemies across 5 fights,
+/// pet_side_check.rs on a real log 2026-08-31).
 fn pet_owner(name: &str) -> Option<&str> {
-    let base = name.strip_suffix(" pet")?;
+    let base = name
+        .strip_suffix(" pet")
+        .or_else(|| name.strip_suffix(" warder"))?;
     let owner = base
         .strip_suffix("'s")
         .or_else(|| base.strip_suffix("`s"))?;

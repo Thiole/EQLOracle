@@ -69,6 +69,30 @@ const MAX_PENDING_RECENT: usize = 500;
 /// pets with no implausible pairing on manual spot check
 const PET_MATCH_WINDOW_MS: Millis = 8_000;
 
+/// why: the game's own generated summoned-pet name shape, learned from
+/// the 165 pets the Inner-Fire inference confirmed on a real log
+/// (pet_side_check.rs, 2026-08-31): G/J/K/L/V/X/Z first letter,
+/// syllable body, -n/-er/-tik/-ab ending -- 156/165 confirmed pets
+/// matched, e.g. Gobarn, Jobab, Kebektik, Xarann, Zabantik. NOT a
+/// classifier on its own: 23 of 489 real ally-side actors also matched
+/// (Kalten, Vorlan, Lokrian...), so this only ever GATES the
+/// summon-window match in note_actor -- a collision needs a
+/// shape-matching stranger's first-ever action inside 8s of a pet
+/// summon to misfire, where the rejected "any first actor" rule
+/// misfired on the window alone.
+fn looks_generated_pet_name(name: &str) -> bool {
+    if !name.chars().all(|c| c.is_ascii_alphabetic()) || name.len() < 4 || name.len() > 10 {
+        return false;
+    }
+    let first_ok = matches!(
+        name.chars().next(),
+        Some('G' | 'J' | 'K' | 'L' | 'V' | 'X' | 'Z')
+    );
+    let lower = name.to_lowercase();
+    let end_ok = ["n", "er", "tik", "ab"].iter().any(|e| lower.ends_with(e));
+    first_ok && end_ok
+}
+
 /// why: 5s, generous against real quickbuff bursts -- landing lines resolve
 /// within the same or next couple log-seconds after activation
 const QUICKBUFF_WINDOW_MS: Millis = 5_000;
@@ -891,6 +915,19 @@ pub struct Ingest {
     /// why: resolved pet -> owner; checked by sym before interning so a
     /// matched pet's actions merge into the owner's identity
     pet_owner: HashMap<String, String>,
+    /// why: the no-summon-line case -- a groupmate's pet summoned out of
+    /// log range has NOTHING to window-match (measured: the unmatched
+    /// generated-name suspects' first action lands p25=50min after any
+    /// summon line, pet_side_check.rs 2026-08-31). Shape + behavior
+    /// instead: an Unproven generated-pet-name entity graduates to ally
+    /// side after BEHAVIORAL_PET_HITS enemy-directed hits with zero
+    /// hostile interaction with the player's side; one hit on an ally,
+    /// or one ally hit on IT, blacklists it permanently (a real mob in a
+    /// fight gets attacked -- that asymmetry is the discriminator).
+    /// Unowned: sided correctly, never merged into anyone's rows.
+    behavioral_pet_hits: HashMap<String, u32>,
+    behavioral_pets: HashSet<String>,
+    behavioral_pet_blacklist: HashSet<String>,
     /// why: encounters where "You" landed a confirmed hit on the anchor
     /// mob -- once inserted, future actors on that anchor promote inline
     you_confirmed_target_encs: HashSet<EncounterId>,
@@ -1005,6 +1042,9 @@ impl Default for Ingest {
             seen_actors: HashSet::new(),
             you_confirmed_target_encs: HashSet::new(),
             pet_owner: HashMap::new(),
+            behavioral_pet_hits: HashMap::new(),
+            behavioral_pets: HashSet::new(),
+            behavioral_pet_blacklist: HashSet::new(),
             pending_quickbuff: HashMap::new(),
             pending_group_inviter: None,
             last_line_ts: None,
@@ -1384,7 +1424,7 @@ impl Ingest {
                 // against the real log; "any first cast" mismatched real
                 // not-yet-proven players near a pet summon
                 if spell == "Inner Fire" {
-                    self.note_actor(ts, &who);
+                    self.note_actor(ts, &who, false);
                 }
                 // why: "You" or a proven ally -- group-shaped teleports
                 // land the whole group, an unproven stranger's cast doesn't count
@@ -1917,6 +1957,13 @@ impl Ingest {
         // store, and timeline all see one name
         let src = canonical_you(src);
         let dst = canonical_you(dst);
+        // why: the damage-path pet match -- see note_actor's own doc.
+        // Actor side only: a brand-new name TAKING its first hit is a
+        // mob being pulled, not a pet spawning
+        self.note_actor(ts, src, true);
+        // why: the no-summon-line pet classifier -- see
+        // note_behavioral_pet_evidence's own doc
+        self.note_behavioral_pet_evidence(ts, src, dst);
         // why: a charmed pet can attack enemies all session with no break
         // line, but it can never legitimately land a hit on "You" --
         // that alone proves the charm is gone (expired, backfired, or a
@@ -2038,11 +2085,20 @@ impl Ingest {
     /// promote_party_member's own anchor-exclusion).
     pub(crate) fn effective_kind(&self, name: &str, ts: Millis) -> Kind {
         let kind = self.encounters.entities.kind(name);
-        if kind == Kind::Unproven && self.groups.currently_grouped(name, ts) {
-            Kind::Player
-        } else {
-            kind
+        // why: an inference-matched pet's graph kind stays whatever its
+        // bare name read as (Unproven) -- the match lives in pet_owner,
+        // so it must be consulted here or the pet stays "enemy" in every
+        // side computation despite its rows merging into the owner
+        if kind == Kind::Unproven {
+            let display = self.encounters.entities.display_name(name);
+            if self.pet_owner.contains_key(display) || self.behavioral_pets.contains(display) {
+                return Kind::Pet;
+            }
+            if self.groups.currently_grouped(name, ts) {
+                return Kind::Player;
+            }
         }
+        kind
     }
 
     fn record_heal(&mut self, ts: Millis, src: &str, dst: &str, ability: &str, amount: u64) {
@@ -2541,18 +2597,53 @@ impl Ingest {
         self.pet_owner.contains_key(&resolved)
     }
 
-    /// why: only from Cast, not damage/heal/miss -- a pet's first logged
-    /// action is reliably its own spawn self-buff, and this scope was
-    /// what was actually measured safe (see PET_MATCH_WINDOW_MS).
+    /// why: two match paths into the same closest-pending-summon logic.
+    /// Cast path (shape_gated=false): a pet's spawn self-buff ("Inner
+    /// Fire"), the originally-measured-safe trigger. Damage path
+    /// (shape_gated=true): most pets' first logged action is a MELEE HIT,
+    /// not a cast -- the cast-only rule left 151 real summoned pets
+    /// unmatched on a real log, all sitting on the ENEMY side of the
+    /// meter as "incoming damage" while attacking mobs (pet_side_check.
+    /// rs, 2026-08-31). The damage path is additionally gated on the
+    /// game's own generated-pet-name shape (looks_generated_pet_name)
+    /// because "any first actor near a summon" alone was measured unsafe
+    /// against real unproven players back when the cast rule was chosen.
     /// Matches the closest-in-time pending summon, not "exactly one, else
     /// give up" -- real raid buff-up summons several pets within seconds
     /// of each other, and the game sometimes logs one summon twice at an
     /// identical timestamp, which alone broke "exactly one". Closest-in-time
     /// matched every case the stricter rule missed with no bad pairing in a spot check.
-    fn note_actor(&mut self, ts: Millis, name: &str) {
+    fn note_actor(&mut self, ts: Millis, name: &str, shape_gated: bool) {
         let resolved = self.resolve_name(name);
         if self.pet_owner.contains_key(&resolved) {
             return; // why: already resolved, nothing to check
+        }
+        // why: a bare "<x> pet"/"<x> warder" is a MOB's own pet (see
+        // graph::pet_owner's possessive rule) and must never match a
+        // player's summon -- a real "A shin ghoul warrior pet" cast Inner
+        // Fire inside the window and got merged into the player's pet
+        // (found by pet_side_check.rs); possessive-named player pets are
+        // already handled by the graph and never need this inference
+        {
+            let lower = resolved.to_lowercase();
+            if lower.ends_with(" pet") || lower.ends_with(" warder") {
+                return;
+            }
+        }
+        // why: BEFORE the seen_actors insert -- a shape-failing damage
+        // actor keeps its one later cast-path chance inside the window
+        if shape_gated && !looks_generated_pet_name(&resolved) {
+            return;
+        }
+        self.pending_summons
+            .retain(|(sts, _)| ts - *sts <= PET_MATCH_WINDOW_MS);
+        // why: also before the insert -- a shape-matching pet whose
+        // first SWING lands with no summon in the window (sent in well
+        // after summoning, the common case) must not burn its one
+        // cast-path chance; measured live: consuming here dropped real
+        // Inner-Fire matches from 165 to 109 on the reference log
+        if shape_gated && self.pending_summons.is_empty() {
+            return;
         }
         if !self.seen_actors.insert(resolved.clone()) {
             return; // why: not their first time acting
@@ -2565,8 +2656,6 @@ impl Ingest {
         {
             return;
         }
-        self.pending_summons
-            .retain(|(sts, _)| ts - *sts <= PET_MATCH_WINDOW_MS);
         let closest = self
             .pending_summons
             .iter()
@@ -2578,6 +2667,54 @@ impl Ingest {
             self.pet_owner.insert(resolved, owner);
         }
         // why: no pending summons at all, leave unresolved
+    }
+
+    /// why: the shape+behavior pet classifier -- see behavioral_pets'
+    /// own field doc. Called per damage row with the RAW names (an
+    /// owner-merged pet never reaches Unproven here). Three hits on
+    /// enemies with a clean record graduates; any hostile interaction
+    /// with the player's side blacklists forever -- covers the mob-
+    /// reusing-a-pet-name case the same way charm's own hit-on-You
+    /// clear does.
+    fn note_behavioral_pet_evidence(&mut self, ts: Millis, src: &str, dst: &str) {
+        const BEHAVIORAL_PET_HITS: u32 = 3;
+        let rs = self.resolve_name(src);
+        let rd = self.resolve_name(dst);
+        if rs == rd {
+            return;
+        }
+        let src_ally = !self.allegiance_at(&rs, ts).is_enemy();
+        let dst_ally = !self.allegiance_at(&rd, ts).is_enemy();
+        let candidate = |ing: &Self, n: &str| {
+            ing.encounters.entities.kind(n) == Kind::Unproven
+                && looks_generated_pet_name(n)
+                && !ing.behavioral_pet_blacklist.contains(n)
+                && !ing.pet_owner.contains_key(n)
+        };
+        // a candidate (or graduate) hit by the player's side is a mob
+        if src_ally && (self.behavioral_pets.contains(&rd) || candidate(self, &rd)) {
+            self.behavioral_pets.remove(&rd);
+            self.behavioral_pet_hits.remove(&rd);
+            self.behavioral_pet_blacklist.insert(rd);
+            return;
+        }
+        // why: NOT gated on !src_ally -- a graduated pet reads ally by
+        // definition, and the whole point of this branch is revoking
+        // exactly that graduation the moment it hits the player's side
+        if self.behavioral_pets.contains(&rs) || candidate(self, &rs) {
+            if dst_ally {
+                // hitting the player's side is a mob (or a broken charm)
+                self.behavioral_pets.remove(&rs);
+                self.behavioral_pet_hits.remove(&rs);
+                self.behavioral_pet_blacklist.insert(rs);
+            } else {
+                let hits = self.behavioral_pet_hits.entry(rs.clone()).or_insert(0);
+                *hits += 1;
+                if *hits >= BEHAVIORAL_PET_HITS {
+                    self.behavioral_pets.insert(rs);
+                }
+            }
+        }
     }
 
     /// why: registers owner as a pending candidate for whichever new entity acts next
@@ -2910,6 +3047,12 @@ impl Ingest {
         self.pet_owner.get(&resolved).cloned().unwrap_or(resolved)
     }
 
+    /// why: probe/audit access -- lets an example validate the pet-name
+    /// shape against the inference's own confirmed matches
+    pub fn inferred_pets(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.pet_owner.iter().map(|(p, o)| (p.as_str(), o.as_str()))
+    }
+
     /// why: pets matched so far, surfaced in Overview so the inference is visible not silent
     pub fn pet_owner_count(&self) -> usize {
         self.pet_owner.len()
@@ -3025,7 +3168,15 @@ impl Ingest {
                 }
             }
             Kind::Unproven => {
-                if state == State::Charmed || self.groups.currently_grouped(name, ts) {
+                // why: pet_owner consulted alongside charm/group -- an
+                // inference-matched pet's graph kind never updates (the
+                // match lives in this map), and without this it read
+                // Enemy here despite its rows merging into the owner
+                if state == State::Charmed
+                    || self.pet_owner.contains_key(canonical)
+                    || self.behavioral_pets.contains(canonical)
+                    || self.groups.currently_grouped(name, ts)
+                {
                     Allegiance::Ally
                 } else {
                     Allegiance::Enemy
@@ -4250,6 +4401,107 @@ mod spell_rank_tests {
         r.observe(2000, "Ice Comet", 6); // why: a lower re-observation must not regress it
         assert_eq!(r.rank_of("Ice Comet"), Some(9));
         assert_eq!(r.rank_of("Never Cast"), None);
+    }
+}
+
+#[cfg(test)]
+mod pet_side_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    fn run(lines: &[&str]) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let bytes: Vec<&[u8]> = lines.iter().map(|l| l.as_bytes()).collect();
+        backfill_lines(&mut ing, &engine, &bytes, 1);
+        ing
+    }
+
+    /// why: the reported bug's exact shape -- a groupmate's summoned pet
+    /// (generated name, summon line out of log range) beating on the mob
+    /// read as ENEMY, i.e. "incoming damage" on the meter. Three clean
+    /// enemy-directed hits must graduate it to the ally side.
+    #[test]
+    fn a_no_summon_line_generated_name_pet_graduates_to_ally_after_clean_hits() {
+        let ing = run(&[
+            "[Tue Jul 28 15:02:15 2026] You hit a gnoll for 10 points of damage.",
+            "[Tue Jul 28 15:02:16 2026] Gobarn hits a gnoll for 20 points of damage.",
+            "[Tue Jul 28 15:02:17 2026] Gobarn hits a gnoll for 20 points of damage.",
+            "[Tue Jul 28 15:02:18 2026] Gobarn hits a gnoll for 20 points of damage.",
+        ]);
+        let ts = ing.now_ms();
+        assert!(
+            !ing.allegiance_at("Gobarn", ts).is_enemy(),
+            "three clean enemy-directed hits -- ally side now"
+        );
+        assert_eq!(ing.effective_kind("Gobarn", ts), Kind::Pet);
+    }
+
+    /// why: the discriminator -- a real mob with a colliding name GETS
+    /// attacked by the player's side; that one interaction must blacklist
+    /// it out of the behavioral path forever
+    #[test]
+    fn a_shape_colliding_mob_the_player_attacks_never_graduates() {
+        let ing = run(&[
+            "[Tue Jul 28 15:02:15 2026] You hit Gobarn for 10 points of damage.",
+            "[Tue Jul 28 15:02:16 2026] Gobarn hits a gnoll for 20 points of damage.",
+            "[Tue Jul 28 15:02:17 2026] Gobarn hits a gnoll for 20 points of damage.",
+            "[Tue Jul 28 15:02:18 2026] Gobarn hits a gnoll for 20 points of damage.",
+        ]);
+        let ts = ing.now_ms();
+        assert!(
+            ing.allegiance_at("Gobarn", ts).is_enemy(),
+            "the player hit it first -- it's a mob, blacklisted"
+        );
+    }
+
+    /// why: same rule from the other direction -- a graduated pet that
+    /// lands a hit on the player's side reverts (name reused by a mob,
+    /// or a charm-style flip); the graduation must not be sticky
+    #[test]
+    fn a_graduated_pet_that_hits_you_reverts_to_enemy() {
+        let ing = run(&[
+            "[Tue Jul 28 15:02:16 2026] Gobarn hits a gnoll for 20 points of damage.",
+            "[Tue Jul 28 15:02:17 2026] Gobarn hits a gnoll for 20 points of damage.",
+            "[Tue Jul 28 15:02:18 2026] Gobarn hits a gnoll for 20 points of damage.",
+            "[Tue Jul 28 15:02:19 2026] Gobarn hits YOU for 20 points of damage.",
+        ]);
+        let ts = ing.now_ms();
+        assert!(
+            ing.allegiance_at("Gobarn", ts).is_enemy(),
+            "hit the player -- graduation revoked, blacklisted"
+        );
+    }
+
+    /// why: a Beastlord's warder logs possessive "X`s warder", never
+    /// "X`s pet" -- a real 38k-damage warder sat on the enemy side of
+    /// the meter for exactly this suffix miss
+    #[test]
+    fn a_possessive_warder_is_an_allied_pet() {
+        let ing = run(&[
+            "[Tue Jul 28 15:02:16 2026] Michele`s warder hits a gnoll for 20 points of damage.",
+        ]);
+        let ts = ing.now_ms();
+        assert!(!ing.allegiance_at("Michele`s warder", ts).is_enemy());
+        assert_eq!(ing.effective_kind("Michele`s warder", ts), Kind::Pet);
+    }
+
+    /// why: a bare "<x> pet" is a MOB's own pet and must never enter
+    /// either inference path -- a real "A shin ghoul warrior pet" cast
+    /// Inner Fire inside the summon window and got merged into a
+    /// player's pet before this guard
+    #[test]
+    fn a_bare_mob_pet_never_matches_a_players_summon() {
+        let ing = run(&[
+            "[Tue Jul 28 15:02:15 2026] Rapha summons a frenzied spirit.",
+            "[Tue Jul 28 15:02:16 2026] A shin ghoul warrior pet begins casting Inner Fire.",
+            "[Tue Jul 28 15:02:20 2026] A shin ghoul warrior pet hits YOU for 20 points of damage.",
+        ]);
+        let ts = ing.now_ms();
+        assert!(
+            ing.allegiance_at("A shin ghoul warrior pet", ts).is_enemy(),
+            "bare pet suffix = a mob's own pet, whatever it casts near a summon"
+        );
     }
 }
 
