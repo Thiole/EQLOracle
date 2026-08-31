@@ -10,3 +10,4 @@
 # deliberately-checked-in fixture lives at fixtures/reference-slice.log
 # instead.
 /eqlog_*.txt
+packs.zip
