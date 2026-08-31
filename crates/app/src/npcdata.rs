@@ -204,10 +204,31 @@ pub fn candidate_zones(target: &str) -> Vec<String> {
         return Vec::new();
     }
     let mut candidates: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    // why: who_name FIRST -- the zones pack's own stem<->display bridge.
+    // Containment alone can't span abbreviated stems: "newsebexp" vs
+    // "New Sebilis Expedition" shares no substring either way, and that
+    // zone (reported live) listed zero NPCs. A stem matching a zone's
+    // who_name adopts that zone's display name as a candidate, then the
+    // display name ALSO runs through the containment fold below, since
+    // wiki NPC zone strings sometimes vary from zones.json's own name.
+    let mut folds: Vec<String> = vec![t.clone()];
+    for z in crate::zonedata::zones() {
+        let Some(who) = &z.who_name else { continue };
+        if crate::zonedata::map_shortnames(who)
+            .iter()
+            .any(|s| norm(s) == t)
+        {
+            candidates.insert(z.name.clone());
+            folds.push(norm(&z.name));
+        }
+    }
     for n in npcs() {
         let Some(z) = &n.zone else { continue };
         let nz = norm(z);
-        if !nz.is_empty() && (nz.contains(&t) || t.contains(&nz)) {
+        if nz.is_empty() {
+            continue;
+        }
+        if folds.iter().any(|f| nz.contains(f) || f.contains(&nz)) {
             candidates.insert(z.clone());
         }
     }
@@ -359,5 +380,28 @@ mod location_tests {
         );
         // why: sanity -- every marker is a real NPC name, not an empty row
         assert!(markers.iter().all(|(name, ..)| !name.is_empty()));
+    }
+}
+
+#[cfg(test)]
+mod candidate_zone_tests {
+    use super::*;
+
+    /// why: reported live -- the "newsebexp" map stem shares no
+    /// substring with "New Sebilis Expedition", so the containment-only
+    /// matcher listed zero NPCs for the whole zone; who_name is the
+    /// bridge
+    #[test]
+    fn an_abbreviated_map_stem_resolves_through_who_name() {
+        let c = candidate_zones("newsebexp");
+        assert!(c.iter().any(|z| z == "New Sebilis Expedition"), "got {c:?}");
+    }
+
+    /// why: the plain containment path still stands for stems that ARE
+    /// substrings of their wiki zone name
+    #[test]
+    fn a_plain_stem_still_matches_by_containment() {
+        let c = candidate_zones("blackburrow");
+        assert!(c.iter().any(|z| z == "Blackburrow"), "got {c:?}");
     }
 }
