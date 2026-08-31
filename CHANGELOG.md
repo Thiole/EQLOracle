@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-08-31
+
+### Fight reset model
+
+- Fights now close on a two-tier idle window keyed to whether anything has died: a fight with a kill in it closes 10s after going quiet (what keeps back-to-back pulls separate), a fight with zero kills yet waits 60s — quiet there means mezz, a fled mob, or a med break, not "over". A mezz landing on a fight's own mob also refreshes its clock directly. Measured on a real 5,864-fight log: kills preserved, resets down a quarter, premature splits (same target re-engaged within 2 minutes) down 80%.
+- Copying an aggregate report now excludes closed reset fights from both the numbers and the ally lines, and the pasted title says "resets excluded". Single-fight copies and everything on screen are unchanged.
+
+### Reliability
+
+- One hostile log line can no longer take the app down or brick every view: parse batches are panic-isolated, and a poisoned ingest lock recovers instead of cascading. Verified with a 20,000-line fuzz probe.
+- Settings, preferences, notification settings, and profiles now write atomically — a crash mid-save can no longer silently reset the app to first-launch.
+- A second launch focuses the running window instead of starting a duplicate app (two tail workers, doubled overlays, clobbering preference caches).
+- A failed first status fetch retries instead of leaving a permanently blank window; the loading state is visible.
+- The notification-sound picker is parented to the main window — same behind-the-window Windows dialog fix the folder picker already had.
+
+### Character planner
+
+- Hand-set race and levels persist across launches. A typed level is flagged "set by you" (brass ring and dot) and the launch-time estimator only fills classes you haven't touched; "Estimate levels" is the explicit reset. Stored clobber-proof, outside the Settings round trip.
+
+### UI
+
+- Windows runs frameless with the toolbar as a real title bar: drag region, double-click maximize, min/max/close controls. Linux keeps native decorations (KWin/XWayland drops drag-region moves on undecorated windows).
+- Overlay widgets re-assert always-on-top every 5 seconds on Windows, so a game that raises itself topmost can't permanently bury them.
+- Default theme adopts a rounder look (large corner radii, pill controls), every hairline border is warmed toward the theme's accent instead of neutral grey, panels catch a faint accent rim light along the top edge, and scrollbars/selection/keyboard-focus rings are themed. Reduced-motion OS preference is respected everywhere.
+- New render test matrix walks every module at five window sizes asserting layout and error invariants; it caught and fixed three null-payload crashes (Tradeskill, tracked-skills lists, and the Raiding tab's stuck "Loading…").
+
+### Versioning
+
+- Bumped to 0.8.0 for the public release carrying all of the above. Minor bump per the updater strict-greater-than convention.
+
 ## 2026-08-29
 
 ### Game state: party roster
