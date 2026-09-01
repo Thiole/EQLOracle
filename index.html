@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>EQL Oracle — EverQuest Legends parsing &amp; progression assistant</title>
-<meta name="description" content="Live DPS meter, automatic class detection, Drop Watch alerts, raid and Sky Quest tracking — all local, nothing uploaded." />
+<meta name="description" content="Live combat meter, partial-resist detection, navmesh GPS, class detection, Drop Watch, Sky Quest tracking — all local, nothing uploaded." />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2315171b'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23c9a15a' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23c9a15a'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -45,6 +45,9 @@
   header .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
   .brand { display: flex; align-items: center; gap: 9px; font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 15px; letter-spacing: 0.01em; text-decoration: none; }
   .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 10px var(--primary); flex-shrink: 0; }
+  .nav-links { display: flex; align-items: center; gap: 18px; font-size: 13px; }
+  .nav-links a { color: var(--muted); text-decoration: none; transition: color .15s; }
+  .nav-links a:hover { color: var(--foreground); }
   .gh-link {
     display: inline-flex; align-items: center; gap: 6px;
     font-size: 13px; color: var(--muted); text-decoration: none;
@@ -125,6 +128,48 @@
   .card.wide .icon { margin-bottom: 0; flex-shrink: 0; }
   .card.wide .body h3 { margin-bottom: 4px; }
 
+  /* ---------- compare ---------- */
+  .compare { padding: 90px 0; background: var(--background-alt); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .compare-row {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    margin-bottom: 14px; background: var(--card);
+  }
+  .compare-row .them, .compare-row .us { padding: 18px 22px; font-size: 13.5px; line-height: 1.6; }
+  .compare-row .them { color: var(--muted); border-right: 1px solid var(--border); }
+  .compare-row .us { color: var(--foreground); }
+  .compare-row .tag {
+    display: block; font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .compare-row .them .tag { color: #6b6f77; }
+  .compare-row .us .tag { color: var(--primary); }
+
+  /* ---------- under the hood ---------- */
+  .hood { padding: 100px 0 90px; }
+  .hood-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .hood-block {
+    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 22px 22px;
+  }
+  .hood-block h3 {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600;
+    color: var(--primary); margin: 0 0 10px; letter-spacing: 0.02em;
+  }
+  .hood-block p { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.65; }
+  .hood-block code {
+    font-size: 12px; color: var(--foreground); background: rgba(255,255,255,0.05);
+    padding: 1px 5px; border-radius: 4px;
+  }
+  .pipeline {
+    margin: 0 0 40px; padding: 20px 24px; overflow-x: auto;
+    background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--muted);
+    white-space: nowrap; text-align: center;
+  }
+  .pipeline b { color: var(--foreground); font-weight: 600; }
+  .pipeline .arrow { color: var(--primary); padding: 0 8px; }
+
   /* ---------- footer ---------- */
   footer { border-top: 1px solid var(--border); padding: 30px 0; }
   footer .wrap { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
@@ -135,9 +180,12 @@
 
   @media (max-width: 760px) {
     h1 { font-size: 32px; }
-    .grid { grid-template-columns: 1fr; }
+    .grid, .hood-grid { grid-template-columns: 1fr; }
     .card.wide { flex-direction: column; align-items: flex-start; text-align: left; }
     .hero { padding: 64px 0 48px; }
+    .compare-row { grid-template-columns: 1fr; }
+    .compare-row .them { border-right: none; border-bottom: 1px solid var(--border); }
+    .nav-links { display: none; }
   }
 </style>
 </head>
@@ -149,6 +197,11 @@
       <span class="dot"></span>
       EQL ORACLE
     </a>
+    <nav class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#compare">Why this one</a>
+      <a href="#hood">Under the hood</a>
+    </nav>
     <a class="gh-link" href="https://github.com/Thiole/EQLOracle" target="_blank" rel="noopener">
       <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
       View on GitHub
@@ -161,8 +214,8 @@
     <span class="eyebrow">EverQuest Legends parsing &amp; progression assistant</span>
     <h1>Everything happening in your<br />fight, <span>finally on screen</span>.</h1>
     <p class="sub">
-      A live combat meter, automatic class detection, and drop tracking that reads your log
-      and never phones home. Free, open source, and it runs entirely on your machine.
+      A live combat meter, automatic class detection, real pathfinding, and drop tracking
+      that reads your log and never phones home. Free, open source, runs entirely on your machine.
     </p>
 
     <div class="download-block">
@@ -185,7 +238,7 @@
   </div>
 </section>
 
-<section class="features">
+<section class="features" id="features">
   <div class="wrap">
     <div class="section-head">
       <h2>What it actually does</h2>
@@ -195,8 +248,14 @@
 
       <div class="card">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></div>
-        <h3>Live combat, actually explained</h3>
-        <p>Real-time DPS, per-ability breakdowns, and a fight timeline you can scrub through — not just a final number.</p>
+        <h3>Live combat meter</h3>
+        <p>Damage share, totals, and DPS per ally — each on their own clock, started at their own first action, so a late joiner's number is honest. Adds fold into the engagement instead of splitting it.</p>
+      </div>
+
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+        <h3>Partial-resist detection</h3>
+        <p>Rolling per-spell landing averages catch a spell being shredded within a handful of casts — judged against your recent zones under the same invocation, with a pointer to what's still landing.</p>
       </div>
 
       <div class="card">
@@ -208,13 +267,25 @@
       <div class="card">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6l3-3M12 2 9 5"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M5 10v6a7 7 0 0 0 14 0v-6"/></svg></div>
         <h3>Drop Watch</h3>
-        <p>A heads-up the moment you're fighting something that drops what you're after — then tells you exactly where it landed.</p>
+        <p>A heads-up the moment you're fighting something that drops what you're after — then tells you exactly where it landed. Tier variants fold to the base item automatically.</p>
       </div>
 
       <div class="card">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><path d="m16 8-8.5 8.5"/></svg></div>
-        <h3>Sky Quests &amp; raid progress</h3>
-        <p>Primary Class Unlocks, raid tier completion, and your fastest confirmed clears — read straight off real kills.</p>
+        <h3>Sky Quests &amp; class unlocks</h3>
+        <p>Every remaining quest's materials in one list, demand-aware — an item needed by three quests gets one entry with real remaining count. Updates live as loot hits your bags.</p>
+      </div>
+
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 20-5.5-2.75V4L9 6.75 15 4l5.5 2.75V20L15 17.25 9 20z"/><path d="M9 6.75V20M15 4v13.25"/></svg></div>
+        <h3>Maps with real GPS</h3>
+        <p>Routes computed over the server's own navigation meshes — around geometry, not through it — including hops through teleporter pads and portal rings. Browse a zone's NPCs, click one, path to it.</p>
+      </div>
+
+      <div class="card">
+        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/></svg></div>
+        <h3>Character, gear &amp; planner</h3>
+        <p>Level estimates, AA history, gear recommendations that understand tiers and exalts, and a planner that keeps your own edits marked and persistent.</p>
       </div>
 
       <div class="card">
@@ -226,7 +297,7 @@
       <div class="card">
         <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
         <h3>An overlay that stays out of the way</h3>
-        <p>Click-through, per-widget opacity, own window per panel — up when you need it, invisible when you don't.</p>
+        <p>DPS meter, skill cooldowns, target effects, CC status, drop alerts — each its own click-through window with its own opacity, re-asserting itself over borderless fullscreen.</p>
       </div>
 
       <div class="card wide">
@@ -235,6 +306,93 @@
           <h3>Runs on your machine, full stop</h3>
           <p>No account, no server, no telemetry. It reads a text file on disk and shows you what's in it — that's the whole trust model.</p>
         </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="compare" id="compare">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Why this one</h2>
+      <p>The usual way, and the way it works here.</p>
+    </div>
+
+    <div class="compare-row">
+      <div class="them"><span class="tag">The usual way</span>One raid-long clock for everyone — join the fight late and your DPS is diluted by minutes you weren't there.</div>
+      <div class="us"><span class="tag">EQL Oracle</span>Every ally gets their own clock, started at their own first action. The number next to your name is what you actually did with the time you actually had.</div>
+    </div>
+
+    <div class="compare-row">
+      <div class="them"><span class="tag">The usual way</span>A pet dying, or an add going down, gets counted as a boss kill. Reset fights double-count deaths.</div>
+      <div class="us"><span class="tag">EQL Oracle</span>A kill means the actual target died. Pet deaths are kill-inert, and a fight that resets and re-engages merges back into one — kill counts and clear times you can trust.</div>
+    </div>
+
+    <div class="compare-row">
+      <div class="them"><span class="tag">The usual way</span>You notice your nukes are being shredded three fights too late, staring at a total.</div>
+      <div class="us"><span class="tag">EQL Oracle</span>The overlay flags a spell landing well under its usual within a handful of casts — measured against the same invocation, so a stance switch is never a false alarm.</div>
+    </div>
+
+    <div class="compare-row">
+      <div class="them"><span class="tag">The usual way</span>A line drawn from A to B, straight through a mountain.</div>
+      <div class="us"><span class="tag">EQL Oracle</span>Routes walk the server's actual navigation mesh, hug the ground, and hop through teleporters — the path shown is the path you can run.</div>
+    </div>
+
+    <div class="compare-row">
+      <div class="them"><span class="tag">The usual way</span>Pick your class from a dropdown. Again. On every alt.</div>
+      <div class="us"><span class="tag">EQL Oracle</span>Your class and loadout are inferred from what you cast, and follow you when they change mid-session.</div>
+    </div>
+
+    <div class="compare-row">
+      <div class="them"><span class="tag">The usual way</span>The meter updates every few seconds, comfortably behind the fight.</div>
+      <div class="us"><span class="tag">EQL Oracle</span>The log is polled every 100&nbsp;ms. What's on the overlay is what just happened.</div>
+    </div>
+
+  </div>
+</section>
+
+<section class="hood" id="hood">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Under the hood</h2>
+      <p>The short version. The long version is in the repo.</p>
+    </div>
+
+    <div class="pipeline">
+      <b>eqlog_*.txt</b><span class="arrow">→</span>tail @ 100ms<span class="arrow">→</span>frame<span class="arrow">→</span>classify<span class="arrow">→</span><b>typed action</b><span class="arrow">→</span>ingest<span class="arrow">→</span><b>columnar store</b><span class="arrow">→</span>query<span class="arrow">→</span>UI
+    </div>
+
+    <div class="hood-grid">
+
+      <div class="hood-block">
+        <h3>tail</h3>
+        <p>The newest <code>eqlog_*.txt</code> is polled every 100&nbsp;ms by byte offset and file identity. Rotation, truncation, and replacement are all handled; the log is only ever opened read-only.</p>
+      </div>
+
+      <div class="hood-block">
+        <h3>classify</h3>
+        <p>Two stages: a single multi-pattern anchor pass narrows each line to candidate rules, then per-rule regex extracts fields. The result is one of ~160 typed actions — every line accounted for, matched or not.</p>
+      </div>
+
+      <div class="hood-block">
+        <h3>store</h3>
+        <p>Append-only columnar event store with interned names; encounters are row ranges over it, not copies. A full multi-month raid log replays in seconds inside a few hundred MB.</p>
+      </div>
+
+      <div class="hood-block">
+        <h3>encounters</h3>
+        <p>A streaming fight graph decides boundaries: idle windows close fights, mezz keeps them alive, resets link to re-engagements, and a corpse from a merged pull is folded into its keeper. Kill and reset are distinct outcomes, never guessed.</p>
+      </div>
+
+      <div class="hood-block">
+        <h3>replay</h3>
+        <p>Deterministic: the same log always produces the same state. History backfills in parallel across cores, then live lines apply in order — restart the app and it rebuilds everything from the file alone.</p>
+      </div>
+
+      <div class="hood-block">
+        <h3>privacy</h3>
+        <p>No account, no telemetry, no upload. The only network calls are checking for app updates and fetching public map data — your log never leaves the machine.</p>
       </div>
 
     </div>
