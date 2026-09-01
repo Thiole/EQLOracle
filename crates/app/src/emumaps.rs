@@ -66,6 +66,9 @@ pub struct ZoneNav {
     pub polys: Vec<NavPoly>,
     /// why: applied links, indexed by NavEdge::link
     pub links: Vec<ZoneLink>,
+    /// why: swim zone -- routes chain verified centers, never funnel-
+    /// smoothed (a smoothed corner is a line nobody line-of-sight checked)
+    pub swim: bool,
 }
 
 /// why: what a route is made of -- walk legs on the mesh, hop legs
@@ -480,6 +483,7 @@ pub fn parse_nav(data: &[u8]) -> Option<ZoneNav> {
     (!polys.is_empty()).then_some(ZoneNav {
         polys,
         links: Vec::new(),
+        swim: false,
     })
 }
 
@@ -626,6 +630,24 @@ impl ZoneGeo {
             }
         }
         true
+    }
+}
+
+impl ZoneGeo {
+    /// why: probe-only strict audit -- every triangle, no grid, so a
+    /// route can be checked by a method independent of los_clear's own
+    /// cell sampling. Slow on purpose; never call from routing.
+    pub fn segment_hits_any_tri(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        let dir = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        self.tris.iter().any(|&[i, j, k]| {
+            seg_hits_tri(
+                a,
+                dir,
+                self.verts[i as usize],
+                self.verts[j as usize],
+                self.verts[k as usize],
+            )
+        })
     }
 }
 
@@ -986,6 +1008,29 @@ impl ZoneNav {
         }
     }
 
+    /// why: nearest by the same weighting, but the first one with a
+    /// clear line from `p` (bounded scan); falls back to plain nearest
+    fn nearest_poly_los(&self, p: [f32; 3], geo: &ZoneGeo) -> Option<u32> {
+        const TRIES: usize = 300;
+        let mut order: Vec<(f32, u32)> = self
+            .polys
+            .iter()
+            .enumerate()
+            .map(|(i, poly)| (weighted(poly.center, p), i as u32))
+            .collect();
+        order.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        order
+            .iter()
+            .take(TRIES)
+            .map(|&(_, i)| i)
+            .find(|&i| {
+                let mut c = self.polys[i as usize].center;
+                c[2] += 2.0;
+                geo.los_clear(p, c)
+            })
+            .or_else(|| order.first().map(|&(_, i)| i))
+    }
+
     fn nearest_poly(&self, p: [f32; 3]) -> Option<u32> {
         self.polys
             .iter()
@@ -1014,8 +1059,17 @@ impl ZoneNav {
         /// why: not literally 0.0 -- a tiny positive cost keeps A*
         /// admissible-ish and route lengths finite under link cycles
         const LINK_COST: f32 = 1.0;
-        let start = self.nearest_poly(from)?;
-        let goal = self.nearest_poly(to)?;
+        // why: swim zones bind each endpoint to the nearest poly/node it
+        // can actually see -- the plain nearest may sit behind a wall,
+        // and that first/last leg is never otherwise checked
+        let bind = |p: [f32; 3]| -> Option<u32> {
+            match (self.swim, geo) {
+                (true, Some(g)) => self.nearest_poly_los(p, g),
+                _ => self.nearest_poly(p),
+            }
+        };
+        let start = bind(from)?;
+        let goal = bind(to)?;
         if start == goal {
             return Some(vec![NavLeg::Walk(ground_hug(vec![from, to], geo))]);
         }
@@ -1079,6 +1133,30 @@ impl ZoneNav {
         let mut legs: Vec<NavLeg> = Vec::new();
         let mut seg_start = from;
         let mut portals: Vec<([f32; 3], [f32; 3])> = Vec::new();
+        // why: swim zones keep the center chain -- every consecutive
+        // pair is either mesh-adjacent (convex polys: the center-to-
+        // center line crosses their shared edge) or a line-of-sight
+        // verified swim hop; funnel smoothing would invent unverified
+        // straight lines through walls (reported: "straight through
+        // the walls on Kedge")
+        let mut chain_pts: Vec<[f32; 3]> = vec![from];
+        let swim = self.swim;
+        let close_leg = |seg_start: [f32; 3],
+                         end: [f32; 3],
+                         portals: &[([f32; 3], [f32; 3])],
+                         chain_pts: &mut Vec<[f32; 3]>|
+         -> Vec<[f32; 3]> {
+            if swim {
+                let mut pts = std::mem::take(chain_pts);
+                if pts.last() != Some(&end) {
+                    pts.push(end);
+                }
+                pts.dedup();
+                pts
+            } else {
+                ground_hug(funnel(seg_start, end, portals), geo)
+            }
+        };
         // why: portal orientation needs the travel direction, so track
         // which poly each edge leaves from as the chain walks
         let mut cur_poly = start;
@@ -1086,9 +1164,11 @@ impl ZoneNav {
             if let Some(li) = e.link {
                 let l = &self.links[li as usize];
                 // close the walk leg AT the pad, then the hop itself
-                legs.push(NavLeg::Walk(ground_hug(
-                    funnel(seg_start, l.from, &portals),
-                    geo,
+                legs.push(NavLeg::Walk(close_leg(
+                    seg_start,
+                    l.from,
+                    &portals,
+                    &mut chain_pts,
                 )));
                 portals.clear();
                 legs.push(NavLeg::Hop {
@@ -1097,6 +1177,7 @@ impl ZoneNav {
                     label: l.label.clone(),
                 });
                 seg_start = l.to;
+                chain_pts.push(l.to);
             } else {
                 portals.push(orient_portal(
                     e.a,
@@ -1104,12 +1185,22 @@ impl ZoneNav {
                     self.polys[cur_poly as usize].center,
                     self.polys[e.to as usize].center,
                 ));
+                // why: swim -- a floor poly's center lies ON the floor, so
+                // a straight line between two of them dips through any
+                // sag between; a small lift keeps the swim above it
+                let mut c = self.polys[e.to as usize].center;
+                if swim && self.polys[e.to as usize].verts.len() > 1 {
+                    c[2] += 2.0;
+                }
+                chain_pts.push(c);
             }
             cur_poly = e.to;
         }
-        legs.push(NavLeg::Walk(ground_hug(
-            funnel(seg_start, to, &portals),
-            geo,
+        legs.push(NavLeg::Walk(close_leg(
+            seg_start,
+            to,
+            &portals,
+            &mut chain_pts,
         )));
         Some(legs)
     }
@@ -1311,6 +1402,7 @@ pub fn load_nav(app_data: &Path, zone: &str) -> Option<Arc<ZoneNav>> {
             nav.apply_links(zone_links(zone));
             // why: swim zones need open water as edges -- see bridge_gaps
             if is_underwater(zone) {
+                nav.swim = true;
                 if let Some(geo) = load_geo(app_data, zone) {
                     nav.bridge_gaps(&geo);
                 }

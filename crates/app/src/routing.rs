@@ -132,7 +132,11 @@ fn walk_graph() -> &'static HashMap<String, Vec<Edge>> {
 /// capability. A teleport isn't zone-gated in this game -- castable from
 /// anywhere, landing at a fixed spot -- so it's an edge from every zone
 /// to the landing zone. Rebuilt per query, cheap enough not to cache.
-fn zone_graph_for(player_classes: &[String], player_level: u8) -> HashMap<String, Vec<Edge>> {
+fn zone_graph_for(
+    player_classes: &[String],
+    player_level: u8,
+    known_spells: Option<&HashSet<String>>,
+) -> HashMap<String, Vec<Edge>> {
     let mut g = walk_graph().clone();
     for (spell, landing) in teleportdata::all_landings() {
         let class_name = landing.class.as_str();
@@ -144,6 +148,15 @@ fn zone_graph_for(player_classes: &[String], player_level: u8) -> HashMap<String
         }
         if player_level < landing.level {
             continue;
+        }
+        // why: the spellbook is the real gate once it's known -- a spell
+        // never scribed or memorized in this log can't be cast, and the
+        // wiki lists live-EQ ports EQL doesn't have (Common Portal:
+        // labeled Classic Era, never cast in a month of wizard logs)
+        if let Some(known) = known_spells {
+            if !known.contains(&spell.to_ascii_lowercase()) {
+                continue;
+            }
         }
         let Some(dest) = resolve_zone_name(&landing.zone) else {
             continue;
@@ -491,13 +504,37 @@ pub fn find_zone_route(
     player_level: u8,
     known_start: Option<(f32, f32, f32)>,
 ) -> Option<ZoneRoute> {
+    find_zone_route_known(
+        base_dir,
+        from_zone,
+        to_zone,
+        player_classes,
+        player_level,
+        known_start,
+        None,
+    )
+}
+
+/// why: same search, teleport edges further gated by the spells this
+/// log has actually confirmed known (lowercased); None = no spellbook
+/// evidence yet, class+level only
+#[allow(clippy::too_many_arguments)]
+pub fn find_zone_route_known(
+    base_dir: &Path,
+    from_zone: &str,
+    to_zone: &str,
+    player_classes: &[String],
+    player_level: u8,
+    known_start: Option<(f32, f32, f32)>,
+    known_spells: Option<&HashSet<String>>,
+) -> Option<ZoneRoute> {
     if from_zone == to_zone {
         return Some(ZoneRoute {
             hops: Vec::new(),
             total_distance: 0.0,
         });
     }
-    let graph = zone_graph_for(player_classes, player_level);
+    let graph = zone_graph_for(player_classes, player_level, known_spells);
     if !graph.contains_key(from_zone) || !graph.contains_key(to_zone) {
         return None;
     }
@@ -711,7 +748,7 @@ mod tests {
     /// when the player can actually cast it -- teleports model as "from every zone"
     #[test]
     fn a_real_teleport_spell_is_reachable_when_the_player_can_cast_it() {
-        let graph = zone_graph_for(&["Wizard".to_string()], 99);
+        let graph = zone_graph_for(&["Wizard".to_string()], 99, None);
         let edges = &graph["Ak'Anon"];
         assert!(
             edges
@@ -725,17 +762,17 @@ mod tests {
     /// why: gating actually gates -- level-1 Wizard and any-level Warrior both excluded
     #[test]
     fn teleport_edges_are_excluded_when_the_player_cannot_cast_them() {
-        let too_low_level = zone_graph_for(&["Wizard".to_string()], 1);
+        let too_low_level = zone_graph_for(&["Wizard".to_string()], 1, None);
         assert!(!too_low_level["Ak'Anon"]
             .iter()
             .any(|e| matches!(&e.kind, EdgeKind::Teleport(s) if s == "North Karana Gate")));
 
-        let wrong_class = zone_graph_for(&["Warrior".to_string()], 99);
+        let wrong_class = zone_graph_for(&["Warrior".to_string()], 99, None);
         assert!(!wrong_class["Ak'Anon"]
             .iter()
             .any(|e| matches!(&e.kind, EdgeKind::Teleport(s) if s == "North Karana Gate")));
 
-        let no_classes_known = zone_graph_for(&[], 0);
+        let no_classes_known = zone_graph_for(&[], 0, None);
         assert!(no_classes_known["Ak'Anon"]
             .iter()
             .all(|e| matches!(e.kind, EdgeKind::Walk)));

@@ -1547,18 +1547,11 @@ pub async fn find_walk_path(
     // maps can't; disk-cache-only (ensure_emu_zone owns the download)
     if let Ok(app_data) = app.path().app_data_dir() {
         if let Some(nav) = emumaps::load_nav(&app_data, &zone) {
-            // why: geo (collision mesh) makes walk legs hug the ground
-            // instead of cutting straight through hills -- see
-            // emumaps::ground_hug's own doc; None just keeps corner z.
-            // Underwater zones swim mid-water: hugging the floor there
-            // would drag every swim leg to the bottom, so no hug.
+            // why: geo (collision mesh) hugs walk legs to the ground --
+            // see emumaps::ground_hug; a swim zone uses it for line-of-
+            // sight endpoint binding instead (find_route decides)
             let geo = emumaps::load_geo(&app_data, &zone);
-            let hug = if emumaps::is_underwater(&zone) {
-                None
-            } else {
-                geo.as_deref()
-            };
-            if let Some(route) = nav.find_route(from, to, hug) {
+            if let Some(route) = nav.find_route(from, to, geo.as_deref()) {
                 let mut waypoints: Vec<[f32; 3]> = Vec::new();
                 let legs: Vec<PathLegDto> = route
                     .iter()
@@ -1758,9 +1751,17 @@ pub fn find_zone_route(
             .base_dir
             .clone()
     };
-    let (player_classes, player_level, known_start) = {
+    let (player_classes, player_level, known_start, known_spells) = {
         let ing = state.ingest.lock_recover();
         let dto = combat::class_configurations(&ing, "You");
+        // why: lowercased for the routing gate; None until the log has
+        // confirmed a single spell known, so a fresh log keeps routing
+        let known: std::collections::HashSet<String> = ing
+            .spellbook
+            .known()
+            .map(|(n, _)| n.to_ascii_lowercase())
+            .collect();
+        let known_spells = (!known.is_empty()).then_some(known);
         let (live_classes, level) = dto
             .configurations
             .first()
@@ -1797,15 +1798,17 @@ pub fn find_zone_route(
             player_classes,
             level,
             live_start_position(&ing, &base_dir, &from_zone),
+            known_spells,
         )
     };
-    routing::find_zone_route(
+    routing::find_zone_route_known(
         &base_dir,
         &from_zone,
         &to_zone,
         &player_classes,
         player_level,
         known_start,
+        known_spells.as_ref(),
     )
     .map(ZoneRouteDto::from)
     .ok_or_else(|| format!("no route found from {from_zone} to {to_zone}"))

@@ -25,6 +25,7 @@ fn main() {
         n.apply_links(emumaps::zone_links(zone));
         // mirror load_nav: swim-bridge underwater zones
         if emumaps::is_underwater(zone) {
+            n.swim = true;
             n.bridge_gaps(&geo);
         }
         n
@@ -94,6 +95,18 @@ fn main() {
             }
         }
     }
+    // strict 3D audit: brute-force every collision triangle per segment
+    let mut hits_3d = 0;
+    for (i, w) in flat.windows(2).enumerate() {
+        if geo.segment_hits_any_tri(w[0], w[1]) {
+            hits_3d += 1;
+            println!("  HIT seg {i}/{}: {:?} -> {:?}", flat.len() - 1, w[0], w[1]);
+        }
+    }
+    println!(
+        "3D collision audit: {hits_3d} of {} segments intersect the collision mesh",
+        flat.len().saturating_sub(1)
+    );
     let xs: Vec<f32> = flat.iter().map(|p| p[0]).collect();
     let ys: Vec<f32> = flat.iter().map(|p| p[1]).collect();
     let len: f32 = flat
