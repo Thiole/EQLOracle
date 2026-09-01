@@ -198,7 +198,7 @@ fn build_item_loot_index(ing: &Ingest) -> HashMap<String, (u64, bool, u64)> {
     out
 }
 
-fn resolve_item(
+pub(crate) fn resolve_item(
     ing: &Ingest,
     name: &str,
     source: Option<&str>,
@@ -234,14 +234,14 @@ fn resolve_item(
 }
 
 /// why: everything both tabs need, built once and shared, not per-tab
-struct Context {
-    looted: HashMap<String, (u64, bool, u64)>,
-    owned_ci: Option<HashMap<String, u32>>,
-    achievements: Option<crate::achievements::Achievements>,
+pub(crate) struct Context {
+    pub(crate) looted: HashMap<String, (u64, bool, u64)>,
+    pub(crate) owned_ci: Option<HashMap<String, u32>>,
+    pub(crate) achievements: Option<crate::achievements::Achievements>,
 }
 
 /// why: None base_dir or no dump found both leave fields None (unknown), not guessed false
-fn build_context(ing: &Ingest, base_dir: Option<&Path>) -> Context {
+pub(crate) fn build_context(ing: &Ingest, base_dir: Option<&Path>) -> Context {
     let looted = build_item_loot_index(ing);
     let owned_ci: Option<HashMap<String, u32>> = base_dir
         .and_then(inventory::find_existing_dump)

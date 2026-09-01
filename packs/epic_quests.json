@@ -1,0 +1,1502 @@
+{
+ "source": "https://eqlwiki.com/Class_Epic_Quest_List",
+ "note": "Farmable loot-drop materials per class epic (loot-lines from each page's checklist). NPC-handed intermediates excluded on purpose: they need the era's quest NPCs and can't be pre-farmed.",
+ "classes": [
+  {
+   "class": "Bard",
+   "page": "Bard Epic Quest",
+   "start_zone": "Dreadlands",
+   "quest_giver": "Baldric Slezaf",
+   "recommended_level": "46+",
+   "final_reward": "Singing Short Sword",
+   "rewards": [
+    "Singing Short Sword"
+   ],
+   "items": [
+    {
+     "item": "Onyx Drake Gut",
+     "mobs": [
+      "Blackwing"
+     ],
+     "zone": "Rathe Mountains",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Red Wurm Gut",
+     "mobs": [
+      "Nezekezena",
+      "Phurzikon"
+     ],
+     "zone": "Burning Woods",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Chromodrac Gut",
+     "mobs": [
+      "Eldrig the Old"
+     ],
+     "zone": "Skyfire Mountains",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Alluring Horn",
+     "mobs": [
+      "Quag Maelstrom"
+     ],
+     "zone": "Ocean of Tears",
+     "qty": 1,
+     "optional": true,
+     "source": null
+    },
+    {
+     "item": "Kedge Backbone",
+     "mobs": [
+      "Phinigel Autropos"
+     ],
+     "zone": "Kedge Keep",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Amygdalan Tendril",
+     "mobs": [
+      "Amygdalan warrior"
+     ],
+     "zone": "Plane of Fear",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Petrified Werewolf Skull",
+     "mobs": [
+      "Drolvarg Warlord"
+     ],
+     "zone": "Karnor's Castle",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Red Dragon Scales",
+     "mobs": [
+      "Lord Nagafen",
+      "Zordakalicus Ragefire",
+      "Talendor",
+      "Nortlav the Scalekeeper"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "White Dragon Scales",
+     "mobs": [
+      "Lady Vox",
+      "Gorenaire"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Undead Dragongut Strings",
+     "mobs": [
+      "An Undead Bard",
+      "Mystical Lute Body",
+      "An Undead Bard",
+      "Trakanon (triggered)",
+      "Trakanon (triggered)",
+      "Trakanon"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Maligar's Head",
+     "mobs": [
+      "Maligar's Enraged Doppleganger"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Berserker",
+   "page": "Berserker Epic Quest",
+   "start_zone": "Lake of Ill Omen",
+   "quest_giver": "Keras McArik",
+   "recommended_level": "46+",
+   "final_reward": "Kerasian Axe of Ire",
+   "rewards": [],
+   "items": []
+  },
+  {
+   "class": "Cleric",
+   "page": "Cleric Epic Quest",
+   "start_zone": "Lake Rathetear",
+   "quest_giver": "Shmendrik Lavawalker",
+   "recommended_level": "46+",
+   "final_reward": "Water Sprinkler of Nem Ankh",
+   "rewards": [
+    "Water Sprinkler of Nem Ankh"
+   ],
+   "items": [
+    {
+     "item": "Lord Bergurgle's Crown",
+     "mobs": [],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Damaged Goblin Crown",
+     "mobs": [],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Blood Soaked Plasmatic Priest Robe",
+     "mobs": [
+      "A Plasmatic Priest",
+      "a plasmatic priest"
+     ],
+     "zone": "The Temple of Solusek Ro",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Lord Gimblox's Signet Ring",
+     "mobs": [
+      "Solusek's Eye",
+      "Lord Gimblox"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Sceptre of Ixiblat Fer",
+     "mobs": [],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Singed Scroll",
+     "mobs": [
+      "Overking Bathezid"
+     ],
+     "zone": "Chardok",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Heart of Zordak Ragefire",
+     "mobs": [
+      "Shimmering Pearl*",
+      "Zordak Ragefire",
+      "Zordakalicus Ragefire"
+     ],
+     "zone": "Nagafen's Lair",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Druid",
+   "page": "Druid Epic Quest",
+   "start_zone": "Burning Woods",
+   "quest_giver": null,
+   "recommended_level": "46+",
+   "final_reward": "Nature Walkers Scimitar",
+   "rewards": [
+    "Elaborate Scimitar",
+    "Nature Walkers Scimitar"
+   ],
+   "items": [
+    {
+     "item": "Fleshbound Tome",
+     "mobs": [
+      "Dark Elf Corruptor"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Jade Reaver",
+     "mobs": [
+      "a black reaver"
+     ],
+     "zone": "City of Mist",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Pulsing Green Stone",
+     "mobs": [
+      "Venril Sathir"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Chunk of Tundra",
+     "mobs": [
+      "corrupted wooly mammoth"
+     ],
+     "zone": "Everfrost Peaks",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Clean Lakewater",
+     "mobs": [
+      "corrupted shaman"
+     ],
+     "zone": "Lake Rathetear",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Ancient Rock",
+     "mobs": [
+      "corrupted hill giant",
+      "tainted hill giant"
+     ],
+     "zone": "Rathe Mountains",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Kedge Cave Crystals",
+     "mobs": [
+      "Corrupted Seahorse"
+     ],
+     "zone": "Kedge Keep",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Ocean of Tears Seavines",
+     "mobs": [
+      "Corrupted seafury cyclops"
+     ],
+     "zone": "Ocean of Tears",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Green Heartwood Branch",
+     "mobs": [
+      "Corrupted brownie"
+     ],
+     "zone": "Lesser Faydark",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Froglok Essence",
+     "mobs": [
+      "Ulump Pujluk"
+     ],
+     "zone": "Swamp of No Hope",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Green Tree Bark",
+     "mobs": [
+      "Corrupted Gorilla"
+     ],
+     "zone": "Emerald Jungle",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Pure Lakewater",
+     "mobs": [
+      "Corrupted barracuda"
+     ],
+     "zone": "Lake of Ill Omen",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Pod of Seawater",
+     "mobs": [
+      "Faydedar"
+     ],
+     "zone": "Timorous Deep",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Enchanter",
+   "page": "Enchanter Epic Quest",
+   "start_zone": "Erudin",
+   "quest_giver": "Stofo Olan",
+   "recommended_level": "46+",
+   "final_reward": "Staff of the Serpent",
+   "rewards": [
+    "Chalice of Kings",
+    "Staff of the Serpent"
+   ],
+   "items": [
+    {
+     "item": "Empty Ink Vial",
+     "mobs": [
+      "Reania Jukle"
+     ],
+     "zone": "Qeynos Catacombs",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Shining Metallic Robes",
+     "mobs": [
+      "the ghoul arch magus"
+     ],
+     "zone": "Lower Guk",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "White Paper",
+     "mobs": [
+      "Quill",
+      "Piece of Parchment",
+      "Chrislin Baker",
+      "Thrackin Griften",
+      "Thrackin Griften"
+     ],
+     "zone": "Western Karana",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Xolion Rod",
+     "mobs": [
+      "Vessel Drozlin"
+     ],
+     "zone": "Cabilis",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Innoruuk's Word",
+     "mobs": [
+      "Verina Tomb"
+     ],
+     "zone": "Neriak",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Head of a Prince",
+     "mobs": [
+      "Prince Selrach Di'zok"
+     ],
+     "zone": "Chardok",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Head of the Serpent",
+     "mobs": [
+      "Wraith of a Shissir",
+      "Plane of Fear"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Essence of a Ghost",
+     "mobs": [
+      "the Ghost of Kindle"
+     ],
+     "zone": "The Hole",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Essence of a Vampire",
+     "mobs": [
+      "a forsaken revenant",
+      "Plane of Hate"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Sands of the Mystics",
+     "mobs": [
+      "The Tangrin",
+      "Field of Bone"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Magician",
+   "page": "Magician Epic Quest",
+   "start_zone": "Lake Rathetear",
+   "quest_giver": "Rykas",
+   "recommended_level": "46+",
+   "final_reward": "Orb of Mastery",
+   "rewards": [
+    "Orb of Mastery"
+   ],
+   "items": [
+    {
+     "item": "Torn Page of Magi`kot pg. 1",
+     "mobs": [
+      "enraged dread wolf"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Torn Page of Magi`kot pg. 2",
+     "mobs": [
+      "a tentacle terror (Unrest)",
+      "Unrest"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Torn Page of Magi`kot pg. 3",
+     "mobs": [
+      "a bloodthirsty ghoul"
+     ],
+     "zone": "Lower Guk",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Power of Wind",
+     "mobs": [
+      "a gypsy dancer"
+     ],
+     "zone": "Mistmoore",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Power of Fire",
+     "mobs": [
+      "Lava elemental",
+      "Blazing Elemental"
+     ],
+     "zone": "Solusek's Eye",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Power of Water",
+     "mobs": [
+      "famished ravener",
+      "Hungered Ravener",
+      "Gorged Ravener"
+     ],
+     "zone": "Kaesora",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Power of Earth",
+     "mobs": [
+      "A Fairy Guard",
+      "a faerie guard"
+     ],
+     "zone": "Lesser Faydark",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Torch of the Elements",
+     "mobs": [
+      "Neh'Ashiir"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Blazing Wand",
+     "mobs": [
+      "Undertow"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Staff of Elemental Mastery: Earth",
+     "mobs": [
+      "Magi P`Tasa",
+      "Plane of Hate"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Dirt of Underfoot",
+     "mobs": [
+      "Slixin Klex",
+      "Burning Wood"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Staff of Elemental Mastery: Water",
+     "mobs": [
+      "Phinigel Autropos"
+     ],
+     "zone": "Kedge Keep",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Tears of Erollisi",
+     "mobs": [
+      "Captain Rottgrime"
+     ],
+     "zone": "The Overthere",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Rain of Karana",
+     "mobs": [
+      "Tarbul Earthstrider"
+     ],
+     "zone": "East Karana",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Crown of Elemental Mastery",
+     "mobs": [
+      "Plane of Sky"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Elemental Binder",
+     "mobs": [],
+     "zone": "the Hole",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Pegasus Feather Cloak",
+     "mobs": [
+      "Quillmane"
+     ],
+     "zone": "South Karana",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Monk",
+   "page": "Monk Epic Quest",
+   "start_zone": "Erudin",
+   "quest_giver": "Tomekeeper Danl",
+   "recommended_level": "46+",
+   "final_reward": "Celestial Fists",
+   "rewards": [
+    "Robe of the Lost Circle",
+    "Robe of the Whistling Fists",
+    "Celestial Fists"
+   ],
+   "items": [
+    {
+     "item": "Robe of the Lost Circle",
+     "mobs": [
+      "Brother Zephyl",
+      "Brother Qwinn"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "A Metal Pipe",
+     "mobs": [
+      "an iksar betrayer",
+      "a drolvarg pawbuster"
+     ],
+     "zone": "Chardok",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Charred Scale",
+     "mobs": [
+      "a fire sprite",
+      "Eejag"
+     ],
+     "zone": "Lavastorm Mountains",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Breath of Gwan",
+     "mobs": [
+      "a presence",
+      "Gwan"
+     ],
+     "zone": "Plane of Sky",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Trunt's Head",
+     "mobs": [
+      "Breath of Gwan",
+      "a sleeping ogre",
+      "Trunt"
+     ],
+     "zone": "Mines of Nurga",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Demon Fangs",
+     "mobs": [
+      "Lake of Ill Omen",
+      "Astral Projection (LOIO)",
+      "Eye of Kaiaren",
+      "Vorash",
+      "Deep",
+      "Vorash"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Necromancer",
+   "page": "Necromancer Epic Quest",
+   "start_zone": "Nektulos Forest",
+   "quest_giver": "Venenzi Oberzendi",
+   "recommended_level": "46+",
+   "final_reward": "Scythe of the Shadowed Soul",
+   "rewards": [
+    "Twisted Bone Earring",
+    "Apprentice Ring",
+    "Scythe of the Shadowed Soul"
+   ],
+   "items": [
+    {
+     "item": "Flowing Black Robe",
+     "mobs": [
+      "Najena (NPC)"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Manisi Herb",
+     "mobs": [
+      "Grand Herbalist Mak`ha",
+      "Royal Sarnak Herbalist"
+     ],
+     "zone": "Chardok",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Silver Disc",
+     "mobs": [
+      "An azarack"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Spiroc Feathers",
+     "mobs": [
+      "A gorgalask"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Black Silk Cape",
+     "mobs": [
+      "Keeper of Souls"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Eye of Innoruuk",
+     "mobs": [
+      "Innoruuk (God)",
+      "Lord of Ire",
+      "Lord of Loathing",
+      "Master of Spite"
+     ],
+     "zone": "Plane of Hate",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Slime Blood of Cazic Thule",
+     "mobs": [
+      "Cazic Thule (God)",
+      "Fright",
+      "Dread",
+      "Terror"
+     ],
+     "zone": "Plane of Fear",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Paladin",
+   "page": "Paladin Epic Quest",
+   "start_zone": "Plane of Fear",
+   "quest_giver": "Irak Altil",
+   "recommended_level": "46+",
+   "final_reward": "Fiery Defender",
+   "rewards": [
+    "Fiery Defender"
+   ],
+   "items": [
+    {
+     "item": "Tainted Darksteel Breastplate",
+     "mobs": [
+      "thought destroyer"
+     ],
+     "zone": "Plane of Hate",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Tainted Darksteel Sword",
+     "mobs": [
+      "Keeper of the Tombs"
+     ],
+     "zone": "Hole",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Tainted Darksteel Shield",
+     "mobs": [
+      "Kirak Vil"
+     ],
+     "zone": "Nektulous Forest",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Ranger",
+   "page": "Ranger Epic Quest",
+   "start_zone": "Burning Woods",
+   "quest_giver": "Telin Darkforest",
+   "recommended_level": "46+",
+   "final_reward": "Swiftwind",
+   "rewards": [
+    "Swiftwind",
+    "Earthcaller"
+   ],
+   "items": [
+    {
+     "item": "Rose of Firiona",
+     "mobs": [],
+     "zone": "Firiona Vie",
+     "qty": 1,
+     "optional": false,
+     "source": "forage"
+    },
+    {
+     "item": "Chilled Tundra Root",
+     "mobs": [],
+     "zone": "Everfrost",
+     "qty": 1,
+     "optional": false,
+     "source": "forage"
+    },
+    {
+     "item": "Ripened Heartfruit",
+     "mobs": [],
+     "zone": "Greater Faydark",
+     "qty": 1,
+     "optional": false,
+     "source": "forage"
+    },
+    {
+     "item": "Speckled Molded Mushroom",
+     "mobs": [],
+     "zone": "Innothule Swamp",
+     "qty": 1,
+     "optional": false,
+     "source": "forage"
+    },
+    {
+     "item": "Sweetened Mudroot",
+     "mobs": [],
+     "zone": "Misty Thicket",
+     "qty": 1,
+     "optional": false,
+     "source": "forage"
+    },
+    {
+     "item": "Shattered Emerald of Corruption",
+     "mobs": [
+      "Plane of Hate",
+      "Innoruuk"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Fleshbound Tome",
+     "mobs": [
+      "Dark Elf Corruptor",
+      "Dark Elf Reaver"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Jade Reaver",
+     "mobs": [
+      "a black reaver"
+     ],
+     "zone": "City of Mist",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Pulsing Green Stone",
+     "mobs": [
+      "Venril Sathir"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Swirling Sphere of Color",
+     "mobs": [
+      "an essence tamer"
+     ],
+     "zone": "Plane of Sky",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Soulbound Hammer",
+     "mobs": [
+      "Jaeil the Insane",
+      "Jaeil the Wretched",
+      "Shiny Tin Bowl"
+     ],
+     "zone": "The Hole",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Rogue",
+   "page": "Rogue Epic Quest",
+   "start_zone": "Qeynos Aqueducts",
+   "quest_giver": "Malka Rale",
+   "recommended_level": "46+",
+   "final_reward": "Ragebringer",
+   "rewards": [
+    "Ragebringer"
+   ],
+   "items": [
+    {
+     "item": "Stained Parchment Top",
+     "mobs": [
+      "Founy Jestands"
+     ],
+     "zone": "North Kaladim",
+     "qty": 1,
+     "optional": false,
+     "source": "pickpocket"
+    },
+    {
+     "item": "Stained Parchment Bottom",
+     "mobs": [
+      "Tani N`Mar"
+     ],
+     "zone": "Neriak Third Gate",
+     "qty": 1,
+     "optional": false,
+     "source": "pickpocket"
+    },
+    {
+     "item": "Translated Parchment",
+     "mobs": [
+      "Tattered Parchment",
+      "Book of Souls",
+      "Yendar Starpyre",
+      "Renux Herkanor"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "General's Pouch",
+     "mobs": [
+      "General V`ghera"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Robe of the Kedge",
+     "mobs": [
+      "Phinigel Autropos",
+      "Coercer Q`ioul"
+     ],
+     "zone": "Kedge Keep",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Robe of the Ishva",
+     "mobs": [
+      "The Ishva Mal",
+      "Coercer Q`ioul"
+     ],
+     "zone": "Splitpaw",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Shining Metallic Robes",
+     "mobs": [
+      "the ghoul arch magus",
+      "Yendar Starpyre"
+     ],
+     "zone": "Lower Guk",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Robe of the Oracle",
+     "mobs": [
+      "Oracle of K`Arnon"
+     ],
+     "zone": "Ocean of Tears",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Fleshripper",
+     "mobs": [
+      "Solusek kobold king"
+     ],
+     "zone": "Nagafen's Lair",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Painbringer",
+     "mobs": [
+      "Kobold champion"
+     ],
+     "zone": "Nagafen's Lair",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Mithril Two-Handed Sword",
+     "mobs": [
+      "The froglok king"
+     ],
+     "zone": "Lower Guk",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Gigantic Zweihander",
+     "mobs": [
+      "Karg Icebear"
+     ],
+     "zone": "Everfrost Peaks",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Shadow Knight",
+   "page": "Shadow Knight Epic Quest",
+   "start_zone": "The Overthere",
+   "quest_giver": "Kurron Ni",
+   "recommended_level": "46+",
+   "final_reward": "Innoruuk's Curse",
+   "rewards": [
+    "Corrupted Ghoulbane",
+    "Will of Innoruuk",
+    "Head of the Valiant",
+    "Innoruuk's Curse"
+   ],
+   "items": [
+    {
+     "item": "Letter to Duriek",
+     "mobs": [
+      "Kurron Ni"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Dusty Tome",
+     "mobs": [
+      "a ratman guard"
+     ],
+     "zone": "The Hole",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Ghoulbane",
+     "mobs": [
+      "The froglok shin lord",
+      "Upper Guk"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Soul Leech, Dark Sword of Blood",
+     "mobs": [
+      "Cazic-Thule"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Drake Spine",
+     "mobs": [
+      "Rharzar"
+     ],
+     "zone": "Rathe Mountains",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Decrepit Hide",
+     "mobs": [
+      "An ashenbone drake"
+     ],
+     "zone": "Plane of Hate",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Blood of Kyrenna",
+     "mobs": [
+      "Kyrenna",
+      "Caradon"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Head of Glohnor",
+     "mobs": [
+      "Mummy of Glohnor"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Innoruuk's Curse",
+     "mobs": [
+      "Lhranc"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Shaman",
+   "page": "Shaman Epic Quest",
+   "start_zone": "Various",
+   "quest_giver": "a lesser spirit",
+   "recommended_level": "46+",
+   "final_reward": "Spear of Fate",
+   "rewards": [
+    "Shield of Falsehood",
+    "Black Fur Boots",
+    "Spear of Fate"
+   ],
+   "items": [
+    {
+     "item": "Envy",
+     "mobs": [
+      "Glaron the Wicked"
+     ],
+     "zone": "Rathe Mountains",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Woe",
+     "mobs": [
+      "Glaron the Wicked"
+     ],
+     "zone": "Rathe Mountains",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Marr's Promise",
+     "mobs": [
+      "Tabien the Goodly"
+     ],
+     "zone": "Rathe Mountains",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Black Dire Pelt",
+     "mobs": [
+      "Black Dire"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Child's Tear",
+     "mobs": [
+      "Iksar Broodling"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Iksar Scale",
+     "mobs": [
+      "Lord Rak`Ashiir"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Warrior",
+   "page": "Warrior Epic Quest",
+   "start_zone": "Freeport",
+   "quest_giver": "Kargek Redblade, Wenden Blackhammer",
+   "recommended_level": "46+",
+   "final_reward": "Jagged Blade of War",
+   "rewards": [
+    "Jagged Blade of War",
+    "Blade of Tactics",
+    "Blade of Strategy"
+   ],
+   "items": [
+    {
+     "item": "Giant Sized Monocle",
+     "mobs": [
+      "A mountain giant patriarch"
+     ],
+     "zone": "Dreadlands",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Ball of Everliving Golem",
+     "mobs": [
+      "Fright",
+      "Dread",
+      "Terror"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Block of Permafrost",
+     "mobs": [],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Ancient Blade",
+     "mobs": [
+      "Queen Velazul Di`zok"
+     ],
+     "zone": "Chardok",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Heart of Frost",
+     "mobs": [
+      "A_goblin_wizard_(Permafrost)"
+     ],
+     "zone": "Permafrost",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Red Dragon Scales",
+     "mobs": [
+      "Lord Nagafen",
+      "Ragefire",
+      "Nagafen's Lair",
+      "Nortlav the Scalekeeper",
+      "The Hole",
+      "Talendor"
+     ],
+     "zone": "Skyfire Mountains",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Green Dragon Scales",
+     "mobs": [
+      "Severilous",
+      "Emerald Jungle",
+      "Hoshkar"
+     ],
+     "zone": "Veeshan's Peak",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Hand of the Maestro",
+     "mobs": [
+      "Maestro"
+     ],
+     "zone": "Plane of Hate",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Spiroc Wingblade",
+     "mobs": [
+      "Spiroc Lord"
+     ],
+     "zone": "Plane of Air",
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  },
+  {
+   "class": "Wizard",
+   "page": "Wizard Epic Quest",
+   "start_zone": "Temple of Solusek Ro",
+   "quest_giver": "Solomen",
+   "recommended_level": "46+",
+   "final_reward": "Staff of the Four",
+   "rewards": [
+    "Staff of Gabstik",
+    "Staff of the Four"
+   ],
+   "items": [
+    {
+     "item": "Blue Crystal Staff",
+     "mobs": [
+      "Phinigel Autropos"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Gnarled Staff",
+     "mobs": [
+      "Venril Sathir"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    },
+    {
+     "item": "Green Oil",
+     "mobs": [
+      "a broken golem",
+      "an enraged golem"
+     ],
+     "zone": null,
+     "qty": 1,
+     "optional": false,
+     "source": null
+    }
+   ]
+  }
+ ]
+}

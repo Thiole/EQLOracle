@@ -297,8 +297,18 @@ pub fn get_sky_class_unlocks(state: State<AppState>) -> Vec<skyquests::SkyClassU
     skyquests::list_class_unlocks(&state.ingest.lock_recover(), base_dir.as_deref())
 }
 
-/// why: "Sky - Quests" tab -- every material turn-in, full detail
+/// why: Endgame's Epic Quests farm list -- see epicquests.rs's own doc
+#[tauri::command]
+pub fn get_epic_quests(state: State<AppState>) -> Vec<crate::epicquests::EpicClassDto> {
+    let base_dir = state
+        .config
+        .lock_recover()
+        .as_ref()
+        .map(|c| c.base_dir.clone());
+    crate::epicquests::list_epics(&state.ingest.lock_recover(), base_dir.as_deref())
+}
 
+/// why: "Sky - Quests" tab -- every material turn-in, full detail
 #[tauri::command]
 pub fn get_sky_quests(state: State<AppState>) -> Vec<skyquests::SkyClassDto> {
     let base_dir = state

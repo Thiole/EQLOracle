@@ -182,6 +182,7 @@ fn main() {
             commands::get_raids,
             commands::get_sky_class_unlocks,
             commands::get_sky_quests,
+            commands::get_epic_quests,
             commands::list_ui_files,
             commands::get_ui_file,
             commands::load_spellbook_file,

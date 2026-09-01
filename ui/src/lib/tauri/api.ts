@@ -497,6 +497,27 @@ export interface TurnInDto {
 /** why: the Sky Quests tab -- every individual material turn-in (rune + drop items -> one gear
  * reward), full detail. The *final* reward items themselves are a separate DTO
  * (SkyClassUnlockDto) -- see the Rust skyquests.rs module doc for why the two are split. */
+/** One farmable epic material -- TurnInItemDto status plus kill context. */
+export interface EpicItemDto extends TurnInItemDto {
+  mobs: string[];
+  zone: string | null;
+  qty: number;
+  optional: boolean;
+  /** "forage" / "pickpocket" -- not a kill */
+  gather: string | null;
+}
+
+/** why: Epic Quests farm list -- pre-era item tracking, no completion state. */
+export interface EpicClassDto {
+  class: string;
+  page: string;
+  start_zone: string | null;
+  quest_giver: string | null;
+  recommended_level: string | null;
+  final_reward: string | null;
+  items: EpicItemDto[];
+}
+
 export interface SkyClassDto {
   class: string;
   quest_giver: string | null;
@@ -1670,6 +1691,7 @@ export const api = {
 
   /** why: the "Sky - Quests" tab's whole data source */
   getSkyQuests: () => invoke<SkyClassDto[]>('get_sky_quests'),
+  getEpicQuests: () => invoke<EpicClassDto[]>('get_epic_quests'),
 
   // ------------------------------------------------------------------ tradeskills
 

@@ -9,6 +9,7 @@
   // the same reason.
   import * as Tabs from '$lib/components/ui/tabs';
   import { TAB_LIST_CLASS, TAB_TRIGGER_CLASS } from '$lib/navTabs';
+  import EpicQuests from './EpicQuests.svelte';
   import Raiding from './Raiding.svelte';
   import SkyClassUnlocks from './SkyClassUnlocks.svelte';
   import SkyQuests from './SkyQuests.svelte';
@@ -22,9 +23,11 @@
       <Tabs.Trigger value="raiding" class={TAB_TRIGGER_CLASS}>Raiding</Tabs.Trigger>
       <Tabs.Trigger value="sky-unlocks" class={TAB_TRIGGER_CLASS}>Sky - Primary Class Unlocks</Tabs.Trigger>
       <Tabs.Trigger value="sky-quests" class={TAB_TRIGGER_CLASS}>Sky - Quests</Tabs.Trigger>
+      <Tabs.Trigger value="epic-quests" class={TAB_TRIGGER_CLASS}>Epic Quests</Tabs.Trigger>
     </Tabs.List>
     <Tabs.Content value="raiding"><Raiding /></Tabs.Content>
     <Tabs.Content value="sky-unlocks"><SkyClassUnlocks /></Tabs.Content>
     <Tabs.Content value="sky-quests"><SkyQuests /></Tabs.Content>
+    <Tabs.Content value="epic-quests"><EpicQuests /></Tabs.Content>
   </Tabs.Root>
 </div>
