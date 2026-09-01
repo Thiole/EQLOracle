@@ -2,14 +2,21 @@
   // why: one tab per core tradeskill (confirmed real via Category:Tradeskills
   // -- the 11 race-specific "Cultural Tradeskill" pages are a different,
   // one-off epic-quest-adjacent thing, not covered here) plus a central
-  // "Overview" tab: your real craft log (what you've actually made) and
-  // a per-skill recipe-count summary, both linking straight into the
-  // matching skill's own tab -- the "crosslinks" asked for directly.
+  // "Overview" tab: your parsed skill levels (incl. recipe-less
+  // secondaries like Fishing) and the last 15 successful combines,
+  // both linking straight into the matching skill's own tab.
   import * as Tabs from '$lib/components/ui/tabs';
   import { Card, CardContent } from '$lib/components/ui/card';
   import GdLink from '$lib/gamedata/GdLink.svelte';
   import RecipeList from './RecipeList.svelte';
-  import { tradeskillCatalog, craftLog, loadTradeskillModule } from '$lib/stores/tradeskill';
+  import {
+    tradeskillCatalog,
+    craftLog,
+    tradeskillLevels,
+    recentCrafts,
+    loadTradeskillModule,
+  } from '$lib/stores/tradeskill';
+  import { ICON_BASE } from '$lib/character/constants';
   import { TAB_LIST_CLASS, TAB_TRIGGER_CLASS } from '$lib/navTabs';
 
   // why: TAB_LIST_CLASS's own base (inline-flex, no wrap) is fine for
@@ -26,6 +33,8 @@
   });
 
   const craftLogByItem = $derived(new Map($craftLog.map((e) => [e.item.toLowerCase(), e])));
+  const levelBySkill = $derived(new Map($tradeskillLevels.map((l) => [l.skill, l])));
+  const secondaries = $derived($tradeskillLevels.filter((l) => l.secondary));
 
   function jumpTo(skill: string) {
     sub = skill;
@@ -49,89 +58,108 @@
       </Tabs.List>
 
       <Tabs.Content value="overview">
-        <div class="flex flex-col gap-3 pt-3">
-          <div class="grid grid-cols-2 gap-3">
-            <Card class="rounded-sm">
-              <CardContent class="px-3 py-2.5">
-                <h2 class="stat-figure mb-1.5 text-[18px]">The 9 tradeskills</h2>
-                <ul class="flex flex-col gap-0.5 text-[11px]">
+        <div class="grid grid-cols-2 gap-3 pt-3">
+          <Card class="rounded-sm">
+            <CardContent class="px-3 py-2.5">
+              <h2 class="stat-figure mb-1.5 text-[18px]">Your skills</h2>
+              <table class="w-full text-[11px]">
+                <thead>
+                  <tr class="text-left text-muted-foreground">
+                    <th class="pb-1 font-normal">skill</th>
+                    <th class="pb-1 font-normal text-right">level</th>
+                    <th class="pb-1 font-normal text-right">recipes</th>
+                  </tr>
+                </thead>
+                <tbody>
                   {#each $tradeskillCatalog as s (s.skill)}
-                    <li class="flex justify-between">
-                      <button type="button" class="text-brand-soft hover:text-primary hover:underline" onclick={() => jumpTo(s.skill)}>
-                        {s.skill}
-                      </button>
-                      <span class="text-muted-foreground">{s.recipes.length} recipes</span>
+                    {@const lvl = levelBySkill.get(s.skill)}
+                    <tr class="border-t border-border/50">
+                      <td class="py-0.5">
+                        <button type="button" class="text-brand-soft hover:text-primary hover:underline" onclick={() => jumpTo(s.skill)}>
+                          {s.skill}
+                        </button>
+                      </td>
+                      <td
+                        class="py-0.5 text-right tabular-nums {lvl?.level != null ? '' : 'text-muted-foreground'}"
+                        title={lvl?.at_ms != null ? `last skill-up ${new Date(lvl.at_ms).toLocaleString()}` : undefined}
+                      >
+                        {lvl?.level ?? '—'}
+                      </td>
+                      <td class="py-0.5 text-right tabular-nums text-muted-foreground">{s.recipes.length}</td>
+                    </tr>
+                  {/each}
+                  {#each secondaries as l (l.skill)}
+                    <tr class="border-t border-border/50">
+                      <td class="py-0.5 text-foreground/80">{l.skill}</td>
+                      <td
+                        class="py-0.5 text-right tabular-nums {l.level != null ? '' : 'text-muted-foreground'}"
+                        title={l.at_ms != null ? `last skill-up ${new Date(l.at_ms).toLocaleString()}` : undefined}
+                      >
+                        {l.level ?? '—'}
+                      </td>
+                      <td class="py-0.5 text-right text-muted-foreground">—</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+              <p class="mt-2 text-[10px] text-muted-foreground">
+                Levels come from "You have become better at…" lines in this log file -- "—" means no skill-up seen yet,
+                not level 0. {totalRecipes.toLocaleString()} recipes total, scraped from eqlwiki.com; some specialized
+                armor-material sub-tables aren't captured yet.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card class="rounded-sm">
+            <CardContent class="px-3 py-2.5">
+              <h2 class="stat-figure mb-1.5 text-[18px]">Recently crafted</h2>
+              {#if !$recentCrafts.length}
+                <p class="text-[11px] text-muted-foreground">No successful combines parsed yet this file.</p>
+              {:else}
+                <ul class="flex flex-col">
+                  {#each $recentCrafts as c, i (`${c.ts_ms}-${c.item}-${i}`)}
+                    <li class="flex items-center gap-1.5 border-t border-border/50 py-0.5 text-[11px] first:border-t-0">
+                      {#if c.icon}
+                        <img src={ICON_BASE + encodeURIComponent(c.icon)} alt="" class="size-4 shrink-0 rounded-[2px]" />
+                      {:else}
+                        <span class="size-4 shrink-0 rounded-[2px] bg-muted/40"></span>
+                      {/if}
+                      <span class="min-w-0 flex-1 truncate"><GdLink kind="item" name={c.item} /></span>
+                      {#if c.tradeskill}
+                        <button
+                          type="button"
+                          class="shrink-0 text-brand-soft hover:text-primary hover:underline"
+                          onclick={() => jumpTo(c.tradeskill!)}
+                        >
+                          {c.tradeskill}
+                        </button>
+                      {/if}
+                      <span class="shrink-0 text-muted-foreground">{new Date(c.ts_ms).toLocaleString()}</span>
                     </li>
                   {/each}
                 </ul>
-                <p class="mt-2 text-[10px] text-muted-foreground">
-                  {totalRecipes.toLocaleString()} recipes total, scraped from eqlwiki.com. Some specialized armor-material
-                  sub-tables aren't captured yet -- a real, stated gap, not silently wrong data.
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card class="rounded-sm">
-              <CardContent class="px-3 py-2.5">
-                <h2 class="stat-figure mb-1.5 text-[18px]">Your craft log</h2>
-                {#if !$craftLog.length}
-                  <p class="text-[11px] text-muted-foreground">No combines parsed yet this file.</p>
-                {:else}
-                  <p class="text-[11px] text-muted-foreground">
+                {#if $craftLog.length}
+                  <p class="mt-2 text-[10px] text-muted-foreground">
                     {totalAttempts.toLocaleString()} attempt{totalAttempts === 1 ? '' : 's'} across {$craftLog.length} distinct
-                    item{$craftLog.length === 1 ? '' : 's'}
-                    {#if cappedCount}· {cappedCount} at skill cap{/if}
+                    item{$craftLog.length === 1 ? '' : 's'} this file{#if cappedCount}
+                      · {cappedCount} at skill cap{/if} -- per-item stats join each recipe in its skill's tab.
                   </p>
                 {/if}
-              </CardContent>
-            </Card>
-          </div>
-
-          {#if $craftLog.length}
-            <Card class="rounded-sm">
-              <CardContent class="px-3 py-2.5">
-                <table class="w-full text-[11px]">
-                  <thead>
-                    <tr class="text-left text-muted-foreground">
-                      <th class="pb-1 font-normal">item</th>
-                      <th class="pb-1 font-normal">tradeskill</th>
-                      <th class="pb-1 font-normal">trivial</th>
-                      <th class="pb-1 font-normal text-right">attempts</th>
-                      <th class="pb-1 font-normal text-right">successes</th>
-                      <th class="pb-1 font-normal"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each $craftLog as e (e.item)}
-                      <tr class="border-t border-border/50">
-                        <td class="py-0.5"><GdLink kind="item" name={e.item} /></td>
-                        <td class="py-0.5 text-muted-foreground">
-                          {#if e.tradeskill}
-                            <button type="button" class="text-brand-soft hover:text-primary hover:underline" onclick={() => jumpTo(e.tradeskill!)}>
-                              {e.tradeskill}
-                            </button>
-                          {:else}
-                            —
-                          {/if}
-                        </td>
-                        <td class="py-0.5 text-muted-foreground">{e.trivial ?? '—'}</td>
-                        <td class="py-0.5 text-right tabular-nums">{e.attempts}</td>
-                        <td class="py-0.5 text-right tabular-nums">{e.successes}</td>
-                        <td class="py-0.5 text-caution">{e.skill_capped ? 'capped' : ''}</td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-          {/if}
+              {/if}
+            </CardContent>
+          </Card>
         </div>
       </Tabs.Content>
 
       {#each $tradeskillCatalog as s (s.skill)}
         <Tabs.Content value={s.skill}>
           <div class="pt-3">
-            <RecipeList recipes={s.recipes} {craftLogByItem} onJumpToSkill={jumpTo} />
+            <RecipeList
+              recipes={s.recipes}
+              {craftLogByItem}
+              level={levelBySkill.get(s.skill)?.level ?? null}
+              onJumpToSkill={jumpTo}
+            />
           </div>
         </Tabs.Content>
       {/each}

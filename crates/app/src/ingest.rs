@@ -1079,6 +1079,9 @@ pub struct Ingest {
     pub last_inventory_dump_ts: Option<Millis>,
     /// why: overlay's Skill Tracker widget -- see skilltracker.rs's own doc
     pub skills: std::collections::HashMap<String, crate::skilltracker::SkillTrack>,
+    /// why: latest skill-up "(N)" per skill with its ts -- the log
+    /// never states a level any other way, so absent means unknown
+    pub skill_levels: std::collections::HashMap<String, (u32, Millis)>,
     /// why: every AA rank purchase this session, see AaLog
     pub aa: AaLog,
     /// why: every spell confirmed known this session, see SpellLog
@@ -1221,6 +1224,7 @@ impl Default for Ingest {
             disposed_items: std::collections::HashSet::new(),
             last_inventory_dump_ts: None,
             skills: std::collections::HashMap::new(),
+            skill_levels: std::collections::HashMap::new(),
             aa: AaLog::default(),
             spellbook: SpellLog::default(),
             spell_ranks: SpellRanks::default(),
@@ -1767,13 +1771,15 @@ impl Ingest {
                     crate::stancedata::classes_for(&stance),
                 );
             }
-            Action::SkillUp { skill } => {
+            Action::SkillUp { skill, level } => {
                 let you = self.sym("You");
                 self.classes.observe_cast(
                     you.0,
                     self.zone.index_at(ts),
                     crate::skilldata::classes_for(&skill),
                 );
+                // why: log order -- the last "(N)" seen is the current level
+                self.skill_levels.insert(skill, (level, ts));
             }
             Action::Invocation { invocation } => {
                 let you = self.sym("You");
@@ -3753,6 +3759,7 @@ enum Action {
     /// route to it, like race).
     SkillUp {
         skill: String,
+        level: u32,
     },
     /// "You begin reciting the <invocation> invocation." -- self only,
     /// same evidence role as `Stance`; see `invocationdata`.
@@ -4224,6 +4231,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         }),
         "skill.up" => Some(Action::SkillUp {
             skill: str_field("skill")?,
+            level: u64_field("level")?.min(u32::MAX as u64) as u32,
         }),
         "state.invocation" => Some(Action::Invocation {
             invocation: str_field("invocation")?,

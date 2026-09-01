@@ -570,6 +570,29 @@ export interface CraftLogEntryDto {
   skill_capped: boolean;
 }
 
+/** why: current tradeskill level parsed off "You have become better
+ * at..." skill-up lines -- see craftlog.rs's own doc */
+export interface TradeskillLevelDto {
+  skill: string;
+  /** why: null until a skill-up line has appeared this file -- the log
+   * never states a level except on a skill-up */
+  level: number | null;
+  at_ms: number | null;
+  /** why: true for a tradeskill-adjacent skill (Fishing, Forage,
+   * Alcohol Tolerance) with no recipe tab of its own */
+  secondary: boolean;
+}
+
+/** why: one successful combine, newest first -- Overview's recently-crafted list */
+export interface RecentCraftDto {
+  item: string;
+  ts_ms: number;
+  tradeskill: string | null;
+  trivial: number | null;
+  /** why: items.json icon filename, null when the item isn't known there */
+  icon: string | null;
+}
+
 /** why: one final reward item -- what "Primary Class Unlocks" tracks, never the raw
  * materials a quest is built from */
 export interface SkyRewardDto {
@@ -1700,6 +1723,12 @@ export const api = {
 
   /** why: real craft attempts this file has recorded, joined against the catalog above */
   getCraftLog: () => invoke<CraftLogEntryDto[]>('get_craft_log'),
+
+  /** why: current tradeskill levels off skill-up lines */
+  getTradeskillLevels: () => invoke<TradeskillLevelDto[]>('get_tradeskill_levels'),
+
+  /** why: last 15 successful combines, newest first */
+  getRecentCrafts: () => invoke<RecentCraftDto[]>('get_recent_crafts'),
 
   // ------------------------------------------------------------------ ui files
 

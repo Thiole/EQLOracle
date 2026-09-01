@@ -5,10 +5,18 @@
 // ingredient itself craftable somewhere" for RecipeList's crosslinks --
 // computed here, not a per-ingredient IPC round trip.
 import { writable, get } from 'svelte/store';
-import { api, type TradeskillSkillDto, type CraftLogEntryDto } from '../tauri/api';
+import {
+  api,
+  type TradeskillSkillDto,
+  type CraftLogEntryDto,
+  type TradeskillLevelDto,
+  type RecentCraftDto,
+} from '../tauri/api';
 
 export const tradeskillCatalog = writable<TradeskillSkillDto[]>([]);
 export const craftLog = writable<CraftLogEntryDto[]>([]);
+export const tradeskillLevels = writable<TradeskillLevelDto[]>([]);
+export const recentCrafts = writable<RecentCraftDto[]>([]);
 export const tradeskillLoaded = writable(false);
 
 let loading: Promise<void> | null = null;
@@ -20,18 +28,32 @@ export function loadTradeskillModule(): Promise<void> {
   // .length/.map stays safe -- a null here (IPC hiccup, mock harness
   // without this fixture) crashed the whole Tradeskill module, caught
   // by tests/render/responsive.spec.ts
-  loading = Promise.all([api.getTradeskillCatalog(), api.getCraftLog()]).then(([catalog, log]) => {
+  loading = Promise.all([
+    api.getTradeskillCatalog(),
+    api.getCraftLog(),
+    api.getTradeskillLevels(),
+    api.getRecentCrafts(),
+  ]).then(([catalog, log, levels, recent]) => {
     tradeskillCatalog.set(catalog ?? []);
     craftLog.set(log ?? []);
+    tradeskillLevels.set(levels ?? []);
+    recentCrafts.set(recent ?? []);
     tradeskillLoaded.set(true);
   });
   return loading;
 }
 
-/** why: Overview's own "restart"-adjacent refresh -- craft log is real
- * session data, the catalog itself never changes without a rebuild */
+/** why: Overview's own "restart"-adjacent refresh -- everything but the
+ * static catalog is real session data */
 export async function refreshCraftLog() {
-  craftLog.set((await api.getCraftLog()) ?? []);
+  const [log, levels, recent] = await Promise.all([
+    api.getCraftLog(),
+    api.getTradeskillLevels(),
+    api.getRecentCrafts(),
+  ]);
+  craftLog.set(log ?? []);
+  tradeskillLevels.set(levels ?? []);
+  recentCrafts.set(recent ?? []);
 }
 
 let byOutputName: Map<string, string> | null = null;

@@ -11,7 +11,7 @@ and need the service layer described in README.md before external
 exposure. Parameters shown are the real API surface -- Tauri plumbing
 (`State`, `AppHandle`, `Window`) is elided.
 
-111 commands: 24 pure, 87 stateful.
+113 commands: 24 pure, 89 stateful.
 
 ## `get_character_estimate` (pure)
 why: Character Planner's one call -- full attribute sheet + mana estimate; `gear` summed by the frontend, this side never touches an item. Stateless on purpose -- nothing persisted, fresh launch starts blank.
@@ -356,6 +356,12 @@ why: past parses against `target`, newest first; re-resolves loadout against liv
 - args: none
 - returns: `Vec<RaidRowDto>`
 
+## `get_recent_crafts` (stateful)
+why: Overview's recently-crafted list, last 15 successful combines
+
+- args: none
+- returns: `Vec<craftlog::RecentCraftDto>`
+
 ## `get_session` (stateful)
 
 - args: none
@@ -415,6 +421,12 @@ why: Drop Watch's "you just got one, remove it?" prompt -- see TrackedLootDto's 
 
 - args: `items: Vec<String>`
 - returns: `Vec<crate::dropwatch::TrackedLootDto>`
+
+## `get_tradeskill_levels` (stateful)
+why: current tradeskill levels off skill-up lines -- see craftlog's own doc
+
+- args: none
+- returns: `Vec<craftlog::TradeskillLevelDto>`
 
 ## `get_ui_file` (stateful)
 

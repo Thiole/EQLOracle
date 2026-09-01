@@ -429,6 +429,18 @@ pub fn get_craft_log(state: State<AppState>) -> Vec<CraftLogEntryDto> {
     craftlog::craft_log(&state.ingest.lock_recover())
 }
 
+/// why: current tradeskill levels off skill-up lines -- see craftlog's own doc
+#[tauri::command]
+pub fn get_tradeskill_levels(state: State<AppState>) -> Vec<craftlog::TradeskillLevelDto> {
+    craftlog::tradeskill_levels(&state.ingest.lock_recover())
+}
+
+/// why: Overview's recently-crafted list, last 15 successful combines
+#[tauri::command]
+pub fn get_recent_crafts(state: State<AppState>) -> Vec<craftlog::RecentCraftDto> {
+    craftlog::recent_crafts(&state.ingest.lock_recover(), 15)
+}
+
 /// why: every AA purchase this session plus total spent; no UI consumes this yet
 
 #[tauri::command]

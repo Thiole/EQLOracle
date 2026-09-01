@@ -12,10 +12,13 @@
   let {
     recipes,
     craftLogByItem,
+    level = null,
     onJumpToSkill,
   }: {
     recipes: RecipeDto[];
     craftLogByItem: Map<string, CraftLogEntryDto>;
+    /** why: null = no skill-up parsed this file, never assume 0 */
+    level?: number | null;
     onJumpToSkill: (skill: string) => void;
   } = $props();
 
@@ -38,6 +41,9 @@
   <div class="flex items-center justify-between gap-2">
     <p class="text-[11px] text-muted-foreground">
       {recipes.length} recipe{recipes.length === 1 ? '' : 's'} · sorted by trivial (cheapest to skill up on first)
+      {#if level != null}
+        · <span class="text-foreground">your level: <span class="tabular-nums">{level}</span></span>
+      {/if}
     </p>
     <Input placeholder="filter recipes…" bind:value={search} class="h-7 w-56 text-[11px]" />
   </div>
@@ -55,7 +61,11 @@
               {#if r.yield_qty > 1}<span class="text-muted-foreground">×{r.yield_qty}</span>{/if}
             </span>
             <span class="flex items-baseline gap-2 text-[11px] text-muted-foreground">
-              <span>trivial {trivialLabel(r)}</span>
+              {#if level != null && r.trivial != null && level >= r.trivial}
+                <span class="text-muted-foreground/60">trivial {trivialLabel(r)} · no skill-up</span>
+              {:else}
+                <span>trivial {trivialLabel(r)}</span>
+              {/if}
               {#if log}
                 <span class={log.skill_capped ? 'text-caution' : ''}>
                   you: {log.successes}/{log.attempts}{log.skill_capped ? ' · capped' : ''}
