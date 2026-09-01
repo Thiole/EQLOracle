@@ -18,7 +18,7 @@ pub use cast::{Outcome as CastOutcome, Resolution as CastResolution, Resolver as
 pub use classdetect::Detector as ClassDetector;
 pub use context::{Context, Sessions, Spans};
 pub use encounter::{Encounter, EndReason, HpModel, Tracker, Ttk};
-pub use graph::{Builder, Closed, EncId, Entities, Kind, Live, Policy};
+pub use graph::{is_pet_suffixed, Builder, Closed, EncId, Entities, Kind, Live, Policy};
 pub use group::GroupTracker;
 pub use rolling::Rolling;
 pub use timeline::{series, Bucket, Cause, State, Timeline, Transition};

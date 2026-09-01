@@ -85,6 +85,15 @@ pub enum Kind {
     Unproven,
 }
 
+/// why: a pet-suffixed name, either side's -- "X`s warder" (player's),
+/// "a dracoliche pet" (mob's own). A pet dying is not a kill: it must
+/// neither arm the fast post-kill idle close nor confirm anything
+/// (asked directly: "a pet dying isn't a kill though").
+pub fn is_pet_suffixed(name: &str) -> bool {
+    let l = name.to_ascii_lowercase();
+    l.ends_with(" pet") || l.ends_with(" warder")
+}
+
 /// why: owner name from a possessive "<Owner>'s pet" suffix, else None.
 /// "warder" too -- a Beastlord's warder logs as "X`s warder", never
 /// "X`s pet", and the miss put real warders on the ENEMY side of the
@@ -402,10 +411,13 @@ impl Builder {
             .live
             .iter()
             .filter(|(_, e)| {
-                let idle = if e.slain.is_empty() {
-                    self.policy.idle_unresolved_ms
-                } else {
+                // why: pet deaths don't resolve a fight -- "a pet dying
+                // isn't a kill"; only a non-pet death arms the short window
+                let real_kill = e.slain.iter().any(|n| !is_pet_suffixed(n));
+                let idle = if real_kill {
                     self.policy.idle_ms
+                } else {
+                    self.policy.idle_unresolved_ms
                 };
                 now - e.last_ms > idle
             })

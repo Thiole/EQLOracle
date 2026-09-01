@@ -296,3 +296,23 @@ fn a_no_kill_lull_outlasts_the_short_idle_but_a_kill_closes_fast() {
     b.expire(12_000);
     assert_eq!(b.live_count(), 0, "concluded pull closes on the short idle");
 }
+
+/// why: "a pet dying isn't a kill" -- a mob's own pet death must not
+/// arm the fast post-kill idle window; the fight stays on the patient
+/// unresolved clock until something real dies
+#[test]
+fn a_pet_death_does_not_resolve_the_fight() {
+    let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(60.0));
+    b.damage(0, "You", "a dracoliche");
+    b.damage(500, "a dracoliche pet", "You");
+    b.death(1_000, "a dracoliche pet");
+    b.expire(30_000);
+    assert_eq!(
+        b.live_count(),
+        1,
+        "pet death alone -- still the long window"
+    );
+    b.death(31_000, "a dracoliche");
+    b.expire(45_000);
+    assert_eq!(b.live_count(), 0, "the real death arms the short close");
+}
