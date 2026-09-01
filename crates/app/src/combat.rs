@@ -1233,23 +1233,54 @@ pub fn encounter_for(ing: &Ingest, target_sym: Sym) -> Option<&Encounter> {
 /// (self-corrects in a lull). Closed fight -> window frozen at end_ms
 /// spanning the whole fight, so the summary doesn't decay to 0 after the
 /// fight ends. None before any encounter exists yet this session.
+/// why: the meter tracks the ENGAGEMENT as a whole (asked directly:
+/// "just track for the encounter as a whole, even if other mobs join
+/// the encounter late") -- a late add the graph opened as its own
+/// encounter must fold into the same numbers, not hijack or reset the
+/// meter the way a single-encounter pick did. Engagement = every open
+/// involves_you encounter with activity in the last
+/// ENGAGEMENT_LULL_MS, or the most recent one when nothing is live
+/// (the after-fight read). One continuous window; personal clocks
+/// still start at each entity's own first action.
+const ENGAGEMENT_LULL_MS: Millis = 30_000;
+
 pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     let now = ing.now_ms();
-    let latest = current_encounter(ing)?;
-    let end = if latest.is_open() {
+    let primary = current_encounter(ing)?;
+    let mut encs: Vec<&Encounter> = vec![primary];
+    if primary.is_open() {
+        for e in &ing.store.encounters {
+            if e.id != primary.id && e.is_open() && e.involves_you {
+                let last_ts = ing
+                    .store
+                    .ts
+                    .get(e.last as usize)
+                    .copied()
+                    .unwrap_or(e.start_ms);
+                if now - last_ts <= ENGAGEMENT_LULL_MS {
+                    encs.push(e);
+                }
+            }
+        }
+    }
+    let open = encs.iter().any(|e| e.is_open());
+    let end = if open {
         now
     } else {
-        latest.end_ms.unwrap_or(now).max(latest.start_ms)
+        encs.iter()
+            .filter_map(|e| e.end_ms)
+            .max()
+            .unwrap_or(now)
+            .max(primary.start_ms)
     };
 
-    // why: per-entity accumulation straight off the encounter's damage
-    // rows, sided per row by allegiance AT THAT ROW'S ts (charm flips
-    // mid-fight side correctly). Outgoing = ally actor hitting an enemy
-    // target; incoming = enemy actor hitting an ally. `first_ts` is the
-    // entity's own first action -- the personal clock (asked directly:
-    // "someone's timer doesn't start counting until they take first
-    // action... tracking time in engagement, not against the beginning
-    // of the engagement").
+    // why: per-entity accumulation straight off every engagement
+    // encounter's damage rows, sided per row by allegiance AT THAT
+    // ROW'S ts (charm flips mid-fight side correctly). Outgoing = ally
+    // actor hitting an enemy target; incoming = enemy actor hitting an
+    // ally. `first_ts` is the entity's own first action -- the personal
+    // clock ("someone's timer doesn't start counting until they take
+    // first action").
     struct Acc {
         total: u64,
         first_ts: Millis,
@@ -1258,34 +1289,34 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     }
     let mut out_acc: HashMap<String, Acc> = HashMap::new();
     let mut in_acc: HashMap<String, Acc> = HashMap::new();
-    for i in latest.range() {
-        if ing.store.enc[i] != latest.id.0 || ing.store.kind[i] != EventKind::Damage {
-            continue;
+    for enc in &encs {
+        for i in enc.range() {
+            if ing.store.enc[i] != enc.id.0 || ing.store.kind[i] != EventKind::Damage {
+                continue;
+            }
+            let ts = ing.store.ts[i];
+            let actor_name = ing.effective_name(ing.store.name(ing.store.actor[i]));
+            let target_name = ing.store.name(ing.store.target[i]).to_string();
+            let actor_enemy = ing.allegiance_at(&actor_name, ts).is_enemy();
+            let target_enemy = ing.allegiance_at(&target_name, ts).is_enemy();
+            let acc = if !actor_enemy && target_enemy {
+                &mut out_acc
+            } else if actor_enemy && !target_enemy {
+                &mut in_acc
+            } else {
+                // ally-on-ally or enemy-on-enemy -- not meter damage
+                continue;
+            };
+            let kind = ing.effective_kind(&actor_name, ts);
+            let e = acc.entry(actor_name).or_insert(Acc {
+                total: 0,
+                first_ts: ts,
+                is_player: kind == Kind::Player,
+                is_pet: kind == Kind::Pet,
+            });
+            e.total += ing.store.amount[i];
+            e.first_ts = e.first_ts.min(ts);
         }
-        let ts = ing.store.ts[i];
-        let actor_name = ing.effective_name(ing.store.name(ing.store.actor[i]));
-        let target_name = ing.store.name(ing.store.target[i]).to_string();
-        let actor_enemy = ing.allegiance_at(&actor_name, ts).is_enemy();
-        let target_enemy = ing.allegiance_at(&target_name, ts).is_enemy();
-        let acc = if !actor_enemy && target_enemy {
-            &mut out_acc
-        } else if actor_enemy && !target_enemy {
-            &mut in_acc
-        } else {
-            // ally-on-ally (heal-shield oddities) or enemy-on-enemy
-            // (charm pet math lives on the ally side already) -- neither
-            // is meter damage
-            continue;
-        };
-        let kind = ing.effective_kind(&actor_name, ts);
-        let e = acc.entry(actor_name).or_insert(Acc {
-            total: 0,
-            first_ts: ts,
-            is_player: kind == Kind::Player,
-            is_pet: kind == Kind::Pet,
-        });
-        e.total += ing.store.amount[i];
-        e.first_ts = e.first_ts.min(ts);
     }
 
     let build = |acc: HashMap<String, Acc>| -> Vec<LiveMeterRowDto> {
@@ -1294,8 +1325,8 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
             .into_iter()
             .map(|(name, a)| {
                 // why: the personal window -- their first action to the
-                // fight's live edge; a late joiner's DPS is honest, not
-                // diluted by time they weren't there
+                // engagement's live edge; a late joiner's DPS is
+                // honest, not diluted by time they weren't there
                 let active_ms = (end - a.first_ts).max(1);
                 LiveMeterRowDto {
                     pct: if team_total > 0 {
@@ -1316,9 +1347,18 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
         rows
     };
 
+    // why: the label names the primary anchor; "+N" says other mobs'
+    // encounters are folded into this same engagement
+    let extra = encs.len() - 1;
+    let target = if extra > 0 {
+        format!("{} +{extra}", ing.store.name(primary.target))
+    } else {
+        ing.store.name(primary.target).to_string()
+    };
+
     Some(LiveMeterDto {
-        target: ing.store.name(latest.target).to_string(),
-        open: latest.is_open(),
+        target,
+        open,
         outgoing: build(out_acc),
         incoming: build(in_acc),
     })
@@ -2105,5 +2145,51 @@ mod live_meter_window_tests {
             .expect("gnoll row");
         assert_eq!(g.total, 50);
         assert!((g.pct - 100.0).abs() < 0.01);
+    }
+}
+
+#[cfg(test)]
+mod engagement_scope_tests {
+    use super::*;
+    use crate::ingest::{backfill_lines, framed_lines, Ingest};
+    use crate::parser::build_engine;
+
+    fn ingest_from(text: &str) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines = framed_lines(text.as_bytes());
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing
+    }
+
+    /// why: asked directly -- "track for the encounter as a whole, even
+    /// if other mobs join the encounter late". A second open fight
+    /// against a different mob within the lull folds into the SAME
+    /// meter (label says +1) instead of hijacking it; totals span both.
+    #[test]
+    fn a_late_add_in_its_own_encounter_folds_into_the_engagement() {
+        // two encounters kept separate on purpose: fight A goes quiet
+        // (no shared entity with B beyond You, whose damage came later)
+        let ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:12 2026] A giant snake hits YOU for 25 points of damage.\n\
+             [Tue Jul 28 15:01:13 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        );
+        let m = live_meter(&ing).expect("live engagement");
+        let you = m
+            .outgoing
+            .iter()
+            .find(|r| r.name == "You")
+            .expect("You row");
+        assert_eq!(you.total, 200, "both hits counted in one engagement");
+        let snake = m
+            .incoming
+            .iter()
+            .find(|r| r.name.eq_ignore_ascii_case("a giant snake"));
+        assert!(
+            snake.is_some_and(|s| s.total == 25),
+            "the add's damage folds in: {:?}",
+            m.incoming
+        );
     }
 }
