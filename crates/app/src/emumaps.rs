@@ -723,9 +723,14 @@ impl ZoneNav {
     /// binding need no special case; a void cluster outside the zone
     /// only ever sees itself and stays unreachable.
     fn add_water_nodes(&mut self, geo: &ZoneGeo, z_lift: f32) {
-        const STEP: f32 = 40.0;
-        // why: > STEP*sqrt(3) so diagonal grid neighbors can link
-        const REACH: f32 = 72.0;
+        const STEP: f32 = 24.0;
+        // why: > STEP*sqrt(3) so diagonal grid neighbors can link;
+        // corridor-scale so a hop never crosses a room
+        const REACH: f32 = 42.0;
+        // why: a node that sees no poly itself may still sit in a shaft
+        // between two that do -- allowed a few hops from one, bounded so
+        // outside-the-wall points at an opening can't grow a highway
+        const MAX_HOPS_FROM_MESH: u8 = 3;
         let n = self.polys.len();
         if n == 0 {
             return;
@@ -812,9 +817,37 @@ impl ZoneNav {
         // them) and formed a highway around the keep that the zone-line
         // opening let routes escape into ("swimming straight down outside
         // the map"). Node-node links then only ever join inside points.
+        // hop distance from any poly-seeing node, BFS over node links
+        let mut hops: Vec<u8> = vec![u8::MAX; nodes.len()];
+        let mut q = std::collections::VecDeque::new();
+        for ni in 0..nodes.len() {
+            if !node_polys[ni].is_empty() {
+                hops[ni] = 0;
+                q.push_back(ni);
+            }
+        }
+        let mut adj: Vec<Vec<u32>> = vec![Vec::new(); nodes.len()];
+        for ni in 0..nodes.len() {
+            for &nj in &node_nodes[ni] {
+                adj[ni].push(nj);
+                adj[nj as usize].push(ni as u32);
+            }
+        }
+        while let Some(i) = q.pop_front() {
+            let h = hops[i];
+            if h >= MAX_HOPS_FROM_MESH {
+                continue;
+            }
+            for &j in &adj[i] {
+                if hops[j as usize] == u8::MAX {
+                    hops[j as usize] = h + 1;
+                    q.push_back(j as usize);
+                }
+            }
+        }
         let mut keep: Vec<Option<u32>> = vec![None; nodes.len()];
         for (ni, p) in nodes.iter().enumerate() {
-            if !node_polys[ni].is_empty() {
+            if hops[ni] <= MAX_HOPS_FROM_MESH {
                 keep[ni] = Some(self.polys.len() as u32);
                 self.polys.push(NavPoly {
                     verts: vec![*p],
@@ -882,9 +915,10 @@ impl ZoneNav {
     /// mesh shows a clear line. Both portal endpoints are the far
     /// center, so the funnel threads the exact swim point.
     pub fn bridge_gaps(&mut self, geo: &ZoneGeo) {
-        // why: 3D distance -- a swim zone is as tall as it is wide (kedge
-        // entrance shaft: z 300 down to 30), so the radius must span it
-        const MAX_DIST: f32 = 1000.0;
+        // why: doorway-scale only -- a swim zone is a building of
+        // corridors; the mesh is the truth and a bridge is a patch for a
+        // real gap, never a room-to-room shortcut (nodes handle shafts)
+        const MAX_DIST: f32 = 80.0;
         const Z_LIFT: f32 = 2.0;
         self.add_water_nodes(geo, Z_LIFT);
 
