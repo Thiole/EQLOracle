@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-01 (0.11.0)
+
+### Clipboard
+
+- Every copy button (combat report, /tell, diagnostics JSON) now writes the OS clipboard from the backend — the webview's own clipboard API fails silently on Linux, leaving stale clipboard content to paste. A failed copy now says "clipboard copy FAILED" instead of pretending.
+
+### Overlay diagnostics
+
+- The Debug → Overlay panel shows the error when the diagnostics call itself fails, and "copy JSON" copies that error text — a broken call is now a pasteable report instead of a greyed-out button.
+
 ## 2026-09-01 (0.10.0)
 
 ### Tradeskills
