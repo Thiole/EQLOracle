@@ -128,23 +128,6 @@
   .card.wide .icon { margin-bottom: 0; flex-shrink: 0; }
   .card.wide .body h3 { margin-bottom: 4px; }
 
-  /* ---------- compare ---------- */
-  .compare { padding: 90px 0; background: var(--background-alt); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
-  .compare-row {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
-    border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
-    margin-bottom: 14px; background: var(--card);
-  }
-  .compare-row .them, .compare-row .us { padding: 18px 22px; font-size: 13.5px; line-height: 1.6; }
-  .compare-row .them { color: var(--muted); border-right: 1px solid var(--border); }
-  .compare-row .us { color: var(--foreground); }
-  .compare-row .tag {
-    display: block; font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
-    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px;
-  }
-  .compare-row .them .tag { color: #6b6f77; }
-  .compare-row .us .tag { color: var(--primary); }
-
   /* ---------- under the hood ---------- */
   .hood { padding: 100px 0 90px; }
   .hood-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
@@ -183,8 +166,6 @@
     .grid, .hood-grid { grid-template-columns: 1fr; }
     .card.wide { flex-direction: column; align-items: flex-start; text-align: left; }
     .hero { padding: 64px 0 48px; }
-    .compare-row { grid-template-columns: 1fr; }
-    .compare-row .them { border-right: none; border-bottom: 1px solid var(--border); }
     .nav-links { display: none; }
   }
 </style>
@@ -199,7 +180,6 @@
     </a>
     <nav class="nav-links">
       <a href="#features">Features</a>
-      <a href="#compare">Why this one</a>
       <a href="#hood">Under the hood</a>
     </nav>
     <a class="gh-link" href="https://github.com/Thiole/EQLOracle" target="_blank" rel="noopener">
@@ -309,46 +289,6 @@
       </div>
 
     </div>
-  </div>
-</section>
-
-<section class="compare" id="compare">
-  <div class="wrap">
-    <div class="section-head">
-      <h2>Why this one</h2>
-      <p>The usual way, and the way it works here.</p>
-    </div>
-
-    <div class="compare-row">
-      <div class="them"><span class="tag">The usual way</span>One raid-long clock for everyone — join the fight late and your DPS is diluted by minutes you weren't there.</div>
-      <div class="us"><span class="tag">EQL Oracle</span>Every ally gets their own clock, started at their own first action. The number next to your name is what you actually did with the time you actually had.</div>
-    </div>
-
-    <div class="compare-row">
-      <div class="them"><span class="tag">The usual way</span>A pet dying, or an add going down, gets counted as a boss kill. Reset fights double-count deaths.</div>
-      <div class="us"><span class="tag">EQL Oracle</span>A kill means the actual target died. Pet deaths are kill-inert, and a fight that resets and re-engages merges back into one — kill counts and clear times you can trust.</div>
-    </div>
-
-    <div class="compare-row">
-      <div class="them"><span class="tag">The usual way</span>You notice your nukes are being shredded three fights too late, staring at a total.</div>
-      <div class="us"><span class="tag">EQL Oracle</span>The overlay flags a spell landing well under its usual within a handful of casts — measured against the same invocation, so a stance switch is never a false alarm.</div>
-    </div>
-
-    <div class="compare-row">
-      <div class="them"><span class="tag">The usual way</span>A line drawn from A to B, straight through a mountain.</div>
-      <div class="us"><span class="tag">EQL Oracle</span>Routes walk the server's actual navigation mesh, hug the ground, and hop through teleporters — the path shown is the path you can run.</div>
-    </div>
-
-    <div class="compare-row">
-      <div class="them"><span class="tag">The usual way</span>Pick your class from a dropdown. Again. On every alt.</div>
-      <div class="us"><span class="tag">EQL Oracle</span>Your class and loadout are inferred from what you cast, and follow you when they change mid-session.</div>
-    </div>
-
-    <div class="compare-row">
-      <div class="them"><span class="tag">The usual way</span>The meter updates every few seconds, comfortably behind the fight.</div>
-      <div class="us"><span class="tag">EQL Oracle</span>The log is polled every 100&nbsp;ms. What's on the overlay is what just happened.</div>
-    </div>
-
   </div>
 </section>
 
