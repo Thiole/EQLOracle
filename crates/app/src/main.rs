@@ -194,6 +194,7 @@ fn main() {
             commands::get_window_capability,
             commands::get_ui_shell,
             commands::get_live_meter,
+            commands::get_spell_check,
             commands::get_status_effects,
             commands::get_skill_status,
             commands::get_target_effects,

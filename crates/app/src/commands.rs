@@ -505,6 +505,74 @@ pub fn get_live_meter(state: State<AppState>) -> Option<combat::LiveMeterDto> {
     combat::live_meter(&state.ingest.lock_recover())
 }
 
+/// why: the DPS meter's "this spell isn't landing" hint -- rolling
+/// per-spell landing averages, target-blind (see ingest::SpellPerf).
+/// `struggling` = spells recently landing well under their own session
+/// norm; `alternatives` = the player's proven heavy hitters currently
+/// holding their norm (or unused just now), ranked by norm damage.
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SpellCheckRowDto {
+    pub name: String,
+    pub recent_avg: f64,
+    pub norm_avg: f64,
+    /// recent/norm -- under ~0.75 reads as "being resisted/shredded"
+    pub ratio: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SpellCheckDto {
+    pub struggling: Vec<SpellCheckRowDto>,
+    pub alternatives: Vec<SpellCheckRowDto>,
+}
+
+#[tauri::command]
+pub fn get_spell_check(state: State<AppState>) -> SpellCheckDto {
+    let ing = state.ingest.lock_recover();
+    let now = ing.now_ms();
+    let mut struggling = Vec::new();
+    let mut alternatives = Vec::new();
+    for (name, st) in ing.spell_perf.all() {
+        let ratio = if st.ema_norm > 0.0 {
+            st.ema_recent / st.ema_norm
+        } else {
+            1.0
+        };
+        let row = SpellCheckRowDto {
+            name: name.to_string(),
+            recent_avg: st.ema_recent,
+            norm_avg: st.ema_norm,
+            ratio,
+        };
+        let recent_active = now - st.last_ms < 10 * 60 * 1000;
+        if recent_active && st.recent_n >= 5 && st.landings >= 25 && ratio < 0.75 {
+            struggling.push(row);
+        } else if st.landings >= 25 && (!recent_active || ratio >= 0.9) {
+            alternatives.push(row);
+        }
+    }
+    struggling.sort_by(|a, b| {
+        a.ratio
+            .partial_cmp(&b.ratio)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    alternatives.sort_by(|a, b| {
+        b.norm_avg
+            .partial_cmp(&a.norm_avg)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    alternatives.truncate(3);
+    // why: no hint without a problem -- an empty struggling list means
+    // the meter shows nothing extra at all
+    if struggling.is_empty() {
+        alternatives.clear();
+    }
+    SpellCheckDto {
+        struggling,
+        alternatives,
+    }
+}
+
 /// why: overlay's timed-effects widget -- same polled-on-tick shape as
 /// get_live_meter, see effects.rs's own doc
 #[tauri::command]

@@ -230,6 +230,22 @@ export interface LiveMeterDto {
   incoming: LiveMeterRowDto[];
 }
 
+/** One spell in the rolling landing-performance check. */
+export interface SpellCheckRowDto {
+  name: string;
+  recent_avg: number;
+  norm_avg: number;
+  /** recent/norm -- under ~0.75 reads as "being resisted/shredded" */
+  ratio: number;
+}
+
+/** why: the meter's "this spell isn't landing" hint -- empty struggling
+ * means show nothing. */
+export interface SpellCheckDto {
+  struggling: SpellCheckRowDto[];
+  alternatives: SpellCheckRowDto[];
+}
+
 export interface CharmStatusDto {
   who: string;
   active: boolean;
@@ -1580,6 +1596,7 @@ export const api = {
     invoke<void>('set_planner_state', { race, levels }),
   /** why: the DPS meter overlay's whole data source */
   getLiveMeter: () => invoke<LiveMeterDto | null>('get_live_meter'),
+  getSpellCheck: () => invoke<SpellCheckDto>('get_spell_check'),
   /** why: the timed-effects overlay's whole data source */
   getStatusEffects: () => invoke<StatusEffectsDto>('get_status_effects'),
   /** why: the Skill Tracker's own-cooldowns section data source */

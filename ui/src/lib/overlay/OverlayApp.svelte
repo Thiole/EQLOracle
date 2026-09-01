@@ -10,6 +10,7 @@
   import {
     api,
     type LiveMeterDto,
+    type SpellCheckDto,
     type StatusEffectsDto,
     type SkillStatusDto,
     type TargetEffectsDto,
@@ -34,6 +35,7 @@
   let trackedTargetEffectNames = $state<string[]>([]);
   let trackedDropNames = $state<string[]>([]);
   let meter = $state<LiveMeterDto | null>(null);
+  let spellCheck = $state<SpellCheckDto | null>(null);
   let status = $state<StatusEffectsDto | null>(null);
   let skills = $state<SkillStatusDto[]>([]);
   let targetEffects = $state<TargetEffectsDto | null>(null);
@@ -84,7 +86,7 @@
 
   async function refresh() {
     if (widget === 'dps_meter') {
-      meter = await api.getLiveMeter();
+      [meter, spellCheck] = await Promise.all([api.getLiveMeter(), api.getSpellCheck()]);
     } else if (widget === 'skill_tracker') {
       const [s, sk, te] = await Promise.all([api.getStatusEffects(), api.getSkillStatus(), api.getTargetEffects()]);
       status = s;
@@ -178,7 +180,7 @@
      the actual title bar (every window manager supports that) repositions it. -->
 <div bind:this={rootEl} class="min-h-screen w-screen p-2">
   {#if widget === 'dps_meter'}
-    <DpsMeterWidget {meter} {opacity} {overallOpacity} />
+    <DpsMeterWidget {meter} {spellCheck} {opacity} {overallOpacity} />
   {:else if widget === 'skill_tracker'}
     <SkillTrackerWidget
       {status}

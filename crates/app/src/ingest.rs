@@ -169,6 +169,63 @@ impl AaLog {
     }
 }
 
+/// why: rolling per-spell landing performance, "You" only, target-blind
+/// (asked directly: "rolling keep track of an average hit for a spell...
+/// without even keeping a db per target name yet, just how it's going
+/// currently"). Two EMAs per spell: session norm (slow, ~n=100) and
+/// recent (fast, ~n=8). recent/norm well under 1.0 with enough samples
+/// means the spell is currently underperforming its own usual -- the
+/// signal that drives the meter's "this isn't landing" hint and the
+/// alternative suggestion, all without modeling targets.
+#[derive(Debug, Clone, Default)]
+pub struct SpellPerf {
+    stats: HashMap<String, SpellPerfStat>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SpellPerfStat {
+    pub ema_recent: f64,
+    pub ema_norm: f64,
+    pub landings: u64,
+    pub recent_n: u32,
+    pub last_ms: Millis,
+}
+
+impl SpellPerf {
+    const A_RECENT: f64 = 0.25;
+    const A_NORM: f64 = 0.02;
+    /// why: a lull resets the recent window's sample confidence -- ten
+    /// minutes later "recent" means this fight, not the last one
+    const RECENT_STALE_MS: Millis = 10 * 60 * 1000;
+
+    pub fn observe(&mut self, ts: Millis, spell: &str, amount: u64) {
+        let a = amount as f64;
+        let e = self
+            .stats
+            .entry(spell.to_string())
+            .or_insert(SpellPerfStat {
+                ema_recent: a,
+                ema_norm: a,
+                landings: 0,
+                recent_n: 0,
+                last_ms: ts,
+            });
+        if ts - e.last_ms > Self::RECENT_STALE_MS {
+            e.ema_recent = a;
+            e.recent_n = 0;
+        }
+        e.ema_recent += Self::A_RECENT * (a - e.ema_recent);
+        e.ema_norm += Self::A_NORM * (a - e.ema_norm);
+        e.landings += 1;
+        e.recent_n = e.recent_n.saturating_add(1);
+        e.last_ms = ts;
+    }
+
+    pub fn all(&self) -> impl Iterator<Item = (&str, &SpellPerfStat)> {
+        self.stats.iter().map(|(k, v)| (k.as_str(), v))
+    }
+}
+
 /// why: highest live rank observed cast this session, "You" only, keyed
 /// by base spell name -- confirmed real (2,131 "Ice Comet X" lines
 /// alone, rank climbing over time). Distinct from the catalog name and
@@ -905,6 +962,8 @@ pub struct Ingest {
     pub spellbook: SpellLog,
     /// why: highest live rank observed cast this session, "You" only, see SpellRanks
     pub spell_ranks: SpellRanks,
+    /// why: rolling per-spell landing performance -- see SpellPerf
+    pub spell_perf: SpellPerf,
     /// why: every exaltation-proc line this session, see ExaltationProcs
     pub exaltation_procs: ExaltationProcs,
     enc_map: HashMap<EncId, EncounterId>,
@@ -1040,6 +1099,7 @@ impl Default for Ingest {
             aa: AaLog::default(),
             spellbook: SpellLog::default(),
             spell_ranks: SpellRanks::default(),
+            spell_perf: SpellPerf::default(),
             exaltation_procs: ExaltationProcs::default(),
             enc_map: HashMap::new(),
             entities_by_enc: HashMap::new(),
@@ -2012,6 +2072,12 @@ impl Ingest {
         // separate "uses" milliseconds apart and corrupt the reuse gap
         if src.eq_ignore_ascii_case("you") && tags & tag::SPELL == 0 {
             crate::skilltracker::observe_skill_use(&mut self.skills, ts, ability, true);
+        }
+        // why: the rolling landing average -- spells only (melee has no
+        // rank/resist story), keyed by the base name so ranks fold
+        if src.eq_ignore_ascii_case("you") && tags & tag::SPELL != 0 && amount > 0 {
+            let (base, _rank) = split_cast_rank(ability);
+            self.spell_perf.observe(ts, base, amount);
         }
         let ab = self.store.ability_id(ability, tags);
         let tier = self.current_tier(ts);
@@ -7808,5 +7874,53 @@ mod craft_tests {
             craft_rows(&ing),
             vec![("Silver Malachite Ring".to_string(), 1, true, false)]
         );
+    }
+}
+
+#[cfg(test)]
+mod spell_perf_tests {
+    use super::*;
+
+    /// why: a run of partials must drag ema_recent well under ema_norm
+    /// while norm barely moves -- that separation IS the dip signal
+    #[test]
+    fn partial_resists_drop_recent_below_norm() {
+        let mut p = SpellPerf::default();
+        let mut ts = 0;
+        for _ in 0..50 {
+            p.observe(ts, "Conflagration", 1000);
+            ts += 7_000;
+        }
+        for _ in 0..10 {
+            p.observe(ts, "Conflagration", 300);
+            ts += 7_000;
+        }
+        let (_, st) = p.all().next().unwrap();
+        let ratio = st.ema_recent / st.ema_norm;
+        assert!(ratio < 0.5, "ratio {ratio} should read as a dip");
+        assert!(
+            st.ema_norm > 800.0,
+            "norm {} should barely move",
+            st.ema_norm
+        );
+        assert_eq!(st.landings, 60);
+    }
+
+    /// why: after a 10-minute lull the recent window restarts from the
+    /// next hit -- last fight's resists don't smear into this one
+    #[test]
+    fn staleness_resets_recent_window() {
+        let mut p = SpellPerf::default();
+        let mut ts = 0;
+        for _ in 0..20 {
+            p.observe(ts, "Ice Comet", 200);
+            ts += 7_000;
+        }
+        ts += SpellPerf::RECENT_STALE_MS + 1;
+        p.observe(ts, "Ice Comet", 1000);
+        let (_, st) = p.all().next().unwrap();
+        assert_eq!(st.recent_n, 1);
+        assert_eq!(st.ema_recent, 1000.0);
+        assert_eq!(st.landings, 21, "lifetime norm survives the reset");
     }
 }
