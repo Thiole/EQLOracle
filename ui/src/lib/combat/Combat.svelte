@@ -7,6 +7,7 @@
   import HistoryPane from './HistoryPane.svelte';
   import FightTimelineChart from './FightTimelineChart.svelte';
   import { buildCombatReport } from './report';
+  import { copyText } from '$lib/clipboard';
   import {
     zoneVisits,
     encounters,
@@ -179,13 +180,15 @@
       sum,
       allyRows,
     );
-    try {
-      await navigator.clipboard.writeText(report);
-    } catch {
-      return; // clipboard denied -- nothing copied, no notification to show for it
-    }
+    // why: failure is SHOWN -- the old silent return read as "copied"
+    // and left a stale clipboard to paste ("giving me ?")
+    const ok = await copyText(report);
     clearTimeout(copyNoteTimer);
-    copyNote = { x: event.clientX, y: event.clientY, text: 'report copied to clipboard' };
+    copyNote = {
+      x: event.clientX,
+      y: event.clientY,
+      text: ok ? 'report copied to clipboard' : 'clipboard copy FAILED',
+    };
     copyNoteTimer = setTimeout(() => (copyNote = null), 1400);
   }
 </script>

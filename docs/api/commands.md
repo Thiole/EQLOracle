@@ -327,10 +327,10 @@ why: past parses against `target`, newest first; re-resolves loadout against liv
 - returns: `Option<String>`
 
 ## `get_overlay_diagnostics` (stateful)
-why: Debug's Overlay tab -- OS-level readback of every open overlay window, so a "nothing shows" report becomes pasteable facts
+why: Debug's Overlay tab -- OS-level readback of every open overlay window, so a "nothing shows" report becomes pasteable facts. A panic comes back as a visible error string, never a silently dead panel.
 
 - args: none
-- returns: `crate::overlaydiag::OverlayDiagnosticsDto`
+- returns: `Result<crate::overlaydiag::OverlayDiagnosticsDto, String>`
 
 ## `get_party_chat` (stateful)
 

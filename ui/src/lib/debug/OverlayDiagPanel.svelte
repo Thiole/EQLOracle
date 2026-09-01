@@ -6,8 +6,10 @@
   import { api, type OverlayDiagnosticsDto } from '$lib/tauri/api';
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
+  import { copyText } from '$lib/clipboard';
 
   let diag = $state<OverlayDiagnosticsDto | null>(null);
+  let error = $state<string | null>(null);
   let loaded = $state(false);
   let copied = $state(false);
 
@@ -15,20 +17,25 @@
     void refresh();
   });
 
+  // why: the error IS the report when the call fails -- shown and
+  // copyable, never a silently greyed button ("copy json is greyed out")
   async function refresh() {
-    diag = (await api.getOverlayDiagnostics()) ?? null;
+    loaded = false;
+    error = null;
+    try {
+      diag = (await api.getOverlayDiagnostics()) ?? null;
+    } catch (e) {
+      diag = null;
+      error = String(e);
+    }
     loaded = true;
     copied = false;
   }
 
   async function copyJson() {
-    if (!diag) return;
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(diag, null, 2));
-      copied = true;
-    } catch {
-      copied = false;
-    }
+    const payload = diag ? JSON.stringify(diag, null, 2) : (error ?? '');
+    if (!payload) return;
+    copied = await copyText(payload);
   }
 
   // why: the exact invisible-layered-window state the Windows reports
@@ -53,7 +60,7 @@
         <h2 class="panel-title">overlay diagnostics</h2>
         <div class="flex gap-1.5">
           <Button variant="outline" size="sm" class="h-6 px-2 text-[11px]" onclick={refresh}>refresh</Button>
-          <Button variant="outline" size="sm" class="h-6 px-2 text-[11px]" onclick={copyJson} disabled={!diag}>
+          <Button variant="outline" size="sm" class="h-6 px-2 text-[11px]" onclick={copyJson} disabled={!diag && !error}>
             {copied ? 'copied' : 'copy JSON'}
           </Button>
         </div>
@@ -79,6 +86,9 @@
     <CardContent class="px-3 py-2.5">
       {#if !loaded}
         <p class="text-[11px] text-muted-foreground">Loading…</p>
+      {:else if error}
+        <p class="text-[11px] text-caution">Diagnostics call failed -- this error IS the bug report, copy it:</p>
+        <p class="mt-1 font-mono text-[11px]">{error}</p>
       {:else if !diag}
         <p class="text-[11px] text-muted-foreground">Diagnostics unavailable (no backend in this session).</p>
       {:else if !diag.overlays.length}

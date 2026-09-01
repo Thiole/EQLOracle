@@ -68,6 +68,9 @@ fn main() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // why: navigator.clipboard silently fails under WebKitGTK --
+        // caught empty on a real machine; OS clipboard via Rust instead
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState::new())
         // why: caught live -- Tauri's own default is "keep the process
         // alive as long as any window exists", which on this app means

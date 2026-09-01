@@ -3,6 +3,7 @@
   import { Input } from '$lib/components/ui/input';
   import CopyIcon from '@lucide/svelte/icons/copy';
   import { pmThreads, pmThreadsError, activePmPlayer, pmHistory, openPmThread, refreshPmThreads } from '$lib/stores/chat';
+  import { copyText } from '$lib/clipboard';
 
   $effect(() => {
     void refreshPmThreads();
@@ -21,13 +22,13 @@
 
   async function copyTell(event: MouseEvent, player: string) {
     const cmd = `/t ${player}`;
-    try {
-      await navigator.clipboard.writeText(cmd);
-    } catch {
-      return; // clipboard denied -- nothing copied, no notification to show for it
-    }
+    const ok = await copyText(cmd);
     clearTimeout(copyNoteTimer);
-    copyNote = { x: event.clientX, y: event.clientY, text: `${cmd} copied to clipboard` };
+    copyNote = {
+      x: event.clientX,
+      y: event.clientY,
+      text: ok ? `${cmd} copied to clipboard` : 'clipboard copy FAILED',
+    };
     copyNoteTimer = setTimeout(() => (copyNote = null), 1400);
   }
 </script>

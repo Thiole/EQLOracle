@@ -995,10 +995,23 @@ pub fn set_overlay_locked(app: AppHandle, widget: String, locked: bool) -> Resul
 }
 
 /// why: Debug's Overlay tab -- OS-level readback of every open overlay
-/// window, so a "nothing shows" report becomes pasteable facts
+/// window, so a "nothing shows" report becomes pasteable facts. A panic
+/// comes back as a visible error string, never a silently dead panel.
 #[tauri::command]
-pub fn get_overlay_diagnostics(app: AppHandle) -> crate::overlaydiag::OverlayDiagnosticsDto {
-    crate::overlaydiag::collect(&app)
+pub fn get_overlay_diagnostics(
+    app: AppHandle,
+) -> Result<crate::overlaydiag::OverlayDiagnosticsDto, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::overlaydiag::collect(&app)
+    }))
+    .map_err(|e| {
+        let msg = e
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| e.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "unknown panic".to_string());
+        format!("diagnostics panicked: {msg}")
+    })
 }
 
 /// why: the frontend can't cfg(target_os) -- whether the main window
