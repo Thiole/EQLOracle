@@ -127,15 +127,17 @@
 {/snippet}
 
 <div class="relative">
+  <!-- why: state in the label too, not color alone -- readable colorblind;
+       deny color is the same bad token the rest of the app denies with -->
   <button
     type="button"
     bind:this={buttonEl}
     onclick={() => (open = !open)}
     class="flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors {$overlayEnabled
       ? 'border-good bg-good text-background'
-      : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'}"
+      : 'border-bad bg-bad/10 text-bad hover:bg-bad/20'}"
   >
-    Overlay
+    Overlay: {$overlayEnabled ? 'enabled' : 'disabled'}
   </button>
 
   {#if open}
