@@ -477,14 +477,19 @@ impl ZoneNav {
     /// coords in and out. A link edge costs ~nothing (a pad is a zone
     /// line, not a journey) and splits the route into separate legs.
     /// None when either endpoint has no nearby poly or no route exists.
-    pub fn find_route(&self, from: [f32; 3], to: [f32; 3]) -> Option<Vec<NavLeg>> {
+    pub fn find_route(
+        &self,
+        from: [f32; 3],
+        to: [f32; 3],
+        geo: Option<&ZoneGeo>,
+    ) -> Option<Vec<NavLeg>> {
         /// why: not literally 0.0 -- a tiny positive cost keeps A*
         /// admissible-ish and route lengths finite under link cycles
         const LINK_COST: f32 = 1.0;
         let start = self.nearest_poly(from)?;
         let goal = self.nearest_poly(to)?;
         if start == goal {
-            return Some(vec![NavLeg::Walk(vec![from, to])]);
+            return Some(vec![NavLeg::Walk(ground_hug(vec![from, to], geo))]);
         }
 
         #[derive(PartialEq)]
@@ -550,7 +555,10 @@ impl ZoneNav {
             if let Some(li) = e.link {
                 let l = &self.links[li as usize];
                 // close the walk leg AT the pad, then the hop itself
-                legs.push(NavLeg::Walk(funnel(seg_start, l.from, &portals)));
+                legs.push(NavLeg::Walk(ground_hug(
+                    funnel(seg_start, l.from, &portals),
+                    geo,
+                )));
                 portals.clear();
                 legs.push(NavLeg::Hop {
                     at: l.from,
@@ -562,14 +570,17 @@ impl ZoneNav {
                 portals.push((e.a, e.b));
             }
         }
-        legs.push(NavLeg::Walk(funnel(seg_start, to, &portals)));
+        legs.push(NavLeg::Walk(ground_hug(
+            funnel(seg_start, to, &portals),
+            geo,
+        )));
         Some(legs)
     }
 
     /// why: flat waypoint list for callers that only draw one line --
     /// hop discontinuities just become straight segments
     pub fn find_path(&self, from: [f32; 3], to: [f32; 3]) -> Option<Vec<[f32; 3]>> {
-        let legs = self.find_route(from, to)?;
+        let legs = self.find_route(from, to, None)?;
         let mut out: Vec<[f32; 3]> = Vec::new();
         for leg in &legs {
             match leg {
@@ -597,6 +608,39 @@ fn weighted(a: [f32; 3], b: [f32; 3]) -> f32 {
     let dy = a[1] - b[1];
     let dz = (a[2] - b[2]) * 4.0;
     dx * dx + dy * dy + dz * dz
+}
+
+/// why: the funnel only emits waypoints at CORNERS -- an open-terrain
+/// route that's straight in XY comes back as two points, and the drawn
+/// segment cuts straight through every hill between them (reported
+/// live: Feerrott, "just a straight line" through geometry). Subdivide
+/// each leg and snap every sample to the collision mesh's surface so
+/// the route hugs the ground; without geo (zone .map not cached) the
+/// lerped heights stand.
+const HUG_STEP: f32 = 25.0;
+
+fn ground_hug(pts: Vec<[f32; 3]>, geo: Option<&ZoneGeo>) -> Vec<[f32; 3]> {
+    let Some(geo) = geo else { return pts };
+    let mut out: Vec<[f32; 3]> = Vec::with_capacity(pts.len() * 4);
+    for w in pts.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        let dx = b[0] - a[0];
+        let dy = b[1] - a[1];
+        let steps = ((dx * dx + dy * dy).sqrt() / HUG_STEP).ceil().max(1.0) as usize;
+        for i in 0..steps {
+            let t = i as f32 / steps as f32;
+            let x = a[0] + dx * t;
+            let y = a[1] + dy * t;
+            let zl = a[2] + (b[2] - a[2]) * t;
+            let z = geo.best_z(x, y, zl).unwrap_or(zl);
+            out.push([x, y, z]);
+        }
+    }
+    if let Some(last) = pts.last() {
+        let z = geo.best_z(last[0], last[1], last[2]).unwrap_or(last[2]);
+        out.push([last[0], last[1], z]);
+    }
+    out
 }
 
 /// Simple stupid funnel over the XY projection; Z rides along from
@@ -880,5 +924,44 @@ mod link_tests {
             !nav.polys[p2 as usize].edges.iter().any(|e| e.to == p1),
             "no direct reverse edge island2 -> island1"
         );
+    }
+}
+
+#[cfg(test)]
+mod ground_hug_tests {
+    use super::*;
+
+    /// why: the reported bug's shape -- an open-terrain route straight in
+    /// XY came back as two points and the drawn line cut through hills.
+    /// With geo, a long leg subdivides and every sample sits on a real
+    /// surface (best_z answers at that column).
+    #[test]
+    fn a_long_walk_leg_hugs_the_ground_instead_of_two_corners() {
+        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/emumaps");
+        let nav = parse_nav(&std::fs::read(p.join("blackburrow.nav")).unwrap()).unwrap();
+        let geo = parse_map(&std::fs::read(p.join("blackburrow.map")).unwrap()).unwrap();
+        let from = [-50.0, -30.0, 0.0];
+        let to = [300.0, 100.0, -50.0];
+        let legs = nav.find_route(from, to, Some(&geo)).expect("route");
+        let n: usize = legs
+            .iter()
+            .map(|l| match l {
+                NavLeg::Walk(w) => w.len(),
+                _ => 0,
+            })
+            .sum();
+        assert!(n > 10, "expected a sampled route, got {n} points");
+        for l in &legs {
+            if let NavLeg::Walk(w) = l {
+                for pt in w {
+                    if let Some(gz) = geo.best_z(pt[0], pt[1], pt[2]) {
+                        assert!(
+                            (gz - pt[2]).abs() < 1.0,
+                            "sample floats off its own surface: {pt:?} vs ground {gz}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

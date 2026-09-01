@@ -1423,7 +1423,11 @@ pub fn find_walk_path(
     // maps can't; disk-cache-only (ensure_emu_zone owns the download)
     if let Ok(app_data) = app.path().app_data_dir() {
         if let Some(nav) = emumaps::load_nav(&app_data, &zone) {
-            if let Some(route) = nav.find_route(from, to) {
+            // why: geo (collision mesh) makes walk legs hug the ground
+            // instead of cutting straight through hills -- see
+            // emumaps::ground_hug's own doc; None just keeps corner z
+            let geo = emumaps::load_geo(&app_data, &zone);
+            if let Some(route) = nav.find_route(from, to, geo.as_deref()) {
                 let mut waypoints: Vec<[f32; 3]> = Vec::new();
                 let legs: Vec<PathLegDto> = route
                     .iter()
