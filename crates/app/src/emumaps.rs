@@ -551,6 +551,9 @@ impl ZoneNav {
         let mut legs: Vec<NavLeg> = Vec::new();
         let mut seg_start = from;
         let mut portals: Vec<([f32; 3], [f32; 3])> = Vec::new();
+        // why: portal orientation needs the travel direction, so track
+        // which poly each edge leaves from as the chain walks
+        let mut cur_poly = start;
         for e in &chain {
             if let Some(li) = e.link {
                 let l = &self.links[li as usize];
@@ -567,8 +570,14 @@ impl ZoneNav {
                 });
                 seg_start = l.to;
             } else {
-                portals.push((e.a, e.b));
+                portals.push(orient_portal(
+                    e.a,
+                    e.b,
+                    self.polys[cur_poly as usize].center,
+                    self.polys[e.to as usize].center,
+                ));
             }
+            cur_poly = e.to;
         }
         legs.push(NavLeg::Walk(ground_hug(
             funnel(seg_start, to, &portals),
@@ -643,13 +652,23 @@ fn ground_hug(pts: Vec<[f32; 3]>, geo: Option<&ZoneGeo>) -> Vec<[f32; 3]> {
     out
 }
 
-/// Simple stupid funnel over the XY projection; Z rides along from
-/// whichever portal endpoint each corner comes from.
+/// Canonical simple-stupid-funnel over the XY projection (Detour's own
+/// shape). Portals arrive PRE-ORIENTED (left, right) relative to travel
+/// -- orientation decided once per portal from the poly-center travel
+/// direction in orient_portal, never re-decided per apex: the first
+/// version of this re-swapped each portal against the current apex,
+/// which classified every corridor as "already inside" and emitted ZERO
+/// corners -- routes rendered as one straight line through walls
+/// (reported live in Feerrott; reproduced in blackburrow's tunnels:
+/// 131 wall crossings on a straight "path"). Z rides along from
+/// whichever portal endpoint each emitted corner comes from.
 fn funnel(from: [f32; 3], to: [f32; 3], portals: &[([f32; 3], [f32; 3])]) -> Vec<[f32; 3]> {
-    let cross = |o: [f32; 3], a: [f32; 3], b: [f32; 3]| -> f32 {
-        (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-    };
-    // portals + a zero-width goal portal
+    fn triarea2(a: [f32; 3], b: [f32; 3], c: [f32; 3]) -> f32 {
+        (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    }
+    let veq = |a: [f32; 3], b: [f32; 3]| (a[0] - b[0]).abs() < 1e-4 && (a[1] - b[1]).abs() < 1e-4;
+
+    // portals plus a zero-width goal portal
     let mut ps: Vec<([f32; 3], [f32; 3])> = Vec::with_capacity(portals.len() + 1);
     ps.extend_from_slice(portals);
     ps.push((to, to));
@@ -657,55 +676,76 @@ fn funnel(from: [f32; 3], to: [f32; 3], portals: &[([f32; 3], [f32; 3])]) -> Vec
     let mut path = vec![from];
     let mut apex = from;
     let (mut left, mut right) = (ps[0].0, ps[0].1);
-    // orient the first portal so `left` really is left of travel
-    if cross(apex, left, right) < 0.0 {
-        std::mem::swap(&mut left, &mut right);
-    }
     let (mut li, mut ri) = (0usize, 0usize);
     let mut i = 1;
     while i < ps.len() {
-        let (mut a, mut b) = ps[i];
-        if cross(apex, a, b) < 0.0 {
-            std::mem::swap(&mut a, &mut b);
-        }
-        // tighten right
-        if cross(apex, right, b) <= 0.0 {
-            if apex == right || cross(apex, left, b) > 0.0 {
-                right = b;
+        let (l, r) = ps[i];
+        // tighten the right side
+        if triarea2(apex, right, r) <= 0.0 {
+            if veq(apex, right) || triarea2(apex, left, r) > 0.0 {
+                right = r;
                 ri = i;
             } else {
-                path.push(left);
+                // right crossed left: left is a corner
+                if !veq(apex, left) {
+                    path.push(left);
+                }
                 apex = left;
-                let restart = li + 1;
+                let restart = li;
                 left = apex;
                 right = apex;
-                li = restart - 1;
-                ri = restart - 1;
-                i = restart;
+                ri = restart;
+                i = restart + 1;
                 continue;
             }
         }
-        // tighten left
-        if cross(apex, left, a) >= 0.0 {
-            if apex == left || cross(apex, right, a) < 0.0 {
-                left = a;
+        // tighten the left side
+        if triarea2(apex, left, l) >= 0.0 {
+            if veq(apex, left) || triarea2(apex, right, l) < 0.0 {
+                left = l;
                 li = i;
             } else {
-                path.push(right);
+                if !veq(apex, right) {
+                    path.push(right);
+                }
                 apex = right;
-                let restart = ri + 1;
+                let restart = ri;
                 left = apex;
                 right = apex;
-                li = restart - 1;
-                ri = restart - 1;
-                i = restart;
+                li = restart;
+                i = restart + 1;
                 continue;
             }
         }
         i += 1;
     }
-    path.push(to);
+    if path.last().is_none_or(|p| !veq(*p, to)) {
+        path.push(to);
+    }
     path
+}
+
+/// why: portal orientation, decided ONCE from travel direction (current
+/// poly center -> next poly center): the endpoint to the left of travel
+/// is `left`. See funnel's own doc for what deciding per-apex broke.
+fn orient_portal(
+    a: [f32; 3],
+    b: [f32; 3],
+    from_center: [f32; 3],
+    to_center: [f32; 3],
+) -> ([f32; 3], [f32; 3]) {
+    let dir = [to_center[0] - from_center[0], to_center[1] - from_center[1]];
+    let mid = [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0];
+    let rel = [a[0] - mid[0], a[1] - mid[1]];
+    // why: map-file XY is orientation-REVERSED vs loc space (the
+    // loc->map transform's determinant is negative), so "left of
+    // travel" is the negative cross side here -- verified empirically:
+    // the positive-side choice bent routes outward through walls
+    if dir[0] * rel[1] - dir[1] * rel[0] < 0.0 {
+        (a, b)
+    } else {
+        (b, a)
+    }
 }
 
 // ---------------------------------------------------------------- cache + fetch
@@ -963,5 +1003,57 @@ mod ground_hug_tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod funnel_tests {
+    use super::*;
+
+    /// why: the decisive hand-checkable case -- an L corridor. Straight
+    /// from->to leaves the corridor, so the funnel MUST emit the inner
+    /// corner. This is what the original implementation never did (zero
+    /// corners, straight lines through walls, reported live in Feerrott).
+    #[test]
+    fn an_l_corridor_emits_the_inner_corner() {
+        // cells: A(0,0) -> B(10,0) -> C(10,10); portal A->B at x=5,
+        // y in [-2,2]; portal B->C at y=5, x in [8,12]
+        let p1 = orient_portal(
+            [5.0, -2.0, 0.0],
+            [5.0, 2.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+        );
+        let p2 = orient_portal(
+            [8.0, 5.0, 0.0],
+            [12.0, 5.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [10.0, 10.0, 0.0],
+        );
+        let path = funnel([0.0, 0.0, 0.0], [10.0, 10.0, 0.0], &[p1, p2]);
+        assert!(
+            path.iter()
+                .any(|p| (p[0] - 5.0).abs() < 0.01 && (p[1] - 2.0).abs() < 0.01),
+            "must corner at (5,2), got {path:?}"
+        );
+        // and the reverse corridor bends at its own inner corner too
+        let q1 = orient_portal(
+            [8.0, 5.0, 0.0],
+            [12.0, 5.0, 0.0],
+            [10.0, 10.0, 0.0],
+            [10.0, 0.0, 0.0],
+        );
+        let q2 = orient_portal(
+            [5.0, -2.0, 0.0],
+            [5.0, 2.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        );
+        let back = funnel([10.0, 10.0, 0.0], [0.0, 0.0, 0.0], &[q1, q2]);
+        assert!(
+            back.iter()
+                .any(|p| (p[0] - 5.0).abs() < 0.01 && (p[1] - 2.0).abs() < 0.01),
+            "reverse must corner at (5,2), got {back:?}"
+        );
     }
 }
