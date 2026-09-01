@@ -1531,11 +1531,13 @@ pub struct PathDto {
 }
 
 /// why: missing route is a real retryable outcome, not folded into an empty result
-
+///
+/// why: async -- first load of a swim zone bridges its mesh (line-of-
+/// sight work); a sync command would freeze the main thread meanwhile
 #[tauri::command]
-pub fn find_walk_path(
+pub async fn find_walk_path(
     app: AppHandle,
-    state: State<AppState>,
+    state: State<'_, AppState>,
     pack: Option<String>,
     zone: String,
     from: [f32; 3],
@@ -1639,6 +1641,14 @@ pub async fn ensure_emu_zone(app: AppHandle, zone: String) -> EmuZoneStatusDto {
         };
     };
     let (nav, geo) = emumaps::ensure_zone(&app_data, &zone).await;
+    // why: warm the parsed (and, underwater, bridged) mesh off-thread
+    // now, so the first route click doesn't pay that cost
+    if nav {
+        let (app_data, zone) = (app_data.clone(), zone.clone());
+        std::thread::spawn(move || {
+            let _ = emumaps::load_nav(&app_data, &zone);
+        });
+    }
     EmuZoneStatusDto { nav, geo }
 }
 

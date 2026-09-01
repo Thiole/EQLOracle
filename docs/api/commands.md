@@ -155,10 +155,11 @@ why: picks and copies a sound file in, saves as `kind`'s custom sound; Ok(None) 
 - args: none
 - returns: `Option<ExistingInventoryDumpDto>`
 
-## `find_walk_path` (stateful)
+## `find_zone_route` (stateful)
+why: async -- first load of a swim zone bridges its mesh (line-of- sight work); a sync command would freeze the main thread meanwhile
 
-- args: `pack: Option<String>`; `zone: String`; `from: [f32; 3]`; `to: [f32; 3]`
-- returns: `Result<PathDto, String>`
+- args: `from_zone: String`; `to_zone: String`
+- returns: `Result<ZoneRouteDto, String>`
 
 ## `find_zone_route` (stateful)
 

@@ -692,6 +692,171 @@ impl ZoneNav {
         self.nearest_poly(p)
     }
 
+    /// why: open water as graph nodes -- a coarse 3D grid over the mesh,
+    /// each point kept only if a SHORT line of sight reaches a nearby
+    /// poly or node. Short hops chain through shafts and rooms where one
+    /// long line never clears (kedge's top level: 7 clear lines among
+    /// 358k poly pairs, all ~615 units -- a needle no sampling finds).
+    /// Nodes become single-vertex polys, so routing/funnel/endpoint
+    /// binding need no special case; a void cluster outside the zone
+    /// only ever sees itself and stays unreachable.
+    fn add_water_nodes(&mut self, geo: &ZoneGeo, z_lift: f32) {
+        const STEP: f32 = 40.0;
+        // why: > STEP*sqrt(3) so diagonal grid neighbors can link
+        const REACH: f32 = 72.0;
+        let n = self.polys.len();
+        if n == 0 {
+            return;
+        }
+        let mut lo = [f32::MAX; 3];
+        let mut hi = [f32::MIN; 3];
+        for p in &self.polys {
+            for k in 0..3 {
+                lo[k] = lo[k].min(p.center[k]);
+                hi[k] = hi[k].max(p.center[k]);
+            }
+        }
+        let cell = |v: f32| (v / REACH).floor() as i32;
+        let mut poly_cells: HashMap<(i32, i32, i32), Vec<u32>> = HashMap::new();
+        for (i, p) in self.polys.iter().enumerate() {
+            poly_cells
+                .entry((cell(p.center[0]), cell(p.center[1]), cell(p.center[2])))
+                .or_default()
+                .push(i as u32);
+        }
+        let mut nodes: Vec<[f32; 3]> = Vec::new();
+        let mut x = lo[0] - STEP;
+        while x <= hi[0] + STEP {
+            let mut y = lo[1] - STEP;
+            while y <= hi[1] + STEP {
+                let mut z = lo[2];
+                while z <= hi[2] + STEP {
+                    nodes.push([x, y, z]);
+                    z += STEP;
+                }
+                y += STEP;
+            }
+            x += STEP;
+        }
+        let mut node_cells: HashMap<(i32, i32, i32), Vec<u32>> = HashMap::new();
+        for (i, p) in nodes.iter().enumerate() {
+            node_cells
+                .entry((cell(p[0]), cell(p[1]), cell(p[2])))
+                .or_default()
+                .push(i as u32);
+        }
+        let reach2 = REACH * REACH;
+        // edges per node: (to poly idx, ...) and (to node idx, ...)
+        let mut node_polys: Vec<Vec<u32>> = vec![Vec::new(); nodes.len()];
+        let mut node_nodes: Vec<Vec<u32>> = vec![Vec::new(); nodes.len()];
+        let mut tests = 0usize;
+        for (ni, p) in nodes.iter().enumerate() {
+            let (cx, cy, cz) = (cell(p[0]), cell(p[1]), cell(p[2]));
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    for dz in -1..=1 {
+                        let key = (cx + dx, cy + dy, cz + dz);
+                        if let Some(ps) = poly_cells.get(&key) {
+                            for &pi in ps {
+                                let c = self.polys[pi as usize].center;
+                                if dist2(*p, c) > reach2 {
+                                    continue;
+                                }
+                                let mut lc = c;
+                                lc[2] += z_lift;
+                                tests += 1;
+                                if geo.los_clear(*p, lc) {
+                                    node_polys[ni].push(pi);
+                                }
+                            }
+                        }
+                        if let Some(ns) = node_cells.get(&key) {
+                            for &nj in ns {
+                                if nj as usize <= ni || dist2(*p, nodes[nj as usize]) > reach2 {
+                                    continue;
+                                }
+                                tests += 1;
+                                if geo.los_clear(*p, nodes[nj as usize]) {
+                                    node_nodes[ni].push(nj);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // keep only nodes that connect to something; remap indices
+        let mut keep: Vec<Option<u32>> = vec![None; nodes.len()];
+        let mut connected = vec![false; nodes.len()];
+        for (ni, _) in nodes.iter().enumerate() {
+            if !node_polys[ni].is_empty() || !node_nodes[ni].is_empty() {
+                connected[ni] = true;
+            }
+            for &nj in &node_nodes[ni] {
+                connected[nj as usize] = true;
+            }
+        }
+        for (ni, p) in nodes.iter().enumerate() {
+            if connected[ni] {
+                keep[ni] = Some(self.polys.len() as u32);
+                self.polys.push(NavPoly {
+                    verts: vec![*p],
+                    edges: Vec::new(),
+                    center: *p,
+                });
+            }
+        }
+        let mut edges = 0usize;
+        for ni in 0..nodes.len() {
+            let Some(gi) = keep[ni] else { continue };
+            let np = nodes[ni];
+            for &pi in &node_polys[ni] {
+                let c = self.polys[pi as usize].center;
+                self.polys[gi as usize].edges.push(NavEdge {
+                    to: pi,
+                    a: c,
+                    b: c,
+                    link: None,
+                });
+                self.polys[pi as usize].edges.push(NavEdge {
+                    to: gi,
+                    a: np,
+                    b: np,
+                    link: None,
+                });
+                edges += 1;
+            }
+            for &nj in &node_nodes[ni] {
+                let Some(gj) = keep[nj as usize] else {
+                    continue;
+                };
+                let q = nodes[nj as usize];
+                self.polys[gi as usize].edges.push(NavEdge {
+                    to: gj,
+                    a: q,
+                    b: q,
+                    link: None,
+                });
+                self.polys[gj as usize].edges.push(NavEdge {
+                    to: gi,
+                    a: np,
+                    b: np,
+                    link: None,
+                });
+                edges += 1;
+            }
+        }
+        if std::env::var("EQLP_NAV_DEBUG").is_ok() {
+            eprintln!(
+                "water nodes: {} grid points, {} kept, {} edges, {} LOS tests",
+                nodes.len(),
+                self.polys.len() - n,
+                edges,
+                tests
+            );
+        }
+    }
+
     /// why: underwater zones only (see UNDERWATER_ZONES). EQEmu's mesh
     /// for a swim zone is floor patches with NO swim connectivity at all
     /// (kedge: 243 components, no off-mesh cons, one area type --
@@ -700,9 +865,11 @@ impl ZoneNav {
     /// mesh shows a clear line. Both portal endpoints are the far
     /// center, so the funnel threads the exact swim point.
     pub fn bridge_gaps(&mut self, geo: &ZoneGeo) {
-        const MAX_DIST: f32 = 250.0;
-        const PER_COMPONENT_PAIR: usize = 3;
+        // why: 3D distance -- a swim zone is as tall as it is wide (kedge
+        // entrance shaft: z 300 down to 30), so the radius must span it
+        const MAX_DIST: f32 = 1000.0;
         const Z_LIFT: f32 = 2.0;
+        self.add_water_nodes(geo, Z_LIFT);
 
         // components over current adjacency
         let n = self.polys.len();
@@ -729,56 +896,93 @@ impl ZoneNav {
             return;
         }
 
-        // best LOS-clear candidates per component pair, nearest first:
-        // (distance^2, poly i, poly j)
-        type Candidates = Vec<(f32, u32, u32)>;
-        let mut best: HashMap<(u32, u32), Candidates> = HashMap::new();
+        // why: greedy union-find over ALL candidate pairs sorted by
+        // distance -- a successful bridge merges two sets, so every later
+        // pair between them is skipped without a line-of-sight test.
+        // The per-component-pair scheme before this tested 2.4M lines
+        // on kedge (243 sets -> 29k set pairs); this needs a fraction.
+        // Per set pair, tries are capped so a hopeless pair (two sets
+        // wall-separated everywhere) can't scan the whole zone.
+        const MAX_TRIES: usize = 400;
+        let mut cands: Vec<(f32, u32, u32)> = Vec::new();
         for i in 0..n {
             for j in (i + 1)..n {
-                let (ci, cj) = (comp[i], comp[j]);
-                if ci == cj {
+                if comp[i] == comp[j] {
                     continue;
                 }
                 let d2 = dist2(self.polys[i].center, self.polys[j].center);
-                if d2 > MAX_DIST * MAX_DIST {
-                    continue;
+                if d2 <= MAX_DIST * MAX_DIST {
+                    cands.push((d2, i as u32, j as u32));
                 }
-                let key = (ci.min(cj), ci.max(cj));
-                let v = best.entry(key).or_default();
-                v.push((d2, i as u32, j as u32));
-                v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal));
-                v.truncate(PER_COMPONENT_PAIR * 4); // headroom before LOS pruning
             }
+        }
+        cands.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal));
+
+        let mut parent: Vec<u32> = (0..c).collect();
+        fn find(parent: &mut [u32], x: u32) -> u32 {
+            let mut r = x;
+            while parent[r as usize] != r {
+                r = parent[r as usize];
+            }
+            let mut cur = x;
+            while parent[cur as usize] != r {
+                let next = parent[cur as usize];
+                parent[cur as usize] = r;
+                cur = next;
+            }
+            r
         }
         let lift = |mut p: [f32; 3]| {
             p[2] += Z_LIFT;
             p
         };
-        for (_, cands) in best {
-            let mut made = 0usize;
-            for (_, i, j) in cands {
-                if made >= PER_COMPONENT_PAIR {
-                    break;
-                }
-                let a = self.polys[i as usize].center;
-                let b = self.polys[j as usize].center;
-                if !geo.los_clear(lift(a), lift(b)) {
-                    continue;
-                }
-                self.polys[i as usize].edges.push(NavEdge {
-                    to: j,
-                    a: b,
-                    b,
-                    link: None,
-                });
-                self.polys[j as usize].edges.push(NavEdge {
-                    to: i,
-                    a,
-                    b: a,
-                    link: None,
-                });
-                made += 1;
+        let mut tries: HashMap<(u32, u32), usize> = HashMap::new();
+        let mut sets_left = c;
+        let mut dbg = (0usize, 0usize); // LOS tests, connected
+        for (_, i, j) in cands {
+            if sets_left <= 1 {
+                break;
             }
+            let (ra, rb) = (
+                find(&mut parent, comp[i as usize]),
+                find(&mut parent, comp[j as usize]),
+            );
+            if ra == rb {
+                continue;
+            }
+            let key = (ra.min(rb), ra.max(rb));
+            let t = tries.entry(key).or_insert(0);
+            if *t >= MAX_TRIES {
+                continue;
+            }
+            *t += 1;
+            dbg.0 += 1;
+            let a = self.polys[i as usize].center;
+            let b = self.polys[j as usize].center;
+            if !geo.los_clear(lift(a), lift(b)) {
+                continue;
+            }
+            dbg.1 += 1;
+            self.polys[i as usize].edges.push(NavEdge {
+                to: j,
+                a: b,
+                b,
+                link: None,
+            });
+            self.polys[j as usize].edges.push(NavEdge {
+                to: i,
+                a,
+                b: a,
+                link: None,
+            });
+            parent[ra as usize] = rb;
+            sets_left -= 1;
+        }
+        if std::env::var("EQLP_NAV_DEBUG").is_ok() {
+            eprintln!(
+                "bridge debug: {c} components -> {sets_left}, {} LOS tests, {} connected",
+                dbg.0, dbg.1
+            );
         }
     }
 

@@ -73,4 +73,69 @@ fn main() {
             }
         }
     }
+
+    if a.len() >= 8 {
+        if let Ok(geo_bytes) = std::fs::read(format!("{cache}/{zone}.map")) {
+            let geo = eqlp_app::emumaps::parse_map(&geo_bytes).expect("geo parses");
+            let f: Vec<f32> = a[2..5].iter().map(|s| s.trim().parse().unwrap()).collect();
+            if let Some(fi) = nav.nearest_poly_pub([f[0], f[1], f[2]]) {
+                let fc = comp[fi as usize];
+                let island: Vec<usize> = (0..n).filter(|&i| comp[i] == fc).collect();
+                let bb = |ids: &[usize]| {
+                    let mut lo = [f32::MAX; 3];
+                    let mut hi = [f32::MIN; 3];
+                    for &i in ids {
+                        for k in 0..3 {
+                            lo[k] = lo[k].min(nav.polys[i].center[k]);
+                            hi[k] = hi[k].max(nav.polys[i].center[k]);
+                        }
+                    }
+                    (lo, hi)
+                };
+                println!(
+                    "start island: {} polys, bbox {:?}",
+                    island.len(),
+                    bb(&island)
+                );
+                println!("whole mesh bbox {:?}", bb(&(0..n).collect::<Vec<_>>()));
+                let mut hits: Vec<(f32, usize, usize)> = Vec::new();
+                for &i in &island {
+                    #[allow(clippy::needless_range_loop)] // why: j indexes comp AND polys
+                    for j in 0..n {
+                        if comp[j] == fc {
+                            continue;
+                        }
+                        let mut pa = nav.polys[i].center;
+                        pa[2] += 2.0;
+                        let mut pb = nav.polys[j].center;
+                        pb[2] += 2.0;
+                        if geo.los_clear(pa, pb) {
+                            let d = ((pa[0] - pb[0]).powi(2)
+                                + (pa[1] - pb[1]).powi(2)
+                                + (pa[2] - pb[2]).powi(2))
+                            .sqrt();
+                            hits.push((d, i, j));
+                        }
+                    }
+                }
+                hits.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap());
+                println!("LOS-clear pairs from island to other comps: {}", hits.len());
+                let mut per: std::collections::BTreeMap<u32, (usize, f32)> =
+                    std::collections::BTreeMap::new();
+                for (d, _, j) in &hits {
+                    let e = per.entry(comp[*j]).or_insert((0, f32::MAX));
+                    e.0 += 1;
+                    e.1 = e.1.min(*d);
+                }
+                for (c, (cnt, mind)) in per {
+                    let size = sizes
+                        .iter()
+                        .find(|&&(id, _)| id == c)
+                        .map(|&(_, s)| s)
+                        .unwrap_or(0);
+                    println!("  -> comp {c} (size {size}): {cnt} clear pairs, nearest {mind:.0}");
+                }
+            }
+        }
+    }
 }
