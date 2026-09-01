@@ -64,6 +64,13 @@ export const ccTrackerOpacity = writable(0.85);
 /** why: see dpsMeterOverallOpacity's own doc -- same "everything" fade,
  * this widget's own */
 export const ccTrackerOverallOpacity = writable(1.0);
+/** why: same on/off contract as dpsMeterEnabled -- see its own doc.
+ * Session widget: AA/levels/plat per hour + mote strip. */
+export const sessionWidgetEnabled = writable(false);
+export const sessionWidgetOpacity = writable(0.85);
+/** why: see dpsMeterOverallOpacity's own doc -- same "everything" fade,
+ * this widget's own */
+export const sessionWidgetOverallOpacity = writable(1.0);
 /** why: CC Tracker's own layout knob -- see ccSize.ts's own doc */
 export const ccTrackerSize = writable<CcSize>(DEFAULT_CC_SIZE);
 /** why: any ability/spell the player has "track"ed for the Skill
@@ -140,6 +147,8 @@ export function loadPreferences(): Promise<void> {
     dropWatchOverallOpacity.set(prefs.overlay_drop_watch_overall_opacity);
     ccTrackerOpacity.set(prefs.overlay_cc_tracker_opacity);
     ccTrackerOverallOpacity.set(prefs.overlay_cc_tracker_overall_opacity);
+    sessionWidgetOpacity.set(prefs.overlay_session_opacity);
+    sessionWidgetOverallOpacity.set(prefs.overlay_session_overall_opacity);
     ccTrackerSize.set(asCcSize(prefs.overlay_cc_tracker_size));
     trackedDropItems.set(prefs.tracked_drop_items ?? []);
     trackedDropSeenCounts.set(prefs.tracked_drop_seen_counts ?? {});
@@ -166,6 +175,8 @@ function currentPrefs(): PreferencesDto {
     overlay_drop_watch_overall_opacity: get(dropWatchOverallOpacity),
     overlay_cc_tracker_opacity: get(ccTrackerOpacity),
     overlay_cc_tracker_overall_opacity: get(ccTrackerOverallOpacity),
+    overlay_session_opacity: get(sessionWidgetOpacity),
+    overlay_session_overall_opacity: get(sessionWidgetOverallOpacity),
     overlay_cc_tracker_size: get(ccTrackerSize),
     tracked_drop_items: get(trackedDropItems),
     tracked_drop_seen_counts: get(trackedDropSeenCounts),
@@ -328,7 +339,30 @@ export async function setOverlayEnabledAll(on: boolean) {
     setSkillTrackerEnabled(on).catch(() => {}),
     setDropWatchEnabled(on).catch(() => {}),
     setCcTrackerEnabled(on).catch(() => {}),
+    setSessionWidgetEnabled(on).catch(() => {}),
   ]);
+}
+
+/** why: same contract as setDpsMeterEnabled -- see its own doc */
+export async function setSessionWidgetEnabled(on: boolean) {
+  sessionWidgetEnabled.set(on);
+  await api.setOverlayEnabled('session', on);
+}
+
+/** why: same contract as setDpsMeterOpacity -- see its own doc */
+export async function setSessionWidgetOpacity(v: number) {
+  sessionWidgetOpacity.set(v);
+  void api.setOverlayOpacity('session', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_session_opacity: v }).catch(() => {});
+}
+
+/** why: see setDpsMeterOverallOpacity's own doc -- same "everything" fade, this widget's own */
+export async function setSessionWidgetOverallOpacity(v: number) {
+  sessionWidgetOverallOpacity.set(v);
+  void api.setOverlayOverallOpacity('session', v);
+  await api
+    .setPreferences({ ...currentPrefs(), overlay_session_overall_opacity: v })
+    .catch(() => {});
 }
 
 /** why: same contract as setDpsMeterOpacity -- see its own doc */

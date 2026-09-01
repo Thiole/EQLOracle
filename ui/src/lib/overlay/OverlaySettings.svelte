@@ -43,6 +43,12 @@
     setCcTrackerOverallOpacity,
     ccTrackerSize,
     setCcTrackerSize,
+    sessionWidgetEnabled,
+    sessionWidgetOpacity,
+    setSessionWidgetEnabled,
+    setSessionWidgetOpacity,
+    sessionWidgetOverallOpacity,
+    setSessionWidgetOverallOpacity,
     loadPreferences,
   } from '$lib/stores/settings';
   import type { CcSize } from './ccSize';
@@ -58,6 +64,7 @@
   let skillTrackerError = $state<string | null>(null);
   let dropWatchError = $state<string | null>(null);
   let ccTrackerError = $state<string | null>(null);
+  let sessionError = $state<string | null>(null);
   // why: each widget's own window starts locked (click-through) --
   // matches every widget window's own real default at open
   let locked = $state<Record<string, boolean>>({
@@ -65,6 +72,7 @@
     skill_tracker: true,
     drop_watch: true,
     cc_tracker: true,
+    session: true,
   });
 
   async function onToggleDpsMeter(on: boolean) {
@@ -107,6 +115,16 @@
     }
   }
 
+  async function onToggleSession(on: boolean) {
+    sessionError = null;
+    try {
+      await setSessionWidgetEnabled(on);
+      locked.session = true;
+    } catch (e) {
+      sessionError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
   // why: reads the widget id off the clicked element's own data-widget
   // attribute, NOT a closure over repositionButton's own `widget`
   // parameter -- real bug, caught live: with this snippet rendered 4
@@ -133,7 +151,9 @@
   // to the same new state. Not its own persisted preference -- stays a
   // live, explicit action each session (see preferences.rs's doc on
   // why enabled/disabled stays live-only).
-  const allEnabled = $derived($dpsMeterEnabled && $skillTrackerEnabled && $dropWatchEnabled && $ccTrackerEnabled);
+  const allEnabled = $derived(
+    $dpsMeterEnabled && $skillTrackerEnabled && $dropWatchEnabled && $ccTrackerEnabled && $sessionWidgetEnabled,
+  );
   async function onToggleAll(on: boolean) {
     // why: keeps overlayEnabled (settings.ts) in sync with this page's
     // own "enable ui" action too -- OverlayQuickMenu's top-bar shortcut
@@ -142,7 +162,13 @@
     // errors still surface on THIS page individually (see each
     // onToggleX above) -- this just adds the one extra flag set.
     overlayEnabled.set(on);
-    await Promise.all([onToggleDpsMeter(on), onToggleSkillTracker(on), onToggleDropWatch(on), onToggleCcTracker(on)]);
+    await Promise.all([
+      onToggleDpsMeter(on),
+      onToggleSkillTracker(on),
+      onToggleDropWatch(on),
+      onToggleCcTracker(on),
+      onToggleSession(on),
+    ]);
   }
 </script>
 
@@ -340,6 +366,43 @@
           capped,
           'everything',
           'Fades the whole widget together -- the squares included, not just the panel behind them.',
+          true,
+        )}
+      </CardContent>
+    </Card>
+
+    <Card class="rounded-sm">
+      <CardContent class="px-3 py-2.5">
+        <h2 class="panel-title mb-1.5">Session</h2>
+        <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
+          <Checkbox checked={$sessionWidgetEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleSession(v)} />
+          enable
+        </label>
+        <p class="mt-0.5 text-[11px] text-muted-foreground">AA, levels, and plat per hour, plus motes found by tier -- this session's own rates.</p>
+        {#if capped}
+          <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
+        {/if}
+        {#if sessionError}
+          <p class="mt-1 text-[11px] text-bad">{sessionError}</p>
+        {/if}
+        {#if $sessionWidgetEnabled && !capped}
+          {@render repositionButton('session')}
+        {/if}
+
+        {@render alphaPreview(
+          $sessionWidgetOpacity,
+          (v) => void setSessionWidgetOpacity(v),
+          capped,
+          'background opacity',
+          'How see-through the panel behind the numbers reads.',
+          false,
+        )}
+        {@render alphaPreview(
+          $sessionWidgetOverallOpacity,
+          (v) => void setSessionWidgetOverallOpacity(v),
+          capped,
+          'everything',
+          'Fades the whole widget together -- numbers included, not just the panel behind them.',
           true,
         )}
       </CardContent>

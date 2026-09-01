@@ -15,6 +15,7 @@
     type SkillStatusDto,
     type TargetEffectsDto,
     type DropWatchRowDto,
+    type SessionDto,
   } from '$lib/tauri/api';
   import { listen } from '$lib/tauri/invoke';
   import { currentOverlayWidget } from '$lib/tauri/window';
@@ -23,6 +24,7 @@
   import SkillTrackerWidget from './SkillTrackerWidget.svelte';
   import DropWatchWidget from './DropWatchWidget.svelte';
   import CCTrackerWidget from './CCTrackerWidget.svelte';
+  import SessionWidget from './SessionWidget.svelte';
   import { asCcSize, CC_SIZE_WINDOW_DIMS, DEFAULT_CC_SIZE, type CcSize } from './ccSize';
 
   const widget = currentOverlayWidget();
@@ -40,6 +42,7 @@
   let skills = $state<SkillStatusDto[]>([]);
   let targetEffects = $state<TargetEffectsDto | null>(null);
   let dropRows = $state<DropWatchRowDto[]>([]);
+  let sessionData = $state<SessionDto | null>(null);
   let ccSize = $state<CcSize>(DEFAULT_CC_SIZE);
   let rootEl: HTMLDivElement | undefined = $state();
 
@@ -72,6 +75,9 @@
       opacity = p.overlay_drop_watch_opacity;
       overallOpacity = p.overlay_drop_watch_overall_opacity;
       trackedDropNames = p.tracked_drop_items;
+    } else if (widget === 'session') {
+      opacity = p.overlay_session_opacity;
+      overallOpacity = p.overlay_session_overall_opacity;
     } else if (widget === 'cc_tracker') {
       opacity = p.overlay_cc_tracker_opacity;
       overallOpacity = p.overlay_cc_tracker_overall_opacity;
@@ -100,6 +106,8 @@
       spellCheck = sc;
     } else if (widget === 'drop_watch') {
       dropRows = await api.getDropWatch();
+    } else if (widget === 'session') {
+      sessionData = await api.getSession();
     } else if (widget === 'cc_tracker') {
       status = await api.getStatusEffects();
     }
@@ -200,6 +208,8 @@
     />
   {:else if widget === 'drop_watch'}
     <DropWatchWidget rows={dropRows} trackedNames={trackedDropNames} {opacity} {overallOpacity} />
+  {:else if widget === 'session'}
+    <SessionWidget session={sessionData} {opacity} {overallOpacity} />
   {:else if widget === 'cc_tracker'}
     <CCTrackerWidget {status} {opacity} {overallOpacity} size={ccSize} />
   {/if}

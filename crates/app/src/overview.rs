@@ -46,6 +46,15 @@ pub struct SessionDto {
     /// "how many points you've spent this session", not a rate (AA
     /// grants are too bursty/rare for a per-hour number to mean much)
     pub aa_spent: u32,
+    /// why: EARNED points since session start (the "gained N ability
+    /// point(s)!" payout line, `Ingest::aa_points`) -- distinct from
+    /// aa_spent's purchases; this one is steady enough to rate
+    pub aa_earned: u64,
+    /// why: None below `MIN_SESSION_MS_FOR_RATE`, same gate as the others
+    pub aa_per_hour: Option<f64>,
+    /// why: xp rate restated in levels (100% = one level) -- the Session
+    /// overlay's own unit, same gate as xp_pct_per_hour
+    pub levels_per_hour: Option<f64>,
     /// why: per-tier companion to `motes_found`'s combined total -- only
     /// tiers actually seen this session, ascending by `tier`. See
     /// `MOTE_TIER_ORDER`'s own doc for where the tier numbers come from.
@@ -230,6 +239,22 @@ pub fn session(ing: &Ingest) -> SessionDto {
             .sum()
     });
 
+    // why: suffix via partition_point, same O(log n) discipline as the
+    // store scans -- aa_points is pushed in log order
+    let aa_earned = session_start_ms.map_or(0, |start| {
+        let i = ing.aa_points.partition_point(|&(t, _, _)| t < start);
+        ing.aa_points[i..].iter().map(|&(_, g, _)| g).sum()
+    });
+    let (aa_per_hour, levels_per_hour) = if session_duration_ms >= MIN_SESSION_MS_FOR_RATE {
+        let hours = session_duration_ms as f64 / 3_600_000.0;
+        (
+            Some(aa_earned as f64 / hours),
+            xp_pct_per_hour.map(|r| r / 100.0),
+        )
+    } else {
+        (None, None)
+    };
+
     SessionDto {
         afk: ing.currently_afk(),
         session_start_ms,
@@ -243,6 +268,9 @@ pub fn session(ing: &Ingest) -> SessionDto {
         motes_per_hour,
         levels_gained,
         aa_spent,
+        aa_earned,
+        aa_per_hour,
+        levels_per_hour,
         mote_tiers,
     }
 }
@@ -260,6 +288,36 @@ mod tests {
         let mut ing = Ingest::default();
         backfill_lines(&mut ing, &engine, &lines, lines.len());
         ing
+    }
+
+    /// why: real payout lines -- earned points sum and rate over the
+    /// session, and the purchase line must NOT count as earned
+    #[test]
+    fn aa_earned_counts_payouts_not_purchases() {
+        let ing = run(
+            "[Tue Jul 28 16:21:48 2026] You have gained 2 ability point(s)!  You now have 2 ability point(s).\r\n\
+             [Tue Jul 28 16:40:00 2026] You have gained 2 ability point(s)!  You now have 4 ability point(s).\r\n\
+             [Tue Jul 28 17:21:48 2026] You have gained the ability \"Spell Casting Deftness\" at a cost of 2 ability points.\r\n",
+        );
+        let s = session(&ing);
+        assert_eq!(s.aa_earned, 4);
+        assert_eq!(s.aa_spent, 2);
+        // why: 4 points over exactly 1 hour of session
+        let rate = s.aa_per_hour.expect("session is over the rate gate");
+        assert!((rate - 4.0).abs() < 0.01, "got {rate}");
+    }
+
+    /// why: levels/hour is the xp rate restated -- 100% == one level
+    #[test]
+    fn levels_per_hour_is_xp_rate_over_100() {
+        let ing = run(
+            "[Tue Jul 28 16:00:00 2026] You gain party experience! (0.500%)\r\n\
+             [Tue Jul 28 17:00:00 2026] You gain party experience! (0.250%)\r\n",
+        );
+        let s = session(&ing);
+        let xp = s.xp_pct_per_hour.expect("over the gate");
+        let lv = s.levels_per_hour.expect("over the gate");
+        assert!((lv - xp / 100.0).abs() < 1e-9);
     }
 
     /// why: real line -- confirms the combined-tier sum, not just one tier

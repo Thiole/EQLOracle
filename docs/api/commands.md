@@ -585,15 +585,16 @@ why: persists the base install folder, (re)starts the tail worker; same path for
 - args: `kind: String`; `on: bool`
 - returns: `Result<settings::NotificationSettings, String>`
 
-## `set_overlay_enabled` (stateful)
-
-- args: `widget: String`; `enabled: bool`
-- returns: `Result<(), String>`
-
 ## `set_overlay_locked` (stateful)
 
 - args: `widget: String`; `locked: bool`
 - returns: `Result<(), String>`
+
+## `set_overlay_opacity` (stateful)
+why: creates (or closes) this one widget's own floating window -- a fresh capability check every time, never trusts a stale frontend value, since the session's own display server can't change mid-run but a stale cached capability shouldn't be trusted to open one anyway.  why: async ON PURPOSE -- a sync command runs inline in the calling webview's IPC callback (main thread), so building the overlay there creates a second WebView2 inside the first one's event handler: the documented reentrancy deadlock, and the real "no overlay ever appears" on every Windows machine. Async runs on the runtime pool; build() then posts to a free event loop -- the path CI validated.
+
+- args: `widget: String`; `opacity: f64`
+- returns: `()`
 
 ## `set_overlay_opacity` (stateful)
 why: live-pushes to this widget's own open window -- a no-op, not an error, when it isn't open; persistence is the caller's own setPreferences call.  emit_to alone does NOT scope this the way its own doc implies -- real bug, caught live: with every overlay window covered by the same "overlay-*" capability glob (capabilities/default.json), emit_to's permission check treats the whole glob as one audience and delivers to every window matching it, not just the one whose label was passed in. Confirmed with temporary two-sided logging: the SEND side always carried the right label, but every open overlay-* window's own listener fired regardless. So every payload here now carries the target widget too, and each window filters to its own identity (currentOverlayWidget()) before acting -- correct regardless of whatever emit_to does under the hood, not dependent on understanding its exact scoping behavior for this capability shape.

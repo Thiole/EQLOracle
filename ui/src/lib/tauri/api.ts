@@ -437,6 +437,13 @@ export interface SessionDto {
   /** why: real AA cost sum since session start, not a rate -- AA grants
    * are too bursty/rare for a per-hour number to mean anything */
   aa_spent: number;
+  /** why: EARNED points since session start (the payout line), distinct
+   * from aa_spent's purchases -- steady enough to rate */
+  aa_earned: number;
+  /** why: null below overview.rs's own MIN_SESSION_MS_FOR_RATE */
+  aa_per_hour: number | null;
+  /** why: xp rate restated in levels (100% = one level), same gate */
+  levels_per_hour: number | null;
   /** why: per-tier breakdown of motes_found, only tiers seen this
    * session, ascending by tier */
   mote_tiers: MoteTierDto[];
@@ -1386,6 +1393,12 @@ export interface PreferencesDto {
   /** why: see overlay_dps_meter_overall_opacity's own doc -- same
    * "everything" fade, this widget's own */
   overlay_cc_tracker_overall_opacity: number;
+  /** why: same pattern as overlay_dps_meter_opacity -- the Session
+   * widget's own (AA/levels/plat rates + mote strip) */
+  overlay_session_opacity: number;
+  /** why: see overlay_dps_meter_overall_opacity's own doc -- same
+   * "everything" fade, this widget's own */
+  overlay_session_overall_opacity: number;
   /** why: 'small' | 'medium' | 'large' -- see ccSize.ts's own doc. A
    * plain string, not a union, same "unrecognized value just falls back"
    * contract as `theme` above -- ccSize.ts's asCcSize() is what actually

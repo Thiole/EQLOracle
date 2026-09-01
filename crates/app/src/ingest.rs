@@ -1082,6 +1082,9 @@ pub struct Ingest {
     /// why: latest skill-up "(N)" per skill with its ts -- the log
     /// never states a level any other way, so absent means unknown
     pub skill_levels: std::collections::HashMap<String, (u32, Millis)>,
+    /// why: every earned-AA payout (ts, gained, running total), log
+    /// order -- the Session overlay's AA/hour reads a suffix of this
+    pub aa_points: Vec<(Millis, u64, u64)>,
     /// why: every AA rank purchase this session, see AaLog
     pub aa: AaLog,
     /// why: every spell confirmed known this session, see SpellLog
@@ -1225,6 +1228,7 @@ impl Default for Ingest {
             last_inventory_dump_ts: None,
             skills: std::collections::HashMap::new(),
             skill_levels: std::collections::HashMap::new(),
+            aa_points: Vec::new(),
             aa: AaLog::default(),
             spellbook: SpellLog::default(),
             spell_ranks: SpellRanks::default(),
@@ -1589,6 +1593,9 @@ impl Ingest {
             }
             Action::LevelUp { level } => {
                 self.levels.observe(ts, level);
+            }
+            Action::AaEarned { gained, total } => {
+                self.aa_points.push((ts, gained, total));
             }
             Action::AaGained { name, rank, cost } => {
                 // why: AA grants are always first-person (the log never
@@ -3656,6 +3663,11 @@ enum Action {
         rank: u8,
         cost: u32,
     },
+    /// why: the AA xp payout line -- earned points, not a purchase
+    AaEarned {
+        gained: u64,
+        total: u64,
+    },
     /// why: a "Beginning to..." line, proof of Possible-tier
     SpellBegan {
         name: String,
@@ -4216,6 +4228,10 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             name: str_field("name")?,
             rank: u64_field("rank")?.min(u8::MAX as u64) as u8,
             cost: u64_field("cost")?.min(u32::MAX as u64) as u32,
+        }),
+        "ability.point_gained" => Some(Action::AaEarned {
+            gained: u64_field("qty")?,
+            total: u64_field("total")?,
         }),
         "spell.memorize_start" | "spell.scribe_start" => Some(Action::SpellBegan {
             name: str_field("spell")?,

@@ -33,6 +33,8 @@
     setDropWatchEnabled,
     ccTrackerEnabled,
     setCcTrackerEnabled,
+    sessionWidgetEnabled,
+    setSessionWidgetEnabled,
   } from '$lib/stores/settings';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
 
@@ -52,6 +54,7 @@
     skill_tracker: true,
     drop_watch: true,
     cc_tracker: true,
+    session: true,
   });
 
   // why: reads the widget id off the clicked element's own data-widget
@@ -159,6 +162,7 @@
           {@render row('skill_tracker', 'Skill Tracker', $skillTrackerEnabled, (v) => void setSkillTrackerEnabled(v))}
           {@render row('drop_watch', 'Drop Watch', $dropWatchEnabled, (v) => void setDropWatchEnabled(v))}
           {@render row('cc_tracker', 'CC Tracker', $ccTrackerEnabled, (v) => void setCcTrackerEnabled(v))}
+          {@render row('session', 'Session', $sessionWidgetEnabled, (v) => void setSessionWidgetEnabled(v))}
         </div>
       {/if}
     </div>
