@@ -11,7 +11,7 @@ and need the service layer described in README.md before external
 exposure. Parameters shown are the real API surface -- Tauri plumbing
 (`State`, `AppHandle`, `Window`) is elided.
 
-104 commands: 22 pure, 82 stateful.
+111 commands: 24 pure, 87 stateful.
 
 ## `get_character_estimate` (pure)
 why: Character Planner's one call -- full attribute sheet + mana estimate; `gear` summed by the frontend, this side never touches an item. Stateless on purpose -- nothing persisted, fresh launch starts blank.
@@ -82,6 +82,11 @@ why: static recipe catalog for the Tradeskill module -- every core tradeskill's 
 - args: none
 - returns: `Vec<TradeskillSkill>`
 
+## `get_ui_shell` (pure)
+
+- args: none
+- returns: `UiShellDto`
+
 ## `get_window_capability` (pure)
 
 - args: none
@@ -124,6 +129,11 @@ why: NPC-overlay candidate list, toggle-able not auto-applied -- can't reliably 
 - args: none
 - returns: `Vec<spelldata::Spell>`
 
+## `list_zone_npcs` (pure)
+
+- args: `map_zone_name: String`
+- returns: `Vec<ZoneNpcDto>`
+
 ## `list_zones` (pure)
 
 - args: none
@@ -155,6 +165,11 @@ why: picks and copies a sound file in, saves as `kind`'s custom sound; Ok(None) 
 - args: `from_zone: String`; `to_zone: String`
 - returns: `Result<ZoneRouteDto, String>`
 
+## `find_zone_route` (stateful)
+
+- args: `from_zone: String`; `to_zone: String`
+- returns: `Result<ZoneRouteDto, String>`
+
 ## `get_aa_log` (stateful)
 
 - args: none
@@ -178,7 +193,7 @@ why: Info page's own version display -- same source check_for_update's current_v
 
 ## `get_combat_summary` (stateful)
 
-- args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `actor: Option<String>`
+- args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `actor: Option<String>`; `confirmed_only: Option<bool>`
 - returns: `CombatSummaryDto`
 
 ## `get_configuration_zone_visits` (stateful)
@@ -224,6 +239,12 @@ why: Drop Watch widget -- see dropwatch.rs's own doc. Unfiltered (every currentl
 
 - args: `encounter_id: u32`
 - returns: `Option<EncounterDetailDto>`
+
+## `get_epic_quests` (stateful)
+why: Endgame's Epic Quests farm list -- see epicquests.rs's own doc
+
+- args: none
+- returns: `Vec<crate::epicquests::EpicClassDto>`
 
 ## `get_fight_state_at` (stateful)
 What clicking a point on the scrub bar shows: every entity's state and a snapshot DPS reading as of that instant.
@@ -310,6 +331,11 @@ why: past parses against `target`, newest first; re-resolves loadout against liv
 - args: none
 - returns: `Vec<ChatMessageDto>`
 
+## `get_planner_state` (stateful)
+
+- args: none
+- returns: `PlannerStateDto`
+
 ## `get_pm_history` (stateful)
 
 - args: `player: String`
@@ -347,9 +373,15 @@ why: Skill Tracker widget's own-cooldowns section -- see skilltracker.rs's own d
 - returns: `Vec<skyquests::SkyClassUnlockDto>`
 
 ## `get_sky_quests` (stateful)
+why: "Sky - Quests" tab -- every material turn-in, full detail
 
 - args: none
 - returns: `Vec<skyquests::SkyClassDto>`
+
+## `get_spell_check` (stateful)
+
+- args: none
+- returns: `SpellCheckDto`
 
 ## `get_spell_ranks` (stateful)
 
@@ -407,7 +439,7 @@ why: Maps module's zone-identity + entrance-guess input; `current_map_zones` con
 
 ## `list_allies` (stateful)
 
-- args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`
+- args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `confirmed_only: Option<bool>`
 - returns: `Vec<AllyDto>`
 
 ## `list_debug_encounters` (stateful)
@@ -562,6 +594,12 @@ why: same live-push/persist split as set_overlay_opacity, but resizes the real O
 
 - args: `widget: String`; `size: String`
 - returns: `()`
+
+## `set_planner_state` (stateful)
+why: whole-state write -- the frontend owns the merge (it knows which edit happened); race None clears, empty levels clears (the "Estimate levels" reset path).
+
+- args: `race: Option<String>`; `levels: HashMap<String, u8>`
+- returns: `Result<(), String>`
 
 ## `set_preferences` (stateful)
 

@@ -13,6 +13,11 @@ tools/scrapers/ script that produces it. The standard envelope is
 - consumer: aadata.rs, dpscalc.rs
 - producer: scrape_eqlwiki_aa.py
 
+## epic_quests.json
+- shape: envelope [note, source], payload key(s): classes
+- consumer: epicquests.rs
+- producer: scrape_eqlwiki_epic_quests.py
+
 ## hp_table.json
 - shape: (bare) top-level map, no envelope
 - consumer: hpdata.rs
@@ -88,7 +93,12 @@ tools/scrapers/ script that produces it. The standard envelope is
 - consumer: tradeskilldata.rs
 - producer: scrape_eqlwiki_tradeskills.py
 
+## zone_links.json
+- shape: (bare) top-level map, no envelope
+- consumer: emumaps.rs
+- producer: (no in-repo producer)
+
 ## zones.json
 - shape: envelope [count, scraped, source], payload key(s): zones
 - consumer: zonedata.rs
-- producer: scrape_eqlwiki_zones.py
+- producer: scrape_eqlwiki_epic_quests.py
