@@ -1547,9 +1547,16 @@ pub fn find_walk_path(
         if let Some(nav) = emumaps::load_nav(&app_data, &zone) {
             // why: geo (collision mesh) makes walk legs hug the ground
             // instead of cutting straight through hills -- see
-            // emumaps::ground_hug's own doc; None just keeps corner z
+            // emumaps::ground_hug's own doc; None just keeps corner z.
+            // Underwater zones swim mid-water: hugging the floor there
+            // would drag every swim leg to the bottom, so no hug.
             let geo = emumaps::load_geo(&app_data, &zone);
-            if let Some(route) = nav.find_route(from, to, geo.as_deref()) {
+            let hug = if emumaps::is_underwater(&zone) {
+                None
+            } else {
+                geo.as_deref()
+            };
+            if let Some(route) = nav.find_route(from, to, hug) {
                 let mut waypoints: Vec<[f32; 3]> = Vec::new();
                 let legs: Vec<PathLegDto> = route
                     .iter()

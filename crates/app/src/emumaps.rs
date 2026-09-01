@@ -29,6 +29,7 @@
 //! ~150-500KB for both files. Missing/unfetched zones fall back to the
 //! line-map pathfinder at the call site.
 
+use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -88,6 +89,17 @@ pub struct ZoneGeo {
 }
 
 const CELL: f32 = 32.0;
+
+/// why: zones where open water is itself traversable, so straight swim
+/// edges may bridge mesh gaps (see ZoneNav::bridge_gaps). Curated -- the
+/// wiki has no underwater flag; Kedge Keep is the era's one fully
+/// underwater zone. A land zone must NEVER get this treatment: a clear
+/// line of sight across a canyon is air, not a route.
+const UNDERWATER_ZONES: &[&str] = &["kedge"];
+
+pub fn is_underwater(zone: &str) -> bool {
+    UNDERWATER_ZONES.contains(&zone)
+}
 
 // ------------------------------------------------------------ zone links
 
@@ -154,22 +166,16 @@ fn inflate(wrapped: &[u8], skip: usize, expect: usize) -> Option<Vec<u8>> {
     (out.len() == expect).then_some(out)
 }
 
-/// why: quantized endpoint pair as an undirected edge key -- float verts
-/// shared across tiles are bit-identical in practice, but quantizing to
-/// centimeters keeps the match robust to any serialization wobble
-fn edge_key(a: [f32; 3], b: [f32; 3]) -> (i64, i64) {
-    let q = |p: [f32; 3]| -> i64 {
-        let x = (p[0] * 100.0).round() as i64;
-        let y = (p[1] * 100.0).round() as i64;
-        let z = (p[2] * 100.0).round() as i64;
-        (x << 42) ^ (y << 21) ^ z
-    };
-    let (ka, kb) = (q(a), q(b));
-    if ka <= kb {
-        (ka, kb)
-    } else {
-        (kb, ka)
-    }
+/// why: a tile-border edge awaiting its cross-tile partner(s). Detour
+/// connects tiles by OVERLAP along the border line, not endpoint
+/// equality -- adjacent tiles split the same border differently, so
+/// endpoint matching drops most cross-tile adjacency (kedge: 244
+/// islands, no route across the zone; every zone had orphan fragments).
+struct BorderEdge {
+    poly: u32,
+    tile: usize,
+    a: [f32; 3],
+    b: [f32; 3],
 }
 
 /// Parse an `EQNAVMESH` file into a game-coordinate poly graph.
@@ -183,13 +189,15 @@ pub fn parse_nav(data: &[u8]) -> Option<ZoneNav> {
     let mut off = 32; // u32 count + dtNavMeshParams(28)
 
     let mut polys: Vec<NavPoly> = Vec::new();
-    // (poly index, edge endpoints) per open (unmatched) boundary edge
-    type OpenEdge = (u32, [f32; 3], [f32; 3]);
-    let mut open_edges: HashMap<(i64, i64), OpenEdge> = HashMap::new();
+    let mut borders: Vec<BorderEdge> = Vec::new();
+    // why: the largest walkableClimb across tiles -- the z tolerance for
+    // matching border edges (a step across a tile seam is climbable
+    // exactly when Detour itself would have linked it)
+    let mut climb: f32 = 4.0;
     // off-mesh endpoints to connect after all polys exist
     let mut offmesh: Vec<([f32; 3], [f32; 3])> = Vec::new();
 
-    for _ in 0..ntiles {
+    for tile_i in 0..ntiles {
         if off + 8 > inner.len() {
             return None;
         }
@@ -206,6 +214,8 @@ pub fn parse_nav(data: &[u8]) -> Option<ZoneNav> {
         let vert_count = rd_i32(t, 28) as usize;
         let off_mesh_con_count = rd_i32(t, 52) as usize;
         let off_mesh_base = rd_i32(t, 56) as usize;
+        // dtMeshHeader: walkableClimb f32 at 68
+        climb = climb.max(rd_f32(t, 68));
 
         let mut p = 100usize;
         let verts: Vec<[f32; 3]> = (0..vert_count)
@@ -219,6 +229,13 @@ pub fn parse_nav(data: &[u8]) -> Option<ZoneNav> {
         // dtPoly: u32 firstLink, u16 verts[6], u16 neis[6], u16 flags,
         // u8 vertCount, u8 areaAndtype = 32 bytes
         const POLY_SZ: usize = 32;
+        // why: Detour's own adjacency, not re-derived -- neis[k] is the
+        // 1-based SAME-TILE neighbor across edge k, or 0x8000|dir for a
+        // tile-border edge (matched by overlap after all tiles load).
+        // local[i] maps this tile's poly index to the global one so a
+        // nei value can be resolved (None = skipped off-mesh stub).
+        let mut local: Vec<Option<u32>> = vec![None; poly_count];
+        #[allow(clippy::needless_range_loop)] // why: i also derives the byte offset
         for i in 0..poly_count {
             let o = p + i * POLY_SZ;
             let vcnt = t[o + 30] as usize;
@@ -241,33 +258,42 @@ pub fn parse_nav(data: &[u8]) -> Option<ZoneNav> {
                 pverts.iter().map(|v| v[1]).sum::<f32>() / n,
                 pverts.iter().map(|v| v[2]).sum::<f32>() / n,
             ];
-            let idx = polys.len() as u32;
+            local[i] = Some(polys.len() as u32);
             polys.push(NavPoly {
                 edges: Vec::new(),
                 center,
                 verts: pverts,
             });
-            // register/match undirected edges
-            let pv = &polys[idx as usize].verts.clone();
-            for k in 0..pv.len() {
+        }
+        // second pass: resolve neis now that every local index is known
+        for i in 0..poly_count {
+            let Some(gi) = local[i] else { continue };
+            let o = p + i * POLY_SZ;
+            let vcnt = t[o + 30] as usize;
+            let pv = polys[gi as usize].verts.clone();
+            for k in 0..vcnt {
                 let a = pv[k];
                 let b = pv[(k + 1) % pv.len()];
-                let key = edge_key(a, b);
-                if let Some((other, oa, ob)) = open_edges.remove(&key) {
-                    polys[idx as usize].edges.push(NavEdge {
-                        to: other,
-                        a: oa,
-                        b: ob,
+                let nei = u16::from_le_bytes(t[o + 16 + k * 2..o + 18 + k * 2].try_into().unwrap());
+                if nei == 0 {
+                    continue;
+                }
+                if nei & 0x8000 != 0 {
+                    borders.push(BorderEdge {
+                        poly: gi,
+                        tile: tile_i,
+                        a,
+                        b,
+                    });
+                } else if let Some(Some(gj)) = local.get((nei - 1) as usize) {
+                    // why: directed only -- the neighbor's own neis row
+                    // adds the reverse (Detour keeps them symmetric)
+                    polys[gi as usize].edges.push(NavEdge {
+                        to: *gj,
+                        a,
+                        b,
                         link: None,
                     });
-                    polys[other as usize].edges.push(NavEdge {
-                        to: idx,
-                        a: oa,
-                        b: ob,
-                        link: None,
-                    });
-                } else {
-                    open_edges.insert(key, (idx, a, b));
                 }
             }
         }
@@ -296,6 +322,127 @@ pub fn parse_nav(data: &[u8]) -> Option<ZoneNav> {
             let a = nav_to_game([rd_f32(t, o), rd_f32(t, o + 4), rd_f32(t, o + 8)]);
             let b = nav_to_game([rd_f32(t, o + 12), rd_f32(t, o + 16), rd_f32(t, o + 20)]);
             offmesh.push((a, b));
+        }
+    }
+
+    if std::env::var("EQLP_NAV_DEBUG").is_ok() {
+        eprintln!(
+            "nav debug: {ntiles} tiles, {} polys, {} border edges, climb {climb}",
+            polys.len(),
+            borders.len()
+        );
+        let axis_aligned = borders
+            .iter()
+            .filter(|e| (e.a[0] - e.b[0]).abs() < 0.05 || (e.a[1] - e.b[1]).abs() < 0.05)
+            .count();
+        eprintln!(
+            "nav debug: {axis_aligned} axis-aligned of {}",
+            borders.len()
+        );
+        for e in borders.iter().take(8) {
+            eprintln!("  border t{} p{} a={:?} b={:?}", e.tile, e.poly, e.a, e.b);
+        }
+    }
+    // why: cross-tile portals, Detour connectExtLinks' job -- border
+    // edges lie on axis-aligned tile boundary lines; two edges from
+    // different tiles on the same line connect where their intervals
+    // OVERLAP (never endpoint equality), gated by walkableClimb in z so
+    // stacked floors at a seam don't fuse. Portal = the overlap segment.
+    {
+        // bucket by (which axis is constant, that coordinate, eighth-unit)
+        let mut buckets: HashMap<(u8, i64), Vec<usize>> = HashMap::new();
+        for (i, e) in borders.iter().enumerate() {
+            let (axis, c) = if (e.a[0] - e.b[0]).abs() < 0.05 {
+                (0u8, e.a[0])
+            } else if (e.a[1] - e.b[1]).abs() < 0.05 {
+                (1u8, e.a[1])
+            } else {
+                continue; // not axis-aligned: not a tile border line
+            };
+            buckets
+                .entry((axis, (c * 8.0).round() as i64))
+                .or_default()
+                .push(i);
+        }
+        let mut new_edges: Vec<(u32, NavEdge)> = Vec::new();
+        let mut dbg = (0usize, 0usize, 0usize, 0usize); // pairs, same_tile, no_overlap, z_reject
+        for ((axis, _), idxs) in &buckets {
+            let va = 1 - *axis as usize; // the varying axis
+            for (m, &i) in idxs.iter().enumerate() {
+                for &j in &idxs[m + 1..] {
+                    let (e1, e2) = (&borders[i], &borders[j]);
+                    dbg.0 += 1;
+                    if e1.tile == e2.tile {
+                        dbg.1 += 1;
+                        continue;
+                    }
+                    let (a1, b1) = (e1.a[va].min(e1.b[va]), e1.a[va].max(e1.b[va]));
+                    let (a2, b2) = (e2.a[va].min(e2.b[va]), e2.a[va].max(e2.b[va]));
+                    let (t0, t1) = (a1.max(a2), b1.min(b2));
+                    if t1 - t0 < 0.05 {
+                        dbg.2 += 1;
+                        continue;
+                    }
+                    // z at the overlap ends, interpolated along each edge
+                    let z_at = |e: &BorderEdge, t: f32| -> f32 {
+                        let (ta, tb) = (e.a[va], e.b[va]);
+                        if (tb - ta).abs() < 1e-6 {
+                            return e.a[2];
+                        }
+                        let f = (t - ta) / (tb - ta);
+                        e.a[2] + (e.b[2] - e.a[2]) * f
+                    };
+                    if (z_at(e1, t0) - z_at(e2, t0)).abs() > climb
+                        || (z_at(e1, t1) - z_at(e2, t1)).abs() > climb
+                    {
+                        dbg.3 += 1;
+                        continue;
+                    }
+                    let portal = |e: &BorderEdge| -> ([f32; 3], [f32; 3]) {
+                        let mut pa = e.a;
+                        let mut pb = e.a;
+                        pa[va] = t0;
+                        pa[2] = z_at(e, t0);
+                        pb[va] = t1;
+                        pb[2] = z_at(e, t1);
+                        (pa, pb)
+                    };
+                    let (p1a, p1b) = portal(e1);
+                    let (p2a, p2b) = portal(e2);
+                    new_edges.push((
+                        e1.poly,
+                        NavEdge {
+                            to: e2.poly,
+                            a: p1a,
+                            b: p1b,
+                            link: None,
+                        },
+                    ));
+                    new_edges.push((
+                        e2.poly,
+                        NavEdge {
+                            to: e1.poly,
+                            a: p2a,
+                            b: p2b,
+                            link: None,
+                        },
+                    ));
+                }
+            }
+        }
+        if std::env::var("EQLP_NAV_DEBUG").is_ok() {
+            eprintln!(
+                "nav debug: {} buckets, pairs={} same_tile={} no_overlap={} z_reject={} connected={}",
+                buckets.len(),
+                dbg.0,
+                dbg.1,
+                dbg.2,
+                dbg.3,
+                new_edges.len() / 2
+            );
+        }
+        for (from, e) in new_edges {
+            polys[from as usize].edges.push(e);
         }
     }
 
@@ -432,6 +579,88 @@ impl ZoneGeo {
         }
         best
     }
+
+    /// why: 3D segment vs collision mesh -- true when nothing blocks the
+    /// straight line (open water for bridge_gaps' swim edges). Candidate
+    /// triangles come from the XY grid cells the segment crosses.
+    pub fn los_clear(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        let mut cells: Vec<(i32, i32)> = Vec::new();
+        let len_xy = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
+        let steps = (len_xy / (CELL * 0.5)).ceil().max(1.0) as usize;
+        for s in 0..=steps {
+            let f = s as f32 / steps as f32;
+            let x = a[0] + (b[0] - a[0]) * f;
+            let y = a[1] + (b[1] - a[1]) * f;
+            // why: 3x3 neighborhood -- a segment grazing a cell border
+            // must still see the neighbor cell's triangles
+            let (ci, cj) = ((x / CELL).floor() as i32, (y / CELL).floor() as i32);
+            for di in -1..=1 {
+                for dj in -1..=1 {
+                    let c = (ci + di, cj + dj);
+                    if !cells.contains(&c) {
+                        cells.push(c);
+                    }
+                }
+            }
+        }
+        let dir = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let mut seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        for c in cells {
+            let Some(tris) = self.grid.get(&c) else {
+                continue;
+            };
+            for &ti in tris {
+                if !seen.insert(ti) {
+                    continue;
+                }
+                let [i, j, k] = self.tris[ti as usize];
+                if seg_hits_tri(
+                    a,
+                    dir,
+                    self.verts[i as usize],
+                    self.verts[j as usize],
+                    self.verts[k as usize],
+                ) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+/// why: Moller-Trumbore, hit only counts strictly inside the segment
+/// (t in (0.001, 0.999) -- endpoints sit ON geometry by construction)
+fn seg_hits_tri(orig: [f32; 3], dir: [f32; 3], v0: [f32; 3], v1: [f32; 3], v2: [f32; 3]) -> bool {
+    let sub = |p: [f32; 3], q: [f32; 3]| [p[0] - q[0], p[1] - q[1], p[2] - q[2]];
+    let cross = |p: [f32; 3], q: [f32; 3]| {
+        [
+            p[1] * q[2] - p[2] * q[1],
+            p[2] * q[0] - p[0] * q[2],
+            p[0] * q[1] - p[1] * q[0],
+        ]
+    };
+    let dot = |p: [f32; 3], q: [f32; 3]| p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+    let e1 = sub(v1, v0);
+    let e2 = sub(v2, v0);
+    let h = cross(dir, e2);
+    let det = dot(e1, h);
+    if det.abs() < 1e-9 {
+        return false;
+    }
+    let inv = 1.0 / det;
+    let s = sub(orig, v0);
+    let u = dot(s, h) * inv;
+    if !(0.0..=1.0).contains(&u) {
+        return false;
+    }
+    let q = cross(s, e1);
+    let v = dot(dir, q) * inv;
+    if v < 0.0 || u + v > 1.0 {
+        return false;
+    }
+    let t = dot(e2, q) * inv;
+    (0.001..0.999).contains(&t)
 }
 
 // ---------------------------------------------------------------- pathfinding
@@ -454,6 +683,101 @@ impl ZoneNav {
                     b: l.from,
                     link: Some(li),
                 });
+            }
+        }
+    }
+
+    /// why: pub wrapper for probes only -- see nav_components_check
+    pub fn nearest_poly_pub(&self, p: [f32; 3]) -> Option<u32> {
+        self.nearest_poly(p)
+    }
+
+    /// why: underwater zones only (see UNDERWATER_ZONES). EQEmu's mesh
+    /// for a swim zone is floor patches with NO swim connectivity at all
+    /// (kedge: 243 components, no off-mesh cons, one area type --
+    /// audited, not assumed), so open water itself must be the bridge:
+    /// straight swim edges between components wherever the collision
+    /// mesh shows a clear line. Both portal endpoints are the far
+    /// center, so the funnel threads the exact swim point.
+    pub fn bridge_gaps(&mut self, geo: &ZoneGeo) {
+        const MAX_DIST: f32 = 250.0;
+        const PER_COMPONENT_PAIR: usize = 3;
+        const Z_LIFT: f32 = 2.0;
+
+        // components over current adjacency
+        let n = self.polys.len();
+        let mut comp = vec![u32::MAX; n];
+        let mut c = 0u32;
+        for s in 0..n {
+            if comp[s] != u32::MAX {
+                continue;
+            }
+            let mut q = std::collections::VecDeque::from([s]);
+            comp[s] = c;
+            while let Some(i) = q.pop_front() {
+                for e in &self.polys[i].edges {
+                    let t = e.to as usize;
+                    if comp[t] == u32::MAX {
+                        comp[t] = c;
+                        q.push_back(t);
+                    }
+                }
+            }
+            c += 1;
+        }
+        if c <= 1 {
+            return;
+        }
+
+        // best LOS-clear candidates per component pair, nearest first:
+        // (distance^2, poly i, poly j)
+        type Candidates = Vec<(f32, u32, u32)>;
+        let mut best: HashMap<(u32, u32), Candidates> = HashMap::new();
+        for i in 0..n {
+            for j in (i + 1)..n {
+                let (ci, cj) = (comp[i], comp[j]);
+                if ci == cj {
+                    continue;
+                }
+                let d2 = dist2(self.polys[i].center, self.polys[j].center);
+                if d2 > MAX_DIST * MAX_DIST {
+                    continue;
+                }
+                let key = (ci.min(cj), ci.max(cj));
+                let v = best.entry(key).or_default();
+                v.push((d2, i as u32, j as u32));
+                v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal));
+                v.truncate(PER_COMPONENT_PAIR * 4); // headroom before LOS pruning
+            }
+        }
+        let lift = |mut p: [f32; 3]| {
+            p[2] += Z_LIFT;
+            p
+        };
+        for (_, cands) in best {
+            let mut made = 0usize;
+            for (_, i, j) in cands {
+                if made >= PER_COMPONENT_PAIR {
+                    break;
+                }
+                let a = self.polys[i as usize].center;
+                let b = self.polys[j as usize].center;
+                if !geo.los_clear(lift(a), lift(b)) {
+                    continue;
+                }
+                self.polys[i as usize].edges.push(NavEdge {
+                    to: j,
+                    a: b,
+                    b,
+                    link: None,
+                });
+                self.polys[j as usize].edges.push(NavEdge {
+                    to: i,
+                    a,
+                    b: a,
+                    link: None,
+                });
+                made += 1;
             }
         }
     }
@@ -781,6 +1105,12 @@ pub fn load_nav(app_data: &Path, zone: &str) -> Option<Arc<ZoneNav>> {
         .map(|mut nav| {
             // why: pack-declared teleporter/door edges -- see zone_links
             nav.apply_links(zone_links(zone));
+            // why: swim zones need open water as edges -- see bridge_gaps
+            if is_underwater(zone) {
+                if let Some(geo) = load_geo(app_data, zone) {
+                    nav.bridge_gaps(&geo);
+                }
+            }
             Arc::new(nav)
         });
     nav_cache()

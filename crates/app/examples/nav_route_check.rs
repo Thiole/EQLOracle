@@ -19,12 +19,16 @@ fn main() {
 
     let nav_bytes = std::fs::read(format!("{cache}/{zone}.nav")).expect("nav cached");
     let geo_bytes = std::fs::read(format!("{cache}/{zone}.map")).expect("map cached");
+    let geo = emumaps::parse_map(&geo_bytes).expect("geo parses");
     let nav = {
         let mut n = emumaps::parse_nav(&nav_bytes).expect("nav parses");
         n.apply_links(emumaps::zone_links(zone));
+        // mirror load_nav: swim-bridge underwater zones
+        if emumaps::is_underwater(zone) {
+            n.bridge_gaps(&geo);
+        }
         n
     };
-    let geo = emumaps::parse_map(&geo_bytes).expect("geo parses");
 
     // endpoint snap audit
     for (name, p) in [("from", from), ("to", to)] {
