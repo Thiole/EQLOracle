@@ -807,19 +807,14 @@ impl ZoneNav {
                 }
             }
         }
-        // keep only nodes that connect to something; remap indices
+        // why: a node lives only if it can SEE a real mesh poly -- points
+        // outside the walls see each other freely (no geometry between
+        // them) and formed a highway around the keep that the zone-line
+        // opening let routes escape into ("swimming straight down outside
+        // the map"). Node-node links then only ever join inside points.
         let mut keep: Vec<Option<u32>> = vec![None; nodes.len()];
-        let mut connected = vec![false; nodes.len()];
-        for (ni, _) in nodes.iter().enumerate() {
-            if !node_polys[ni].is_empty() || !node_nodes[ni].is_empty() {
-                connected[ni] = true;
-            }
-            for &nj in &node_nodes[ni] {
-                connected[nj as usize] = true;
-            }
-        }
         for (ni, p) in nodes.iter().enumerate() {
-            if connected[ni] {
+            if !node_polys[ni].is_empty() {
                 keep[ni] = Some(self.polys.len() as u32);
                 self.polys.push(NavPoly {
                     verts: vec![*p],
