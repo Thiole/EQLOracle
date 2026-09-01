@@ -44,16 +44,29 @@
   }
 </script>
 
+<!-- why: fixed column widths, shared by rows and the header labels --
+     alignment between a label and its numbers only holds if both sides
+     use the exact same width classes. gap-3 over the old gap-2: asked
+     directly, more separation between columns. -->
+{#snippet columnLabels()}
+  <span class="flex shrink-0 items-center gap-3 font-mono text-[9px] tracking-wide text-foreground/50 uppercase">
+    <span class="w-10 text-right" title="time active -- from each entity's own first action">time</span>
+    <span class="w-12 text-right" title="total damage">dmg</span>
+    <span class="w-11 text-right" title="DPS over own active time">dps</span>
+    <span class="w-8 text-right" title="share of this side's damage">%</span>
+  </span>
+{/snippet}
+
 {#snippet meterRows(rows: LiveMeterRowDto[], barClass: string)}
   {#each rows as r (r.name)}
     <div class="relative overflow-hidden rounded-sm bg-foreground/10">
       <div class="absolute inset-y-0 left-0 {barClass}" style:width="{r.pct}%"></div>
-      <div class="relative flex items-center gap-2 px-1.5 py-0.5">
+      <div class="relative flex items-center gap-3 px-1.5 py-0.5">
         <span class="min-w-0 flex-1 truncate {r.is_pet ? 'text-foreground/70 italic' : 'text-foreground'}">{r.name}</span>
-        <span class="shrink-0 font-mono text-[10px] text-foreground/70 tabular-nums" title="time active -- from this entity's own first action">{fmtActive(r.active_ms)}</span>
-        <span class="shrink-0 font-mono text-foreground/80 tabular-nums" title="total damage">{fmtCompact(r.total)}</span>
-        <span class="shrink-0 font-mono text-foreground tabular-nums" title="DPS over own active time">{r.dps.toFixed(0)}</span>
-        <span class="w-9 shrink-0 text-right font-mono text-[10px] text-foreground/70 tabular-nums" title="share of this side's damage">{r.pct.toFixed(0)}%</span>
+        <span class="w-10 shrink-0 text-right font-mono text-[10px] text-foreground/70 tabular-nums" title="time active -- from this entity's own first action">{fmtActive(r.active_ms)}</span>
+        <span class="w-12 shrink-0 text-right font-mono text-foreground/80 tabular-nums" title="total damage">{fmtCompact(r.total)}</span>
+        <span class="w-11 shrink-0 text-right font-mono text-foreground tabular-nums" title="DPS over own active time">{r.dps.toFixed(0)}</span>
+        <span class="w-8 shrink-0 text-right font-mono text-[10px] text-foreground/70 tabular-nums" title="share of this side's damage">{r.pct.toFixed(0)}%</span>
       </div>
     </div>
   {/each}
@@ -83,9 +96,12 @@
 
     {#if meter.outgoing.length}
       <div class="flex flex-col gap-0.5">
-        <div class="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
-          <span>outgoing</span>
-          <span class="font-mono tabular-nums">{fmtCompact(sideTotal(meter.outgoing))} dmg</span>
+        <!-- why: side total moves next to the section name so the right
+             edge can carry the column labels, aligned over the numbers
+             (same px-1.5 the rows use inside their bar container) -->
+        <div class="flex items-center justify-between px-1.5 text-[10px] tracking-wide text-muted-foreground uppercase">
+          <span>outgoing · <span class="font-mono tabular-nums">{fmtCompact(sideTotal(meter.outgoing))}</span></span>
+          {@render columnLabels()}
         </div>
         {@render meterRows(meter.outgoing, 'bg-primary/50')}
       </div>
@@ -93,9 +109,9 @@
 
     {#if meter.incoming.length}
       <div class="flex flex-col gap-0.5">
-        <div class="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
-          <span>incoming</span>
-          <span class="font-mono tabular-nums">{fmtCompact(sideTotal(meter.incoming))} dmg</span>
+        <div class="flex items-center justify-between px-1.5 text-[10px] tracking-wide text-muted-foreground uppercase">
+          <span>incoming · <span class="font-mono tabular-nums">{fmtCompact(sideTotal(meter.incoming))}</span></span>
+          {@render columnLabels()}
         </div>
         {@render meterRows(meter.incoming, 'bg-bad/50')}
       </div>
