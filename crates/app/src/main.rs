@@ -141,19 +141,27 @@ fn main() {
                 });
             }
             // why: CI's blind-Windows harness (5-overlay-probe.yml) --
-            // opens one real overlay through the normal path, writes OS
-            // readback to overlay-probe.json (stdout is detached under
+            // enables one real overlay through the REAL user path (an
+            // invoke evaled inside the main webview, so the command runs
+            // exactly where a click runs it -- a direct fn call from a
+            // helper thread validated the wrong context and passed while
+            // every real machine wedged), writes OS readback to
+            // overlay-probe.json (stdout is detached under
             // windows_subsystem), holds for a screenshot, exits
             if std::env::args().any(|a| a == "--overlay-probe") {
                 let probe = app.handle().clone();
                 std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(5));
-                    let enabled =
-                        commands::set_overlay_enabled(probe.clone(), "dps_meter".into(), true);
-                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    std::thread::sleep(std::time::Duration::from_secs(6));
+                    let evaled = probe.get_webview_window("main").map(|main| {
+                        main.eval(
+                            "window.__TAURI_INTERNALS__.invoke('set_overlay_enabled', \
+                             { widget: 'dps_meter', enabled: true })",
+                        )
+                    });
+                    std::thread::sleep(std::time::Duration::from_secs(8));
                     let diag = overlaydiag::collect(&probe);
                     let report = serde_json::json!({
-                        "enable_result": format!("{enabled:?}"),
+                        "eval_result": format!("{evaled:?}"),
                         "diagnostics": diag,
                     });
                     let _ = std::fs::write(
