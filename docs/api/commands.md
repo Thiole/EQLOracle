@@ -156,7 +156,7 @@ why: picks and copies a sound file in, saves as `kind`'s custom sound; Ok(None) 
 - returns: `Option<ExistingInventoryDumpDto>`
 
 ## `find_zone_route` (stateful)
-why: async -- first load of a swim zone bridges its mesh (line-of- sight work); a sync command would freeze the main thread meanwhile
+why: missing route is a real retryable outcome, not folded into an empty result  why: async -- first load of a swim zone bridges its mesh (line-of- sight work); a sync command would freeze the main thread meanwhile
 
 - args: `from_zone: String`; `to_zone: String`
 - returns: `Result<ZoneRouteDto, String>`
