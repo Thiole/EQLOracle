@@ -77,4 +77,4 @@ gtk = "0.18"
 # why: WS_EX_TOOLWINDOW is the Windows equivalent -- tao's skip_taskbar
 # only calls ITaskbarList::DeleteTab, which leaves alt-tab untouched.
 [target.'cfg(target_os = "windows")'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Dwm"] }

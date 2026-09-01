@@ -4,6 +4,7 @@
   import UnparsedPanel from './UnparsedPanel.svelte';
   import CharacterDebugPanel from './CharacterDebugPanel.svelte';
   import GameStatePanel from './GameStatePanel.svelte';
+  import OverlayDiagPanel from './OverlayDiagPanel.svelte';
   import { loadDebugModule } from '$lib/stores/debug';
 
   let sub = $state('parsed');
@@ -20,10 +21,12 @@
       <Tabs.Trigger value="unparsed">Unparsed</Tabs.Trigger>
       <Tabs.Trigger value="character">Character</Tabs.Trigger>
       <Tabs.Trigger value="gamestate">Game State</Tabs.Trigger>
+      <Tabs.Trigger value="overlay">Overlay</Tabs.Trigger>
     </Tabs.List>
     <Tabs.Content value="parsed"><ParsedPanel /></Tabs.Content>
     <Tabs.Content value="unparsed"><UnparsedPanel /></Tabs.Content>
     <Tabs.Content value="character"><CharacterDebugPanel /></Tabs.Content>
     <Tabs.Content value="gamestate"><GameStatePanel /></Tabs.Content>
+    <Tabs.Content value="overlay"><OverlayDiagPanel /></Tabs.Content>
   </Tabs.Root>
 </div>

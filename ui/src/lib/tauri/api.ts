@@ -208,6 +208,46 @@ export interface WindowCapabilityDto {
   reason: string | null;
 }
 
+/** why: OS readback for the Windows "overlay not showing" reports --
+ * each field is what the OS says, absent when a read fails */
+export interface OverlayWin32Diag {
+  ex_style: number;
+  ex_flags: string[];
+  visible: boolean;
+  iconic: boolean;
+  /** why: null on a LAYERED window = attributes never applied = invisible */
+  layered_alpha: number | null;
+  cloaked: number | null;
+  rect: [number, number, number, number];
+}
+
+export interface OverlayWindowDiagDto {
+  label: string;
+  tauri_visible: boolean | null;
+  outer_x: number | null;
+  outer_y: number | null;
+  width: number | null;
+  height: number | null;
+  win32: OverlayWin32Diag | null;
+}
+
+export interface MonitorDto {
+  name: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scale: number;
+}
+
+export interface OverlayDiagnosticsDto {
+  version: string;
+  platform: string;
+  capability: WindowCapabilityDto;
+  monitors: MonitorDto[];
+  overlays: OverlayWindowDiagDto[];
+}
+
 /** One meter row: % of the side's damage, total, DPS, time active. DPS
  * runs on the PERSONAL window -- the entity's own first action to the
  * fight's live edge, not the pull. */
@@ -1681,6 +1721,8 @@ export const api = {
   locateOverlay: (widget: string) => invoke<void>('locate_overlay', { widget }),
   /** why: unlock to drag that widget's own window into position, lock to make it click-through again */
   setOverlayLocked: (widget: string, locked: boolean) => invoke<void>('set_overlay_locked', { widget, locked }),
+  /** why: Debug's Overlay tab -- OS-level readback of every open overlay window */
+  getOverlayDiagnostics: () => invoke<OverlayDiagnosticsDto>('get_overlay_diagnostics'),
 
   /** why: Social tab's 3 shared channels */
   getGuildChat: () => invoke<ChatMessageDto[]>('get_guild_chat'),

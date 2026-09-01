@@ -10,7 +10,7 @@
 // why: modules live in lib.rs -- a bin-side `mod ingest;` here would
 // silently produce a second, incompatible `Ingest` type
 use eqlp_app::{
-    commands, config, history,
+    commands, config, history, overlaydiag,
     state::{AppState, LockRecover},
     tail_worker, updater,
 };
@@ -137,6 +137,30 @@ fn main() {
                     }
                 });
             }
+            // why: CI's blind-Windows harness (5-overlay-probe.yml) --
+            // opens one real overlay through the normal path, writes OS
+            // readback to overlay-probe.json (stdout is detached under
+            // windows_subsystem), holds for a screenshot, exits
+            if std::env::args().any(|a| a == "--overlay-probe") {
+                let probe = app.handle().clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    let enabled =
+                        commands::set_overlay_enabled(probe.clone(), "dps_meter".into(), true);
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    let diag = overlaydiag::collect(&probe);
+                    let report = serde_json::json!({
+                        "enable_result": format!("{enabled:?}"),
+                        "diagnostics": diag,
+                    });
+                    let _ = std::fs::write(
+                        "overlay-probe.json",
+                        serde_json::to_string_pretty(&report).unwrap_or_default(),
+                    );
+                    std::thread::sleep(std::time::Duration::from_secs(45));
+                    probe.exit(0);
+                });
+            }
             // why: before anything else, and before this process's own
             // window/webview exist at all -- see updater::
             // clear_stale_webview_cache_if_needed's own doc for why this
@@ -208,6 +232,7 @@ fn main() {
             commands::set_overlay_size,
             commands::locate_overlay,
             commands::set_overlay_locked,
+            commands::get_overlay_diagnostics,
             commands::get_guild_chat,
             commands::get_party_chat,
             commands::get_raid_chat,

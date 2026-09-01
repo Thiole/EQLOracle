@@ -34,6 +34,7 @@ pub mod monsterdata;
 pub mod monsters;
 pub mod notifications;
 pub mod npcdata;
+pub mod overlaydiag;
 pub mod overview;
 pub mod parser;
 pub mod pathfind;

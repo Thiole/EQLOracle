@@ -11,7 +11,7 @@ and need the service layer described in README.md before external
 exposure. Parameters shown are the real API surface -- Tauri plumbing
 (`State`, `AppHandle`, `Window`) is elided.
 
-113 commands: 24 pure, 89 stateful.
+114 commands: 24 pure, 90 stateful.
 
 ## `get_character_estimate` (pure)
 why: Character Planner's one call -- full attribute sheet + mana estimate; `gear` summed by the frontend, this side never touches an item. Stateless on purpose -- nothing persisted, fresh launch starts blank.
@@ -325,6 +325,12 @@ why: past parses against `target`, newest first; re-resolves loadout against liv
 
 - args: `kind: String`
 - returns: `Option<String>`
+
+## `get_overlay_diagnostics` (stateful)
+why: Debug's Overlay tab -- OS-level readback of every open overlay window, so a "nothing shows" report becomes pasteable facts
+
+- args: none
+- returns: `crate::overlaydiag::OverlayDiagnosticsDto`
 
 ## `get_party_chat` (stateful)
 

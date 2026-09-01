@@ -738,7 +738,7 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
     let w = window.clone();
     let click_through = cap.capability == WindowCapability::ClickThrough;
     let _ = window.run_on_main_thread(move || {
-        hide_from_window_switcher(&w);
+        hide_from_window_switcher_gtk(&w);
         let _ = w.show();
         // why: ClickThrough only -- Floating alone (never actually
         // reachable today, detect() only ever returns Docked or
@@ -749,6 +749,9 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
             let _ = w.set_ignore_cursor_events(true);
             ensure_layered_still_renders(&w);
         }
+        // why: last -- tao rewrites GWL_EXSTYLE from its own flags on
+        // every state change (show/ignore above), wiping direct bits
+        hide_from_window_switcher_windows(&w);
     });
     Ok(())
 }
@@ -820,17 +823,9 @@ fn ensure_layered_still_renders(window: &tauri::WebviewWindow) {
     let _ = window;
 }
 
-/// why: skip_taskbar alone covers the TASKBAR, not the alt-tab
-/// switcher -- KWin's switcher filters on window TYPE (Utility and
-/// friends are excluded, skip-taskbar windows are not), and tao's
-/// Windows skip_taskbar only calls ITaskbarList::DeleteTab, which
-/// likewise leaves alt-tab untouched. Four always-on-top widget
-/// windows cycling through alt-tab as separate "apps" is exactly what
-/// an overlay must not do. Best-effort on both platforms: a failure
-/// leaves the widget working, just visible in the switcher again.
-/// Called while the window is still hidden (builder sets
-/// visible(false)) so the WM sees the hint at first map.
-fn hide_from_window_switcher(window: &tauri::WebviewWindow) {
+/// why: alt-tab exclusion, GTK half -- the Utility hint must land
+/// BEFORE the window first maps for the WM to honor it.
+fn hide_from_window_switcher_gtk(window: &tauri::WebviewWindow) {
     #[cfg(target_os = "linux")]
     {
         use gtk::prelude::GtkWindowExt;
@@ -838,15 +833,23 @@ fn hide_from_window_switcher(window: &tauri::WebviewWindow) {
             gtk_window.set_type_hint(gtk::gdk::WindowTypeHint::Utility);
         }
     }
+    #[cfg(not(target_os = "linux"))]
+    let _ = window;
+}
+
+/// why: alt-tab exclusion, Windows half -- must run AFTER show()/
+/// set_ignore_cursor_events: tao's apply_diff (window_state.rs,
+/// verified in 0.35.3) rewrites GWL_EXSTYLE from its own flags on
+/// every state change, wiping any direct bit set earlier.
+fn hide_from_window_switcher_windows(window: &tauri::WebviewWindow) {
     #[cfg(target_os = "windows")]
     {
         use windows_sys::Win32::UI::WindowsAndMessaging::{
             GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
         };
         if let Ok(hwnd) = window.hwnd() {
-            // why: double cast -- tauri's `windows` crate HWND has been
-            // isize in some versions and *mut c_void in others; through
-            // isize it lands on windows-sys's own alias either way
+            // why: double cast -- tauri's HWND has been isize or
+            // *mut c_void across versions; isize bridges both
             let hwnd = hwnd.0 as isize;
             unsafe {
                 let ex = GetWindowLongPtrW(hwnd as _, GWL_EXSTYLE);
@@ -858,7 +861,7 @@ fn hide_from_window_switcher(window: &tauri::WebviewWindow) {
             }
         }
     }
-    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    #[cfg(not(target_os = "windows"))]
     let _ = window;
 }
 
@@ -959,17 +962,20 @@ pub fn set_overlay_locked(app: AppHandle, widget: String, locked: bool) -> Resul
     if let Some(w) = app.get_webview_window(&overlay_label(&widget)) {
         w.set_ignore_cursor_events(locked)
             .map_err(|e| e.to_string())?;
+        // why: decorations BEFORE the queued style fix below -- its
+        // apply_diff also rewrites GWL_EXSTYLE and would wipe the fix
+        w.set_decorations(!locked).map_err(|e| e.to_string())?;
         if locked {
             // why: this command runs OFF the event-loop thread, so the
-            // style change above was POSTED, not applied -- the attribute
-            // call must queue behind it (same PostMessage FIFO) or it
-            // lands on a not-yet-layered window as a no-op. The enable
-            // path's call sits inside run_on_main_thread already, where
-            // tao executes inline and ordering is direct.
+            // style changes above were POSTED, not applied -- these must
+            // queue behind them (same PostMessage FIFO) or they land on
+            // a not-yet-layered window as a no-op.
             let w2 = w.clone();
-            let _ = w.run_on_main_thread(move || ensure_layered_still_renders(&w2));
+            let _ = w.run_on_main_thread(move || {
+                ensure_layered_still_renders(&w2);
+                hide_from_window_switcher_windows(&w2);
+            });
         }
-        w.set_decorations(!locked).map_err(|e| e.to_string())?;
         if locked {
             if let (Ok(pos), Ok(scale)) = (w.outer_position(), w.scale_factor()) {
                 let logical = pos.to_logical::<f64>(scale);
@@ -986,6 +992,13 @@ pub fn set_overlay_locked(app: AppHandle, widget: String, locked: bool) -> Resul
         }
     }
     Ok(())
+}
+
+/// why: Debug's Overlay tab -- OS-level readback of every open overlay
+/// window, so a "nothing shows" report becomes pasteable facts
+#[tauri::command]
+pub fn get_overlay_diagnostics(app: AppHandle) -> crate::overlaydiag::OverlayDiagnosticsDto {
+    crate::overlaydiag::collect(&app)
 }
 
 /// why: the frontend can't cfg(target_os) -- whether the main window
