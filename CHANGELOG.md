@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-01 (0.12.0)
+
+### Overlay (Windows) — the actual fix
+
+- Enabling an overlay on Windows deadlocked the app's main thread before the overlay window ever existed: the enable command ran inside the main window's own WebView2 event handler, and creating a second WebView2 from there is a documented reentrancy deadlock. The command now runs off the main thread — the overlay window gets created the way it always should have. This was the "no overlay ever appears" report; every earlier style-level fix was aimed at a window that never got built.
+- Debug → Overlay diagnostics survive that class of bug now: window readback runs with a 3-second deadline and reports "main thread blocked" instead of hanging the panel, and the panel carries an ordered enable trace showing exactly which stage a wedged creation reached.
+
 ## 2026-09-01 (0.11.0)
 
 ### Clipboard
