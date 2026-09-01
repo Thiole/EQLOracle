@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-01 (0.10.0)
+
+### Tradeskills
+
+- Current tradeskill levels, parsed from the log's own skill-up lines — the 9 crafting skills plus Fishing, Forage, and Alcohol Tolerance. Unknown shows as "—", never a fake 0, since the log only states a level when a skill-up fires.
+- Overview redesigned around them: a skill-level table and a "recently crafted" list (last 15 successful combines with item icons) replace the aggregate craft table — its per-item stats already live on each recipe in the skill tabs.
+- With your level known, each recipe list marks combines at or below trivial as "no skill-up".
+
+### Overlay (Windows)
+
+- New Debug → Overlay tab: OS-level readback of every open overlay window — style flags, layered alpha, visibility, cloaking, position vs monitors — with one-click copy, for the "overlay not showing" reports. If yours doesn't show: enable the widget, open this tab, copy, paste in the report.
+- Overlay widgets actually stay out of alt-tab on Windows now — the style bit was being silently reverted the moment the window showed.
+
+### DPS meter
+
+- Labeled columns with wider separation.
+
 ## 2026-09-01
 
 ### Epic Quests

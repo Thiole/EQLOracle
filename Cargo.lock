@@ -974,7 +974,7 @@ dependencies = [
 
 [[package]]
 name = "eqlp-app"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "base64 0.22.1",
  "eqlp-core",
@@ -1000,7 +1000,7 @@ dependencies = [
 
 [[package]]
 name = "eqlp-cli"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "eqlp-core",
  "eqlp-source",
@@ -1009,7 +1009,7 @@ dependencies = [
 
 [[package]]
 name = "eqlp-core"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -1021,7 +1021,7 @@ dependencies = [
 
 [[package]]
 name = "eqlp-session"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "eqlp-core",
  "eqlp-source",
@@ -1029,14 +1029,14 @@ dependencies = [
 
 [[package]]
 name = "eqlp-source"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "eqlp-core",
 ]
 
 [[package]]
 name = "eqlp-store"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "eqlp-source",
  "eqlp-testkit",
@@ -1044,7 +1044,7 @@ dependencies = [
 
 [[package]]
 name = "eqlp-testkit"
-version = "0.9.0"
+version = "0.10.0"
 
 [[package]]
 name = "equivalent"
