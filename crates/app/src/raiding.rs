@@ -184,6 +184,9 @@ struct KillGrid {
 fn build_kill_grid(ing: &Ingest, you: Sym, xp_credited: &HashSet<u32>) -> KillGrid {
     let mut grid = KillGrid::default();
     for e in &ing.store.encounters {
+        if e.absorbed {
+            continue;
+        }
         if !e.slain || !monsters::counts_as_pull(ing, e, you, xp_credited) {
             continue;
         }
@@ -233,6 +236,9 @@ fn build_times(
         let mut first_action: Option<i64> = None;
         let mut boss_kill: Option<i64> = None;
         for e in &ing.store.encounters {
+            if e.absorbed {
+                continue;
+            }
             if e.start_ms < start || e.start_ms >= end {
                 continue;
             }
@@ -291,6 +297,9 @@ pub fn debug_visit_trace(ing: &Ingest, zone: &str, boss_log_name: &str) -> Vec<S
         let mut first_action: Option<(i64, String)> = None;
         let mut boss_kill: Option<i64> = None;
         for e in &ing.store.encounters {
+            if e.absorbed {
+                continue;
+            }
             if e.start_ms < start || e.start_ms >= end {
                 continue;
             }

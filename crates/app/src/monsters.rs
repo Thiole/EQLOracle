@@ -87,6 +87,9 @@ pub fn mob_stats(ing: &Ingest, name: &str) -> MobStatsDto {
     let mut kills = 0u64;
     let mut pulls = 0u64;
     for e in &ing.store.encounters {
+        if e.absorbed {
+            continue;
+        }
         if !ing.store.name(e.target).eq_ignore_ascii_case(name)
             || !counts_as_pull(ing, e, you, &xp_credited)
         {
@@ -141,6 +144,9 @@ pub fn list_mobs(ing: &Ingest) -> Vec<MobDto> {
 
     let mut counts: HashMap<Sym, (u64, u64)> = HashMap::new(); // (pulls, kills)
     for e in &ing.store.encounters {
+        if e.absorbed {
+            continue;
+        }
         if !counts_as_pull(ing, e, you, &xp_credited) {
             continue;
         }

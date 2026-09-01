@@ -203,7 +203,7 @@ pub fn list_encounters(
         .iter()
         // why: the Combat tab lists the player's own fights; someone
         // else's stays parsed in the backend (Debug shows it, flagged)
-        .filter(|e| e.involves_you && matches_visit(ing, e.start_ms, zone_visit))
+        .filter(|e| e.involves_you && !e.absorbed && matches_visit(ing, e.start_ms, zone_visit))
         .collect();
     matched.sort_by_key(|b| std::cmp::Reverse(b.start_ms));
     matched
@@ -318,8 +318,9 @@ pub fn list_zone_encounters(ing: &Ingest, zone_id: &str, limit: usize) -> Vec<Zo
         // why: involves_you -- your own recent fights here, not a
         // stranger group's; list_mob_encounters (Monsters, a data view)
         // deliberately keeps every observed fight instead
-        let is_match =
-            e.involves_you && e.zone.and_then(|z| ing.cached_wiki_zone(z)) == Some(zone_id);
+        let is_match = e.involves_you
+            && !e.absorbed
+            && e.zone.and_then(|z| ing.cached_wiki_zone(z)) == Some(zone_id);
         if is_match {
             matched.push(e);
             if matched.len() >= limit {
@@ -472,7 +473,7 @@ fn resolve_ids(
         ing.store
             .encounters
             .iter()
-            .filter(|e| e.involves_you && matches_visit(ing, e.start_ms, zone_visit))
+            .filter(|e| e.involves_you && !e.absorbed && matches_visit(ing, e.start_ms, zone_visit))
             .filter(|e| !confirmed_only || e.is_open() || e.slain || e.wiped)
             .map(|e| e.id)
             .collect()
@@ -1250,7 +1251,7 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     let mut encs: Vec<&Encounter> = vec![primary];
     if primary.is_open() {
         for e in &ing.store.encounters {
-            if e.id != primary.id && e.is_open() && e.involves_you {
+            if e.id != primary.id && e.is_open() && e.involves_you && !e.absorbed {
                 let last_ts = ing
                     .store
                     .ts

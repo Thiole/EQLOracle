@@ -111,6 +111,10 @@ pub struct Encounter {
     /// data but never surfaced as the player's own combat. Monotonic:
     /// flips true the moment involvement is proven, never back.
     pub involves_you: bool,
+    /// why: this encounter was a mid-fight merge corpse, reparented into
+    /// another -- its rows now carry the keeper's id and NOTHING may
+    /// surface it as a fight (no list row, no pull, no kill, no reset)
+    pub absorbed: bool,
 }
 
 impl Encounter {
@@ -213,6 +217,7 @@ impl Store {
             wiped: false,
             zone,
             involves_you: false,
+            absorbed: false,
         });
         id
     }
@@ -236,6 +241,32 @@ impl Store {
     pub fn extend_encounter(&mut self, id: EncounterId, idx: u32) {
         if let Some(e) = self.slot(id).and_then(|i| self.encounters.get_mut(i)) {
             e.last = idx;
+        }
+    }
+
+    /// why: reparent a merge corpse into its keeper -- rows re-tagged,
+    /// keeper's range/start extended to cover them, corpse flagged
+    /// absorbed and closed at its own start (zero length, never listed)
+    pub fn absorb_encounter(&mut self, corpse: EncounterId, keeper: EncounterId) {
+        let Some(c) = self.slot(corpse).and_then(|i| self.encounters.get(i)) else {
+            return;
+        };
+        let (c_first, c_last, c_start) = (c.first, c.last, c.start_ms);
+        for i in c_first as usize..=(c_last as usize).min(self.enc.len().saturating_sub(1)) {
+            if self.enc[i] == corpse.0 {
+                self.enc[i] = keeper.0;
+            }
+        }
+        if let Some(k) = self.slot(keeper).and_then(|i| self.encounters.get_mut(i)) {
+            k.first = k.first.min(c_first);
+            k.last = k.last.max(c_last);
+            k.start_ms = k.start_ms.min(c_start);
+        }
+        if let Some(c) = self.slot(corpse).and_then(|i| self.encounters.get_mut(i)) {
+            c.absorbed = true;
+            c.end_ms = Some(c.start_ms);
+            c.slain = false;
+            c.wiped = false;
         }
     }
 

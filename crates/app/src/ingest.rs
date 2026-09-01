@@ -3244,6 +3244,18 @@ impl Ingest {
             // why: cloned not borrowed -- sym() below needs &mut self,
             // can't coexist with a borrow into encounters.closed
             let c = self.encounters.closed[self.closed_seen].clone();
+            // why: a merge corpse reparents into its keeper and is done
+            // -- no kill, no history, no Lost stamping, no visible fight
+            // (see graph::Closed::absorbed_into's own doc)
+            if let Some(keeper) = c.absorbed_into {
+                if let (Some(&sid), Some(&kid)) =
+                    (self.enc_map.get(&c.id), self.enc_map.get(&keeper))
+                {
+                    self.store.absorb_encounter(sid, kid);
+                }
+                self.closed_seen += 1;
+                continue;
+            }
             if let Some(&store_id) = self.enc_map.get(&c.id) {
                 // why: a confirmed kill means THE TARGET died, not "any
                 // enemy died in this fight". Real bug, caught live: the

@@ -218,6 +218,13 @@ pub struct Closed {
     pub merged: bool,
     /// why: links a re-engage -- UI shows one kill, DPS windows stay separate
     pub links_to: Option<EncId>,
+    /// why: Some(keeper) when this record is a merge CORPSE -- the
+    /// encounter was absorbed into `keeper` mid-fight, never really
+    /// ended. Consumers must fold it into the keeper, not surface it:
+    /// surfacing minted zero-length "reset" fights and, when the corpse
+    /// carried a slain copy, a second kill for one death (reported
+    /// live: dracoliche "reset again... marks it as a kill though").
+    pub absorbed_into: Option<EncId>,
 }
 
 impl Closed {
@@ -353,7 +360,8 @@ impl Builder {
             for n in &src.entities {
                 self.of.insert(fold_key(n), keep);
             }
-            // why: `gone` never reaches close(), so push its own Closed here
+            // why: `gone` never reaches close(); its Closed is a merge
+            // corpse, marked absorbed_into so consumers reparent it
             self.closed.push(Closed {
                 id: src.id,
                 start_ms: src.start_ms,
@@ -363,6 +371,7 @@ impl Builder {
                 events: src.events,
                 merged: true,
                 links_to: None,
+                absorbed_into: Some(keep),
             });
         }
         keep
@@ -473,6 +482,7 @@ impl Builder {
             events: e.events,
             merged: e.merged,
             links_to,
+            absorbed_into: None,
         });
     }
 
