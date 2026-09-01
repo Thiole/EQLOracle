@@ -670,10 +670,13 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
         if let Some(w) = app.get_webview_window(&label) {
             let _ = w.close();
         }
+        crate::overlaydiag::trace(format!("disable {widget}"));
         return Ok(());
     }
+    crate::overlaydiag::trace(format!("enable {widget}: begin"));
     if app.get_webview_window(&label).is_some() {
-        return Ok(()); // already open
+        crate::overlaydiag::trace(format!("enable {widget}: already open"));
+        return Ok(());
     }
     let cap = windowcap::detect();
     if cap.capability == WindowCapability::Docked {
@@ -719,7 +722,12 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
             builder = builder.position(pos.x, pos.y);
         }
     }
-    let window = builder.build().map_err(|e| e.to_string())?;
+    crate::overlaydiag::trace(format!("enable {widget}: building window"));
+    let window = builder.build().map_err(|e| {
+        crate::overlaydiag::trace(format!("enable {widget}: build FAILED: {e}"));
+        e.to_string()
+    })?;
+    crate::overlaydiag::trace(format!("enable {widget}: build ok"));
     // why: one main-thread closure, strict internal order -- three real
     // constraints at once, and the ordering between tao's request
     // channel and run_on_main_thread's own queue is not guaranteed
@@ -737,9 +745,12 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
     //     realized window.
     let w = window.clone();
     let click_through = cap.capability == WindowCapability::ClickThrough;
+    let widget2 = widget.clone();
     let _ = window.run_on_main_thread(move || {
+        crate::overlaydiag::trace(format!("enable {widget2}: main-thread closure enter"));
         hide_from_window_switcher_gtk(&w);
         let _ = w.show();
+        crate::overlaydiag::trace(format!("enable {widget2}: shown"));
         // why: ClickThrough only -- Floating alone (never actually
         // reachable today, detect() only ever returns Docked or
         // ClickThrough, kept as its own tier for when finer Wayland
@@ -747,12 +758,15 @@ pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Res
         // game underneath it
         if click_through {
             let _ = w.set_ignore_cursor_events(true);
+            crate::overlaydiag::trace(format!("enable {widget2}: click-through set"));
             ensure_layered_still_renders(&w);
         }
         // why: last -- tao rewrites GWL_EXSTYLE from its own flags on
         // every state change (show/ignore above), wiping direct bits
         hide_from_window_switcher_windows(&w);
+        crate::overlaydiag::trace(format!("enable {widget2}: closure done"));
     });
+    crate::overlaydiag::trace(format!("enable {widget}: command returning ok"));
     Ok(())
 }
 

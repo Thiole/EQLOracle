@@ -246,6 +246,10 @@ export interface OverlayDiagnosticsDto {
   capability: WindowCapabilityDto;
   monitors: MonitorDto[];
   overlays: OverlayWindowDiagDto[];
+  /** why: non-null = window readback timed out, the main thread is blocked -- that IS the finding */
+  stalled: string | null;
+  /** why: ordered stage markers from enable attempts -- shows where a wedged creation stopped */
+  enable_trace: string[];
 }
 
 /** One meter row: % of the side's damage, total, DPS, time active. DPS

@@ -52,9 +52,61 @@ pub struct OverlayDiagnosticsDto {
     pub capability: crate::windowcap::WindowCapabilityDto,
     pub monitors: Vec<MonitorDto>,
     pub overlays: Vec<OverlayWindowDiag>,
+    /// why: every window/monitor getter round-trips through the event
+    /// loop -- when overlay creation wedges the main thread they block
+    /// forever. Set when readback timed out: the timeout itself IS the
+    /// finding (a blocked main thread), reported instead of hanging.
+    pub stalled: Option<String>,
+    /// why: ordered stage markers from the last enable attempts -- shows
+    /// exactly where creation stopped on a machine we can't see
+    pub enable_trace: Vec<String>,
+}
+
+/// why: bounded, ordered, no timestamps (time is injected in this
+/// codebase; order alone says where a wedged enable stopped)
+static ENABLE_TRACE: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+pub fn trace(msg: impl Into<String>) {
+    if let Ok(mut t) = ENABLE_TRACE.lock() {
+        if t.len() >= 200 {
+            t.remove(0);
+        }
+        t.push(msg.into());
+    }
 }
 
 pub fn collect(app: &AppHandle) -> OverlayDiagnosticsDto {
+    // why: everything getter-based runs on a throwaway thread with a
+    // deadline -- a wedged main thread must produce a report, not a hang
+    let (tx, rx) = std::sync::mpsc::channel();
+    let app2 = app.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(collect_via_event_loop(&app2));
+    });
+    let (monitors, overlays, stalled) = match rx.recv_timeout(std::time::Duration::from_secs(3)) {
+        Ok((m, o)) => (m, o, None),
+        Err(_) => (
+            Vec::new(),
+            Vec::new(),
+            Some(
+                "window/monitor readback timed out after 3s -- the app's main thread is \
+                     blocked, overlay creation is likely wedged (see enable_trace for where)"
+                    .to_string(),
+            ),
+        ),
+    };
+    OverlayDiagnosticsDto {
+        version: app.package_info().version.to_string(),
+        platform: std::env::consts::OS.to_string(),
+        capability: crate::windowcap::detect(),
+        monitors,
+        overlays,
+        stalled,
+        enable_trace: ENABLE_TRACE.lock().map(|t| t.clone()).unwrap_or_default(),
+    }
+}
+
+fn collect_via_event_loop(app: &AppHandle) -> (Vec<MonitorDto>, Vec<OverlayWindowDiag>) {
     let monitors = app
         .available_monitors()
         .map(|ms| {
@@ -85,13 +137,7 @@ pub fn collect(app: &AppHandle) -> OverlayDiagnosticsDto {
         })
         .collect();
     overlays.sort_by(|a, b| a.label.cmp(&b.label));
-    OverlayDiagnosticsDto {
-        version: app.package_info().version.to_string(),
-        platform: std::env::consts::OS.to_string(),
-        capability: crate::windowcap::detect(),
-        monitors,
-        overlays,
-    }
+    (monitors, overlays)
 }
 
 #[cfg(target_os = "windows")]

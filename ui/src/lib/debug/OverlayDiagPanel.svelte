@@ -86,6 +86,8 @@
     <CardContent class="px-3 py-2.5">
       {#if !loaded}
         <p class="text-[11px] text-muted-foreground">Loading…</p>
+      {:else if diag?.stalled}
+        <p class="text-[11px] text-caution">{diag.stalled}</p>
       {:else if error}
         <p class="text-[11px] text-caution">Diagnostics call failed -- this error IS the bug report, copy it:</p>
         <p class="mt-1 font-mono text-[11px]">{error}</p>
@@ -127,6 +129,14 @@
             </div>
           {/each}
         </div>
+      {/if}
+      {#if diag?.enable_trace.length}
+        <p class="mt-2 text-[11px] text-muted-foreground">enable trace (newest last):</p>
+        <ul class="mt-0.5 font-mono text-[11px]">
+          {#each diag.enable_trace.slice(-30) as t, i (i)}
+            <li>{t}</li>
+          {/each}
+        </ul>
       {/if}
     </CardContent>
   </Card>
