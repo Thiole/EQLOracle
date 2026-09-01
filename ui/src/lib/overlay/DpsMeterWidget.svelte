@@ -3,10 +3,13 @@
   // opaque rows, monospace numeric column, fixed layout, no continuous
   // CSS animation (a bar's width jumps to its new value each poll, it
   // doesn't ease there -- "a number that moves is a number you can't read").
-  // Same outgoing/incoming split the Combat tab's own summary card
-  // shows, outgoing on top -- "damage BY this entity" is the same real
-  // calc on both sides, just grouped by which side of the fight it's on.
-  import type { EntityStateDto, LiveMeterDto } from '$lib/tauri/api';
+  //
+  // Row spec, asked directly: % of the side's damage, total damage, DPS,
+  // and time active -- where "active" is THAT entity's own engagement
+  // window (their first action to the fight's live edge), so a late
+  // joiner's DPS is honest instead of pull-diluted. The bar is % share,
+  // not dps -- share is the stable comparative read, dps breathes.
+  import type { LiveMeterRowDto, LiveMeterDto } from '$lib/tauri/api';
 
   // why: this widget's panel background alpha -- each overlay widget
   // owns its own opacity, not one shared window-wide value (see
@@ -20,23 +23,31 @@
     overallOpacity,
   }: { meter: LiveMeterDto | null; opacity: number; overallOpacity: number } = $props();
 
-  function total(rows: EntityStateDto[]): number {
-    return rows.reduce((n, r) => n + r.dps, 0);
+  function sideTotal(rows: LiveMeterRowDto[]): number {
+    return rows.reduce((n, r) => n + r.total, 0);
   }
 
-  function maxOf(rows: EntityStateDto[]): number {
-    return Math.max(1, ...rows.map((r) => r.dps));
+  function fmtCompact(n: number): string {
+    if (n < 1000) return n.toFixed(0);
+    return `${(n / 1000).toFixed(1)}k`;
+  }
+
+  function fmtActive(ms: number): string {
+    const s = Math.max(0, Math.round(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   }
 </script>
 
-{#snippet meterRows(rows: EntityStateDto[], barClass: string)}
-  {@const max = maxOf(rows)}
+{#snippet meterRows(rows: LiveMeterRowDto[], barClass: string)}
   {#each rows as r (r.name)}
     <div class="relative overflow-hidden rounded-sm bg-foreground/10">
-      <div class="absolute inset-y-0 left-0 {barClass}" style:width="{(r.dps / max) * 100}%"></div>
-      <div class="relative flex items-center justify-between gap-2 px-1.5 py-0.5">
-        <span class="truncate {r.is_pet ? 'text-foreground/70 italic' : 'text-foreground'}">{r.name}</span>
-        <span class="shrink-0 font-mono tabular-nums text-foreground">{r.dps.toFixed(0)}</span>
+      <div class="absolute inset-y-0 left-0 {barClass}" style:width="{r.pct}%"></div>
+      <div class="relative flex items-center gap-2 px-1.5 py-0.5">
+        <span class="min-w-0 flex-1 truncate {r.is_pet ? 'text-foreground/70 italic' : 'text-foreground'}">{r.name}</span>
+        <span class="shrink-0 font-mono text-[10px] text-foreground/70 tabular-nums" title="time active -- from this entity's own first action">{fmtActive(r.active_ms)}</span>
+        <span class="shrink-0 font-mono text-foreground/80 tabular-nums" title="total damage">{fmtCompact(r.total)}</span>
+        <span class="shrink-0 font-mono text-foreground tabular-nums" title="DPS over own active time">{r.dps.toFixed(0)}</span>
+        <span class="w-9 shrink-0 text-right font-mono text-[10px] text-foreground/70 tabular-nums" title="share of this side's damage">{r.pct.toFixed(0)}%</span>
       </div>
     </div>
   {/each}
@@ -68,7 +79,7 @@
       <div class="flex flex-col gap-0.5">
         <div class="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
           <span>outgoing</span>
-          <span class="font-mono tabular-nums">{total(meter.outgoing).toFixed(0)}</span>
+          <span class="font-mono tabular-nums">{fmtCompact(sideTotal(meter.outgoing))} dmg</span>
         </div>
         {@render meterRows(meter.outgoing, 'bg-primary/50')}
       </div>
@@ -78,7 +89,7 @@
       <div class="flex flex-col gap-0.5">
         <div class="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
           <span>incoming</span>
-          <span class="font-mono tabular-nums">{total(meter.incoming).toFixed(0)}</span>
+          <span class="font-mono tabular-nums">{fmtCompact(sideTotal(meter.incoming))} dmg</span>
         </div>
         {@render meterRows(meter.incoming, 'bg-bad/50')}
       </div>

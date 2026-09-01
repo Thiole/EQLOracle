@@ -1147,6 +1147,21 @@ fn fight_state_at_windowed(
     out
 }
 
+/// why: one meter row, the reported spec verbatim -- % of the side's
+/// damage, total, DPS, and time active. DPS runs on the PERSONAL
+/// window: this entity's first action to the fight's live edge, so a
+/// late joiner reads honest numbers instead of pull-diluted ones.
+#[derive(Debug, Clone, Serialize)]
+pub struct LiveMeterRowDto {
+    pub name: String,
+    pub pct: f64,
+    pub total: u64,
+    pub dps: f64,
+    pub active_ms: Millis,
+    pub is_player: bool,
+    pub is_pet: bool,
+}
+
 /// why: the overlay DPS meter's whole data source -- same split the
 /// Combat tab's own summary card shows (team output vs. what's coming
 /// back), not just a flat roster
@@ -1154,13 +1169,10 @@ fn fight_state_at_windowed(
 pub struct LiveMeterDto {
     pub target: String,
     pub open: bool,
-    /// why: players and their assumed pets, ranked by their own trailing dps
-    pub outgoing: Vec<EntityStateDto>,
-    /// why: the enemy side -- `fight_state_at`'s own dps calc already
-    /// means "damage dealt BY this entity" regardless of which side it's
-    /// on, so an enemy row here is real incoming-damage-per-source, not
-    /// a separate calculation
-    pub incoming: Vec<EntityStateDto>,
+    /// why: ally-side damage INTO enemies, ranked by total
+    pub outgoing: Vec<LiveMeterRowDto>,
+    /// why: enemy-side damage INTO allies -- same calc, other side
+    pub incoming: Vec<LiveMeterRowDto>,
 }
 
 /// why: shared by live_meter and the Skill Tracker's target-effects
@@ -1228,19 +1240,91 @@ const LIVE_METER_ROLLING_WINDOW_MS: Millis = 15_000;
 pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     let now = ing.now_ms();
     let latest = current_encounter(ing)?;
-    let rows = if latest.is_open() {
-        fight_state_at_windowed(ing, latest.id.0, now, LIVE_METER_ROLLING_WINDOW_MS)
+    let end = if latest.is_open() {
+        now
     } else {
-        let end = latest.end_ms.unwrap_or(now).max(latest.start_ms);
-        let whole_fight_ms = (end - latest.start_ms).max(1);
-        fight_state_at_windowed(ing, latest.id.0, end, whole_fight_ms)
+        latest.end_ms.unwrap_or(now).max(latest.start_ms)
     };
-    let (outgoing, incoming) = rows.into_iter().partition(|r| r.is_player || r.is_pet);
+
+    // why: per-entity accumulation straight off the encounter's damage
+    // rows, sided per row by allegiance AT THAT ROW'S ts (charm flips
+    // mid-fight side correctly). Outgoing = ally actor hitting an enemy
+    // target; incoming = enemy actor hitting an ally. `first_ts` is the
+    // entity's own first action -- the personal clock (asked directly:
+    // "someone's timer doesn't start counting until they take first
+    // action... tracking time in engagement, not against the beginning
+    // of the engagement").
+    struct Acc {
+        total: u64,
+        first_ts: Millis,
+        is_player: bool,
+        is_pet: bool,
+    }
+    let mut out_acc: HashMap<String, Acc> = HashMap::new();
+    let mut in_acc: HashMap<String, Acc> = HashMap::new();
+    for i in latest.range() {
+        if ing.store.enc[i] != latest.id.0 || ing.store.kind[i] != EventKind::Damage {
+            continue;
+        }
+        let ts = ing.store.ts[i];
+        let actor_name = ing.effective_name(ing.store.name(ing.store.actor[i]));
+        let target_name = ing.store.name(ing.store.target[i]).to_string();
+        let actor_enemy = ing.allegiance_at(&actor_name, ts).is_enemy();
+        let target_enemy = ing.allegiance_at(&target_name, ts).is_enemy();
+        let acc = if !actor_enemy && target_enemy {
+            &mut out_acc
+        } else if actor_enemy && !target_enemy {
+            &mut in_acc
+        } else {
+            // ally-on-ally (heal-shield oddities) or enemy-on-enemy
+            // (charm pet math lives on the ally side already) -- neither
+            // is meter damage
+            continue;
+        };
+        let kind = ing.effective_kind(&actor_name, ts);
+        let e = acc.entry(actor_name).or_insert(Acc {
+            total: 0,
+            first_ts: ts,
+            is_player: kind == Kind::Player,
+            is_pet: kind == Kind::Pet,
+        });
+        e.total += ing.store.amount[i];
+        e.first_ts = e.first_ts.min(ts);
+    }
+
+    let build = |acc: HashMap<String, Acc>| -> Vec<LiveMeterRowDto> {
+        let team_total: u64 = acc.values().map(|a| a.total).sum();
+        let mut rows: Vec<LiveMeterRowDto> = acc
+            .into_iter()
+            .map(|(name, a)| {
+                // why: the personal window -- their first action to the
+                // fight's live edge; a late joiner's DPS is honest, not
+                // diluted by time they weren't there
+                let active_ms = (end - a.first_ts).max(1);
+                LiveMeterRowDto {
+                    pct: if team_total > 0 {
+                        100.0 * a.total as f64 / team_total as f64
+                    } else {
+                        0.0
+                    },
+                    dps: a.total as f64 / (active_ms as f64 / 1000.0),
+                    total: a.total,
+                    active_ms,
+                    is_player: a.is_player,
+                    is_pet: a.is_pet,
+                    name,
+                }
+            })
+            .collect();
+        rows.sort_by(|a, b| b.total.cmp(&a.total));
+        rows
+    };
+
     Some(LiveMeterDto {
         target: ing.store.name(latest.target).to_string(),
         open: latest.is_open(),
-        outgoing,
-        incoming,
+        outgoing: build(out_acc),
+        incoming: build(in_acc),
     })
 }
 
@@ -1446,15 +1530,12 @@ mod live_meter_tests {
             "{:?}",
             m.outgoing
         );
-        assert!(
-            m.outgoing.iter().all(|r| !r.is_enemy),
-            "outgoing is players/pets only, {:?}",
-            m.outgoing
-        );
+        // why: sides are structural now -- outgoing IS the ally side by
+        // construction, so the old is_enemy flag has nothing to say
         assert!(
             m.incoming
                 .iter()
-                .any(|r| r.name == "Refugee Splitpaw" && r.is_enemy && r.dps > 0.0),
+                .any(|r| r.name.eq_ignore_ascii_case("Refugee Splitpaw") && r.dps > 0.0),
             "{:?}",
             m.incoming
         );
@@ -1958,5 +2039,75 @@ mod ally_report_tests {
             summary.enemy_heal, 20,
             "healing landed on the target, not folded into total_damage"
         );
+    }
+}
+
+#[cfg(test)]
+mod live_meter_window_tests {
+    use super::*;
+    use crate::ingest::{backfill_lines, framed_lines, Ingest};
+    use crate::parser::build_engine;
+
+    fn ingest_from(text: &str) -> Ingest {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines = framed_lines(text.as_bytes());
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing
+    }
+
+    /// why: the reported spec -- a late joiner's clock starts at THEIR
+    /// first action, not the pull. Same damage dealt, half the active
+    /// window, roughly double the DPS; totals and 50/50 split unchanged.
+    #[test]
+    fn a_late_joiners_dps_runs_on_their_own_window() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:20 2026] Kaeus hits a gnoll for 100 points of damage.\n\
+             [Tue Jul 28 15:01:40 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:40 2026] Kaeus hits a gnoll for 100 points of damage.\n",
+        );
+        let m = live_meter(&ing).expect("live fight");
+        let you = m
+            .outgoing
+            .iter()
+            .find(|r| r.name == "You")
+            .expect("You row");
+        let kaeus = m
+            .outgoing
+            .iter()
+            .find(|r| r.name == "Kaeus")
+            .expect("Kaeus row");
+        assert_eq!(you.total, 200);
+        assert_eq!(kaeus.total, 200);
+        assert!((you.pct - 50.0).abs() < 0.01);
+        assert!((kaeus.pct - 50.0).abs() < 0.01);
+        // You active 40s, Kaeus active 20s -- their DPS runs on their own clock
+        assert_eq!(you.active_ms, 40_000);
+        assert_eq!(kaeus.active_ms, 20_000);
+        assert!(
+            kaeus.dps > you.dps * 1.9,
+            "late joiner's dps on own window: {} vs {}",
+            kaeus.dps,
+            you.dps
+        );
+    }
+
+    /// why: incoming mirrors the calc from the enemy side
+    #[test]
+    fn incoming_rows_carry_the_same_shape() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:10 2026] A gnoll hits YOU for 50 points of damage.\n",
+        );
+        let m = live_meter(&ing).expect("live fight");
+        let g = m
+            .incoming
+            .iter()
+            .find(|r| r.name.eq_ignore_ascii_case("a gnoll"))
+            .expect("gnoll row");
+        assert_eq!(g.total, 50);
+        assert!((g.pct - 100.0).abs() < 0.01);
     }
 }

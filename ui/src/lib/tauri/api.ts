@@ -208,13 +208,26 @@ export interface WindowCapabilityDto {
   reason: string | null;
 }
 
+/** One meter row: % of the side's damage, total, DPS, time active. DPS
+ * runs on the PERSONAL window -- the entity's own first action to the
+ * fight's live edge, not the pull. */
+export interface LiveMeterRowDto {
+  name: string;
+  pct: number;
+  total: number;
+  dps: number;
+  active_ms: number;
+  is_player: boolean;
+  is_pet: boolean;
+}
+
 export interface LiveMeterDto {
   target: string;
   open: boolean;
-  /** why: players and assumed pets, ranked by their own trailing dps */
-  outgoing: EntityStateDto[];
-  /** why: the enemy side -- same trailing dps calc, so this is real incoming damage per source */
-  incoming: EntityStateDto[];
+  /** ally-side damage into enemies, ranked by total */
+  outgoing: LiveMeterRowDto[];
+  /** enemy-side damage into allies -- same calc, other side */
+  incoming: LiveMeterRowDto[];
 }
 
 export interface CharmStatusDto {
