@@ -24,9 +24,9 @@ jobs:
         with: { node-version: 20 }
       - run: npm ci
         working-directory: ui
-      # debug build on purpose: console subsystem stays attached and the
-      # build is far faster; the window/overlay path is identical
-      - run: npm run tauri build -- --debug
+      # debug: console subsystem stays attached, faster build. no-bundle:
+      # only the exe is needed -- bundling wants the updater signing key
+      - run: npm run tauri build -- --debug --no-bundle
         working-directory: ui
       - name: run probe and screenshot
         shell: pwsh
