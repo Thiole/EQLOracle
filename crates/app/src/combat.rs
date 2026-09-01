@@ -1229,10 +1229,6 @@ pub fn encounter_for(ing: &Ingest, target_sym: Sym) -> Option<&Encounter> {
     ing.store.encounter(EncounterId(id))
 }
 
-/// why: wider than INSPECT_WINDOW_MS -- overlay wants a rolling average,
-/// not the tight 6s scrub snapshot fight_state_at uses for manual scrubbing.
-const LIVE_METER_ROLLING_WINDOW_MS: Millis = 15_000;
-
 /// why: overlay's live poll. Open fight -> rolling window at "now"
 /// (self-corrects in a lull). Closed fight -> window frozen at end_ms
 /// spanning the whole fight, so the summary doesn't decay to 0 after the
@@ -1316,7 +1312,7 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
                 }
             })
             .collect();
-        rows.sort_by(|a, b| b.total.cmp(&a.total));
+        rows.sort_by_key(|r| std::cmp::Reverse(r.total));
         rows
     };
 
