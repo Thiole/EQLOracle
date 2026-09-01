@@ -925,12 +925,22 @@ export interface ZoneNpcDto {
   has_markers: boolean;
 }
 
+/** One route leg: 'walk' carries mesh waypoints; 'hop' is a location
+ * change (teleporter pad/door) -- stand at waypoints[0], arrive at
+ * waypoints[1], label names the pad. */
+export interface PathLegDto {
+  kind: 'walk' | 'hop';
+  waypoints: [number, number, number][];
+  label: string | null;
+}
+
 export interface PathDto {
   waypoints: [number, number, number][];
   /** why: which engine routed -- 'navmesh' (EQEmu Detour mesh, true
    * walkable surfaces) or 'lines' (grid A* over map wall geometry, the
    * fallback while a zone's mesh isn't cached). */
   source: 'navmesh' | 'lines';
+  legs: PathLegDto[];
 }
 
 /** why: one leg of a ZoneRouteDto -- a teleport hop always names its own

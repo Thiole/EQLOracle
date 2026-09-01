@@ -1,19 +1,19 @@
 {
-  "_comment": "Intra-zone traversal links the navmesh can't know: teleporter pads, magic doors, lifts. Directed edges in /loc coordinates (from -> to), injected into the zone's nav graph at load (emumaps.rs). Sources: the game map's own P labels give each pad's location (map coords fold to loc via (-y,-x,z)); a destination is any point ON the target island/area -- nearest-poly snapping does the rest, so the pad of the NEXT portal standing there is a valid stand-in for the true arrival spot. airplane = Plane of Sky's island progression ring.",
+  "_comment": "Intra-zone traversal links the navmesh can't know: teleporter pads, magic doors, lifts. Directed hops in MAP-FILE coordinates (copy-pasteable straight from a map .txt P label), from -> to, injected into the zone's nav graph at load (emumaps.rs) as zero-cost location hops -- stepping on the pad IS the traversal, like a zone line, no spell. A destination is any point ON the target island/area; nearest-poly snapping does the rest, so the pad of the NEXT portal standing there is a valid stand-in for the true arrival spot. airplane = Plane of Sky's island progression ring, coordinates from its own map's Portal_to_* labels.",
   "links": {
     "airplane": [
-      { "from": [1419.0, 839.0, -671.0], "to": [454.0, 1171.0, 0.0], "label": "Island 1 -> 1.5 (Key of Swords)" },
-      { "from": [1360.0, 370.0, -712.0], "to": [-460.0, -580.0, -364.0], "label": "Island 1 -> 2 (Key of the Misplaced)" },
-      { "from": [454.0, 1171.0, 0.0], "to": [-460.0, -580.0, -364.0], "label": "Island 1.5 -> 2 (Key of the Misplaced)" },
-      { "from": [-460.0, -580.0, -364.0], "to": [189.0, 231.0, -120.0], "label": "Island 2 -> 3 (Key of Misfortune)" },
-      { "from": [189.0, 231.0, -120.0], "to": [493.0, -344.0, 117.0], "label": "Island 3 -> 4 (Key of Beasts)" },
-      { "from": [493.0, -344.0, 117.0], "to": [-189.16, 724.87, 409.75], "label": "Island 4 -> 5 (Avian Key)" },
-      { "from": [-189.16, 724.87, 409.75], "to": [-1208.0, 429.0, 765.0], "label": "Island 5 -> 6 (Key of the Swarm)" },
-      { "from": [-1208.0, 429.0, 765.0], "to": [-716.94, -1339.98, 1007.27], "label": "Island 6 -> 7 (Key of Scale)" },
-      { "from": [-716.94, -1339.98, 1007.27], "to": [-348.62, -1727.29, 1216.99], "label": "Island 7 -> 8 (Veeshan's Key)" },
-      { "from": [-348.62, -1727.29, 1216.99], "to": [1419.0, 839.0, -671.0], "label": "Island 8 -> 1 (Thunder Spirits return)" },
-      { "from": [1612.0, 533.0, -695.0], "to": [1470.0, 646.0, -770.0], "label": "Island 1 -> Quest Room (Efreeti's Key)" },
-      { "from": [1470.0, 646.0, -770.0], "to": [1612.0, 533.0, -695.0], "label": "Quest Room -> Island 1" }
+      { "from": [-839.0, -1419.0, -671.0], "to": [-1171.0, -454.0, 0.0], "label": "Island 1 -> 1.5 (Key of Swords)" },
+      { "from": [-370.0, -1360.0, -712.0], "to": [580.0, 460.0, -364.0], "label": "Island 1 -> 2 (Key of the Misplaced)" },
+      { "from": [-1171.0, -454.0, 0.0], "to": [580.0, 460.0, -364.0], "label": "Island 1.5 -> 2 (Key of the Misplaced)" },
+      { "from": [580.0, 460.0, -364.0], "to": [-231.0, -189.0, -120.0], "label": "Island 2 -> 3 (Key of Misfortune)" },
+      { "from": [-231.0, -189.0, -120.0], "to": [344.0, -493.0, 117.0], "label": "Island 3 -> 4 (Key of Beasts)" },
+      { "from": [344.0, -493.0, 117.0], "to": [-724.87, 189.16, 409.75], "label": "Island 4 -> 5 (Avian Key)" },
+      { "from": [-724.87, 189.16, 409.75], "to": [-429.0, 1208.0, 765.0], "label": "Island 5 -> 6 (Key of the Swarm)" },
+      { "from": [-429.0, 1208.0, 765.0], "to": [1339.98, 716.94, 1007.27], "label": "Island 6 -> 7 (Key of Scale)" },
+      { "from": [1339.98, 716.94, 1007.27], "to": [1727.29, 348.62, 1216.99], "label": "Island 7 -> 8 (Veeshan's Key)" },
+      { "from": [1727.29, 348.62, 1216.99], "to": [-839.0, -1419.0, -671.0], "label": "Island 8 -> 1 (Thunder Spirits return)" },
+      { "from": [-533.0, -1612.0, -695.0], "to": [-646.08, -1470.96, -770.8], "label": "Island 1 -> Quest Room (Efreeti's Key)" },
+      { "from": [-646.08, -1470.96, -770.8], "to": [-533.0, -1612.0, -695.0], "label": "Quest Room -> Island 1" }
     ]
   }
 }

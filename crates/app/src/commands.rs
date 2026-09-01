@@ -1388,10 +1388,24 @@ pub fn get_map_file(
 /// original grid A* over the game map's wall geometry, the fallback
 /// when a zone's mesh isn't cached yet).
 
+/// why: one route leg -- 'walk' carries mesh waypoints, 'hop' is a
+/// location change (teleporter pad/door/lift): stand at waypoints[0],
+/// arrive at waypoints[1]. Mirrors the zone-route hop model one level
+/// down; the pad is the prerequisite, no spell.
+#[derive(Debug, Clone, Serialize)]
+pub struct PathLegDto {
+    pub kind: &'static str,
+    pub waypoints: Vec<[f32; 3]>,
+    pub label: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PathDto {
     pub waypoints: Vec<[f32; 3]>,
     pub source: &'static str,
+    /// why: walk/hop segmentation -- the viewer draws hops dashed; the
+    /// flat waypoints stay for anything that only wants one polyline
+    pub legs: Vec<PathLegDto>,
 }
 
 /// why: missing route is a real retryable outcome, not folded into an empty result
@@ -1409,10 +1423,40 @@ pub fn find_walk_path(
     // maps can't; disk-cache-only (ensure_emu_zone owns the download)
     if let Ok(app_data) = app.path().app_data_dir() {
         if let Some(nav) = emumaps::load_nav(&app_data, &zone) {
-            if let Some(waypoints) = nav.find_path(from, to) {
+            if let Some(route) = nav.find_route(from, to) {
+                let mut waypoints: Vec<[f32; 3]> = Vec::new();
+                let legs: Vec<PathLegDto> = route
+                    .iter()
+                    .map(|leg| match leg {
+                        emumaps::NavLeg::Walk(w) => {
+                            for p in w {
+                                if waypoints.last() != Some(p) {
+                                    waypoints.push(*p);
+                                }
+                            }
+                            PathLegDto {
+                                kind: "walk",
+                                waypoints: w.clone(),
+                                label: None,
+                            }
+                        }
+                        emumaps::NavLeg::Hop { at, to, label } => {
+                            if waypoints.last() != Some(at) {
+                                waypoints.push(*at);
+                            }
+                            waypoints.push(*to);
+                            PathLegDto {
+                                kind: "hop",
+                                waypoints: vec![*at, *to],
+                                label: Some(label.clone()),
+                            }
+                        }
+                    })
+                    .collect();
                 return Ok(PathDto {
                     waypoints,
                     source: "navmesh",
+                    legs,
                 });
             }
             // why: fall through -- endpoints off the mesh (a bad click
@@ -1430,8 +1474,14 @@ pub fn find_walk_path(
         mapsdata::load_zone_map(&base_dir, pack.as_deref(), &zone).map_err(|e| e.to_string())?;
     let path = pathfind::find_path(&parsed, (from[0], from[1], from[2]), (to[0], to[1], to[2]))
         .ok_or("no walkable route found between those points")?;
+    let waypoints: Vec<[f32; 3]> = path.into_iter().map(|(x, y, z)| [x, y, z]).collect();
     Ok(PathDto {
-        waypoints: path.into_iter().map(|(x, y, z)| [x, y, z]).collect(),
+        legs: vec![PathLegDto {
+            kind: "walk",
+            waypoints: waypoints.clone(),
+            label: None,
+        }],
+        waypoints,
         source: "lines",
     })
 }
@@ -1650,7 +1700,9 @@ pub fn get_last_location(app: AppHandle, state: State<AppState>) -> Option<LastL
     if let Ok(app_data) = app.path().app_data_dir() {
         for shortname in &map_zones {
             if let Some(geo) = emumaps::load_geo(&app_data, shortname) {
-                ground_z = geo.best_z(x as f32, y as f32, z as f32).map(|g| g as f64);
+                // why: /loc -> map-file space (swap+negate) -- emumaps'
+                // public space is map-file, this caller's inputs are loc
+                ground_z = geo.best_z(-y as f32, -x as f32, z as f32).map(|g| g as f64);
                 if ground_z.is_some() {
                     break;
                 }

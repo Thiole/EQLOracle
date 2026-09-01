@@ -7,15 +7,16 @@
 //! The game's own `maps/<zone>.txt` line files stay the VIEW; these two
 //! feed pathfinding and ground snapping only.
 //!
-//! Coordinates. Three spaces meet here: /loc space (what `last_loc`,
-//! POI conversions, and every caller of this module use -- "game
-//! coords"), map-file space (the .txt view: map = (-locY, -locX, z),
-//! pinned by MapViewer's own brute-forced player-dot comment), and the
-//! EQEmu spaces. Established empirically against blackburrow bounds:
-//! emu = (-mapX, -mapY, z) = (locY, locX, z), and nav = emu with y/z
-//! swapped (Detour is Y-up), i.e. nav = (locY, z, locX). All public
-//! APIs here take and return LOC coordinates -- pure axis swaps, no
-//! negation.
+//! Coordinates. Three spaces exist: /loc space (log lines, wiki),
+//! MAP-FILE space (the .txt view; map = (-locY, -locX, z), pinned by
+//! MapViewer's brute-forced player-dot transform), and the EQEmu
+//! spaces (emu = (-mapX, -mapY, z); nav = emu with y/z swapped, Detour
+//! Y-up). The walk-path pipeline -- walkStartPosition, marker.pos, the
+//! viewer's own waypoint drawing -- is MAP-FILE space end to end, so
+//! **all public APIs here take and return MAP-FILE coordinates**. The
+//! one loc-space caller (get_last_location's best-Z snap) converts at
+//! its call site. zone_links.json coordinates are map-file too --
+//! copy-pasteable straight from map P labels.
 //!
 //! Adjacency is rebuilt geometrically (shared tile-edge matching by
 //! quantized endpoints) instead of decoding Detour's link/side tables --
@@ -37,19 +38,45 @@ use crate::state::LockRecover;
 
 // ---------------------------------------------------------------- parsing
 
+/// why: one traversable edge out of a poly. `link` None = a real shared
+/// mesh edge (a,b = the portal the funnel threads); Some(i) = a
+/// zone-link HOP (teleporter pad/door) into ZoneNav::links[i] -- the
+/// location changes, nothing is walked, cost is ~zero (a pad is a zone
+/// line, not a journey; asked directly: "similar to zone changes...
+/// instead of having a special cost").
+#[derive(Debug, Clone)]
+pub struct NavEdge {
+    pub to: u32,
+    pub a: [f32; 3],
+    pub b: [f32; 3],
+    pub link: Option<u32>,
+}
+
 #[derive(Debug)]
 pub struct NavPoly {
     /// why: game-coordinate vertices, fan order
     pub verts: Vec<[f32; 3]>,
-    /// why: (neighbor poly index, shared-edge a, shared-edge b) -- edge
-    /// endpoints in game coords, the funnel's portal
-    pub edges: Vec<(u32, [f32; 3], [f32; 3])>,
+    pub edges: Vec<NavEdge>,
     pub center: [f32; 3],
 }
 
 #[derive(Debug)]
 pub struct ZoneNav {
     pub polys: Vec<NavPoly>,
+    /// why: applied links, indexed by NavEdge::link
+    pub links: Vec<ZoneLink>,
+}
+
+/// why: what a route is made of -- walk legs on the mesh, hop legs
+/// through a link. Mirrors the zone-route hop model one level down.
+#[derive(Debug)]
+pub enum NavLeg {
+    Walk(Vec<[f32; 3]>),
+    Hop {
+        at: [f32; 3],
+        to: [f32; 3],
+        label: String,
+    },
 }
 
 #[derive(Debug)]
@@ -68,7 +95,7 @@ const CELL: f32 = 32.0;
 /// lifts (packs/zone_links.json). Directed, loc coords. Plane of Sky is
 /// the proving case: its navmesh is 45 disconnected islands, so without
 /// these edges no cross-island path can exist at all.
-#[derive(serde::Deserialize, Clone)]
+#[derive(Debug, serde::Deserialize, Clone)]
 pub struct ZoneLink {
     pub from: [f32; 3],
     pub to: [f32; 3],
@@ -96,17 +123,17 @@ pub fn zone_links(zone: &str) -> &'static [ZoneLink] {
 }
 
 pub fn nav_to_game(p: [f32; 3]) -> [f32; 3] {
-    // nav(locY, z, locX) -> loc(navZ, navX, navY)
-    [p[2], p[0], p[1]]
+    // nav(emuX, z, emuY) -> map(-emuX, -emuY, z)
+    [-p[0], -p[2], p[1]]
 }
 
 pub fn game_to_nav(p: [f32; 3]) -> [f32; 3] {
-    [p[1], p[2], p[0]]
+    [-p[0], p[2], -p[1]]
 }
 
 fn emu_to_game(p: [f32; 3]) -> [f32; 3] {
-    // emu(locY, locX, z) -> loc: swap x/y
-    [p[1], p[0], p[2]]
+    // emu(-mapX, -mapY, z) -> map
+    [-p[0], -p[1], p[2]]
 }
 
 fn rd_u32(b: &[u8], o: usize) -> u32 {
@@ -227,8 +254,18 @@ pub fn parse_nav(data: &[u8]) -> Option<ZoneNav> {
                 let b = pv[(k + 1) % pv.len()];
                 let key = edge_key(a, b);
                 if let Some((other, oa, ob)) = open_edges.remove(&key) {
-                    polys[idx as usize].edges.push((other, oa, ob));
-                    polys[other as usize].edges.push((idx, oa, ob));
+                    polys[idx as usize].edges.push(NavEdge {
+                        to: other,
+                        a: oa,
+                        b: ob,
+                        link: None,
+                    });
+                    polys[other as usize].edges.push(NavEdge {
+                        to: idx,
+                        a: oa,
+                        b: ob,
+                        link: None,
+                    });
                 } else {
                     open_edges.insert(key, (idx, a, b));
                 }
@@ -277,13 +314,26 @@ pub fn parse_nav(data: &[u8]) -> Option<ZoneNav> {
         };
         if let (Some(pa), Some(pb)) = (near(a, &polys), near(b, &polys)) {
             if pa != pb {
-                polys[pa as usize].edges.push((pb, a, b));
-                polys[pb as usize].edges.push((pa, b, a));
+                polys[pa as usize].edges.push(NavEdge {
+                    to: pb,
+                    a,
+                    b,
+                    link: None,
+                });
+                polys[pb as usize].edges.push(NavEdge {
+                    to: pa,
+                    a: b,
+                    b: a,
+                    link: None,
+                });
             }
         }
     }
 
-    (!polys.is_empty()).then_some(ZoneNav { polys })
+    (!polys.is_empty()).then_some(ZoneNav {
+        polys,
+        links: Vec::new(),
+    })
 }
 
 /// Parse an EQEmu v2 `base/*.map` collision mesh into a best-Z index.
@@ -387,9 +437,8 @@ impl ZoneGeo {
 // ---------------------------------------------------------------- pathfinding
 
 impl ZoneNav {
-    /// why: inject directed traversal links (teleporters/doors/lifts) as
-    /// zero-width portal edges between the polys nearest each endpoint --
-    /// the funnel then routes THROUGH the pad point. Reverse edges are
+    /// why: inject directed traversal links (teleporters/doors/lifts)
+    /// between the polys nearest each endpoint. Reverse edges are
     /// deliberately not added: a one-way port is one-way.
     pub fn apply_links(&mut self, links: &[ZoneLink]) {
         for l in links {
@@ -397,7 +446,14 @@ impl ZoneNav {
                 continue;
             };
             if pa != pb {
-                self.polys[pa as usize].edges.push((pb, l.from, l.from));
+                let li = self.links.len() as u32;
+                self.links.push(l.clone());
+                self.polys[pa as usize].edges.push(NavEdge {
+                    to: pb,
+                    a: l.from,
+                    b: l.from,
+                    link: Some(li),
+                });
             }
         }
     }
@@ -417,13 +473,18 @@ impl ZoneNav {
             .map(|(i, _)| i as u32)
     }
 
-    /// A* over poly adjacency + funnel smoothing. Game coords in and out.
+    /// A* over poly adjacency + per-walk-leg funnel smoothing. Map-file
+    /// coords in and out. A link edge costs ~nothing (a pad is a zone
+    /// line, not a journey) and splits the route into separate legs.
     /// None when either endpoint has no nearby poly or no route exists.
-    pub fn find_path(&self, from: [f32; 3], to: [f32; 3]) -> Option<Vec<[f32; 3]>> {
+    pub fn find_route(&self, from: [f32; 3], to: [f32; 3]) -> Option<Vec<NavLeg>> {
+        /// why: not literally 0.0 -- a tiny positive cost keeps A*
+        /// admissible-ish and route lengths finite under link cycles
+        const LINK_COST: f32 = 1.0;
         let start = self.nearest_poly(from)?;
         let goal = self.nearest_poly(to)?;
         if start == goal {
-            return Some(vec![from, to]);
+            return Some(vec![NavLeg::Walk(vec![from, to])]);
         }
 
         #[derive(PartialEq)]
@@ -441,41 +502,93 @@ impl ZoneNav {
             }
         }
 
-        let h = |i: u32| dist2(self.polys[i as usize].center, to).sqrt();
+        // why: h=0 (Dijkstra) -- links make straight-line distance
+        // inadmissible (a far island can be one near-zero-cost hop
+        // away), and a few thousand polys is microseconds anyway
         let mut g: HashMap<u32, f32> = HashMap::from([(start, 0.0)]);
-        let mut came: HashMap<u32, (u32, [f32; 3], [f32; 3])> = HashMap::new();
-        let mut heap = BinaryHeap::from([Node(h(start), start)]);
+        let mut came: HashMap<u32, (u32, NavEdge)> = HashMap::new();
+        let mut heap = BinaryHeap::from([Node(0.0, start)]);
         while let Some(Node(_, cur)) = heap.pop() {
             if cur == goal {
                 break;
             }
             let gc = g[&cur];
-            for &(nb, ea, eb) in &self.polys[cur as usize].edges {
-                let step = dist2(
-                    self.polys[cur as usize].center,
-                    self.polys[nb as usize].center,
-                )
-                .sqrt();
+            for e in &self.polys[cur as usize].edges {
+                let step = if e.link.is_some() {
+                    LINK_COST
+                } else {
+                    dist2(
+                        self.polys[cur as usize].center,
+                        self.polys[e.to as usize].center,
+                    )
+                    .sqrt()
+                };
                 let ng = gc + step;
-                if g.get(&nb).is_none_or(|&old| ng < old) {
-                    g.insert(nb, ng);
-                    came.insert(nb, (cur, ea, eb));
-                    heap.push(Node(ng + h(nb), nb));
+                if g.get(&e.to).is_none_or(|&old| ng < old) {
+                    g.insert(e.to, ng);
+                    came.insert(e.to, (cur, e.clone()));
+                    heap.push(Node(ng, e.to));
                 }
             }
         }
         came.contains_key(&goal).then_some(())?;
 
-        // portal chain goal -> start, reversed
-        let mut portals: Vec<([f32; 3], [f32; 3])> = Vec::new();
+        // edge chain goal -> start, reversed, then split into legs at hops
+        let mut chain: Vec<NavEdge> = Vec::new();
         let mut cur = goal;
         while cur != start {
-            let (prev, ea, eb) = came[&cur];
-            portals.push((ea, eb));
+            let (prev, e) = came[&cur].clone();
+            chain.push(e);
             cur = prev;
         }
-        portals.reverse();
-        Some(funnel(from, to, &portals))
+        chain.reverse();
+
+        let mut legs: Vec<NavLeg> = Vec::new();
+        let mut seg_start = from;
+        let mut portals: Vec<([f32; 3], [f32; 3])> = Vec::new();
+        for e in &chain {
+            if let Some(li) = e.link {
+                let l = &self.links[li as usize];
+                // close the walk leg AT the pad, then the hop itself
+                legs.push(NavLeg::Walk(funnel(seg_start, l.from, &portals)));
+                portals.clear();
+                legs.push(NavLeg::Hop {
+                    at: l.from,
+                    to: l.to,
+                    label: l.label.clone(),
+                });
+                seg_start = l.to;
+            } else {
+                portals.push((e.a, e.b));
+            }
+        }
+        legs.push(NavLeg::Walk(funnel(seg_start, to, &portals)));
+        Some(legs)
+    }
+
+    /// why: flat waypoint list for callers that only draw one line --
+    /// hop discontinuities just become straight segments
+    pub fn find_path(&self, from: [f32; 3], to: [f32; 3]) -> Option<Vec<[f32; 3]>> {
+        let legs = self.find_route(from, to)?;
+        let mut out: Vec<[f32; 3]> = Vec::new();
+        for leg in &legs {
+            match leg {
+                NavLeg::Walk(w) => {
+                    for p in w {
+                        if out.last() != Some(p) {
+                            out.push(*p);
+                        }
+                    }
+                }
+                NavLeg::Hop { at, to, .. } => {
+                    if out.last() != Some(at) {
+                        out.push(*at);
+                    }
+                    out.push(*to);
+                }
+            }
+        }
+        Some(out)
     }
 }
 
@@ -680,15 +793,15 @@ mod tests {
     #[test]
     fn blackburrow_path_exists_and_stays_in_bounds() {
         let nav = parse_nav(&fixture("blackburrow.nav")).expect("parses");
-        // two far-apart points inside the zone, LOC coords: locX = -mapY
-        // in [-254,349], locY = -mapX in [-397,489]
+        // two far-apart points inside the zone, MAP-FILE coords
+        // (X[-489,397] Y[-349,254])
         let from = [-50.0, -30.0, 0.0];
-        let to = [250.0, 300.0, -50.0];
+        let to = [300.0, 100.0, -50.0];
         let path = nav.find_path(from, to).expect("route exists");
         assert!(path.len() >= 2);
         for p in &path {
             assert!(
-                (-260.0..=355.0).contains(&p[0]) && (-400.0..=495.0).contains(&p[1]),
+                (-500.0..=400.0).contains(&p[0]) && (-350.0..=260.0).contains(&p[1]),
                 "point off the map: {p:?}"
             );
         }
@@ -736,10 +849,10 @@ mod link_tests {
     #[test]
     fn sky_islands_route_only_through_portal_links() {
         let mut nav = parse_nav(&fixture("airplane.nav")).expect("parses");
-        // island 1 spawn area -> island 3 (loc coords from the map's own
+        // island 1 area -> island 3 (MAP-FILE coords from the map's own
         // portal labels, nudged off the pads themselves)
-        let from = [1400.0, 800.0, -671.0];
-        let to = [200.0, 240.0, -120.0];
+        let from = [-800.0, -1400.0, -671.0];
+        let to = [-200.0, -180.0, -120.0];
         assert!(
             nav.find_path(from, to).is_none(),
             "no path without links -- disconnected islands"
@@ -755,8 +868,8 @@ mod link_tests {
     fn portal_links_are_directed() {
         let mut nav = parse_nav(&fixture("airplane.nav")).expect("parses");
         nav.apply_links(zone_links("airplane"));
-        let island2 = [-460.0, -580.0, -364.0];
-        let island1 = [1400.0, 800.0, -671.0];
+        let island2 = [580.0, 460.0, -364.0];
+        let island1 = [-800.0, -1400.0, -671.0];
         // forward ring reaches island 8's return pad eventually, but the
         // DIRECT reverse hop 2 -> 1 must not exist as an edge; a route
         // may still exist the long way around the ring, which is
@@ -764,10 +877,7 @@ mod link_tests {
         let p2 = nav.nearest_poly(island2).unwrap();
         let p1 = nav.nearest_poly(island1).unwrap();
         assert!(
-            !nav.polys[p2 as usize]
-                .edges
-                .iter()
-                .any(|(nb, _, _)| *nb == p1),
+            !nav.polys[p2 as usize].edges.iter().any(|e| e.to == p1),
             "no direct reverse edge island2 -> island1"
         );
     }

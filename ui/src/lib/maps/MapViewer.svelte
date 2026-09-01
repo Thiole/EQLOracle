@@ -94,7 +94,7 @@
   /** why: the drawn route line -- its own mesh, own small effect below,
    * same "don't touch the expensive scene-build effect" reasoning the
    * NPC overlay already follows. `null` whenever no route is shown. */
-  let pathLineMesh: THREE.Line | null = null;
+  let pathLineMeshes: THREE.Line[] = [];
   /** why: `onPointerMove`'s hover raycast needs the *current* NPC marker
    * list to label a hit -- kept fresh by the NPC effect below rather than
    * closed over at scene-build time, since scene build no longer reruns
@@ -561,13 +561,15 @@
           (obj.material as THREE.Material).dispose();
         }
       });
-      pathLineMesh?.geometry.dispose();
-      (pathLineMesh?.material as THREE.Material | undefined)?.dispose();
+      for (const m of pathLineMeshes) {
+        m.geometry.dispose();
+        (m.material as THREE.Material).dispose();
+      }
       renderer.dispose();
       scene = null;
       hereMesh = null;
       npcPointsMesh = null;
-      pathLineMesh = null;
+      pathLineMeshes = [];
       liveCamera = null;
       liveControls = null;
       sceneFramed = false;
@@ -612,34 +614,53 @@
     const p = path;
     void zone;
     void map;
-    if (pathLineMesh) {
-      scene?.remove(pathLineMesh);
-      pathLineMesh.geometry.dispose();
-      (pathLineMesh.material as THREE.Material).dispose();
-      pathLineMesh = null;
+    for (const m of pathLineMeshes) {
+      scene?.remove(m);
+      m.geometry.dispose();
+      (m.material as THREE.Material).dispose();
     }
+    pathLineMeshes = [];
     if (!scene || !p || p.waypoints.length < 2) return;
     // Same mapfile -> three.js axis remap the walls/markers already use
     // (mapfile X -> three X, mapfile Z/elevation -> three Y, mapfile Y ->
     // three Z) -- these waypoints are already in the map file's own
     // coordinate order (see this file's own `path` prop doc), not
     // `/loc`-space, so no additional transform is needed here.
-    const positions = new Float32Array(p.waypoints.length * 3);
-    p.waypoints.forEach(([x, y, z], i) => {
-      positions[i * 3] = x;
-      positions[i * 3 + 1] = z;
-      positions[i * 3 + 2] = y;
-    });
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const toGeo = (pts: [number, number, number][]) => {
+      const positions = new Float32Array(pts.length * 3);
+      pts.forEach(([x, y, z], i) => {
+        positions[i * 3] = x;
+        positions[i * 3 + 1] = z;
+        positions[i * 3 + 2] = y;
+      });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      return geo;
+    };
     // why: bright green, distinct from every existing marker color (red
     // confirmed, bright yellow guess, cyan NPC) -- `linewidth` is a real
     // WebGL limitation, not a mistake here: most GPU/driver combinations
     // render `LineBasicMaterial` at a flat 1px regardless of this value,
     // so the route reads as a thin line, not a thick highlighted one.
-    const mesh = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x22c55e, linewidth: 2 }));
-    scene.add(mesh);
-    pathLineMesh = mesh;
+    // One Line per leg: walk legs solid, hop legs (teleporter pads --
+    // the location changes, nothing is walked) dashed, so a Sky route
+    // reads as islands-walked plus ports-taken, not one impossible line
+    // across the void. `legs` always present from the current backend;
+    // guarded anyway so an old mock fixture still draws the flat line.
+    const legs = p.legs?.length ? p.legs : [{ kind: 'walk' as const, waypoints: p.waypoints, label: null }];
+    for (const leg of legs) {
+      if (leg.waypoints.length < 2) continue;
+      const geo = toGeo(leg.waypoints);
+      let mesh: THREE.Line;
+      if (leg.kind === 'hop') {
+        mesh = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: 0x22c55e, dashSize: 8, gapSize: 6 }));
+        mesh.computeLineDistances();
+      } else {
+        mesh = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x22c55e, linewidth: 2 }));
+      }
+      scene.add(mesh);
+      pathLineMeshes.push(mesh);
+    }
   });
 
   // ---- effect 3: keeps the "you are here" marker current as real `/loc`
