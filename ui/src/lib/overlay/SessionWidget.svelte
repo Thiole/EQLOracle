@@ -21,6 +21,12 @@
     if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
     return v.toFixed(digits);
   }
+
+  function fmtEta(hours: number): string {
+    const mins = Math.round(hours * 60);
+    if (mins < 60) return `${mins}m`;
+    return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+  }
 </script>
 
 <!-- why: same legibility treatment as every other overlay widget --
@@ -42,6 +48,11 @@
       <div class="rounded-sm bg-foreground/10 px-1 py-1.5">
         <div class="font-mono text-[16px] text-foreground tabular-nums">{rate(session.levels_per_hour, 2)}</div>
         <div class="text-[9px] tracking-wide text-foreground/60 uppercase">levels/hr</div>
+        {#if session.eta_hours != null}
+          <div class="mt-0.5 text-[9px] text-foreground/60" title="estimated time to next level at this rate">
+            next lvl est: <span class="font-mono text-foreground/80 tabular-nums">{fmtEta(session.eta_hours)}</span>
+          </div>
+        {/if}
       </div>
       <div class="rounded-sm bg-foreground/10 px-1 py-1.5">
         <div class="font-mono text-[16px] text-foreground tabular-nums">{rate(session.platinum_per_hour, 1)}</div>

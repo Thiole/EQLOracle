@@ -705,7 +705,7 @@ pub async fn set_overlay_enabled(
     let (w, h) = match widget.as_str() {
         "cc_tracker" => cc_tracker_dims(&preferences::load(&app).overlay_cc_tracker_size),
         // why: compact square, asked directly -- three stat columns + a mote strip
-        "session" => (250.0, 150.0),
+        "session" => (250.0, 162.0),
         _ => (360.0, 240.0),
     };
     // why: built hidden, shown only after hide_from_window_switcher --
