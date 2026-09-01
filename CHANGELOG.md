@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-01 (0.13.0)
+
+### Session overlay
+
+- New "Session" overlay widget: AA, levels, and plat per hour as three stat columns, with the next-level ETA under levels/hr and a mote strip underneath — total, rate, and a per-tier circle with counts (hover for the tier name). Same numbers as the Overview tab, compact overlay form. Rates honestly show "--" until the session is a minute old.
+- AA/hour counts *earned* ability points — the "You have gained N ability point(s)!" payout line, which was parsed but never used anywhere until now — not points spent on ranks.
+
+### Overlay button
+
+- The top-bar button now reads "Overlay: enabled" / "Overlay: disabled" with the good/deny colors — state in words as well as color, readable colorblind.
+
 ## 2026-09-01 (0.12.0)
 
 ### Overlay (Windows) — the actual fix
