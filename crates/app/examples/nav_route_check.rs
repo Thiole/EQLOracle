@@ -56,7 +56,8 @@ fn main() {
     // ignoring z -- deliberately the same naive read a player's eye does
     // on the top-down view)
     let map_txt = std::fs::read_to_string(format!("{maps}/{zone}.txt")).expect("game map present");
-    let mut walls: Vec<((f32, f32), (f32, f32), f32, f32)> = Vec::new();
+    type Wall = ((f32, f32), (f32, f32), f32, f32);
+    let mut walls: Vec<Wall> = Vec::new();
     for line in map_txt.lines() {
         let Some(rest) = line.strip_prefix('L') else {
             continue;
