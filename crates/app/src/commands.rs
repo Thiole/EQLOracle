@@ -1382,11 +1382,11 @@ pub fn get_map_file(
     Ok(parsed.into())
 }
 
-/// why: real walking route waypoints. `source` says which engine
-/// produced them: "navmesh" (EQEmu Detour mesh -- true walkable
-/// surfaces, multi-floor correct; see emumaps.rs) or "lines" (the
-/// original grid A* over the game map's wall geometry, the fallback
-/// when a zone's mesh isn't cached yet).
+// why: real walking route waypoints. `source` says which engine
+// produced them: "navmesh" (EQEmu Detour mesh -- true walkable
+// surfaces, multi-floor correct; see emumaps.rs) or "lines" (the
+// original grid A* over the game map's wall geometry, the fallback
+// when a zone's mesh isn't cached yet).
 
 /// why: one route leg -- 'walk' carries mesh waypoints, 'hop' is a
 /// location change (teleporter pad/door/lift): stand at waypoints[0],
