@@ -234,14 +234,18 @@ export interface LiveMeterDto {
 export interface SpellCheckRowDto {
   name: string;
   recent_avg: number;
-  norm_avg: number;
-  /** recent/norm -- under ~0.75 reads as "being resisted/shredded" */
+  /** prior-zone avg under the current invocation when enough, else session norm */
+  baseline: number;
+  /** recent/baseline -- under ~0.75 reads as "being resisted/shredded" */
   ratio: number;
+  /** true = baseline is invocation-matched (last 5 same-stance zones) */
+  matched: boolean;
 }
 
 /** why: the meter's "this spell isn't landing" hint -- empty struggling
  * means show nothing. */
 export interface SpellCheckDto {
+  invocation: string | null;
   struggling: SpellCheckRowDto[];
   alternatives: SpellCheckRowDto[];
 }

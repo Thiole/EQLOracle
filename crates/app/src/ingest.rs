@@ -22,7 +22,7 @@ use eqlp_store::{
     GearModifiers, Store, Sym, Tags, NO_ENCOUNTER,
 };
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::OnceLock;
 
 /// why: reset whenever the tail target changes (new file, truncation, replacement)
@@ -180,6 +180,9 @@ impl AaLog {
 #[derive(Debug, Clone, Default)]
 pub struct SpellPerf {
     stats: HashMap<String, SpellPerfStat>,
+    /// (spell, invocation) -> per-zone-visit hit averages, newest last --
+    /// the invocation-matched baseline ("last 5 zones under THIS stance")
+    zone_hist: HashMap<(String, String), VecDeque<ZoneBucket>>,
 }
 
 #[derive(Debug, Clone)]
@@ -191,14 +194,47 @@ pub struct SpellPerfStat {
     pub last_ms: Millis,
 }
 
+#[derive(Debug, Clone)]
+struct ZoneBucket {
+    zone_idx: usize,
+    sum: f64,
+    n: u32,
+}
+
+/// One row of the "is this landing" check. `matched` -- baseline came
+/// from prior zones under the CURRENT invocation, not the session norm.
+#[derive(Debug, Clone)]
+pub struct SpellCheckRow {
+    pub name: String,
+    pub recent_avg: f64,
+    pub baseline: f64,
+    pub ratio: f64,
+    pub matched: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SpellCheckOutcome {
+    pub struggling: Vec<SpellCheckRow>,
+    pub alternatives: Vec<SpellCheckRow>,
+}
+
 impl SpellPerf {
     const A_RECENT: f64 = 0.25;
     const A_NORM: f64 = 0.02;
     /// why: a lull resets the recent window's sample confidence -- ten
     /// minutes later "recent" means this fight, not the last one
     const RECENT_STALE_MS: Millis = 10 * 60 * 1000;
+    /// current zone + the 5 prior it can be judged against
+    const BUCKETS_KEPT: usize = 6;
+    const BASELINE_ZONES: usize = 5;
+    /// why: fewer prior same-invocation hits than this and the matched
+    /// baseline is noise -- fall back to the session norm
+    const BASELINE_MIN_N: u32 = 20;
+    pub const FLAG_RATIO: f64 = 0.75;
+    pub const FLAG_MIN_RECENT: u32 = 5;
+    pub const FLAG_MIN_LANDINGS: u64 = 25;
 
-    pub fn observe(&mut self, ts: Millis, spell: &str, amount: u64) {
+    pub fn observe(&mut self, ts: Millis, spell: &str, amount: u64, zone_idx: usize, inv: &str) {
         let a = amount as f64;
         let e = self
             .stats
@@ -219,6 +255,93 @@ impl SpellPerf {
         e.landings += 1;
         e.recent_n = e.recent_n.saturating_add(1);
         e.last_ms = ts;
+
+        let hist = self
+            .zone_hist
+            .entry((spell.to_string(), inv.to_string()))
+            .or_default();
+        match hist.back_mut() {
+            Some(b) if b.zone_idx == zone_idx => {
+                b.sum += a;
+                b.n += 1;
+            }
+            _ => {
+                hist.push_back(ZoneBucket {
+                    zone_idx,
+                    sum: a,
+                    n: 1,
+                });
+                if hist.len() > Self::BUCKETS_KEPT {
+                    hist.pop_front();
+                }
+            }
+        }
+    }
+
+    /// why: prior-zone average under the same invocation -- the current
+    /// zone is excluded so a dip can't dilute its own yardstick
+    fn matched_baseline(&self, spell: &str, inv: &str, cur_zone: usize) -> Option<f64> {
+        let hist = self.zone_hist.get(&(spell.to_string(), inv.to_string()))?;
+        let (mut sum, mut n) = (0.0, 0u32);
+        for b in hist
+            .iter()
+            .rev()
+            .filter(|b| b.zone_idx != cur_zone)
+            .take(Self::BASELINE_ZONES)
+        {
+            sum += b.sum;
+            n += b.n;
+        }
+        (n >= Self::BASELINE_MIN_N).then(|| sum / n as f64)
+    }
+
+    /// The full struggling/alternatives decision -- one place, shared by
+    /// the command and the replay probes. Baseline preference: prior
+    /// zones under `inv`, else session norm.
+    pub fn check(&self, now: Millis, cur_zone: usize, inv: &str) -> SpellCheckOutcome {
+        let mut out = SpellCheckOutcome::default();
+        for (name, st) in self.stats.iter() {
+            let matched = self.matched_baseline(name, inv, cur_zone);
+            let baseline = matched.unwrap_or(st.ema_norm);
+            let ratio = if baseline > 0.0 {
+                st.ema_recent / baseline
+            } else {
+                1.0
+            };
+            let row = SpellCheckRow {
+                name: name.clone(),
+                recent_avg: st.ema_recent,
+                baseline,
+                ratio,
+                matched: matched.is_some(),
+            };
+            let recent_active = now - st.last_ms < Self::RECENT_STALE_MS;
+            if recent_active
+                && st.recent_n >= Self::FLAG_MIN_RECENT
+                && st.landings >= Self::FLAG_MIN_LANDINGS
+                && ratio < Self::FLAG_RATIO
+            {
+                out.struggling.push(row);
+            } else if st.landings >= Self::FLAG_MIN_LANDINGS && (!recent_active || ratio >= 0.9) {
+                out.alternatives.push(row);
+            }
+        }
+        out.struggling.sort_by(|a, b| {
+            a.ratio
+                .partial_cmp(&b.ratio)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        out.alternatives.sort_by(|a, b| {
+            b.baseline
+                .partial_cmp(&a.baseline)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        out.alternatives.truncate(3);
+        // why: no hint without a problem
+        if out.struggling.is_empty() {
+            out.alternatives.clear();
+        }
+        out
     }
 
     pub fn all(&self) -> impl Iterator<Item = (&str, &SpellPerfStat)> {
@@ -964,6 +1087,8 @@ pub struct Ingest {
     pub spell_ranks: SpellRanks,
     /// why: rolling per-spell landing performance -- see SpellPerf
     pub spell_perf: SpellPerf,
+    /// why: last recited invocation, lowercased -- SpellPerf baseline key
+    pub current_invocation: Option<String>,
     /// why: every exaltation-proc line this session, see ExaltationProcs
     pub exaltation_procs: ExaltationProcs,
     enc_map: HashMap<EncId, EncounterId>,
@@ -1100,6 +1225,7 @@ impl Default for Ingest {
             spellbook: SpellLog::default(),
             spell_ranks: SpellRanks::default(),
             spell_perf: SpellPerf::default(),
+            current_invocation: None,
             exaltation_procs: ExaltationProcs::default(),
             enc_map: HashMap::new(),
             entities_by_enc: HashMap::new(),
@@ -1656,6 +1782,9 @@ impl Ingest {
                     self.zone.index_at(ts),
                     crate::invocationdata::classes_for(&invocation),
                 );
+                // why: SpellPerf judges hits against a same-invocation
+                // baseline -- the recite line is the only switch signal
+                self.current_invocation = Some(invocation.to_ascii_lowercase());
             }
             Action::PlayerProof { who } => self.encounters.entities.note_player_channel(&who),
             Action::ChatMessage { who, channel, text } => {
@@ -2077,7 +2206,10 @@ impl Ingest {
         // rank/resist story), keyed by the base name so ranks fold
         if src.eq_ignore_ascii_case("you") && tags & tag::SPELL != 0 && amount > 0 {
             let (base, _rank) = split_cast_rank(ability);
-            self.spell_perf.observe(ts, base, amount);
+            let zidx = self.zone.index_at(ts).unwrap_or(usize::MAX);
+            let base = base.to_string();
+            let inv = self.current_invocation.clone().unwrap_or_default();
+            self.spell_perf.observe(ts, &base, amount, zidx, &inv);
         }
         let ab = self.store.ability_id(ability, tags);
         let tier = self.current_tier(ts);
@@ -7888,11 +8020,11 @@ mod spell_perf_tests {
         let mut p = SpellPerf::default();
         let mut ts = 0;
         for _ in 0..50 {
-            p.observe(ts, "Conflagration", 1000);
+            p.observe(ts, "Conflagration", 1000, 0, "overchannel");
             ts += 7_000;
         }
         for _ in 0..10 {
-            p.observe(ts, "Conflagration", 300);
+            p.observe(ts, "Conflagration", 300, 0, "overchannel");
             ts += 7_000;
         }
         let (_, st) = p.all().next().unwrap();
@@ -7913,14 +8045,79 @@ mod spell_perf_tests {
         let mut p = SpellPerf::default();
         let mut ts = 0;
         for _ in 0..20 {
-            p.observe(ts, "Ice Comet", 200);
+            p.observe(ts, "Ice Comet", 200, 0, "overchannel");
             ts += 7_000;
         }
         ts += SpellPerf::RECENT_STALE_MS + 1;
-        p.observe(ts, "Ice Comet", 1000);
+        p.observe(ts, "Ice Comet", 1000, 0, "overchannel");
         let (_, st) = p.all().next().unwrap();
         assert_eq!(st.recent_n, 1);
         assert_eq!(st.ema_recent, 1000.0);
         assert_eq!(st.landings, 21, "lifetime norm survives the reset");
+    }
+
+    /// why: the whole point of the invocation-matched baseline --
+    /// recovery hits lower BY DESIGN, so judged against prior recovery
+    /// zones it reads fine, while the raw session norm would cry dip
+    #[test]
+    fn invocation_switch_is_not_a_dip() {
+        let mut p = SpellPerf::default();
+        let mut ts = 0;
+        // zones 0-2 under overchannel: 1000s dominate the session norm
+        for z in 0..3usize {
+            for _ in 0..30 {
+                p.observe(ts, "Conflagration", 1000, z, "overchannel");
+                ts += 7_000;
+            }
+        }
+        // zones 3-4 under recovery: 700 is that stance's normal
+        for z in 3..5usize {
+            for _ in 0..30 {
+                p.observe(ts, "Conflagration", 700, z, "recovery");
+                ts += 7_000;
+            }
+        }
+        // zone 5, still recovery, still ~700
+        for _ in 0..10 {
+            p.observe(ts, "Conflagration", 700, 5, "recovery");
+            ts += 7_000;
+        }
+        let out = p.check(ts, 5, "recovery");
+        assert!(
+            out.struggling.is_empty(),
+            "recovery-normal hits flagged: {:?}",
+            out.struggling
+        );
+        // same numbers judged against overchannel zones WOULD flag
+        let wrong = p.check(ts, 5, "overchannel");
+        assert_eq!(wrong.struggling.len(), 1);
+        assert!(wrong.struggling[0].matched);
+    }
+
+    /// why: partials under the SAME invocation must still flag against
+    /// the matched baseline, current zone excluded from its own yardstick
+    #[test]
+    fn same_invocation_partials_flag_against_matched_baseline() {
+        let mut p = SpellPerf::default();
+        let mut ts = 0;
+        for z in 0..3usize {
+            for _ in 0..30 {
+                p.observe(ts, "Conflagration", 1000, z, "overchannel");
+                ts += 7_000;
+            }
+        }
+        for _ in 0..10 {
+            p.observe(ts, "Conflagration", 300, 3, "overchannel");
+            ts += 7_000;
+        }
+        let out = p.check(ts, 3, "overchannel");
+        assert_eq!(out.struggling.len(), 1);
+        let row = &out.struggling[0];
+        assert!(row.matched, "baseline should be invocation-matched");
+        assert!(
+            (row.baseline - 1000.0).abs() < 1.0,
+            "baseline {}",
+            row.baseline
+        );
     }
 }

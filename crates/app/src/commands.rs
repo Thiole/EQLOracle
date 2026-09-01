@@ -515,13 +515,19 @@ pub fn get_live_meter(state: State<AppState>) -> Option<combat::LiveMeterDto> {
 pub struct SpellCheckRowDto {
     pub name: String,
     pub recent_avg: f64,
-    pub norm_avg: f64,
-    /// recent/norm -- under ~0.75 reads as "being resisted/shredded"
+    /// prior-zone average under the current invocation when there is
+    /// enough of it, else the session norm -- see `matched`
+    pub baseline: f64,
+    /// recent/baseline -- under ~0.75 reads as "being resisted/shredded"
     pub ratio: f64,
+    /// true = baseline is invocation-matched (last 5 same-stance zones)
+    pub matched: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SpellCheckDto {
+    /// lowercased invocation the baselines were matched against, if known
+    pub invocation: Option<String>,
     pub struggling: Vec<SpellCheckRowDto>,
     pub alternatives: Vec<SpellCheckRowDto>,
 }
@@ -530,46 +536,20 @@ pub struct SpellCheckDto {
 pub fn get_spell_check(state: State<AppState>) -> SpellCheckDto {
     let ing = state.ingest.lock_recover();
     let now = ing.now_ms();
-    let mut struggling = Vec::new();
-    let mut alternatives = Vec::new();
-    for (name, st) in ing.spell_perf.all() {
-        let ratio = if st.ema_norm > 0.0 {
-            st.ema_recent / st.ema_norm
-        } else {
-            1.0
-        };
-        let row = SpellCheckRowDto {
-            name: name.to_string(),
-            recent_avg: st.ema_recent,
-            norm_avg: st.ema_norm,
-            ratio,
-        };
-        let recent_active = now - st.last_ms < 10 * 60 * 1000;
-        if recent_active && st.recent_n >= 5 && st.landings >= 25 && ratio < 0.75 {
-            struggling.push(row);
-        } else if st.landings >= 25 && (!recent_active || ratio >= 0.9) {
-            alternatives.push(row);
-        }
-    }
-    struggling.sort_by(|a, b| {
-        a.ratio
-            .partial_cmp(&b.ratio)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    alternatives.sort_by(|a, b| {
-        b.norm_avg
-            .partial_cmp(&a.norm_avg)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    alternatives.truncate(3);
-    // why: no hint without a problem -- an empty struggling list means
-    // the meter shows nothing extra at all
-    if struggling.is_empty() {
-        alternatives.clear();
-    }
+    let cur_zone = ing.zone.index_at(now).unwrap_or(usize::MAX);
+    let inv = ing.current_invocation.clone().unwrap_or_default();
+    let out = ing.spell_perf.check(now, cur_zone, &inv);
+    let to_dto = |r: &crate::ingest::SpellCheckRow| SpellCheckRowDto {
+        name: r.name.clone(),
+        recent_avg: r.recent_avg,
+        baseline: r.baseline,
+        ratio: r.ratio,
+        matched: r.matched,
+    };
     SpellCheckDto {
-        struggling,
-        alternatives,
+        invocation: ing.current_invocation.clone(),
+        struggling: out.struggling.iter().map(to_dto).collect(),
+        alternatives: out.alternatives.iter().map(to_dto).collect(),
     }
 }
 

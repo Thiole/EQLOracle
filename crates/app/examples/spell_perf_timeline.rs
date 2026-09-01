@@ -32,30 +32,26 @@ fn main() {
     for chunk in lines.chunks(2_000) {
         backfill_lines(&mut ing, &engine, chunk, 4);
         let now = ing.now_ms();
+        let cur_zone = ing.zone.index_at(now).unwrap_or(usize::MAX);
+        let inv = ing.current_invocation.clone().unwrap_or_default();
+        let out = ing.spell_perf.check(now, cur_zone, &inv);
         for (i, w) in WATCH.iter().enumerate() {
-            let Some((_, st)) = ing.spell_perf.all().find(|(n, _)| n == w) else {
-                continue;
-            };
-            let ratio = if st.ema_norm > 0.0 {
-                st.ema_recent / st.ema_norm
-            } else {
-                1.0
-            };
-            let on = now - st.last_ms < 10 * 60 * 1000
-                && st.recent_n >= 5
-                && st.landings >= 25
-                && ratio < 0.75;
+            let row = out.struggling.iter().find(|r| r.name == *w);
+            let on = row.is_some();
             if on != flagged[i] {
                 flagged[i] = on;
-                println!(
-                    "{} {w}: {} (ratio {:.2}, recent {:.0} vs norm {:.0}, n_rec {})",
-                    fmt(now),
-                    if on { "FLAG ON " } else { "flag off" },
-                    ratio,
-                    st.ema_recent,
-                    st.ema_norm,
-                    st.recent_n
-                );
+                match row {
+                    Some(r) => println!(
+                        "{} [{}] {w}: FLAG ON  (ratio {:.2}, recent {:.0} vs baseline {:.0}, {})",
+                        fmt(now),
+                        inv,
+                        r.ratio,
+                        r.recent_avg,
+                        r.baseline,
+                        if r.matched { "matched" } else { "norm" }
+                    ),
+                    None => println!("{} [{}] {w}: flag off", fmt(now), inv),
+                }
             }
         }
     }
