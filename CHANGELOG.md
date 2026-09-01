@@ -1,5 +1,48 @@
 # Changelog
 
+## 2026-09-01
+
+### Epic Quests
+
+- New Endgame tab: an item-first farm list for all 15 class epics, so the materials can be hunted before the Epic Quests Era opens. Scraped from the wiki's quest pages (loot-drop targets plus forage/pickpocket; NPC-handed intermediates excluded — they need the era's own quest NPCs). Every item carries live ownership status from loot history and the latest inventory dump, with per-item Drop Watch bells, a page-wide "notify for all epic items", and a concise per-class "+ all" button. Berserker honestly lists nothing: its epic is quest-triggered trial spawns end to end.
+
+### Spell performance
+
+- The app now keeps a rolling per-spell landing average and flags a spell landing well under its own usual — partial resists show up within a handful of casts instead of three fights late. The baseline is invocation-matched (your last 5 zones under the same stance), so switching to a lower-output invocation is never a false alarm; the session norm is the fallback until same-stance history accrues.
+- The DPS meter shows the struggling spell with its "% of usual" and the proven hitters still holding their norm; the Skill Tracker shows the same signal as "<spell> — partial resist N%". Both appear only while something is actually struggling.
+
+### Kill model
+
+- A kill now means the actual target died: an anchor's kill credit requires the target's own name in the slain list, so a boss's adds or pets dying no longer count the boss as killed.
+- A pet dying is never a kill — anywhere. Pet deaths no longer close fights as kills or pad kill counts.
+- A fight that resets and re-engages merges back into one encounter: the corpse fight reparents into its keeper, so no more phantom zero-length "reset" fights or double-counted deaths.
+
+### DPS meter
+
+- Rows now show damage share, total, DPS, and time active — where each ally's clock starts at their own first action, so a late joiner's DPS is honest instead of pull-diluted.
+- The meter tracks the whole engagement: mobs that join late fold into the same fight instead of hijacking the display.
+
+### Maps & GPS
+
+- Pathfinding now runs on the server's own navigation meshes: routes thread corridors around geometry instead of drawing straight chords through walls, and walk legs hug the ground. The map view itself stays on the game's own map files.
+- Teleporter pads and portal rings are location hops in the route graph — Plane of Sky routes go island to island through the portals, drawn dashed.
+- The Maps left panel is now an NPC browser: search, con-colored names with levels, drops on select, and "set path here" straight from a row.
+
+### Sky Quests
+
+- One-click "notify for all uncompleted quests" on both Sky tabs, demand-aware across multi-quest materials (an item two quests need stays tracked until you own enough copies), de-duplicated by construction.
+- Sky tabs update live when loot lands or a fresh inventory dump appears; the Drop Watch pickup prompt no longer misses due to clock skew.
+
+### Fixes & plumbing
+
+- Pets attacking enemies no longer read as incoming damage on the meter.
+- Tail poll dropped from 250ms to 100ms — the overlay reads what just happened.
+- Technical reference docs: docs/architecture.md (parser/ingest/store) and generated docs/api (commands and packs).
+
+### Versioning
+
+- Bumped to 0.9.0. Minor bump per the updater strict-greater-than convention.
+
 ## 2026-08-31
 
 ### Fight reset model
