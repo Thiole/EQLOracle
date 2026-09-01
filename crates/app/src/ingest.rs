@@ -3245,8 +3245,26 @@ impl Ingest {
             // can't coexist with a borrow into encounters.closed
             let c = self.encounters.closed[self.closed_seen].clone();
             if let Some(&store_id) = self.enc_map.get(&c.id) {
-                // why: c.slain mixes both sides -- a confirmed kill needs a real enemy name, not just any
-                let confirmed_kill = c.slain.iter().any(|n| !self.is_ally(n, c.end_ms));
+                // why: a confirmed kill means THE TARGET died, not "any
+                // enemy died in this fight". Real bug, caught live: the
+                // Fear dracoliche summons adds literally named "a
+                // dracoliche pet"; each pet death closing an encounter
+                // anchored on the boss recorded a kill OF THE BOSS --
+                // "it thought I killed it a few times". Fold-compared
+                // against the store anchor (which retargeting keeps
+                // honest); a fight where only adds died closes as a
+                // reset, and the boss's own death line still confirms
+                // instantly. The old is_ally gate rides along so a
+                // charm-pet name collision can't confirm either.
+                let target_name = self
+                    .store
+                    .encounter(store_id)
+                    .map(|e| self.store.name(e.target).to_string())
+                    .unwrap_or_default();
+                let confirmed_kill = c
+                    .slain
+                    .iter()
+                    .any(|n| n.eq_ignore_ascii_case(&target_name) && !self.is_ally(n, c.end_ms));
                 // why: a wipe means YOU died and no enemy kill was
                 // confirmed -- player's own correction: "a death doesnt
                 // mean a wipe". The old rule (ANY ally death) mislabeled
