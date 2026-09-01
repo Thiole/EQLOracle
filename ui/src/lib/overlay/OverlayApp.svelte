@@ -88,10 +88,16 @@
     if (widget === 'dps_meter') {
       [meter, spellCheck] = await Promise.all([api.getLiveMeter(), api.getSpellCheck()]);
     } else if (widget === 'skill_tracker') {
-      const [s, sk, te] = await Promise.all([api.getStatusEffects(), api.getSkillStatus(), api.getTargetEffects()]);
+      const [s, sk, te, sc] = await Promise.all([
+        api.getStatusEffects(),
+        api.getSkillStatus(),
+        api.getTargetEffects(),
+        api.getSpellCheck(),
+      ]);
       status = s;
       skills = sk;
       targetEffects = te;
+      spellCheck = sc;
     } else if (widget === 'drop_watch') {
       dropRows = await api.getDropWatch();
     } else if (widget === 'cc_tracker') {
@@ -188,6 +194,7 @@
       {trackedSkillNames}
       {trackedTargetEffectNames}
       {targetEffects}
+      {spellCheck}
       {opacity}
       {overallOpacity}
     />

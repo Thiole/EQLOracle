@@ -23,7 +23,7 @@
   // widget, same footing as DPS meter/Drop Watch (own on/off, own
   // opacity, own tiny window), since it's glanceable battle-data that
   // doesn't belong sized/positioned together with cooldowns.
-  import type { StatusEffectsDto, SkillStatusDto, TargetEffectsDto } from '$lib/tauri/api';
+  import type { StatusEffectsDto, SkillStatusDto, TargetEffectsDto, SpellCheckDto } from '$lib/tauri/api';
   import { ICON_BASE } from '$lib/character/constants';
   import StatusEffectsWidget from './StatusEffectsWidget.svelte';
   import { logClockNowMs } from './logClock';
@@ -34,6 +34,7 @@
     trackedSkillNames,
     trackedTargetEffectNames,
     targetEffects,
+    spellCheck = null,
     opacity,
     overallOpacity,
   }: {
@@ -42,6 +43,7 @@
     trackedSkillNames: string[];
     trackedTargetEffectNames: string[];
     targetEffects: TargetEffectsDto | null;
+    spellCheck?: SpellCheckDto | null;
     opacity: number;
     // why: the SEPARATE "everything" fade -- see DpsMeterWidget.svelte's
     // own doc, same idea, applied to this widget's own outer element
@@ -158,6 +160,24 @@
       {#each visibleSkills as s (s.skill)}
         {@const row = skillRow(s)}
         <div class="font-medium {toneClass[row.tone]}">{row.text}</div>
+      {/each}
+    </div>
+  {/if}
+
+  <!-- why: same SpellPerf hint the DPS meter carries, phrased for this
+       widget: "partial resist N%" = how far recent landings sit under
+       the invocation-matched baseline. Appears only while struggling. -->
+  {#if spellCheck && spellCheck.struggling.length}
+    <div class="flex flex-col gap-0.5 border-t border-foreground/10 pt-1.5">
+      {#each spellCheck.struggling as sc (sc.name)}
+        <div
+          class="font-medium text-bad"
+          title="recent avg hit {Math.round(sc.recent_avg)} vs {sc.matched
+            ? `${spellCheck.invocation ?? 'same-invocation'} baseline`
+            : 'session norm'} {Math.round(sc.baseline)}"
+        >
+          {sc.name} — partial resist {Math.round((1 - sc.ratio) * 100)}%
+        </div>
       {/each}
     </div>
   {/if}
