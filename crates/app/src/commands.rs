@@ -662,9 +662,19 @@ fn cc_tracker_dims(size: &str) -> (f64, f64) {
 /// value, since the session's own display server can't change mid-run
 /// but a stale cached capability shouldn't be trusted to open one
 /// anyway.
-
+///
+/// why: async ON PURPOSE -- a sync command runs inline in the calling
+/// webview's IPC callback (main thread), so building the overlay there
+/// creates a second WebView2 inside the first one's event handler: the
+/// documented reentrancy deadlock, and the real "no overlay ever
+/// appears" on every Windows machine. Async runs on the runtime pool;
+/// build() then posts to a free event loop -- the path CI validated.
 #[tauri::command]
-pub fn set_overlay_enabled(app: AppHandle, widget: String, enabled: bool) -> Result<(), String> {
+pub async fn set_overlay_enabled(
+    app: AppHandle,
+    widget: String,
+    enabled: bool,
+) -> Result<(), String> {
     let label = overlay_label(&widget);
     if !enabled {
         if let Some(w) = app.get_webview_window(&label) {
