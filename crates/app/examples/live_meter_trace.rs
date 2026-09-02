@@ -58,10 +58,11 @@ fn main() {
                 .as_ref()
                 .and_then(|m| m.outgoing.iter().find(|r| r.name == "You").map(|r| r.total));
             println!(
-                "{} | enc {:?} | meter {:?} dur {}s you={:?}",
+                "{} | enc {:?} | meter {:?} open={:?} dur {}s you={:?}",
                 &text[1..20],
                 cur,
                 m.as_ref().map(|m| m.target.clone()),
+                m.as_ref().map(|m| m.open),
                 m.as_ref().map(|m| m.duration_ms / 1000).unwrap_or(0),
                 you
             );

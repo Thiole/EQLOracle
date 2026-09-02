@@ -221,6 +221,9 @@ pub struct Live {
     /// why: an end-of-combat signal landed (a charm on this fight's mob,
     /// a mem blur) -- "possibly" over: arms the short window like a kill
     pub flagged: bool,
+    /// why: an ally (by the caller's own sides) acted in this fight --
+    /// what makes it the TEAM's fight for team_fight
+    pub has_ally: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -319,7 +322,22 @@ impl Builder {
         // the player, and it reset the meter on every target change.
         let _ = (actor_ally, target_ally);
         let id = match (a, b) {
-            (None, None) => self.open(ts, actor, target),
+            // why: one TEAM, one encounter -- an ally engaging a mob while
+            // the team already has a live fight joins that fight, even if
+            // no edge links them yet (the tank on mob A, a caster opening
+            // on mob B). Separate concurrent fights per mob made the
+            // Combat tab follow the newest one and call the encounter
+            // over when that mob died ("encounter is showing as ended
+            // instantly after a kill"). Only an ally edge does this; a
+            // stray mob-on-mob edge still opens its own fight.
+            (None, None) => match self.team_fight(actor_ally, target_ally) {
+                Some(id) => {
+                    self.attach(id, actor, ts);
+                    self.attach(id, target, ts);
+                    id
+                }
+                None => self.open(ts, actor, target),
+            },
             (Some(x), None) => {
                 self.attach(x, target, ts);
                 x
@@ -343,6 +361,7 @@ impl Builder {
         if let Some(e) = self.live.get_mut(&id) {
             e.last_ms = ts;
             e.events += 1;
+            e.has_ally |= actor_ally || target_ally;
             // why: either side -- a "slain" name swinging again is the
             // same proof of a same-named survivor as one being hit
             if !e.dupe
@@ -354,6 +373,25 @@ impl Builder {
             }
         }
         id
+    }
+
+    /// why: the team's live fight -- the one "You" are in, else the most
+    /// recently active live fight an ally is in. None when the edge has
+    /// no ally on either side, or no fight is live.
+    fn team_fight(&self, actor_ally: bool, target_ally: bool) -> Option<EncId> {
+        if !(actor_ally || target_ally) {
+            return None;
+        }
+        if let Some(&id) = self.of.get(&fold_key("You")) {
+            if self.live.contains_key(&id) {
+                return Some(id);
+            }
+        }
+        self.live
+            .values()
+            .filter(|e| e.has_ally)
+            .max_by_key(|e| (e.last_ms, e.id.0))
+            .map(|e| e.id)
     }
 
     fn may_merge(&self, x: EncId, y: EncId) -> bool {
@@ -382,6 +420,7 @@ impl Builder {
                 merged: false,
                 dupe: false,
                 flagged: false,
+                has_ally: false,
             },
         );
         self.of.insert(fold_key(a), id);
@@ -413,6 +452,7 @@ impl Builder {
                 dst.merged = true;
                 dst.dupe |= src.dupe;
                 dst.flagged |= src.flagged;
+                dst.has_ally |= src.has_ally;
             }
             for n in &src.entities {
                 self.of.insert(fold_key(n), keep);

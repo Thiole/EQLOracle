@@ -410,3 +410,16 @@ fn a_new_mob_after_a_kill_joins_the_running_encounter() {
         "10s quiet after the last action, with a kill in it, closes"
     );
 }
+
+/// why: one team, one encounter -- a caster opening on a second mob
+/// while the tank's fight is live joins that fight, no edge needed
+#[test]
+fn an_allys_new_mob_joins_the_teams_live_fight() {
+    let mut b = Builder::new(Policy::default().idle_secs(6.0));
+    let tank = b.damage_sided(0, "Brutall", "a dar ghoul knight", true, false);
+    let caster = b.damage_sided(1_000, "Kali", "a zol ghoul knight", true, false);
+    assert_eq!(caster, tank, "same team, same encounter");
+    // a mob-on-mob edge with no ally still opens its own fight
+    let stray = b.damage_sided(2_000, "a rat", "a snake", false, false);
+    assert_ne!(stray, tank);
+}

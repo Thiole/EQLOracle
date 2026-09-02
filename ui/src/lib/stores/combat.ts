@@ -101,7 +101,9 @@ async function loadEncounters(zv: number | null) {
  * once nothing is actively in progress. `null` when there's no fight yet
  * at all (a fresh zone, or before the log has any). */
 function mostRecentEncounterId(list: EncounterDto[]): number | null {
-  return list[0]?.id ?? null;
+  // why: a fight still in progress beats a newer-started one that has
+  // already closed -- "current" means the one you're in
+  return list.find((e) => e.open)?.id ?? list[0]?.id ?? null;
 }
 
 export async function selectZoneVisit(zv: number | null) {
