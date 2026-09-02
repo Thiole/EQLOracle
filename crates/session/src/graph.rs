@@ -310,55 +310,27 @@ impl Builder {
         let a = self.of.get(&fold_key(actor)).copied();
         let b = self.of.get(&fold_key(target)).copied();
 
-        // why: a RESOLVED fight (something in it died, or an end-of-combat
-        // flag landed) never grows -- a mob that wasn't in it starts a new
-        // fight, and the players hitting that mob move over. Without this
-        // a raid chain-pulling with under 10s between pulls was one fight
-        // per island ("the fight ended a long time before the last sphinx
-        // was pulled"): the drakes' fight took the first sphinx two
-        // seconds after the last drake died. An add that shows up while
-        // nothing has died yet still joins; two unresolved fights still merge.
+        // why: the encounter is the whole stretch of combat -- a new mob
+        // engaged after a kill JOINS it ("i just want it to be for the
+        // encounter, not per mob"). The only boundary is the idle window
+        // after a kill or an end-of-combat flag (see expire). A per-pull
+        // door was tried and withdrawn: chain pulls read as one fight to
+        // the player, and it reset the meter on every target change.
+        let _ = (actor_ally, target_ally);
         let id = match (a, b) {
             (None, None) => self.open(ts, actor, target),
             (Some(x), None) => {
-                // why: a NEW MOB NAME after a kill is the next pull; a slain
-                // name hit again is a same-named survivor of this pull
-                // (three sphinxes at once) and stays -- per-kill splitting
-                // on names tripled the reset count on a real log
-                let new_mob = actor_ally && !target_ally;
-                if new_mob && self.resolved(x) && !self.has_name(x, target) {
-                    self.open(ts, actor, target)
-                } else {
-                    self.attach(x, target, ts);
-                    x
-                }
+                self.attach(x, target, ts);
+                x
             }
             (None, Some(y)) => {
-                // why: same door, other direction -- a new mob swinging at
-                // a player whose fight is resolved is the next pull too;
-                // a player's late first swing is just joining
-                let new_mob = target_ally && !actor_ally;
-                if new_mob && self.resolved(y) && !self.has_name(y, actor) {
-                    self.open(ts, actor, target)
-                } else {
-                    self.attach(y, actor, ts);
-                    y
-                }
+                self.attach(y, actor, ts);
+                y
             }
             (Some(x), Some(y)) if x == y => x,
             (Some(x), Some(y)) => {
-                if self.policy.transitive
-                    && self.may_merge(x, y)
-                    && !self.resolved(x)
-                    && !self.resolved(y)
-                {
+                if self.policy.transitive && self.may_merge(x, y) {
                     self.merge(x, y)
-                } else if self.resolved(y) && !self.resolved(x) {
-                    // why: the live fight wins -- the sphinx (in its own
-                    // new fight) biting a player still filed under the
-                    // drakes must pull the player forward, not itself back
-                    self.attach(x, target, ts);
-                    x
                 } else {
                     // why: actor joins, target stays the fight's anchor
                     self.attach(y, actor, ts);
@@ -381,20 +353,6 @@ impl Builder {
             }
         }
         id
-    }
-
-    /// why: a fight that will close on the short window -- a real (non-pet)
-    /// death in it, or an end-of-combat flag; see `damage` for what it gates
-    fn resolved(&self, id: EncId) -> bool {
-        self.live
-            .get(&id)
-            .is_some_and(|e| e.flagged || e.slain.iter().any(|n| !is_pet_suffixed(n)))
-    }
-
-    fn has_name(&self, id: EncId, name: &str) -> bool {
-        self.live
-            .get(&id)
-            .is_some_and(|e| e.entities.iter().any(|n| fold_key(n) == fold_key(name)))
     }
 
     fn may_merge(&self, x: EncId, y: EncId) -> bool {

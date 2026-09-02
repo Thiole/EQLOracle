@@ -374,32 +374,6 @@ fn a_charm_flags_the_fight_possibly_over() {
     );
 }
 
-/// why: after a kill the fight stops growing -- the next mob pulled two
-/// seconds later is a new fight, and the hitter moves over with it;
-/// a same-named survivor that was already in the fight keeps it going
-#[test]
-fn a_kill_closes_the_door_to_new_mobs() {
-    let mut b = Builder::new(Policy::default().idle_secs(10.0));
-    let drakes = b.damage(0, "You", "a drake");
-    b.damage(1_000, "Gront", "a drake");
-    b.death(5_000, "a drake");
-    let sphinx = b.damage(7_000, "You", "a sphinx");
-    assert_ne!(drakes, sphinx, "a new mob after a kill is a new fight");
-    // why: Gront never spoke, so the graph can't side him -- the app
-    // passes its own answer; here he is passed as an ally explicitly
-    let gront = b.damage_sided(8_000, "Gront", "a sphinx", true, false);
-    assert_eq!(
-        gront, sphinx,
-        "the next hitter joins the sphinx fight, no merge back"
-    );
-    b.expire(16_000);
-    assert_eq!(
-        b.live_count(),
-        1,
-        "the drake fight closed on its own 10s; the sphinx fight lives"
-    );
-}
-
 /// why: a mezzed add is part of the pull -- it left no swing, but the
 /// mez line puts it in the fight, so turning to it after the first kill
 /// continues the encounter instead of opening the next one
@@ -411,4 +385,28 @@ fn a_mezzed_add_is_in_the_pull() {
     b.death(5_000, "a dar ghoul knight");
     let next = b.damage(7_000, "You", "a zol ghoul knight");
     assert_eq!(next, fight, "the mezzed add was already in this fight");
+}
+
+/// why: the encounter is the whole stretch of combat -- a chain pull
+/// (kill, next mob two seconds later) is ONE encounter; only 10 quiet
+/// seconds after a kill ends it
+#[test]
+fn a_new_mob_after_a_kill_joins_the_running_encounter() {
+    let mut b = Builder::new(Policy::default().idle_secs(10.0));
+    let fight = b.damage(0, "You", "a drake");
+    b.death(5_000, "a drake");
+    let next = b.damage(7_000, "You", "a sphinx");
+    assert_eq!(next, fight, "same encounter, new target");
+    b.expire(16_000);
+    assert_eq!(
+        b.live_count(),
+        1,
+        "still live: the sphinx hit was the last action"
+    );
+    b.expire(18_000);
+    assert_eq!(
+        b.live_count(),
+        0,
+        "10s quiet after the last action, with a kill in it, closes"
+    );
 }
