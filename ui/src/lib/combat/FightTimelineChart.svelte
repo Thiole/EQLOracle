@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fmtLogTime } from '$lib/utils';
   // Same multi-series overlapping-lines idea the legacy app used (one
   // polyline per entity, easier to compare shapes over time than a row
   // of bars per person), rebuilt reactively instead of the legacy
@@ -117,7 +118,7 @@
 
   {#if $stateAt}
     <div class="mt-2 rounded-md border border-border bg-muted/20 p-2">
-      <div class="mb-1 text-[11px] font-medium">{new Date($stateAt.tsMs).toLocaleTimeString()}</div>
+      <div class="mb-1 text-[11px] font-medium">{fmtLogTime($stateAt.tsMs)}</div>
       <table class="w-full text-[11px]">
         <tbody>
           {#each $stateAt.entities as e (e.name)}

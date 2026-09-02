@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fmtLogDate } from '$lib/utils';
   // why: past parses vs the selected fight's target, from parse_history.jsonl
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Checkbox } from '$lib/components/ui/checkbox';
@@ -31,7 +32,7 @@
         <div class="mb-3 flex items-baseline gap-2">
           <span class="stat-figure text-good">{best.player_dps.toFixed(1)}</span>
           <span class="stat-label">highest dps vs target</span>
-          <span class="text-[11px] text-muted-foreground">— {best.zone || 'unknown zone'} — {new Date(best.start_ms).toLocaleDateString()}</span>
+          <span class="text-[11px] text-muted-foreground">— {best.zone || 'unknown zone'} — {fmtLogDate(best.start_ms)}</span>
         </div>
       {/if}
 

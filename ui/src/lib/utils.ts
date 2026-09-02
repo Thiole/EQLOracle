@@ -36,3 +36,31 @@ export type WithoutChildrenOrChild<T> = WithoutChildren<WithoutChild<T>>;
 export function displayZoneName(name: string): string {
   return name.endsWith(' (Zone)') ? name.slice(0, -' (Zone)'.length) : name;
 }
+
+/** why: the backend stamps every log line as its wall-clock time read as
+ * UTC (core/header.rs: days_from_civil + seconds, no zone), so a log
+ * millisecond must be shown with the UTC getters -- the local ones shift
+ * it by the machine's offset (4 hours off in practice). Same rule in
+ * reverse for anything the user types as a wall-clock time. */
+export function fmtLogTime(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+export function fmtLogDate(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+}
+/** why: log ms -> the value a datetime-local input wants (wall clock) */
+export function logMsToLocalInput(ms: number): string {
+  const d = new Date(ms);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+/** why: datetime-local value (wall clock) -> log ms; null when unparsable */
+export function localInputToLogMs(v: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(v);
+  if (!m) return null;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0);
+}

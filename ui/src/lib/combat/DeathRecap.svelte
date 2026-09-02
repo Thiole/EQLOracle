@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fmtLogTime } from '$lib/utils';
   // why: the Death Recap PAGE -- its own activeModule ('deathrecap'),
   // reached through the timed death toast (DeathRecapBanner), not a
   // sidebar tab and not a Combat-page panel (player's own call: the
@@ -37,7 +38,7 @@
     recapPinned.set($deathList[$deathList.length - 1] === ts ? null : ts);
   }
 
-  const fmtTime = (ms: number) => new Date(ms).toLocaleTimeString();
+  const fmtTime = (ms: number) => fmtLogTime(ms);
 </script>
 
 <div class="flex flex-col gap-4 p-4">

@@ -11,7 +11,7 @@
   import { activeModule } from '$lib/stores/shell';
   import { race, activeClasses, defaultClasses, classConfigurations, loadCharacterModule } from '$lib/stores/character';
   import { session, refreshSession, resetSession, setSessionWindow } from '$lib/stores/session';
-  import { displayZoneName } from '$lib/utils';
+  import { displayZoneName, logMsToLocalInput, localInputToLogMs } from '$lib/utils';
   import LootHistory from '$lib/monsters/LootHistory.svelte';
 
   $effect(() => {
@@ -34,21 +34,19 @@
   let framing = $state(false);
   let frameStart = $state('');
   let frameEnd = $state('');
-  function toLocalInput(ms: number): string {
-    const d = new Date(ms);
-    const p = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-  }
   function openFrame() {
-    frameStart = $session?.session_start_ms != null ? toLocalInput($session.session_start_ms) : '';
-    frameEnd = $session?.session_end_ms != null ? toLocalInput($session.session_end_ms) : '';
+    frameStart = $session?.session_start_ms != null ? logMsToLocalInput($session.session_start_ms) : '';
+    frameEnd = $session?.session_end_ms != null ? logMsToLocalInput($session.session_end_ms) : '';
     framing = true;
   }
   async function applyFrame() {
-    const start = frameStart ? new Date(frameStart).getTime() : null;
-    const end = frameEnd ? new Date(frameEnd).getTime() : null;
-    if (start == null || Number.isNaN(start)) return;
-    await setSessionWindow(start, end != null && !Number.isNaN(end) ? end : null);
+    // why: log time, not browser-local epoch -- see utils' fmtLogTime doc;
+    // the first cut sent local epoch and the window landed 4 hours off,
+    // "setting the timeframe doesn't retroactively build the session"
+    const start = frameStart ? localInputToLogMs(frameStart) : null;
+    const end = frameEnd ? localInputToLogMs(frameEnd) : null;
+    if (start == null) return;
+    await setSessionWindow(start, end);
     framing = false;
   }
   async function autoFrame() {
