@@ -127,6 +127,12 @@ pub fn known_loot_for(name: &str) -> &'static [String] {
 /// leaves every boss- and quest-specific item to its own dropper.
 const MIN_ZONE_DROPPERS: usize = 3;
 
+/// why: EQ's naming convention -- a lowercase article means a generic
+/// (trash) mob; a capitalized article or none means a named one
+pub fn is_trash_name(name: &str) -> bool {
+    name.starts_with("a ") || name.starts_with("an ")
+}
+
 /// why: a zone's broadly-dropped pool -- items attributed to at least
 /// MIN_ZONE_DROPPERS distinct NPCs in that wiki zone. zonedata's own
 /// unique_items (the zone page's HEADER table) stays the other half;
@@ -144,6 +150,15 @@ pub fn zone_loot_pool(raw_zone: &str) -> &'static [String] {
         > = std::collections::HashMap::new();
         for n in npcs() {
             let Some(zone) = &n.zone else { continue };
+            // why: only TRASH droppers count toward "zone-common" -- a raid
+            // zone's boss set shares its loot (Eye of Innoruuk: nine Hate
+            // bosses and a chest) and read as a zone-wide drop on every
+            // mob there. EQ's own convention: trash is "a rat" / "an orc",
+            // a named mob is capitalized ("A very unpleasant hand") or has
+            // no article at all -- its loot is its own.
+            if !is_trash_name(&n.name) {
+                continue;
+            }
             let per_zone = counts.entry(zone.clone()).or_default();
             for l in &n.known_loot {
                 let e = per_zone
@@ -325,6 +340,19 @@ mod location_tests {
         assert!(pool.iter().any(|i| i == "Spiroc Wind Totem"));
         assert!(!pool.iter().any(|i| i == "Golden Coffer"));
         assert!(!pool.iter().any(|i| i == "Blood Sky Ruby"));
+    }
+
+    /// why: "everything in Plane of Hate is marked to drop Eye of
+    /// Innoruuk and Hand of Maestro" -- ten droppers, all bosses and a
+    /// chest; three droppers, all named. Named mobs don't make an item common.
+    #[test]
+    fn a_boss_set_sharing_an_item_does_not_make_it_zone_common() {
+        let pool = zone_loot_pool("Plane of Hate");
+        assert!(!pool.iter().any(|i| i == "Eye of Innoruuk"), "got {pool:?}");
+        assert!(!pool.iter().any(|i| i == "Hand of the Maestro"));
+        assert!(is_trash_name("a repulsive rat"));
+        assert!(!is_trash_name("A very unpleasant hand"));
+        assert!(!is_trash_name("Maestro of Rancor"));
     }
 
     /// why: real npcs.json entries -- Eye of Veeshan has one exact 3D
