@@ -317,16 +317,16 @@ fn a_pet_death_does_not_resolve_the_fight() {
     assert_eq!(b.live_count(), 0, "the real death arms the short close");
 }
 
-/// why: a same-named survivor no longer buys grace -- "it should be 10
-/// total, not 16": a hit on the slain name stays in the fight, and the
-/// plain 10s window still closes it
+/// why: a slain name hit again is a same-named survivor of THIS pull
+/// (three sphinxes at once) -- it stays in the fight; only a new name
+/// after a kill is the next pull (see a_kill_closes_the_door_to_new_mobs)
 #[test]
-fn a_same_named_survivor_gets_no_extra_time() {
+fn a_same_named_survivor_stays_in_the_fight() {
     let mut b = Builder::new(Policy::default().idle_secs(10.0));
-    let a = b.damage(0, "You", "a drake");
+    let first = b.damage(0, "You", "a drake");
     b.death(5_000, "a drake");
     let again = b.damage(6_000, "You", "a drake");
-    assert_eq!(a, again, "a hit on the slain name stays in the fight");
+    assert_eq!(first, again, "same name, same pull");
     b.expire(17_000);
     assert_eq!(b.live_count(), 0, "10s after the last action it closes");
 }
@@ -371,5 +371,29 @@ fn a_charm_flags_the_fight_possibly_over() {
         b.live_count(),
         0,
         "10s quiet after the last action closes it"
+    );
+}
+
+/// why: after a kill the fight stops growing -- the next mob pulled two
+/// seconds later is a new fight, and the hitter moves over with it;
+/// a same-named survivor that was already in the fight keeps it going
+#[test]
+fn a_kill_closes_the_door_to_new_mobs() {
+    let mut b = Builder::new(Policy::default().idle_secs(10.0));
+    let drakes = b.damage(0, "You", "a drake");
+    b.damage(1_000, "Gront", "a drake");
+    b.death(5_000, "a drake");
+    let sphinx = b.damage(7_000, "Gront", "a sphinx");
+    assert_ne!(drakes, sphinx, "a new mob after a kill is a new fight");
+    let you = b.damage(8_000, "You", "a sphinx");
+    assert_eq!(
+        you, sphinx,
+        "the next hitter joins the sphinx fight, no merge back"
+    );
+    b.expire(16_000);
+    assert_eq!(
+        b.live_count(),
+        1,
+        "the drake fight closed on its own 10s; the sphinx fight lives"
     );
 }

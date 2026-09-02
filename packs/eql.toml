@@ -272,8 +272,11 @@ priority = 30
 # in the reference log use the singular "1 point of damage" -- anchoring on
 # the plural silently dropped every one of them.
 anchors = [" of damage."]
-pattern = '''^(?P<src>.+?) (?P<verb>slashes|slash|bashes|bash|kicks|kick|hits|hit|cleaves|cleave|punches|punch|crushes|crush|pierces|pierce|strikes|strike|bites|bite|frenzies|frenzy|backstabs|backstab|reaves|reave|smites|smite|shoots|shoot|slices|slice|claws|claw|smashes|smash|mauls|maul|gores|gore|stings|sting) (?P<dst>.+?) for (?P<amt>[0-9,]+) points? of damage\.(?: \((?P<flag>[^()]+)\))?$'''
+pattern = '''^(?P<src>.+?) (?P<verb>slashes|slash|bashes|bash|kicks|kick|hits|hit|cleaves|cleave|punches|punch|crushes|crush|pierces|pierce|strikes|strike|bites|bite|frenzies|frenzy|backstabs|backstab|reaves|reave|smites|smite|shoots|shoot|slices|slice|claws|claw|smashes|smash|mauls|maul|gores|gore|stings|sting) (?:on )?(?P<dst>.+?) for (?P<amt>[0-9,]+) points? of damage\.(?: \((?P<flag>[^()]+)\))?$'''
+# why: a berserker's frenzy is logged "frenzies on <target>" -- the
+# "on " is not part of the name (it made an "on a greater sphinx" entity)
 examples = [
+  "[Tue Sep 01 22:47:17 2026] Melkor frenzies on a heartsbane drake for 49 points of damage. (Critical)",
   "[Tue Jul 28 15:02:15 2026] Bouncer Krik slashes Beba for 59 points of damage.",
   "[Tue Jul 28 15:02:15 2026] Morbes bashes Pandos Flintside for 1 point of damage.",
   "[Tue Jul 28 15:02:15 2026] Bzzazzt stings Dippinsauce for 330 points of damage.",
@@ -311,9 +314,10 @@ anchors = ["but miss"]
 # so all 5,022 real flagged misses fell straight through to unmatched
 # entirely, not even counted as a plain miss -- see `melee.hit`'s own
 # `flag` field for the precedent this mirrors.
-pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but miss(?:es)?!(?: \((?P<flag>[^()]+)\))?$'''
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?:on )?(?P<dst>.+?), but miss(?:es)?!(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Abes tries to slash Bouncer Krik, but misses!",
+  "[Tue Sep 01 22:47:17 2026] Melkor tries to frenzy on a heartsbane drake, but misses!",
   "[Tue Jul 28 15:02:15 2026] Bravesirrobin tries to slash Footman of V`Zher, but misses!",
   "[Fri Aug 07 00:00:07 2026] Socho Darkpaw tries to hit Bravesirrobin, but misses! (Riposte)",
 ]

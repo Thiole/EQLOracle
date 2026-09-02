@@ -12,7 +12,10 @@ fn main() {
     for chunk in lines.chunks(100_000) {
         backfill_lines(&mut ing, &engine, chunk, 8);
     }
-    for e in ing.store.encounters.iter().rev().take(400) {
+    // why: a third arg dumps every encounter, not just the newest 400
+    let all = std::env::args().nth(3).is_some();
+    let take = if all { usize::MAX } else { 400 };
+    for e in ing.store.encounters.iter().rev().take(take) {
         let t = ing.store.name(e.target).to_lowercase();
         if !t.contains(&needle) {
             continue;
@@ -21,16 +24,20 @@ fn main() {
             let s = ms / 1000;
             format!("{:02}:{:02}:{:02}", (s / 3600) % 24, (s / 60) % 60, s % 60)
         };
+        let ents = ing.entities_by_enc.get(&e.id).cloned().unwrap_or_default();
         println!(
-            "enc {} target={} start={} end={:?} slain={} wiped={} open={} absorbed={}",
+            "enc {} target={} start={} end={:?} dur={}s slain={} wiped={} open={} absorbed={} entities({})={}",
             e.id.0,
             ing.store.name(e.target),
             fmt(e.start_ms),
             e.end_ms.map(fmt),
+            e.end_ms.map(|x| (x - e.start_ms) / 1000).unwrap_or(0),
             e.slain,
             e.wiped,
             e.is_open(),
-            e.absorbed
+            e.absorbed,
+            ents.len(),
+            ents.join(", ")
         );
     }
 }
