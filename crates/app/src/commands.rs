@@ -1547,6 +1547,29 @@ pub struct TargetFloorDto {
 /// roam markers (Cauldronboil) sit hundreds away and must not win
 const LABEL_MATCH_DIST: f32 = 120.0;
 
+/// why: launch-time hints from the environment -- screenshot automation
+/// opens the app straight on one module with the update prompt held
+/// back (EQLP_START_MODULE, EQLP_SKIP_UPDATE_CHECK). Nothing else reads them.
+#[derive(Debug, Clone, Serialize)]
+pub struct LaunchHintsDto {
+    pub start_module: Option<String>,
+    pub skip_update_check: bool,
+    /// why: Maps opens on this zone (map stem) with a path to this NPC
+    pub maps_zone: Option<String>,
+    pub maps_npc: Option<String>,
+}
+
+#[tauri::command]
+pub fn get_launch_hints() -> LaunchHintsDto {
+    let env = |k: &str| std::env::var(k).ok().filter(|m| !m.is_empty());
+    LaunchHintsDto {
+        start_module: env("EQLP_START_MODULE"),
+        skip_update_check: std::env::var("EQLP_SKIP_UPDATE_CHECK").is_ok(),
+        maps_zone: env("EQLP_MAPS_ZONE"),
+        maps_npc: env("EQLP_MAPS_NPC"),
+    }
+}
+
 /// why: the last route the viewer asked for, in the probes' own
 /// waypoint shape -- "the pathfinding through the keep is fucked" needs
 /// the exact request the app served, not a probe's reconstruction of it

@@ -56,6 +56,26 @@
   let zoneNpcs = $state<ZoneNpcDto[]>([]);
   let selectedNpc = $state<string | null>(null);
   let playerLevel = $state<number | null>(null);
+  // why: screenshot automation -- open on a given zone with a path to a
+  // given NPC (see commands::get_launch_hints); follow-me is switched
+  // off first so the live zone can't take the map back
+  let hintsApplied = false;
+  $effect(() => {
+    if (hintsApplied) return;
+    hintsApplied = true;
+    void api.getLaunchHints().then(async (h) => {
+      if (!h.maps_zone) return;
+      setLiveFollow(false);
+      await selectZone(h.maps_zone);
+      const npc = h.maps_npc;
+      if (!npc) return;
+      const p = (await api.getNpcNavPoints(npc))?.[0];
+      setTimeout(() => {
+        selectedNpc = npc;
+        if (p) void navigateToNpc(p.route_zone ?? p.zone, { name: npc, zone: p.zone, x: p.x, y: p.y, z: p.z });
+      }, 400);
+    });
+  });
   $effect(() => {
     const zone = $selectedZone;
     selectedNpc = null;

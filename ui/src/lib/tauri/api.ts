@@ -1514,6 +1514,8 @@ export interface GameStateDto {
 
 export const api = {
   getStatus: () => invoke<StatusDto>('get_status'),
+  /** why: launch-time env hints for screenshot automation -- see commands::get_launch_hints */
+  getLaunchHints: () => invoke<{ start_module: string | null; skip_update_check: boolean; maps_zone: string | null; maps_npc: string | null }>('get_launch_hints'),
 
   pickLogDirectory: () => invoke<string | null>('pick_log_directory'),
 

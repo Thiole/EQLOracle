@@ -26,6 +26,7 @@
   import { activeModule } from '$lib/stores/shell';
   import { initTauriEvents } from '$lib/tauri/events';
   import { checkForUpdates } from '$lib/stores/updater';
+  import { api } from '$lib/tauri/api';
 
   onMount(() => {
     void refreshStatusUntilUp();
@@ -38,8 +39,12 @@
     // user opens first.
     void loadGameDataModule();
     // why: once per launch, silent on failure (offline is normal) --
-    // UpdateBanner only renders once configured, see below
-    void checkForUpdates();
+    // UpdateBanner only renders once configured, see below. Screenshot
+    // automation opens on a chosen module and skips the prompt.
+    void api.getLaunchHints().then((h) => {
+      if (h.start_module) activeModule.set(h.start_module);
+      if (!h.skip_update_check) void checkForUpdates();
+    }).catch(() => void checkForUpdates());
   });
 </script>
 
