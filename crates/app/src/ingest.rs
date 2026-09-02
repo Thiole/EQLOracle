@@ -113,6 +113,8 @@ const PULSE_WINDOW_MS: Millis = 15_000;
 /// why: safety net, far looser than the graph layer's own 10s idle close --
 /// only catches what slips past that normal path
 const STALE_ENCOUNTER_MS: Millis = 5 * 60 * 1000;
+/// why: the most one tick may advance the log clock -- see tick
+const MAX_TICK_ELAPSED_MS: Millis = 2_000;
 /// why: 30 minutes with no party action ends a session -- see note_party_action
 const SESSION_GAP_MS: Millis = 30 * 60 * 1000;
 
@@ -1563,7 +1565,13 @@ impl Ingest {
     pub fn tick(&mut self, wall_now_ms: Millis) {
         if self.live {
             if let Some(last) = self.last_wall_ms {
-                let elapsed = (wall_now_ms - last).max(0);
+                // why: capped -- ticks come every poll (~100ms); one elapsed
+                // reading far past that is a stale caller or a machine that
+                // slept, and adding it would push the log clock ahead of
+                // real time for good (the next line re-syncs it upward
+                // anyway). Under-advancing costs a late close; over-
+                // advancing closed every fight at its kill line.
+                let elapsed = (wall_now_ms - last).clamp(0, MAX_TICK_ELAPSED_MS);
                 self.log_clock.set_at_least(self.last_log_ms + elapsed);
             }
             self.last_wall_ms = Some(wall_now_ms);
@@ -2526,6 +2534,26 @@ impl Ingest {
             .encounters
             .encounter_of(victim)
             .and_then(|g| self.enc_map.get(&g).copied());
+        // why: EQLP_METER_TRACE -- see commands::get_live_meter; marks the
+        // kill in the same file the widget polls are written to
+        if let Ok(path) = std::env::var("EQLP_METER_TRACE") {
+            use std::io::Write;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
+                let _ = writeln!(
+                    f,
+                    "DEATH ts={} victim={} graph_fight={:?} store_enc={:?} clock={}",
+                    (ts / 1000) % 86400,
+                    victim,
+                    self.encounters.encounter_of(victim),
+                    live_id,
+                    (self.now_ms() / 1000) % 86400
+                );
+            }
+        }
         self.encounters.death(ts, victim);
         // why: resolves pending_xp; must run after death() (encounter
         // findable) and before drain_closed (before eviction)

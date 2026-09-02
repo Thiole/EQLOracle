@@ -2265,6 +2265,41 @@ mod live_meter_window_tests {
         assert!(m.target.contains("gnoll"));
     }
 
+    /// why: the live clock must not jump -- measured in the real app: a
+    /// stale wall reading at the backfill->live seam pushed the log clock
+    /// 12s ahead of real time, so a kill's 6s window was already past and
+    /// every fight closed the instant its death line arrived ("encounter
+    /// is showing as ended instantly after a kill"). One tick may advance
+    /// the clock by at most MAX_TICK_ELAPSED_MS.
+    #[test]
+    fn a_stale_wall_reading_cannot_push_the_clock_ahead() {
+        let mut ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:05 2026] You have slain a gnoll!\n",
+        );
+        let death = ing.now_ms();
+        ing.mark_live();
+        ing.tick(1_000_000); // baseline from a reading taken 12s ago
+        ing.tick(1_012_000); // the next poll, 12s "later"
+        assert!(
+            ing.now_ms() - death <= 2_000,
+            "clock ran {}ms past the last line",
+            ing.now_ms() - death
+        );
+        assert!(
+            current_encounter(&ing).is_some_and(|e| e.is_open()),
+            "still open after the kill"
+        );
+        // real seconds pass, one poll at a time -- the 6s window then closes it
+        for k in 1..=8 {
+            ing.tick(1_012_000 + k * 1_000);
+        }
+        assert!(
+            current_encounter(&ing).is_some_and(|e| !e.is_open()),
+            "closed 6s+ after the kill"
+        );
+    }
+
     /// why: incoming mirrors the calc from the enemy side
     #[test]
     fn incoming_rows_carry_the_same_shape() {

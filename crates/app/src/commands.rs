@@ -537,7 +537,54 @@ pub fn get_window_capability() -> WindowCapabilityDto {
 
 #[tauri::command]
 pub fn get_live_meter(state: State<AppState>) -> Option<combat::LiveMeterDto> {
-    combat::live_meter(&state.ingest.lock_recover())
+    let ing = state.ingest.lock_recover();
+    let m = combat::live_meter(&ing);
+    // why: EQLP_METER_TRACE=<file> -- one line per widget poll straight
+    // from the running app: wall clock, log clock, encounter, open, rows,
+    // your total. The only way to see what the widget was actually
+    // handed at the moment the player saw it read "ended".
+    if let Ok(path) = std::env::var("EQLP_METER_TRACE") {
+        use std::io::Write;
+        let wall = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        let cur = combat::current_encounter(&ing).map(|e| (e.id.0, e.is_open(), e.end_ms));
+        let you = m
+            .as_ref()
+            .and_then(|m| m.outgoing.iter().find(|r| r.name == "You").map(|r| r.total));
+        let live: Vec<String> = ing
+            .encounters
+            .live_encounters()
+            .map(|l| {
+                format!(
+                    "{}@{}k{}",
+                    l.id.0,
+                    (l.last_ms / 1000) % 86400,
+                    l.slain.len()
+                )
+            })
+            .collect();
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = writeln!(
+                f,
+                "wall={} clock={} cur={:?} open={:?} rows={} you={:?} dur={} live={:?}",
+                (wall / 1000) % 86400,
+                (ing.now_ms() / 1000) % 86400,
+                cur,
+                m.as_ref().map(|m| m.open),
+                m.as_ref().map(|m| m.outgoing.len()).unwrap_or(0),
+                you,
+                m.as_ref().map(|m| m.duration_ms / 1000).unwrap_or(0),
+                live
+            );
+        }
+    }
+    m
 }
 
 /// why: the DPS meter's "this spell isn't landing" hint -- rolling

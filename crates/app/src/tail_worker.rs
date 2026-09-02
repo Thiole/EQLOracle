@@ -244,7 +244,14 @@ fn run(
                     // bad line at the live seam must not kill the worker
                     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         ing.mark_live();
-                        ing.tick(now);
+                        // why: a FRESH read, not the `now` from the top of
+                        // this loop pass -- the batch above can take
+                        // seconds, and a stale baseline here made the very
+                        // next tick add that whole gap to the log clock, which
+                        // then ran that far ahead of real time for the rest
+                        // of the session (12s measured live): every fight
+                        // closed the instant its kill line arrived
+                        ing.tick(clock.now_ms());
                     }));
                 }
                 backfilling = false;
@@ -260,7 +267,7 @@ fn run(
                             ing.route(&engine, line, &outcome);
                         });
                     });
-                    ing.tick(now);
+                    ing.tick(clock.now_ms());
                     ev
                 }))
                 .unwrap_or_else(|_| {

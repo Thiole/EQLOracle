@@ -288,7 +288,11 @@ mod pull_credit_tests {
         // same role a real wall-clock `now` plays live.
         ing.mark_live();
         ing.tick(0);
-        ing.tick(60_000);
+        // why: one second per tick -- a single 60s jump is capped now
+        // (MAX_TICK_ELAPSED_MS), the way the real worker ticks every poll
+        for k in 1..=60 {
+            ing.tick(k * 1_000);
+        }
         ing
     }
 
