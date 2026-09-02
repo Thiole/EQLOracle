@@ -4,11 +4,10 @@
   // CSS animation (a bar's width jumps to its new value each poll, it
   // doesn't ease there -- "a number that moves is a number you can't read").
   //
-  // Row spec, asked directly: % of the side's damage, total damage, DPS,
-  // and time active -- where "active" is THAT entity's own engagement
-  // window (their first action to the fight's live edge), so a late
-  // joiner's DPS is honest instead of pull-diluted. The bar is % share,
-  // not dps -- share is the stable comparative read, dps breathes.
+  // Row spec: % of the side's damage, total damage, DPS -- every row
+  // over the encounter's ONE clock (LiveMeterDto.duration_ms, shown in
+  // the header, from the player's first involvement). The bar is %
+  // share, not dps -- share is the stable comparative read, dps breathes.
   import type { LiveMeterRowDto, LiveMeterDto, SpellCheckDto } from '$lib/tauri/api';
 
   // why: this widget's panel background alpha -- each overlay widget
@@ -50,9 +49,8 @@
      directly, more separation between columns. -->
 {#snippet columnLabels()}
   <span class="flex shrink-0 items-center gap-3 font-mono text-[9px] tracking-wide text-foreground/50 uppercase">
-    <span class="w-10 text-right" title="time active -- from each entity's own first action">time</span>
     <span class="w-12 text-right" title="total damage">dmg</span>
-    <span class="w-11 text-right" title="DPS over own active time">dps</span>
+    <span class="w-11 text-right" title="DPS over the encounter clock">dps</span>
     <span class="w-8 text-right" title="share of this side's damage">%</span>
   </span>
 {/snippet}
@@ -63,9 +61,8 @@
       <div class="absolute inset-y-0 left-0 {barClass}" style:width="{r.pct}%"></div>
       <div class="relative flex items-center gap-3 px-1.5 py-0.5">
         <span class="min-w-0 flex-1 truncate {r.is_pet ? 'text-foreground/70 italic' : 'text-foreground'}">{r.name}</span>
-        <span class="w-10 shrink-0 text-right font-mono text-[10px] text-foreground/70 tabular-nums" title="time active -- from this entity's own first action">{fmtActive(r.active_ms)}</span>
         <span class="w-12 shrink-0 text-right font-mono text-foreground/80 tabular-nums" title="total damage">{fmtCompact(r.total)}</span>
-        <span class="w-11 shrink-0 text-right font-mono text-foreground tabular-nums" title="DPS over own active time">{r.dps.toFixed(0)}</span>
+        <span class="w-11 shrink-0 text-right font-mono text-foreground tabular-nums" title="DPS over the encounter clock">{r.dps.toFixed(0)}</span>
         <span class="w-8 shrink-0 text-right font-mono text-[10px] text-foreground/70 tabular-nums" title="share of this side's damage">{r.pct.toFixed(0)}%</span>
       </div>
     </div>
@@ -92,6 +89,7 @@
   {:else}
     <div class="truncate font-medium text-foreground">
       {meter.target}{meter.open ? '' : ' (ended)'}
+      <span class="ml-1 font-mono text-[10px] text-foreground/70 tabular-nums" title="encounter clock -- from your first involvement">{fmtActive(meter.duration_ms)}</span>
     </div>
 
     {#if meter.outgoing.length}

@@ -260,7 +260,6 @@ export interface LiveMeterRowDto {
   pct: number;
   total: number;
   dps: number;
-  active_ms: number;
   is_player: boolean;
   is_pet: boolean;
 }
@@ -268,6 +267,9 @@ export interface LiveMeterRowDto {
 export interface LiveMeterDto {
   target: string;
   open: boolean;
+  /** why: the encounter's one clock -- the player's first involvement to the live edge */
+  start_ms: number;
+  duration_ms: number;
   /** ally-side damage into enemies, ranked by total */
   outgoing: LiveMeterRowDto[];
   /** enemy-side damage into allies -- same calc, other side */

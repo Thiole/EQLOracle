@@ -1148,17 +1148,17 @@ fn fight_state_at_windowed(
     out
 }
 
-/// why: one meter row, the reported spec verbatim -- % of the side's
-/// damage, total, DPS, and time active. DPS runs on the PERSONAL
-/// window: this entity's first action to the fight's live edge, so a
-/// late joiner reads honest numbers instead of pull-diluted ones.
+/// why: one meter row -- % of the side's damage, total, DPS. DPS runs
+/// on the ENCOUNTER's one clock (LiveMeterDto::duration_ms), the same
+/// for every row: "it should be for that encounter, not that mob, not
+/// that whatever, and the time is based on when the player has been
+/// in combat". The personal per-entity window is gone.
 #[derive(Debug, Clone, Serialize)]
 pub struct LiveMeterRowDto {
     pub name: String,
     pub pct: f64,
     pub total: u64,
     pub dps: f64,
-    pub active_ms: Millis,
     pub is_player: bool,
     pub is_pet: bool,
 }
@@ -1170,6 +1170,11 @@ pub struct LiveMeterRowDto {
 pub struct LiveMeterDto {
     pub target: String,
     pub open: bool,
+    /// why: the encounter clock -- from the player's own first
+    /// involvement (a hit dealt or taken) to the live edge or the end;
+    /// every row's DPS is total over this
+    pub start_ms: Millis,
+    pub duration_ms: Millis,
     /// why: ally-side damage INTO enemies, ranked by total
     pub outgoing: Vec<LiveMeterRowDto>,
     /// why: enemy-side damage INTO allies -- same calc, other side
@@ -1287,17 +1292,17 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     // encounter's damage rows, sided per row by allegiance AT THAT
     // ROW'S ts (charm flips mid-fight side correctly). Outgoing = ally
     // actor hitting an enemy target; incoming = enemy actor hitting an
-    // ally. `first_ts` is the entity's own first action -- the personal
-    // clock ("someone's timer doesn't start counting until they take
-    // first action").
+    // ally. ONE clock for the whole engagement: from the player's own
+    // first involvement -- a hit You dealt, or one that landed on You
+    // -- to the live edge; the encounter's open if You never acted.
     struct Acc {
         total: u64,
-        first_ts: Millis,
         is_player: bool,
         is_pet: bool,
     }
     let mut out_acc: HashMap<String, Acc> = HashMap::new();
     let mut in_acc: HashMap<String, Acc> = HashMap::new();
+    let mut you_first: Option<Millis> = None;
     for enc in &encs {
         for i in enc.range() {
             if ing.store.enc[i] != enc.id.0 || ing.store.kind[i] != EventKind::Damage {
@@ -1306,6 +1311,9 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
             let ts = ing.store.ts[i];
             let actor_name = ing.effective_name(ing.store.name(ing.store.actor[i]));
             let target_name = ing.store.name(ing.store.target[i]).to_string();
+            if actor_name.eq_ignore_ascii_case("You") || target_name.eq_ignore_ascii_case("You") {
+                you_first = Some(you_first.map_or(ts, |f: Millis| f.min(ts)));
+            }
             let actor_enemy = ing.allegiance_at(&actor_name, ts).is_enemy();
             let target_enemy = ing.allegiance_at(&target_name, ts).is_enemy();
             let acc = if !actor_enemy && target_enemy {
@@ -1319,37 +1327,30 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
             let kind = ing.effective_kind(&actor_name, ts);
             let e = acc.entry(actor_name).or_insert(Acc {
                 total: 0,
-                first_ts: ts,
                 is_player: kind == Kind::Player,
                 is_pet: kind == Kind::Pet,
             });
             e.total += ing.store.amount[i];
-            e.first_ts = e.first_ts.min(ts);
         }
     }
+    let start_ms = you_first.unwrap_or(primary.start_ms).min(end);
+    let duration_ms = (end - start_ms).max(1);
 
     let build = |acc: HashMap<String, Acc>| -> Vec<LiveMeterRowDto> {
         let team_total: u64 = acc.values().map(|a| a.total).sum();
         let mut rows: Vec<LiveMeterRowDto> = acc
             .into_iter()
-            .map(|(name, a)| {
-                // why: the personal window -- their first action to the
-                // engagement's live edge; a late joiner's DPS is
-                // honest, not diluted by time they weren't there
-                let active_ms = (end - a.first_ts).max(1);
-                LiveMeterRowDto {
-                    pct: if team_total > 0 {
-                        100.0 * a.total as f64 / team_total as f64
-                    } else {
-                        0.0
-                    },
-                    dps: a.total as f64 / (active_ms as f64 / 1000.0),
-                    total: a.total,
-                    active_ms,
-                    is_player: a.is_player,
-                    is_pet: a.is_pet,
-                    name,
-                }
+            .map(|(name, a)| LiveMeterRowDto {
+                pct: if team_total > 0 {
+                    100.0 * a.total as f64 / team_total as f64
+                } else {
+                    0.0
+                },
+                dps: a.total as f64 / (duration_ms as f64 / 1000.0),
+                total: a.total,
+                is_player: a.is_player,
+                is_pet: a.is_pet,
+                name,
             })
             .collect();
         rows.sort_by_key(|r| std::cmp::Reverse(r.total));
@@ -1368,6 +1369,8 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     Some(LiveMeterDto {
         target,
         open,
+        start_ms,
+        duration_ms,
         outgoing: build(out_acc),
         incoming: build(in_acc),
     })
@@ -2137,11 +2140,12 @@ mod live_meter_window_tests {
         ing
     }
 
-    /// why: the reported spec -- a late joiner's clock starts at THEIR
-    /// first action, not the pull. Same damage dealt, half the active
-    /// window, roughly double the DPS; totals and 50/50 split unchanged.
+    /// why: ONE clock for the encounter, from the player's first
+    /// involvement -- "for that encounter, not that mob, not that
+    /// whatever; the time is based on when the player has been in
+    /// combat". Same damage dealt, same DPS, whoever joined late.
     #[test]
-    fn a_late_joiners_dps_runs_on_their_own_window() {
+    fn every_row_runs_on_the_encounters_one_clock() {
         let ing = ingest_from(
             "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
              [Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
@@ -2150,6 +2154,10 @@ mod live_meter_window_tests {
              [Tue Jul 28 15:01:40 2026] Kaeus hits a gnoll for 100 points of damage.\n",
         );
         let m = live_meter(&ing).expect("live fight");
+        assert_eq!(
+            m.duration_ms, 40_000,
+            "the player's first hit to the live edge"
+        );
         let you = m
             .outgoing
             .iter()
@@ -2163,16 +2171,8 @@ mod live_meter_window_tests {
         assert_eq!(you.total, 200);
         assert_eq!(kaeus.total, 200);
         assert!((you.pct - 50.0).abs() < 0.01);
-        assert!((kaeus.pct - 50.0).abs() < 0.01);
-        // You active 40s, Kaeus active 20s -- their DPS runs on their own clock
-        assert_eq!(you.active_ms, 40_000);
-        assert_eq!(kaeus.active_ms, 20_000);
-        assert!(
-            kaeus.dps > you.dps * 1.9,
-            "late joiner's dps on own window: {} vs {}",
-            kaeus.dps,
-            you.dps
-        );
+        assert!((you.dps - kaeus.dps).abs() < 1e-9, "same clock, same dps");
+        assert!((you.dps - 5.0).abs() < 1e-9);
     }
 
     /// why: incoming mirrors the calc from the enemy side
