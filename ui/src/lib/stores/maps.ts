@@ -44,9 +44,9 @@ export const zoneContext = writable<ZoneContextDto | null>(null);
 /** why: the "live: follow me" checkbox in Maps.svelte -- when on, a real
  * zone change automatically switches the viewer to that zone's map, via
  * `resolveMapZone` (real wiki-sourced resolution first, `learnedZoneMap`
- * fallback). Off by default: auto-switching the view out from under
- * someone mid-browse would be surprising. */
-export const liveFollow = writable(false);
+ * fallback). On by default -- asked for: the map is mostly opened to see
+ * where you are, and the checkbox was easy to miss off. Session-only. */
+export const liveFollow = writable(true);
 
 /** why: fallback only now -- `resolveMapZone`'s real resolution (the
  * backend's wiki-sourced `who_name` shortname per zone) covers most real

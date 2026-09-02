@@ -309,6 +309,13 @@
   // walk leg to it instead of stopping at zone arrival. Takes precedence
   // over the GPS exit-hop path: on the destination map, the leg to the
   // entity IS the next step.
+  // why: follow-me is on by default now -- on first open (nothing
+  // picked yet) go straight to the current zone's map, the same way a
+  // later zone change would
+  $effect(() => {
+    if ($liveFollow && $zoneContext?.current && !$selectedZone) setLiveFollow(true);
+  });
+
   let poiWalkPath = $state<PathDto | null>(null);
   let poiError = $state<string | null>(null);
   // why: a z-less spawn spot over a stacked zone -- the first answer
@@ -362,9 +369,14 @@
 <div class="flex h-full min-h-[560px] flex-col gap-3 p-3">
   <div class="flex items-center gap-3">
     <Input bind:value={search} placeholder="search zones / filter NPCs…" class="h-7 w-56 text-[12px]" />
-    <label class="flex items-center gap-1.5 text-[11px] text-muted-foreground" title="Switches to your current zone's map automatically when you zone -- only once you've picked that zone's map manually at least once this session.">
+    <!-- why: reads as a state, not a bare checkbox -- good-colored pill
+         while following, muted when off ("needs a bit of highlighting") -->
+    <label
+      class="flex items-center gap-1.5 rounded border px-1.5 py-0.5 text-[11px] {$liveFollow ? 'border-good/50 bg-good/10 text-good' : 'border-border text-muted-foreground'}"
+      title="Switches to your current zone's map automatically when you zone."
+    >
       <Checkbox checked={$liveFollow} onCheckedChange={(v: boolean) => setLiveFollow(v)} />
-      live: follow me
+      live: follow me{$liveFollow ? ' (on)' : ''}
     </label>
   </div>
 
