@@ -134,16 +134,25 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
     // item any mob in the zone can drop alerts on every engaged mob
     // while that zone is active. Same label->wiki-zone matcher
     // resolved_wiki_zone uses; 117 zones, one linear find per poll.
-    let zone_items: &[String] = ing
+    // why: minus every item some NPC in the zone is known to drop --
+    // that item is its dropper's, not the zone's (npcdata::zone_attributed_items)
+    let zone_items: Vec<String> = ing
         .zone
         .at(now)
         .and_then(|raw| {
+            let attributed = crate::npcdata::zone_attributed_items(raw);
             crate::zonedata::zones()
                 .iter()
                 .find(|z| crate::zone::zone_matches(raw, &z.name))
+                .map(|z| {
+                    z.unique_items
+                        .iter()
+                        .filter(|i| !attributed.contains(&i.to_lowercase()))
+                        .cloned()
+                        .collect()
+                })
         })
-        .map(|z| z.unique_items.as_slice())
-        .unwrap_or(&[]);
+        .unwrap_or_default();
     // why: second pool -- the zone's broadly-dropped items (>=3 distinct
     // NPC attributions; single-mob drops stay the mob's own). The
     // zonedata pool reads the zone page's header table, which whole
@@ -395,10 +404,43 @@ mod tests {
         ));
         let rows = drop_watch(&ing);
         let rat = rows.iter().find(|r| r.mob == "a rat");
+        // why: Bracer of Hammerfal, not Brightwood Spear -- the spear has
+        // a named dropper in Skyshrine now, so it is that mob's, not the zone's
         assert!(
-            rat.is_some_and(|r| r.drops.iter().any(|d| d == "Brightwood Spear")),
-            "Skyshrine's own unique_items must attach to any engaged mob there, got {:?}",
+            rat.is_some_and(|r| r.drops.iter().any(|d| d == "Bracer of Hammerfal")),
+            "Skyshrine's own unattributed unique_items must attach to any engaged mob there, got {:?}",
             rows
+        );
+    }
+
+    /// why: "shining metal robes are being attributed zone wide instead
+    /// of the singular mob they drop from in lower guk" -- the zone
+    /// page's header table lists it, but the ghoul arch magi's own page
+    /// claims it, so a frog must not carry it and the magi must
+    #[test]
+    fn a_zone_header_item_with_a_known_dropper_stays_with_that_dropper() {
+        let ing = run(concat!(
+            "[Tue Jul 28 15:00:00 2026] You have entered Lower Guk.\n",
+            "[Tue Jul 28 15:01:00 2026] You hit a froglok for 5 points of damage.\n",
+            "[Tue Jul 28 15:01:01 2026] You hit the ghoul arch magi for 5 points of damage.\n",
+        ));
+        let rows = drop_watch(&ing);
+        let frog = rows
+            .iter()
+            .find(|r| r.mob == "a froglok")
+            .expect("frog row");
+        assert!(
+            !frog.drops.iter().any(|d| d == "Shining Metallic Robes"),
+            "the robes belong to the arch magi, not every frog"
+        );
+        let magi = rows
+            .iter()
+            .find(|r| r.mob == "the ghoul arch magi")
+            .expect("magi row");
+        assert!(magi.drops.iter().any(|d| d == "Shining Metallic Robes"));
+        assert!(
+            frog.drops.iter().any(|d| d == "Mask of Deception"),
+            "an unattributed header item still reads zone-wide"
         );
     }
 

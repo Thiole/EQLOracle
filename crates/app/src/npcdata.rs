@@ -170,6 +170,35 @@ pub fn zone_loot_pool(raw_zone: &str) -> &'static [String] {
         .unwrap_or(&[])
 }
 
+/// why: every item some NPC page in this wiki zone attributes to itself
+/// (lowercased). The zone page's header table lists every notable
+/// item in the zone, per-mob rares included -- applied zone-wide, a
+/// robe one named ghoul drops alerted on every frog in Lower Guk
+/// ("attributed zone wide instead of the singular mob"). An item with
+/// a known dropper in the zone belongs to that dropper; only the
+/// genuinely unattributed rest of the header table stays zone-wide.
+pub fn zone_attributed_items(raw_zone: &str) -> &'static std::collections::HashSet<String> {
+    static MAP: OnceLock<std::collections::HashMap<String, std::collections::HashSet<String>>> =
+        OnceLock::new();
+    static EMPTY: OnceLock<std::collections::HashSet<String>> = OnceLock::new();
+    let map = MAP.get_or_init(|| {
+        let mut m: std::collections::HashMap<String, std::collections::HashSet<String>> =
+            std::collections::HashMap::new();
+        for n in npcs() {
+            let Some(zone) = &n.zone else { continue };
+            let e = m.entry(zone.clone()).or_default();
+            for l in &n.known_loot {
+                e.insert(l.item.to_lowercase());
+            }
+        }
+        m
+    });
+    map.iter()
+        .find(|(k, _)| crate::zone::zone_matches(raw_zone, k))
+        .map(|(_, v)| v)
+        .unwrap_or_else(|| EMPTY.get_or_init(Default::default))
+}
+
 /// why: parses free-text spawn notation into real points; descriptive
 /// text ("Various", "Need Info") yields none. `%` weighting dropped --
 /// multiple spawns render as multiple equal markers.
