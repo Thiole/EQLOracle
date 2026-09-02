@@ -1972,7 +1972,13 @@ impl ZoneNav {
                         per_root.len()
                     );
                 }
-                for (rj, mut v) in per_root {
+                // why: sorted, not HashMap order -- hash order is random
+                // per process, and union-find skips a pair whose sets an
+                // earlier bridge already joined, so the bridge set (and a
+                // route through it) would differ from launch to launch
+                let mut root_lists: Vec<(u32, Vec<(f32, u32)>)> = per_root.into_iter().collect();
+                root_lists.sort_by_key(|(rj, _)| *rj);
+                for (rj, mut v) in root_lists {
                     if find(&mut parent, ri) == find(&mut parent, rj) {
                         continue;
                     }
