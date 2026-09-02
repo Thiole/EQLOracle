@@ -19,3 +19,9 @@ export async function refreshSession() {
 export async function resetSession() {
   session.set(await api.resetSession());
 }
+
+/** why: Session card "set timeframe" -- start and optional end; both
+ * null returns to the automatic 30-minute-gap rule */
+export async function setSessionWindow(startMs: number | null, endMs: number | null) {
+  session.set(await api.setSessionWindow(startMs, endMs));
+}

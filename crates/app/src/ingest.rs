@@ -113,6 +113,8 @@ const PULSE_WINDOW_MS: Millis = 15_000;
 /// why: safety net, far looser than the graph layer's own 10s idle close --
 /// only catches what slips past that normal path
 const STALE_ENCOUNTER_MS: Millis = 5 * 60 * 1000;
+/// why: 30 minutes with no party action ends a session -- see note_party_action
+const SESSION_GAP_MS: Millis = 30 * 60 * 1000;
 
 /// why: generous slack between an invite (or "you agree") line and its
 /// "You have joined the group." -- usually the same log-second, but an
@@ -992,6 +994,15 @@ pub struct Ingest {
     /// In-memory only, not persisted -- same live-not-saved nature
     /// session_start's own two inputs already have.
     session_reset_ms: Option<Millis>,
+    /// why: the session's automatic start -- the first party action after
+    /// the last gap of SESSION_GAP_MS with no action by you or a party
+    /// member ("auto detect from last span of 30 minutes of no actions
+    /// taken by me or party members"). Kept incrementally, no scans.
+    activity_span_start: Option<Millis>,
+    last_party_action_ms: Option<Millis>,
+    /// why: the manual override -- "a manual override button to set
+    /// timeframe": (start, end); end None means "now". Not persisted.
+    session_override: Option<(Millis, Option<Millis>)>,
     /// why: session-wide entity states, keyed by the same Sym the store uses
     pub timeline: Timeline,
     /// why: per-cast outcome, keyed on interned Syms reused from store.names
@@ -1209,6 +1220,9 @@ impl Default for Ingest {
             afk_state: false,
             last_afk_off: None,
             session_reset_ms: None,
+            activity_span_start: None,
+            last_party_action_ms: None,
+            session_override: None,
             timeline: Timeline::default(),
             casts: CastResolver::default(),
             classes: ClassDetector::default(),
@@ -1299,10 +1313,64 @@ impl Ingest {
     /// right now" -- never overridden backwards by an earlier AFK-off
     /// that already happened before the click.
     pub fn session_start(&self) -> Option<Millis> {
-        match (self.last_afk_off.or(self.first_ts), self.session_reset_ms) {
-            (Some(a), Some(b)) => Some(a.max(b)),
-            (a, None) => a,
-            (None, b) => b,
+        if let Some((start, _)) = self.session_override {
+            return Some(start);
+        }
+        // why: latest of -- the activity span (30-min gap rule), the AFK
+        // return, the manual restart; first line as the floor
+        [
+            self.activity_span_start,
+            self.last_afk_off,
+            self.session_reset_ms,
+            self.first_ts,
+        ]
+        .into_iter()
+        .flatten()
+        .max()
+    }
+
+    /// why: the session's end -- "now" unless a manual timeframe set one
+    pub fn session_end(&self) -> Millis {
+        match self.session_override {
+            Some((_, Some(end))) => end,
+            _ => self.now_ms(),
+        }
+    }
+
+    /// why: which rule is setting the session start, for the card to say
+    pub fn session_mode(&self) -> &'static str {
+        if self.session_override.is_some() {
+            return "manual";
+        }
+        let auto = self.activity_span_start.or(self.first_ts);
+        match (self.session_reset_ms, auto) {
+            (Some(r), Some(a)) if r > a => "restart",
+            _ => "auto",
+        }
+    }
+
+    /// why: "set timeframe" -- start and optional end; None clears back to auto
+    pub fn set_session_window(&mut self, start: Option<Millis>, end: Option<Millis>) {
+        self.session_override = start.map(|s| (s, end.filter(|&e| e > s)));
+        if start.is_some() {
+            self.session_reset_ms = None;
+        }
+    }
+
+    /// why: feeds the 30-minute gap rule -- every action by you or a
+    /// party member (a swing, a heal, a loot) counts; a mob's does not
+    fn note_party_action(&mut self, ts: Millis, actor: &str) {
+        if !(actor.eq_ignore_ascii_case("You") || self.is_ally(actor, ts)) {
+            return;
+        }
+        let gap = self
+            .last_party_action_ms
+            .is_none_or(|last| ts - last >= SESSION_GAP_MS);
+        if gap {
+            self.activity_span_start = Some(ts);
+        }
+        if self.last_party_action_ms.is_none_or(|last| ts > last) {
+            self.last_party_action_ms = Some(ts);
         }
     }
 
@@ -2219,6 +2287,7 @@ impl Ingest {
                 self.timeline.observed(ts, sym.0, State::Engaged);
             }
         }
+        self.note_party_action(ts, src);
         let enc = self.link(ts, src, dst);
         self.note_involvement(enc, src, dst, ts);
         let a = self.sym(src);
@@ -2352,6 +2421,7 @@ impl Ingest {
     }
 
     fn record_heal(&mut self, ts: Millis, src: &str, dst: &str, ability: &str, amount: u64) {
+        self.note_party_action(ts, canonical_you(src));
         // why: same normalization as record_damage -- see canonical_you
         let src = canonical_you(src);
         let dst = canonical_you(dst);
@@ -2398,6 +2468,7 @@ impl Ingest {
         // the fight, so the moment the first mob died its first landed
         // hit read as a NEW pull and the fight ended instantly ("i just
         // saw a fight instantly end after a kill again").
+        self.note_party_action(ts, src);
         let enc = Some(self.link(ts, src, dst));
         if let Some(id) = enc {
             // why: an avoided swing proves presence in the fight the same
@@ -2677,6 +2748,7 @@ impl Ingest {
     /// recency. `monsters`' own aggregation doesn't depend on this at all
     /// (groups by target text); this is for "what did this pull drop" call sites.
     fn record_loot(&mut self, ts: Millis, item: &str, corpse: &str, qty: u64, sold: bool) {
+        self.note_party_action(ts, "You");
         let mob = strip_corpse_suffix(corpse);
         // why: the log's own drop attribution -- see observed_drops
         let base = crate::inventory::strip_tier(item).0.to_string();

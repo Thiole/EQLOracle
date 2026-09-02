@@ -417,6 +417,10 @@ export interface SessionDto {
   afk: boolean;
   /** why: null only before a single line has been parsed at all */
   session_start_ms: number | null;
+  /** why: null while the session runs to "now"; set by a manual timeframe */
+  session_end_ms: number | null;
+  /** why: which rule sets the start: the 30-min gap, the restart button, or a timeframe */
+  mode: 'auto' | 'restart' | 'manual';
   session_duration_ms: number;
   /** why: null below overview.rs's own MIN_SESSION_MS_FOR_RATE */
   platinum_per_hour: number | null;
@@ -1571,6 +1575,9 @@ export const api = {
 
   /** why: Overview Session card's own "restart" button -- see Ingest::reset_session's own doc */
   resetSession: () => invoke<SessionDto>('reset_session'),
+  /** why: Session card "set timeframe" -- epoch ms; both null = back to auto */
+  setSessionWindow: (startMs: number | null, endMs: number | null) =>
+    invoke<SessionDto>('set_session_window', { startMs, endMs }),
 
   /** why: Game Data's own disclaimer banner -- source + last scraped date */
   getGameDataMeta: () => invoke<GameDataMetaDto>('get_game_data_meta'),

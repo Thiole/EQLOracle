@@ -397,6 +397,19 @@ pub fn reset_session(state: State<AppState>) -> SessionDto {
     overview::session(&ing)
 }
 
+/// why: the Session card's "set timeframe" -- start and optional end
+/// (epoch ms); both None returns to the automatic 30-minute-gap rule
+#[tauri::command]
+pub fn set_session_window(
+    state: State<AppState>,
+    start_ms: Option<i64>,
+    end_ms: Option<i64>,
+) -> SessionDto {
+    let mut ing = state.ingest.lock_recover();
+    ing.set_session_window(start_ms, end_ms);
+    overview::session(&ing)
+}
+
 /// why: Game Data's own top-of-page disclaimer -- what catalog this is
 /// and how stale it might be, not silently presented as live
 #[derive(Debug, Clone, serde::Serialize)]

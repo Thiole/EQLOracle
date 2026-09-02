@@ -21,6 +21,10 @@ pub struct SessionDto {
     /// Reflects `Ingest::session_start` -- AFK-return or a manual
     /// "restart" (`reset_session`), whichever is later.
     pub session_start_ms: Option<Millis>,
+    /// why: None while the session runs to "now"; set by a manual timeframe
+    pub session_end_ms: Option<Millis>,
+    /// why: "auto" (30-min gap rule), "restart" (the button), "manual" (a timeframe)
+    pub mode: &'static str,
     pub session_duration_ms: Millis,
     /// why: None below `MIN_SESSION_MS_FOR_RATE`
     pub platinum_per_hour: Option<f64>,
@@ -99,8 +103,13 @@ pub struct MoteTierDto {
 }
 
 /// why: sum matching rows at/after `start_ts`, via `partition_point`
-fn sum_since(ing: &Ingest, kind: EventKind, start_ts: Millis) -> u64 {
-    sum_from_index(ing, kind, ing.store.ts.partition_point(|&t| t < start_ts))
+fn sum_between(ing: &Ingest, kind: EventKind, start_ts: Millis, end_ts: Millis) -> u64 {
+    let lo = ing.store.ts.partition_point(|&t| t < start_ts);
+    let hi = ing.store.ts.partition_point(|&t| t <= end_ts);
+    (lo..hi.max(lo))
+        .filter(|&j| ing.store.kind[j] == kind)
+        .map(|j| ing.store.amount[j])
+        .sum()
 }
 
 /// why: strictly after `ts` -- excludes the gain that completed the ding
@@ -122,9 +131,10 @@ fn sum_from_index(ing: &Ingest, kind: EventKind, start_i: usize) -> u64 {
 /// was "motes found", a single number to watch climb while farming, not
 /// a tier-by-tier breakdown (that's a real, easy follow-up if wanted,
 /// not assumed here). Loot rows only, matching sum_since's own shape.
-fn sum_motes_since(ing: &Ingest, start_ts: Millis) -> u64 {
+fn sum_motes_between(ing: &Ingest, start_ts: Millis, end_ts: Millis) -> u64 {
     let start_i = ing.store.ts.partition_point(|&t| t < start_ts);
-    (start_i..ing.store.len())
+    let end_i = ing.store.ts.partition_point(|&t| t <= end_ts).max(start_i);
+    (start_i..end_i)
         .filter(|&j| ing.store.kind[j] == EventKind::Loot)
         .filter(|&j| {
             ing.store
@@ -148,10 +158,11 @@ fn sum_motes_since(ing: &Ingest, start_ts: Millis) -> u64 {
 /// while `sum_motes_since` (prefix-only) still counted it -- the
 /// headline number and the icon row could disagree with no visible
 /// reason why.
-fn motes_by_tier_since(ing: &Ingest, start_ts: Millis) -> Vec<MoteTierDto> {
+fn motes_by_tier_between(ing: &Ingest, start_ts: Millis, end_ts: Millis) -> Vec<MoteTierDto> {
     let start_i = ing.store.ts.partition_point(|&t| t < start_ts);
+    let end_i = ing.store.ts.partition_point(|&t| t <= end_ts).max(start_i);
     let mut counts: HashMap<&str, u64> = HashMap::new();
-    for j in start_i..ing.store.len() {
+    for j in start_i..end_i {
         if ing.store.kind[j] != EventKind::Loot {
             continue;
         }
@@ -184,20 +195,22 @@ fn motes_by_tier_since(ing: &Ingest, start_ts: Millis) -> Vec<MoteTierDto> {
 }
 
 pub fn session(ing: &Ingest) -> SessionDto {
-    let now = ing.now_ms();
+    // why: the window is [start, end] -- end is "now" unless a manual
+    // timeframe set one; every sum below is bounded by it
+    let now = ing.session_end();
     let session_start_ms = ing.session_start();
     let session_duration_ms = session_start_ms.map(|s| now.saturating_sub(s)).unwrap_or(0);
 
-    let motes_found = session_start_ms.map_or(0, |s| sum_motes_since(ing, s));
-    let mote_tiers = session_start_ms.map_or(Vec::new(), |s| motes_by_tier_since(ing, s));
+    let motes_found = session_start_ms.map_or(0, |s| sum_motes_between(ing, s, now));
+    let mote_tiers = session_start_ms.map_or(Vec::new(), |s| motes_by_tier_between(ing, s, now));
 
     let (platinum_per_hour, xp_pct_per_hour, motes_per_hour) = if session_duration_ms
         >= MIN_SESSION_MS_FOR_RATE
     {
         let start = session_start_ms.expect("duration is only nonzero once a session has started");
         let hours = session_duration_ms as f64 / 3_600_000.0;
-        let copper = sum_since(ing, EventKind::Currency, start);
-        let milli_pct = sum_since(ing, EventKind::Xp, start);
+        let copper = sum_between(ing, EventKind::Currency, start, now);
+        let milli_pct = sum_between(ing, EventKind::Xp, start, now);
         (
             Some((copper as f64 / 1000.0) / hours),
             Some((milli_pct as f64 / 1000.0) / hours),
@@ -234,7 +247,7 @@ pub fn session(ing: &Ingest) -> SessionDto {
     let aa_spent = session_start_ms.map_or(0, |start| {
         ing.aa
             .all()
-            .filter(|(ts, _)| *ts >= start)
+            .filter(|(ts, _)| *ts >= start && *ts <= now)
             .map(|(_, g)| g.cost)
             .sum()
     });
@@ -243,7 +256,8 @@ pub fn session(ing: &Ingest) -> SessionDto {
     // store scans -- aa_points is pushed in log order
     let aa_earned = session_start_ms.map_or(0, |start| {
         let i = ing.aa_points.partition_point(|&(t, _, _)| t < start);
-        ing.aa_points[i..].iter().map(|&(_, g, _)| g).sum()
+        let j = ing.aa_points.partition_point(|&(t, _, _)| t <= now).max(i);
+        ing.aa_points[i..j].iter().map(|&(_, g, _)| g).sum()
     });
     let (aa_per_hour, levels_per_hour) = if session_duration_ms >= MIN_SESSION_MS_FOR_RATE {
         let hours = session_duration_ms as f64 / 3_600_000.0;
@@ -258,6 +272,8 @@ pub fn session(ing: &Ingest) -> SessionDto {
     SessionDto {
         afk: ing.currently_afk(),
         session_start_ms,
+        session_end_ms: matches!(ing.session_mode(), "manual").then_some(now),
+        mode: ing.session_mode(),
         session_duration_ms,
         platinum_per_hour,
         xp_pct_per_hour,
@@ -320,14 +336,54 @@ mod tests {
         assert!((lv - xp / 100.0).abs() < 1e-9);
     }
 
-    /// why: real line -- confirms the combined-tier sum, not just one tier
+    /// why: real line -- confirms the combined-tier sum, not just one tier.
+    /// Ten minutes apart: four hours apart is two sessions under the
+    /// 30-minute-gap rule (the second loot starts a new one)
     #[test]
     fn motes_are_summed_across_every_tier() {
         let ing = run(
             "[Tue Jul 28 15:31:55 2026] You looted a Mote of Infinitesimal Potential from a dune spiderling's corpse and stored it in your currency\r\n\
-             [Tue Jul 28 19:41:42 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n",
+             [Tue Jul 28 15:41:42 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n",
         );
         assert_eq!(session(&ing).motes_found, 2);
+    }
+
+    /// why: "auto detect from last span of 30 minutes of no actions taken
+    /// by me or party members" -- a 4-hour gap starts a new session at
+    /// the first action after it; a mob's own swings don't count
+    #[test]
+    fn a_thirty_minute_gap_in_party_actions_starts_a_new_session() {
+        let ing = run(
+            "[Tue Jul 28 15:00:00 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n\
+             [Tue Jul 28 19:00:00 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n",
+        );
+        let s = session(&ing);
+        assert_eq!(s.mode, "auto");
+        assert_eq!(s.motes_found, 1, "only the mote after the gap");
+    }
+
+    /// why: "a manual override button to set timeframe" -- a window with
+    /// an end bounds every sum, and clearing it returns to auto
+    #[test]
+    fn a_manual_timeframe_bounds_the_session_both_ends() {
+        let mut ing = run(
+            "[Tue Jul 28 15:00:00 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n\
+             [Tue Jul 28 15:10:00 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n\
+             [Tue Jul 28 15:20:00 2026] You looted a Mote of Minor Potential from a gnoll's corpse and stored it in your currency\r\n",
+        );
+        let base = session(&ing).session_start_ms.expect("first line parsed");
+        let t = |m: i64| base + m * 60_000;
+        ing.set_session_window(Some(t(5)), Some(t(15)));
+        let s = session(&ing);
+        assert_eq!(s.mode, "manual");
+        assert_eq!(
+            s.motes_found, 1,
+            "only the 15:10 mote is inside 15:05..15:15"
+        );
+        assert_eq!(s.session_end_ms, Some(t(15)));
+        ing.set_session_window(None, None);
+        assert_eq!(session(&ing).mode, "auto");
+        assert_eq!(session(&ing).motes_found, 3);
     }
 
     /// why: real bug shape -- combined total and per-tier breakdown must

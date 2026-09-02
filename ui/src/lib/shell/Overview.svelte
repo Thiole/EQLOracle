@@ -10,7 +10,7 @@
   import { api, type ZoneContextDto, type MobDto } from '$lib/tauri/api';
   import { activeModule } from '$lib/stores/shell';
   import { race, activeClasses, defaultClasses, classConfigurations, loadCharacterModule } from '$lib/stores/character';
-  import { session, refreshSession, resetSession } from '$lib/stores/session';
+  import { session, refreshSession, resetSession, setSessionWindow } from '$lib/stores/session';
   import { displayZoneName } from '$lib/utils';
   import LootHistory from '$lib/monsters/LootHistory.svelte';
 
@@ -28,6 +28,33 @@
     api.getZoneContext().then((z) => (zoneCtx = z));
     api.listMobs().then((list) => (mobs = list ?? []));
   });
+
+  // why: "manual override button to set timeframe" -- a start and an
+  // optional end as local datetimes; empty end means "now"
+  let framing = $state(false);
+  let frameStart = $state('');
+  let frameEnd = $state('');
+  function toLocalInput(ms: number): string {
+    const d = new Date(ms);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+  function openFrame() {
+    frameStart = $session?.session_start_ms != null ? toLocalInput($session.session_start_ms) : '';
+    frameEnd = $session?.session_end_ms != null ? toLocalInput($session.session_end_ms) : '';
+    framing = true;
+  }
+  async function applyFrame() {
+    const start = frameStart ? new Date(frameStart).getTime() : null;
+    const end = frameEnd ? new Date(frameEnd).getTime() : null;
+    if (start == null || Number.isNaN(start)) return;
+    await setSessionWindow(start, end != null && !Number.isNaN(end) ? end : null);
+    framing = false;
+  }
+  async function autoFrame() {
+    await setSessionWindow(null, null);
+    framing = false;
+  }
 
   async function restart() {
     resetting = true;
@@ -164,10 +191,33 @@
                   <Badge variant="outline" class="h-5 text-[10px]">afk</Badge>
                 {/if}
               </div>
-              <Button size="sm" variant="ghost" class="h-6 text-[11px]" onclick={restart} disabled={resetting} title="Zero out plat/motes/levels/AA and start counting from right now">
-                {resetting ? 'restarting…' : 'restart'}
-              </Button>
+              <div class="flex items-center gap-1">
+                <span class="font-mono text-[10px] text-muted-foreground" title="auto: starts after the last 30 minutes with no action by you or your party">
+                  {$session?.mode === 'manual' ? 'manual timeframe' : $session?.mode === 'restart' ? 'since restart' : 'auto · 30-min gap'}
+                </span>
+                <Button size="sm" variant="ghost" class="h-6 text-[11px]" onclick={openFrame} title="Set the session's start and end yourself">
+                  set timeframe
+                </Button>
+                <Button size="sm" variant="ghost" class="h-6 text-[11px]" onclick={restart} disabled={resetting} title="Zero out plat/motes/levels/AA and start counting from right now">
+                  {resetting ? 'restarting…' : 'restart'}
+                </Button>
+              </div>
             </div>
+            {#if framing}
+              <div class="mb-2 flex flex-wrap items-end gap-2 rounded-sm border border-border bg-muted/30 px-2 py-1.5 text-[11px]">
+                <label class="flex flex-col gap-0.5">
+                  <span class="text-[10px] uppercase tracking-wide text-muted-foreground">start</span>
+                  <input type="datetime-local" bind:value={frameStart} class="h-6 rounded-sm border border-border bg-background px-1 font-mono text-[11px]" />
+                </label>
+                <label class="flex flex-col gap-0.5">
+                  <span class="text-[10px] uppercase tracking-wide text-muted-foreground">end (blank = now)</span>
+                  <input type="datetime-local" bind:value={frameEnd} class="h-6 rounded-sm border border-border bg-background px-1 font-mono text-[11px]" />
+                </label>
+                <Button size="sm" class="h-6 text-[11px]" onclick={applyFrame}>apply</Button>
+                <Button size="sm" variant="ghost" class="h-6 text-[11px]" onclick={autoFrame} title="Back to the automatic 30-minute-gap rule">auto</Button>
+                <Button size="sm" variant="ghost" class="h-6 text-[11px]" onclick={() => (framing = false)}>cancel</Button>
+              </div>
+            {/if}
             <p class="text-[12px]">
               {zoneCtx?.current ? displayZoneName(zoneCtx.current) : 'no zone parsed yet'}
             </p>
