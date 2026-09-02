@@ -11,7 +11,7 @@
   import XIcon from '@lucide/svelte/icons/x';
   import MapViewer from './MapViewer.svelte';
   import { zoneMatches, looksLikeEntranceFor } from './zoneMatch';
-  import { api, type MapLineDto, type MapMarkerDto, type NpcNavPointDto, type PathDto, type ZoneDto, type ZoneNpcDto } from '$lib/tauri/api';
+  import { api, type MapLineDto, type MapMarkerDto, type NpcNavPointDto, type PathDto, type TargetFloorDto, type ZoneDto, type ZoneNpcDto } from '$lib/tauri/api';
   import GdLink from '$lib/gamedata/GdLink.svelte';
   import { displayZoneName } from '$lib/utils';
   import {
@@ -311,19 +311,36 @@
   // entity IS the next step.
   let poiWalkPath = $state<PathDto | null>(null);
   let poiError = $state<string | null>(null);
+  // why: a z-less spawn spot over a stacked zone -- the first answer
+  // lists every floor it could be on; the player picks, and the pick
+  // re-routes with that z as known. Cleared with the poi.
+  let poiFloors = $state<TargetFloorDto[]>([]);
+  let poiFloorZ = $state<number | null>(null);
+  let poiFloorsFor = $state<string | null>(null);
   $effect(() => {
     const poi = $navigationPoi;
     const map = $currentMap;
+    const chosenZ = poiFloorZ;
     poiWalkPath = null;
     poiError = null;
     if (!poi || !map || !$selectedZone) return;
     if (!$npcZoneCandidates.includes(poi.zone)) return;
     const from = walkStartPosition();
     if (!from) return;
+    const key = `${poi.zone}|${poi.name}|${poi.x}|${poi.y}`;
+    if (poiFloorsFor !== key) {
+      poiFloorsFor = key;
+      poiFloors = [];
+      poiFloorZ = null;
+    }
+    const z = chosenZ ?? poi.z;
     // Same `/loc`-space -> map-file transform every other position gets.
     api
-      .findWalkPath($selectedVersion, $selectedZone, from, [-poi.y, -poi.x, poi.z ?? 0], poi.z != null, poi.name)
-      .then((p) => (poiWalkPath = p))
+      .findWalkPath($selectedVersion, $selectedZone, from, [-poi.y, -poi.x, z ?? 0], z != null, poi.name)
+      .then((p) => {
+        poiWalkPath = p;
+        if (p.target_floors.length > 1) poiFloors = p.target_floors;
+      })
       .catch((e) => (poiError = e instanceof Error ? e.message : String(e)));
   });
 
@@ -580,6 +597,21 @@
             <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">
               path to {$navigationPoi?.name} drawn on the map (green) -- {poiWalkPath.waypoints.length} waypoints.
             </p>
+            {#if poiFloors.length > 1}
+              <div class="border-b border-border px-2 py-1.5 text-[11px]">
+                <p class="text-caution">ambiguous: this spawn spot sits over {poiFloors.length} floors and the wiki gives no z. Routed to {poiFloorZ == null ? 'the highest' : `z ${poiFloorZ.toFixed(0)}`} -- pick the right one:</p>
+                <div class="mt-1 flex flex-wrap gap-1">
+                  {#each poiFloors as f, i (f.z)}
+                    <button
+                      class="rounded border px-1.5 py-0.5 {(poiFloorZ ?? poiFloors[0].z) === f.z ? 'border-primary text-primary' : 'border-border text-muted-foreground hover:text-foreground'}"
+                      onclick={() => (poiFloorZ = f.z)}
+                    >
+                      z {f.z.toFixed(0)}{#if f.label} &middot; {f.label}{/if}{#if i === 0} (top){/if}
+                    </button>
+                  {/each}
+                </div>
+              </div>
+            {/if}
           {:else if gpsError}
             <p class="border-b border-border px-2 py-1.5 text-[11px] text-bad">couldn't draw the next step: {gpsError}</p>
           {:else if gpsWalkPath}

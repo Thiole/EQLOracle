@@ -493,6 +493,38 @@ pub fn resolve_unknown_z(
     y: f32,
     hint: f32,
 ) -> Option<f32> {
+    let wet = candidate_floors(geo, water, x, y);
+    if let Some(&z) = wet.first() {
+        return Some(z);
+    }
+    // why: no water map (or nothing wet) -- the surface nearest the hint
+    let surfaces = floor_surfaces(geo, x, y);
+    surfaces.into_iter().min_by(|a, b| {
+        (a - hint)
+            .abs()
+            .partial_cmp(&(b - hint).abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
+/// why: every floor a z-less spawn spot could sit on, highest first --
+/// the wet ones when a water map says which are (a stacked zone: Kedge
+/// has 31 of 70 spots over more than one wet floor). More than one is
+/// AMBIGUOUS and the caller must say so rather than guess silently
+/// ("list if there's an ambiguous NPC ... if there's 1 possible section").
+pub fn candidate_floors(geo: &ZoneGeo, water: Option<&WaterMap>, x: f32, y: f32) -> Vec<f32> {
+    let surfaces = floor_surfaces(geo, x, y);
+    match water {
+        Some(wm) => surfaces
+            .into_iter()
+            .filter(|&z| wm.is_water([x, y, z + 3.0]))
+            .collect(),
+        None => surfaces,
+    }
+}
+
+/// why: distinct collision surfaces under an XY, top to bottom
+fn floor_surfaces(geo: &ZoneGeo, x: f32, y: f32) -> Vec<f32> {
     let mut surfaces: Vec<f32> = Vec::new();
     let mut h = 400.0f32;
     while h > -400.0 {
@@ -503,21 +535,8 @@ pub fn resolve_unknown_z(
         }
         h -= 10.0;
     }
-    if surfaces.is_empty() {
-        return None;
-    }
     surfaces.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-    if let Some(wm) = water {
-        if let Some(&z) = surfaces.iter().find(|&&z| wm.is_water([x, y, z + 3.0])) {
-            return Some(z);
-        }
-    }
-    surfaces.iter().copied().min_by(|a, b| {
-        (a - hint)
-            .abs()
-            .partial_cmp(&(b - hint).abs())
-            .unwrap_or(std::cmp::Ordering::Equal)
-    })
+    surfaces
 }
 
 /// why: the one traversability test for a swim segment -- collision

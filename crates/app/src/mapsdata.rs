@@ -199,6 +199,36 @@ pub fn labeled_point_for(
     best.map(|(_, p)| p)
 }
 
+/// why: names a candidate floor for the ambiguity list -- Brewall marks
+/// rooms ("First_Floor", "Temple_of_Prexus"); the nearest label on that
+/// floor's own level reads better than a bare z. Display form.
+pub fn label_near(
+    base_dir: &Path,
+    zone: &str,
+    at: [f32; 3],
+    max_xy: f32,
+    max_dz: f32,
+) -> Option<String> {
+    let mut packs: Vec<Option<String>> = vec![None];
+    packs.extend(list_map_packs(base_dir).into_iter().map(Some));
+    let mut best: Option<(f32, String)> = None;
+    for pack in packs {
+        let Ok(map) = load_zone_map(base_dir, pack.as_deref(), zone) else {
+            continue;
+        };
+        for m in &map.markers {
+            if (m.pos.z - at[2]).abs() > max_dz {
+                continue;
+            }
+            let d = ((m.pos.x - at[0]).powi(2) + (m.pos.y - at[1]).powi(2)).sqrt();
+            if d <= max_xy && best.as_ref().is_none_or(|(bd, _)| d < *bd) {
+                best = Some((d, m.label.replace('_', " ").replace('`', "'")));
+            }
+        }
+    }
+    best.map(|(_, l)| l)
+}
+
 /// why: "Phinigel_Autropos_(Raid)" and "Phinigel Autropos" are one name
 fn fold_label(label: &str) -> String {
     let base = label.split("_(").next().unwrap_or(label);

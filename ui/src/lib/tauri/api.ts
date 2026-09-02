@@ -1069,6 +1069,15 @@ export interface PathDto {
    * fallback while a zone's mesh isn't cached). */
   source: 'navmesh' | 'lines';
   legs: PathLegDto[];
+  /** why: a z-less target over a stacked zone -- every floor it could be
+   * on, highest first; more than one means the drawn route is a guess
+   * (the first) and the panel lists the rest to pick from */
+  target_floors: TargetFloorDto[];
+}
+
+export interface TargetFloorDto {
+  z: number;
+  label: string | null;
 }
 
 /** why: one leg of a ZoneRouteDto -- a teleport hop always names its own

@@ -1528,6 +1528,17 @@ pub struct PathDto {
     /// why: walk/hop segmentation -- the viewer draws hops dashed; the
     /// flat waypoints stay for anything that only wants one polyline
     pub legs: Vec<PathLegDto>,
+    /// why: a z-less target over a stacked zone -- every floor it could
+    /// be on, highest first; more than one means this route is a guess
+    /// (the first) and the viewer lists the rest to pick from
+    pub target_floors: Vec<TargetFloorDto>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TargetFloorDto {
+    pub z: f32,
+    /// why: nearest room label on that level, when a pack marks one
+    pub label: Option<String>,
 }
 
 /// why: missing route is a real retryable outcome, not folded into an empty result
@@ -1579,9 +1590,29 @@ pub async fn find_walk_path(
             // sight endpoint binding instead (find_route decides)
             let geo = emumaps::load_geo(&app_data, &zone);
             // why: a wiki spawn point has no z -- resolve it to the floor
-            // under that XY that sits in the water (see resolve_unknown_z)
+            // under that XY that sits in the water (see resolve_unknown_z);
+            // every candidate floor rides along so the viewer can say
+            // "ambiguous" and offer the others (see PathDto::target_floors)
+            let mut target_floors: Vec<TargetFloorDto> = Vec::new();
             if to_z_known == Some(false) && emumaps::is_underwater(&zone) {
                 if let Some(g) = geo.as_deref() {
+                    let floors = emumaps::candidate_floors(g, nav.water.as_deref(), to[0], to[1]);
+                    if floors.len() > 1 {
+                        let base_dir = state
+                            .config
+                            .lock_recover()
+                            .as_ref()
+                            .map(|c| c.base_dir.clone());
+                        target_floors = floors
+                            .iter()
+                            .map(|&z| TargetFloorDto {
+                                z,
+                                label: base_dir.as_deref().and_then(|b| {
+                                    mapsdata::label_near(b, &zone, [to[0], to[1], z], 220.0, 50.0)
+                                }),
+                            })
+                            .collect();
+                    }
                     if let Some(z) =
                         emumaps::resolve_unknown_z(g, nav.water.as_deref(), to[0], to[1], from[2])
                     {
@@ -1623,6 +1654,7 @@ pub async fn find_walk_path(
                     waypoints,
                     source: "navmesh",
                     legs,
+                    target_floors,
                 });
             }
             // why: fall through -- endpoints off the mesh (a bad click
@@ -1649,6 +1681,7 @@ pub async fn find_walk_path(
         }],
         waypoints,
         source: "lines",
+        target_floors: Vec::new(),
     })
 }
 
