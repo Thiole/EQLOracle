@@ -125,7 +125,9 @@ pub fn known_loot_for(name: &str) -> &'static [String] {
 /// everything in zone"). Measured on Plane of Sky: >=3 keeps the 41
 /// genuinely common drops (spiroc feathers/totems, figurines) and
 /// leaves every boss- and quest-specific item to its own dropper.
-const MIN_ZONE_DROPPERS: usize = 3;
+/// Raised from 3 to 5 trash droppers -- "a more stringent catch-all"
+/// on top of the trash-only count (Spiroc Wind Totem has seven).
+const MIN_ZONE_DROPPERS: usize = 5;
 
 /// why: EQ's naming convention -- a lowercase article means a generic
 /// (trash) mob; a capitalized article or none means a named one
