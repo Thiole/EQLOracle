@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-02 (0.15.0)
+
+### Encounters and the DPS meter
+
+- The encounter is the whole stretch of combat: a new mob engaged after a kill joins the running fight, switching targets never starts a new one, and one team is one encounter (a groupmate opening on a second mob joins the fight instead of starting another). A resolved fight closes 6 seconds after its last action; a fight with no kill waits for a kill or an end-of-combat flag (charm, mem blur, zoning) instead of timing out.
+- Fixed the fight closing the instant a kill line arrived: the live log clock ran a constant 12 seconds ahead of real time after the backfill-to-live seam. The worker now baselines from a fresh clock reading and one tick can advance the log clock by at most 2 seconds.
+- The meter is the compendium of the encounter: every fight that overlapped the current one, open or closed, so a dead mob's damage stays in the totals. Rows: name, time in encounter, damage, DPS, share; the header carries the encounter's own timer and reads team v team, with the current target on the line under it.
+- Death, XP, and loot rows land on the fight the mob actually died in, so a kill no longer flips the meter to an old fight of the same name.
+- Misses count as engagement; a mez puts the add in the fight; a berserker's "frenzies on" lines parse their target.
+
+### Session
+
+- Starts after the last 30 minutes with no action by you or a party member. "Set timeframe" on the Session card sets a start and optional end (in log time); "auto" clears it.
+
+### Drop Watch
+
+- The log's own loot lines attribute a drop to the mob that dropped it, ahead of the wiki (the ghoul arch magus, renamed on the wiki).
+- A zone-page item with a known dropper belongs to that dropper, not the whole zone; an item is zone-common only with five or more distinct trash droppers, and a boss set sharing an item (Eye of Innoruuk) no longer makes it zone-wide.
+- Under each mob, confirmed drops are green and zone-rule assumptions are yellow.
+
+### Maps
+
+- A strip at the top of the map says the in-zone location only updates from /loc. Follow-me is on by default and highlighted while active.
+- Clock displays and the session timeframe use log time, not the browser's local conversion.
+
 ## 2026-09-02 (0.14.0)
 
 ### Routing
