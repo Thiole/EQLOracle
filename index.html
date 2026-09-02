@@ -4,11 +4,15 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>EQL Oracle — EverQuest Legends parsing &amp; progression assistant</title>
-<meta name="description" content="Live combat meter, partial-resist detection, navmesh GPS, class detection, Drop Watch, Sky Quest tracking — all local, nothing uploaded." />
+<meta name="description" content="Live combat meter, overlay, Drop Watch, navmesh maps, class detection, Sky quest tracking — reads your EverQuest Legends log locally. Free, open source, nothing uploaded." />
+<meta property="og:title" content="EQL Oracle" />
+<meta property="og:description" content="Parsing &amp; progression assistant for EverQuest Legends. Reads your log locally; nothing is uploaded." />
+<meta property="og:image" content="https://eqloracle.com/shots/combat.png" />
+<meta property="og:url" content="https://eqloracle.com/" />
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2315171b'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23c9a15a' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='%23c9a15a'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
   :root {
     --background: #15171b;
@@ -21,8 +25,10 @@
     --primary-foreground: #1a1305;
     --border: #363b43;
     --good: #7fb37a;
+    --bad: #d9756c;
   }
   * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
   html, body { margin: 0; padding: 0; }
   body {
     background: var(--background);
@@ -33,7 +39,7 @@
   }
   code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
   a { color: inherit; }
-  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
 
   /* ---------- header ---------- */
   header {
@@ -58,7 +64,7 @@
   .gh-link svg { width: 15px; height: 15px; }
 
   /* ---------- hero ---------- */
-  .hero { padding: 96px 0 72px; text-align: center; }
+  .hero { padding: 84px 0 56px; text-align: center; }
   .eyebrow {
     display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 12px;
     letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary);
@@ -67,9 +73,8 @@
   }
   h1 { font-size: 44px; line-height: 1.15; margin: 0 0 18px; letter-spacing: -0.015em; font-weight: 700; }
   h1 span { color: var(--primary); }
-  .sub { font-size: 17px; color: var(--muted); max-width: 560px; margin: 0 auto 40px; }
+  .sub { font-size: 17px; color: var(--muted); max-width: 600px; margin: 0 auto 36px; }
 
-  /* ---------- download picker ---------- */
   .download-block { display: flex; flex-direction: column; align-items: center; gap: 14px; }
   .btn-primary {
     display: inline-flex; align-items: center; gap: 10px;
@@ -86,64 +91,103 @@
   .alt-platforms a { color: var(--muted); text-decoration: none; border-bottom: 1px dotted transparent; }
   .alt-platforms a:hover { color: var(--foreground); border-bottom-color: var(--muted); }
   .alt-platforms .sep { color: var(--border); }
-  .local-note { margin-top: 30px; font-size: 12.5px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+  .release-line { font-size: 12.5px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+  .release-line b { color: var(--foreground); font-weight: 500; }
+  .local-note { margin-top: 26px; font-size: 12.5px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
   .local-note .good-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--good); margin-right: 7px; }
 
-  /* ---------- screenshot ---------- */
   .shot-frame {
-    margin: 64px auto 0; max-width: 880px;
+    margin: 56px auto 0; max-width: 1000px;
     border: 1px solid var(--border); border-radius: 12px;
     background: var(--background-alt);
-    box-shadow: 0 24px 60px rgba(0,0,0,0.4);
+    box-shadow: 0 24px 60px rgba(0,0,0,0.45);
     overflow: hidden;
   }
   .shot-frame .titlebar { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
   .shot-frame .titlebar span { width: 10px; height: 10px; border-radius: 50%; background: #363b43; }
-  .shot-frame .placeholder {
-    aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;
-    color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 13px;
-    background:
-      repeating-linear-gradient(-45deg, transparent, transparent 12px, rgba(255,255,255,0.015) 12px, rgba(255,255,255,0.015) 24px);
-  }
+  .shot-frame img { display: block; width: 100%; height: auto; }
 
-  /* ---------- features ---------- */
-  .features { padding: 100px 0 90px; }
-  .section-head { text-align: center; margin-bottom: 56px; }
+  /* ---------- feature tour ---------- */
+  .tour { padding: 100px 0 60px; }
+  .section-head { text-align: center; margin-bottom: 40px; }
   .section-head h2 { font-size: 28px; margin: 0 0 10px; font-weight: 700; letter-spacing: -0.01em; }
   .section-head p { color: var(--muted); margin: 0; font-size: 15px; }
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-  .card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-    padding: 26px 24px; transition: background .15s, border-color .15s;
+  .tabs {
+    position: sticky; top: 60px; z-index: 10;
+    display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+    padding: 12px 0; margin-bottom: 28px;
+    background: rgba(21, 23, 27, 0.92); backdrop-filter: blur(8px);
   }
-  .card:hover { background: var(--card-hover); border-color: #4a5058; }
-  .card .icon {
-    width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
-    background: rgba(201, 161, 90, 0.12); color: var(--primary); margin-bottom: 16px;
+  .tab {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.02em;
+    color: var(--muted); background: transparent; border: 1px solid var(--border);
+    border-radius: 999px; padding: 6px 13px; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
   }
-  .card .icon svg { width: 18px; height: 18px; }
-  .card h3 { font-size: 15.5px; margin: 0 0 8px; font-weight: 600; }
-  .card p { font-size: 13.5px; color: var(--muted); margin: 0; line-height: 1.6; }
-  .card.wide { grid-column: span 3; display: flex; align-items: center; gap: 22px; }
-  .card.wide .icon { margin-bottom: 0; flex-shrink: 0; }
-  .card.wide .body h3 { margin-bottom: 4px; }
+  .tab:hover { color: var(--foreground); border-color: #4a5058; }
+  .tab.active { color: var(--primary); border-color: rgba(201,161,90,0.6); background: rgba(201,161,90,0.1); }
+
+  .tour-body { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 40px; align-items: start; }
+  .screen {
+    position: sticky; top: 124px;
+    border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+    background: var(--background-alt); box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+  }
+  .screen .titlebar { display: flex; align-items: center; gap: 6px; padding: 9px 14px; border-bottom: 1px solid var(--border); }
+  .screen .titlebar span { width: 10px; height: 10px; border-radius: 50%; background: #363b43; }
+  .screen .titlebar .name { margin-left: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--muted); }
+  .screen .stage { position: relative; aspect-ratio: 16 / 10; }
+  .screen .stage img {
+    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top left;
+    opacity: 0; transition: opacity .35s ease;
+  }
+  .screen .stage img.active { opacity: 1; }
+
+  .steps { display: flex; flex-direction: column; }
+  .step {
+    padding: 34px 0 34px 22px; border-left: 2px solid var(--border);
+    transition: border-color .25s, opacity .25s; opacity: 0.55; min-height: clamp(280px, 46vh, 460px);
+  }
+  .step.active { border-left-color: var(--primary); opacity: 1; }
+  .step .k { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--primary); margin-bottom: 10px; }
+  .step h3 { font-size: 21px; margin: 0 0 10px; font-weight: 700; letter-spacing: -0.01em; }
+  .step p { font-size: 14.5px; color: var(--muted); margin: 0 0 12px; line-height: 1.65; }
+  .step ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; line-height: 1.7; }
+  .step ul b { color: var(--foreground); font-weight: 500; }
+  .step .inline-shot { display: none; margin: 14px 0 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .step .inline-shot img { display: block; width: 100%; height: auto; }
+
+  /* ---------- safety ---------- */
+  .safety { padding: 90px 0; background: var(--background-alt); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .safety-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  .scard { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 24px; }
+  .scard h3 { font-size: 15.5px; margin: 0 0 10px; font-weight: 600; display: flex; align-items: center; gap: 9px; }
+  .scard h3 .tag { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; border: 1px solid; }
+  .tag.warn { color: var(--bad); border-color: rgba(217,117,108,0.5); background: rgba(217,117,108,0.08); }
+  .tag.ok { color: var(--good); border-color: rgba(127,179,122,0.5); background: rgba(127,179,122,0.08); }
+  .scard p, .scard li { font-size: 13.5px; color: var(--muted); line-height: 1.65; margin: 0; }
+  .scard ul { margin: 8px 0 0; padding-left: 18px; }
+  .scard li + li { margin-top: 4px; }
+  .scard code { font-size: 12px; color: var(--foreground); background: rgba(255,255,255,0.05); padding: 1px 5px; border-radius: 4px; }
+  .scard a { color: var(--foreground); }
+
+  /* ---------- changelog ---------- */
+  .changes { padding: 90px 0 70px; }
+  .changes-box { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 26px 28px; }
+  .changes-box h3 { margin: 0 0 4px; font-size: 18px; }
+  .changes-box .when { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+  .changes-box ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; line-height: 1.7; }
+  .changes-box ul b { color: var(--foreground); font-weight: 500; }
+  .changes-box .more { margin-top: 16px; font-size: 13px; }
+  .changes-box .more a { color: var(--primary); text-decoration: none; }
 
   /* ---------- under the hood ---------- */
-  .hood { padding: 100px 0 90px; }
+  .hood { padding: 80px 0 90px; border-top: 1px solid var(--border); }
   .hood-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-  .hood-block {
-    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-    padding: 22px 22px;
-  }
-  .hood-block h3 {
-    font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600;
-    color: var(--primary); margin: 0 0 10px; letter-spacing: 0.02em;
-  }
+  .hood-block { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 22px 22px; }
+  .hood-block h3 { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: var(--primary); margin: 0 0 10px; letter-spacing: 0.02em; }
   .hood-block p { font-size: 13px; color: var(--muted); margin: 0; line-height: 1.65; }
-  .hood-block code {
-    font-size: 12px; color: var(--foreground); background: rgba(255,255,255,0.05);
-    padding: 1px 5px; border-radius: 4px;
-  }
+  .hood-block code { font-size: 12px; color: var(--foreground); background: rgba(255,255,255,0.05); padding: 1px 5px; border-radius: 4px; }
   .pipeline {
     margin: 0 0 40px; padding: 20px 24px; overflow-x: auto;
     background: var(--background-alt); border: 1px solid var(--border); border-radius: 10px;
@@ -161,12 +205,15 @@
   footer a { text-decoration: none; color: var(--muted); }
   footer a:hover { color: var(--foreground); }
 
-  @media (max-width: 760px) {
+  @media (max-width: 900px) {
     h1 { font-size: 32px; }
-    .grid, .hood-grid { grid-template-columns: 1fr; }
-    .card.wide { flex-direction: column; align-items: flex-start; text-align: left; }
-    .hero { padding: 64px 0 48px; }
+    .hero { padding: 56px 0 40px; }
     .nav-links { display: none; }
+    .tour-body { grid-template-columns: 1fr; }
+    .screen { display: none; }
+    .step { min-height: 0; opacity: 1; }
+    .step .inline-shot { display: block; }
+    .safety-grid, .hood-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -179,12 +226,14 @@
       EQL ORACLE
     </a>
     <nav class="nav-links">
-      <a href="#features">Features</a>
+      <a href="#tour">Tour</a>
+      <a href="#safety">Is it safe?</a>
+      <a href="#changes">What's new</a>
       <a href="#hood">Under the hood</a>
     </nav>
     <a class="gh-link" href="https://github.com/Thiole/EQLOracle" target="_blank" rel="noopener">
       <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
-      View on GitHub
+      Source on GitHub
     </a>
   </div>
 </header>
@@ -194,8 +243,8 @@
     <span class="eyebrow">EverQuest Legends parsing &amp; progression assistant</span>
     <h1>Everything happening in your<br />fight, <span>finally on screen</span>.</h1>
     <p class="sub">
-      A live combat meter, automatic class detection, real pathfinding, and drop tracking
-      that reads your log and never phones home. Free, open source, runs entirely on your machine.
+      A live combat meter, an in-game overlay, drop tracking, navmesh maps, and automatic class
+      detection — all read straight off your own log. Free, open source, runs entirely on your machine.
     </p>
 
     <div class="download-block">
@@ -207,87 +256,183 @@
       <div class="alt-platforms" id="alt-platforms">
         <a href="https://github.com/Thiole/EQLOracle/releases/latest" target="_blank" rel="noopener">All downloads &amp; changelog →</a>
       </div>
+      <p class="release-line" id="release-line">current release: <b>0.14.0</b> · September 2, 2026 · Windows and Linux</p>
     </div>
 
     <p class="local-note"><span class="good-dot"></span>your log is parsed locally — nothing is ever uploaded</p>
 
     <div class="shot-frame">
       <div class="titlebar"><span></span><span></span><span></span></div>
-      <div class="placeholder">combat meter · class detection · drop watch — screenshot coming soon</div>
+      <img src="shots/combat.png" alt="EQL Oracle's Combat tab: a raid fight with per-ally damage share, DPS, hits and crit rate" width="1280" height="800" loading="eager" />
     </div>
   </div>
 </section>
 
-<section class="features" id="features">
+<section class="tour" id="tour">
   <div class="wrap">
     <div class="section-head">
-      <h2>What it actually does</h2>
-      <p>Not a wrapper around a spreadsheet. Everything below reads straight off your own combat log.</p>
+      <h2>Take the tour</h2>
+      <p>Scroll, or pick a tab. Every screenshot is the real app on a real log.</p>
     </div>
-    <div class="grid">
 
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></div>
-        <h3>Live combat meter</h3>
-        <p>Damage share, totals, and DPS per ally — each on their own clock, started at their own first action, so a late joiner's number is honest. Adds fold into the engagement instead of splitting it.</p>
+    <div class="tabs" id="tabs"></div>
+
+    <div class="tour-body">
+      <div class="screen">
+        <div class="titlebar"><span></span><span></span><span></span><span class="name" id="screen-name">Combat</span></div>
+        <div class="stage" id="stage"></div>
       </div>
 
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
-        <h3>Partial-resist detection</h3>
-        <p>Rolling per-spell landing averages catch a spell being shredded within a handful of casts — judged against your recent zones under the same invocation, with a pointer to what's still landing.</p>
-      </div>
+      <div class="steps" id="steps">
 
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></div>
-        <h3>Never re-enter your class</h3>
-        <p>Detected automatically from what you actually cast — updates the moment your loadout changes, mid-session.</p>
-      </div>
-
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6l3-3M12 2 9 5"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M5 10v6a7 7 0 0 0 14 0v-6"/></svg></div>
-        <h3>Drop Watch</h3>
-        <p>A heads-up the moment you're fighting something that drops what you're after — then tells you exactly where it landed. Tier variants fold to the base item automatically.</p>
-      </div>
-
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z"/><path d="m16 8-8.5 8.5"/></svg></div>
-        <h3>Sky Quests &amp; class unlocks</h3>
-        <p>Every remaining quest's materials in one list, demand-aware — an item needed by three quests gets one entry with real remaining count. Updates live as loot hits your bags.</p>
-      </div>
-
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 20-5.5-2.75V4L9 6.75 15 4l5.5 2.75V20L15 17.25 9 20z"/><path d="M9 6.75V20M15 4v13.25"/></svg></div>
-        <h3>Maps with real GPS</h3>
-        <p>Routes computed over the server's own navigation meshes — around geometry, not through it — including hops through teleporter pads and portal rings. Browse a zone's NPCs, click one, path to it.</p>
-      </div>
-
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a7 7 0 0 1 14 0v1"/></svg></div>
-        <h3>Character, gear &amp; planner</h3>
-        <p>Level estimates, AA history, gear recommendations that understand tiers and exalts, and a planner that keeps your own edits marked and persistent.</p>
-      </div>
-
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-2"/><path d="M15 12h6l-2-2m2 2-2 2"/></svg></div>
-        <h3>Inventory, bags to bank</h3>
-        <p>Browse every bag, bank slot, and depot item — and jump straight to where a specific item actually is.</p>
-      </div>
-
-      <div class="card">
-        <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
-        <h3>An overlay that stays out of the way</h3>
-        <p>DPS meter, skill cooldowns, target effects, CC status, drop alerts — each its own click-through window with its own opacity, re-asserting itself over borderless fullscreen.</p>
-      </div>
-
-      <div class="card wide">
-        <div class="icon" style="width:44px;height:44px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px;"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V8a5 5 0 0 1 10 0v3"/></svg></div>
-        <div class="body">
-          <h3>Runs on your machine, full stop</h3>
-          <p>No account, no server, no telemetry. It reads a text file on disk and shows you what's in it — that's the whole trust model.</p>
+        <div class="step" data-shot="combat" data-tab="Combat">
+          <div class="k">01 · Combat</div>
+          <h3>A meter that knows what a fight is</h3>
+          <p>Every fight is found in the log itself: pulls open on the first hit, adds fold in, a kill or a wipe closes it, a mezz keeps it alive. Nothing to start or stop.</p>
+          <ul>
+            <li><b>Per-ally DPS</b> on each ally's own clock, so a late joiner's number is honest.</li>
+            <li><b>Team and incoming</b> damage, ability breakdowns, cast outcomes, a scrubbable timeline.</li>
+            <li><b>Past parses</b> against the same target, per loadout, with your best on record.</li>
+          </ul>
+          <div class="inline-shot"><img src="shots/combat.png" alt="" loading="lazy" /></div>
         </div>
+
+        <div class="step" data-shot="overlay" data-tab="Overlay">
+          <div class="k">02 · Overlay</div>
+          <h3>Widgets over the game, out of the way</h3>
+          <p>Separate always-on-top, click-through windows: DPS meter, Skill Tracker, Drop Watch, CC Tracker, Session. Each has its own position and opacity, and they stay put over borderless fullscreen on Windows.</p>
+          <ul>
+            <li><b>Skill Tracker</b> — your status effects, cooldowns, and what's on the target.</li>
+            <li><b>Session</b> — AA, levels and plat per hour, next-level ETA, motes by tier.</li>
+            <li><b>Drop Watch</b> — a heads-up the moment the current fight can drop something you track.</li>
+          </ul>
+          <div class="inline-shot"><img src="shots/overlay.png" alt="" loading="lazy" /></div>
+        </div>
+
+        <div class="step" data-shot="maps" data-tab="Maps">
+          <div class="k">03 · Maps</div>
+          <h3>Routes over the server's own navmesh</h3>
+          <p>Zone maps with the NPC list on the side. Click a mob, get a path from where you stand — computed over EQEmu's navigation meshes, collision, and water volumes, so it goes around geometry and swims where you'd swim.</p>
+          <ul>
+            <li><b>Cross-zone GPS</b> with teleporter pads, portal rings, and only the spells you actually know.</li>
+            <li><b>Underwater zones</b> route through shafts and doorways, Kedge Keep included.</li>
+            <li><b>Follow me</b> switches the map when you zone; <code>/loc</code> places you on it.</li>
+          </ul>
+          <div class="inline-shot"><img src="shots/maps.png" alt="" loading="lazy" /></div>
+        </div>
+
+        <div class="step" data-shot="character" data-tab="Character">
+          <div class="k">04 · Character</div>
+          <h3>Class, gear, spells, bags — all inferred</h3>
+          <p>Your class trio is detected from what you cast and which AAs you use, per zone visit. The gear planner understands tiers and exalts; the spellbook builder suggests damage spells rank-aware.</p>
+          <ul>
+            <li><b>Inventory</b> from <code>/outputfile inventory</code> — every bag, bank slot, and "where is my X".</li>
+            <li><b>AA log</b> and known spells straight from the lines that granted them.</li>
+          </ul>
+          <div class="inline-shot"><img src="shots/character.png" alt="" loading="lazy" /></div>
+        </div>
+
+        <div class="step" data-shot="endgame" data-tab="Endgame">
+          <div class="k">05 · Endgame</div>
+          <h3>Raids, bosses, and Sky quests</h3>
+          <p>Boss and miniboss kill counts, drop tables against what you've actually looted, solo and group tiers kept apart, fastest clears. Plane of Sky class unlocks and quest tracking with confirmed turn-ins.</p>
+          <ul>
+            <li><b>Demand-aware materials</b> — an item three quests need gets one line with the real remaining count.</li>
+          </ul>
+          <div class="inline-shot"><img src="shots/endgame.png" alt="" loading="lazy" /></div>
+        </div>
+
+        <div class="step" data-shot="tradeskill" data-tab="Tradeskill">
+          <div class="k">06 · Tradeskill</div>
+          <h3>Your skill levels and what you've made</h3>
+          <p>Current level in each tradeskill, parsed from skill-ups, a recipe catalog, and a craft log built from your own combines.</p>
+          <div class="inline-shot"><img src="shots/tradeskill.png" alt="" loading="lazy" /></div>
+        </div>
+
+        <div class="step" data-shot="gamedata" data-tab="Game Data">
+          <div class="k">07 · Game Data</div>
+          <h3>Zones, items, NPCs, AAs, spells — cross-linked</h3>
+          <p>A local reference with your own history folded in: every NPC page shows your encounters and loot with it, every zone page your visits.</p>
+          <div class="inline-shot"><img src="shots/gamedata.png" alt="" loading="lazy" /></div>
+        </div>
+
+        <div class="step" data-shot="overview" data-tab="Overview">
+          <div class="k">08 · Overview</div>
+          <h3>The session at a glance</h3>
+          <p>Character, current session rates, motes by tier, recent loot. Resets when you come back from AFK or when you say so.</p>
+          <div class="inline-shot"><img src="shots/overview.png" alt="" loading="lazy" /></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="safety" id="safety">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>Is this safe to run?</h2>
+      <p>Fair question for a download from a site you've never heard of. Here is exactly what you're getting.</p>
+    </div>
+    <div class="safety-grid">
+
+      <div class="scard">
+        <h3>Windows will warn you first <span class="tag warn">expected</span></h3>
+        <p>The installer is not code-signed — a signing certificate costs a few hundred dollars a year, and this is a free tool by one player. So SmartScreen shows "Windows protected your PC" with an unknown publisher. Click <b>More info</b>, then <b>Run anyway</b>. That warning is about the missing certificate, not about what the file does.</p>
       </div>
 
+      <div class="scard">
+        <h3>What it touches on your machine <span class="tag ok">read-only log</span></h3>
+        <ul>
+          <li>Reads <code>eqlog_&lt;Character&gt;_&lt;Server&gt;.txt</code> — read-only, never modified.</li>
+          <li>Reads <code>/outputfile inventory</code> dumps if you make them.</li>
+          <li>Writes its own settings and cache under your user profile, nothing in the game folder.</li>
+          <li>No account, no login, no telemetry, no analytics.</li>
+        </ul>
+      </div>
+
+      <div class="scard">
+        <h3>Every network call it makes <span class="tag ok">two hosts</span></h3>
+        <ul>
+          <li><b>GitHub</b> — checks for a new release; the update payload is signature-checked before it's installed.</li>
+          <li><b>EQEmu maps on GitHub</b> — public navigation meshes for a zone the first time you open its map.</li>
+          <li>That's all. Your log, your character, your chat never leave the machine.</li>
+        </ul>
+      </div>
+
+      <div class="scard">
+        <h3>Check it yourself <span class="tag ok">open source</span></h3>
+        <ul>
+          <li>All of the source is public: <a href="https://github.com/Thiole/EQLOracle" target="_blank" rel="noopener">github.com/Thiole/EQLOracle</a>.</li>
+          <li>Every release is built by a <a href="https://github.com/Thiole/EQLOracle/actions" target="_blank" rel="noopener">public GitHub Actions workflow</a> from that source — nobody's laptop in between.</li>
+          <li>Prefer not to trust a binary at all? Rust stable and Node 20+ build it from source in a few minutes; the README has the steps.</li>
+          <li>Something wrong? <a href="https://github.com/Thiole/EQLOracle/issues" target="_blank" rel="noopener">Open an issue</a>.</li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section class="changes" id="changes">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>What's new</h2>
+      <p>Updates land as public releases; the app checks for them on launch and asks before installing.</p>
+    </div>
+    <div class="changes-box">
+      <h3>0.14.0</h3>
+      <div class="when">September 2, 2026</div>
+      <ul>
+        <li><b>Routing everywhere</b> — every zone uses the navmesh, collision mesh, and water volume. Underwater zones route through shafts and doorways; all of Kedge Keep's spawn points path.</li>
+        <li><b>Spawn points without a height</b> — map-pack labels place named mobs in 3D; anything still ambiguous lists its candidate floors instead of guessing.</li>
+        <li><b>Evac clears the fight</b> — a fight that ended at the last zone line is no longer "current".</li>
+        <li><b>Same-named mobs</b> — a fight that hits a slain name again gets six seconds of grace before it closes, so a raid chain stays one fight.</li>
+        <li><b>Session overlay</b> — AA, levels, and plat per hour with next-level ETA and motes by tier.</li>
+        <li><b>Windows overlay fixed</b> — windowed-fullscreen overlays that never appeared now do.</li>
+        <li><b>Maps</b> fill the window; Drop Watch lists wrap; zone routes only use teleports you know.</li>
+      </ul>
+      <p class="more"><a href="https://github.com/Thiole/EQLOracle/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Full changelog →</a></p>
     </div>
   </div>
 </section>
@@ -304,44 +449,37 @@
     </div>
 
     <div class="hood-grid">
-
       <div class="hood-block">
         <h3>tail</h3>
         <p>The newest <code>eqlog_*.txt</code> is polled every 100&nbsp;ms by byte offset and file identity. Rotation, truncation, and replacement are all handled; the log is only ever opened read-only.</p>
       </div>
-
       <div class="hood-block">
         <h3>classify</h3>
         <p>Two stages: a single multi-pattern anchor pass narrows each line to candidate rules, then per-rule regex extracts fields. The result is one of ~160 typed actions — every line accounted for, matched or not.</p>
       </div>
-
       <div class="hood-block">
         <h3>store</h3>
         <p>Append-only columnar event store with interned names; encounters are row ranges over it, not copies. A full multi-month raid log replays in seconds inside a few hundred MB.</p>
       </div>
-
       <div class="hood-block">
         <h3>encounters</h3>
         <p>A streaming fight graph decides boundaries: idle windows close fights, mezz keeps them alive, resets link to re-engagements, and a corpse from a merged pull is folded into its keeper. Kill and reset are distinct outcomes, never guessed.</p>
       </div>
-
+      <div class="hood-block">
+        <h3>routing</h3>
+        <p>EQEmu's Detour navmesh per zone, its collision mesh for line of sight, its water volumes for where swimming is allowed. Mesh islands are bridged only through water; an underwater zone adds swim nodes for shafts the mesh can't carry.</p>
+      </div>
       <div class="hood-block">
         <h3>replay</h3>
         <p>Deterministic: the same log always produces the same state. History backfills in parallel across cores, then live lines apply in order — restart the app and it rebuilds everything from the file alone.</p>
       </div>
-
-      <div class="hood-block">
-        <h3>privacy</h3>
-        <p>No account, no telemetry, no upload. The only network calls are checking for app updates and fetching public map data — your log never leaves the machine.</p>
-      </div>
-
     </div>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
-    <p class="mono">EQL Oracle — an unofficial, open-source parsing &amp; progression assistant for EverQuest Legends.</p>
+    <p class="mono">EQL Oracle — an unofficial, open-source parsing &amp; progression assistant for EverQuest Legends. Not affiliated with the game's publisher.</p>
     <div class="links">
       <a href="https://github.com/Thiole/EQLOracle" target="_blank" rel="noopener">GitHub</a>
       <a href="https://github.com/Thiole/EQLOracle/releases/latest" target="_blank" rel="noopener">Releases</a>
@@ -352,11 +490,68 @@
 
 <script>
 (function () {
+  // ---------- feature tour: sticky screen + tabs driven by scroll ----------
+  var steps = Array.prototype.slice.call(document.querySelectorAll('.step'));
+  var stage = document.getElementById('stage');
+  var tabs = document.getElementById('tabs');
+  var screenName = document.getElementById('screen-name');
+  var shots = {};
+  steps.forEach(function (s, i) {
+    var key = s.getAttribute('data-shot');
+    var img = document.createElement('img');
+    img.src = 'shots/' + key + '.png';
+    img.alt = '';
+    img.loading = i === 0 ? 'eager' : 'lazy';
+    stage.appendChild(img);
+    shots[key] = img;
+    var b = document.createElement('button');
+    b.className = 'tab';
+    b.type = 'button';
+    b.textContent = s.getAttribute('data-tab');
+    b.addEventListener('click', function () {
+      var y = s.getBoundingClientRect().top + window.pageYOffset - 150;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+      activate(s);
+    });
+    tabs.appendChild(b);
+    s._tab = b;
+  });
+  var current = null;
+  function activate(step) {
+    if (current === step) return;
+    current = step;
+    var key = step.getAttribute('data-shot');
+    steps.forEach(function (s) { s.classList.toggle('active', s === step); s._tab.classList.toggle('active', s === step); });
+    Object.keys(shots).forEach(function (k) { shots[k].classList.toggle('active', k === key); });
+    screenName.textContent = step.getAttribute('data-tab');
+  }
+  // why: the step whose box straddles the upper-middle of the viewport
+  // wins -- scrolling either way hands off at the same line, no flicker
+  function pick() {
+    var line = window.innerHeight * 0.4;
+    var best = steps[0], bestD = Infinity;
+    steps.forEach(function (s) {
+      var r = s.getBoundingClientRect();
+      var d = r.top <= line && r.bottom >= line ? 0 : Math.min(Math.abs(r.top - line), Math.abs(r.bottom - line));
+      if (d < bestD) { bestD = d; best = s; }
+    });
+    activate(best);
+  }
+  var ticking = false;
+  window.addEventListener('scroll', function () {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(function () { pick(); ticking = false; });
+  }, { passive: true });
+  pick();
+
+  // ---------- release picker ----------
   var REPO = 'Thiole/EQLOracle';
   var label = document.getElementById('primary-download-label');
   var primary = document.getElementById('primary-download');
   var verBadge = document.getElementById('version-badge');
   var altBox = document.getElementById('alt-platforms');
+  var releaseLine = document.getElementById('release-line');
 
   function detectOS() {
     var p = (navigator.userAgent || '') + ' ' + (navigator.platform || '');
@@ -365,41 +560,27 @@
     if (/Linux|X11/i.test(p)) return 'linux';
     return 'unknown';
   }
-
   // why: parses the "X.Y.Z" every real asset name carries -- the
-  // release's own tag_name is "latest"/"testing" (a channel, not a
-  // version), no good for display or comparison
+  // release's own tag_name is "latest"/"testing" (a channel, not a version)
   function parseVersion(name) {
     var m = /(\d+)\.(\d+)\.(\d+)/.exec(name || '');
     return m ? [+m[1], +m[2], +m[3]] : [0, 0, 0];
   }
-
   function compareVersions(a, b) {
-    for (var i = 0; i < 3; i++) {
-      if (a[i] !== b[i]) return a[i] - b[i];
-    }
+    for (var i = 0; i < 3; i++) { if (a[i] !== b[i]) return a[i] - b[i]; }
     return 0;
   }
-
-  // why: NOT "first regex match" -- the testing channel's release
-  // accumulates every historical build under one tag (0.1.0 through
-  // whatever's newest, all sharing the same filename *suffix*), so the
-  // first match in upload order is the OLDEST build, not the newest.
-  // Picks by parsed version instead, so this is correct regardless of
-  // how many old builds are sitting in the same release.
+  // why: NOT "first regex match" -- a channel release accumulates every
+  // historical build under one tag; pick by parsed version
   function findNewestAsset(assets, re) {
     var best = null, bestVer = null;
     for (var i = 0; i < assets.length; i++) {
       if (!re.test(assets[i].name)) continue;
       var v = parseVersion(assets[i].name);
-      if (!best || compareVersions(v, bestVer) > 0) {
-        best = assets[i];
-        bestVer = v;
-      }
+      if (!best || compareVersions(v, bestVer) > 0) { best = assets[i]; bestVer = v; }
     }
     return best;
   }
-
   function fetchRelease(tag) {
     var url = tag === 'latest'
       ? 'https://api.github.com/repos/' + REPO + '/releases/latest'
@@ -409,18 +590,10 @@
       return r.json();
     });
   }
-
-  // why: "latest" is the real public channel, but falls back to
-  // "testing" -- the only channel guaranteed to have fresh assets right
-  // now (see the release workflow's own doc: "latest" only moves on a
-  // deliberate push to main). Whichever one actually answers is what
-  // every link on the page points at, including "All releases".
   fetchRelease('latest')
     .then(function (data) { return { channel: 'latest', data: data }; })
     .catch(function () {
-      return fetchRelease('testing').then(function (data) {
-        return { channel: 'testing', data: data };
-      });
+      return fetchRelease('testing').then(function (data) { return { channel: 'testing', data: data }; });
     })
     .then(function (result) {
       var data = result.data;
@@ -435,11 +608,11 @@
 
       var os = detectOS();
       var primaryAsset = null, primaryText = 'View releases on GitHub';
-
       if (os === 'windows' && windowsExe) { primaryAsset = windowsExe; primaryText = 'Download for Windows'; }
       else if (os === 'linux' && linuxAppImage) { primaryAsset = linuxAppImage; primaryText = 'Download for Linux (AppImage)'; }
       else if (os === 'mac') { primaryText = 'No macOS build yet — see downloads below'; }
 
+      var newest = windowsExe || linuxAppImage || linuxDeb;
       if (primaryAsset) {
         primary.href = primaryAsset.browser_download_url;
         label.textContent = primaryText;
@@ -447,6 +620,12 @@
       } else {
         primary.href = releaseUrl;
         label.textContent = primaryText;
+      }
+      if (newest) {
+        var when = data.published_at ? new Date(data.published_at) : null;
+        var whenText = when ? when.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+        var sizeMb = primaryAsset && primaryAsset.size ? (primaryAsset.size / 1048576).toFixed(0) + ' MB · ' : '';
+        releaseLine.innerHTML = 'current release: <b>' + parseVersion(newest.name).join('.') + '</b>' + (whenText ? ' · ' + whenText : '') + ' · ' + sizeMb + 'Windows and Linux';
       }
 
       var links = [];
@@ -456,13 +635,11 @@
       if (linuxDeb) links.push('<a href="' + linuxDeb.browser_download_url + '">.deb</a>');
       if (linuxRpm) links.push('<a href="' + linuxRpm.browser_download_url + '">.rpm</a>');
       links.push('<a href="' + releaseUrl + '" target="_blank" rel="noopener">All releases &amp; changelog →</a>');
-
       altBox.innerHTML = links.join('<span class="sep">·</span>');
     })
     .catch(function () {
-      // why: GitHub API unreachable/rate-limited/both channels failed --
-      // the plain releases link already in the markup is the real
-      // fallback, nothing to do
+      // why: GitHub API unreachable/rate-limited -- the static releases
+      // link and release line already in the markup are the fallback
     });
 })();
 </script>
