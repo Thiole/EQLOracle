@@ -175,6 +175,25 @@ impl WaterMap {
         false
     }
 
+    /// why: every interior sample in water -- the bar for a LONG bridge
+    /// (past doorway scale): a line that is water end to end cannot pass
+    /// through rock or void, whatever the collision mesh is missing
+    pub fn all_water(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        let len = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2) + (b[2] - a[2]).powi(2)).sqrt();
+        let steps = (len / 6.0).ceil().max(1.0) as usize;
+        (0..=steps).all(|s| {
+            let f = s as f32 / steps as f32;
+            if !(0.15..=0.85).contains(&f) {
+                return true;
+            }
+            self.is_water([
+                a[0] + (b[0] - a[0]) * f,
+                a[1] + (b[1] - a[1]) * f,
+                a[2] + (b[2] - a[2]) * f,
+            ])
+        })
+    }
+
     /// why: the water along a segment must be ONE contiguous run -- a
     /// line that leaves water and re-enters it went through rock/void
     /// (the dive). Entering or leaving once (a blind region at one end)
@@ -1232,18 +1251,31 @@ impl ZoneNav {
         // why: inside = drawn walls around the point at its height when the
         // map is known (kedge's collision mesh is blind between floors);
         // the column test is the fallback without a map
+        // why: precomputed -- the closure below must not borrow self.polys
+        let poly_dry: Vec<bool> = self
+            .polys
+            .iter()
+            .map(|poly| water.is_none_or(|wm| !wm.is_water(poly.center)))
+            .collect();
         let inside = |ni: usize, p: &[f32; 3]| -> bool {
             match walls {
                 // why: enclosed by the drawn outline at its height, or --
                 // outlines aren't always closed -- near a wall AND directly
                 // seeing a floor poly (void chains have no floor in reach)
                 Some(w) => {
-                    // why: in the water volume and linked to anything, or
-                    // (where the volume is blind) beside a drawn wall AND
-                    // directly seeing a floor poly
-                    (water.is_some_and(|wm| wm.is_water(*p))
-                        && (!node_polys[ni].is_empty() || !node_nodes[ni].is_empty()))
-                        || (w.nearby(*p, 40.0, 30.0) && !node_polys[ni].is_empty())
+                    // why: in the water volume and linked to anything; or,
+                    // ONLY where the volume is blind (the floor it sees is
+                    // itself dry), beside a drawn wall and enclosed by the
+                    // level's outline -- "beside a wall" alone kept a column
+                    // of nodes on the OUTSIDE face of a wall, and routes
+                    // dove down it to reach a lower level
+                    let in_water = water.is_some_and(|wm| wm.is_water(*p));
+                    if in_water {
+                        !node_polys[ni].is_empty() || !node_nodes[ni].is_empty()
+                    } else {
+                        let sees_dry_floor = node_polys[ni].iter().any(|&pi| poly_dry[pi as usize]);
+                        sees_dry_floor && w.nearby(*p, 40.0, 30.0) && w.encloses(*p, 30.0)
+                    }
                 }
                 None => column_poly[ni].is_some(),
             }
@@ -1329,6 +1361,10 @@ impl ZoneNav {
         // corridors; the mesh is the truth and a bridge is a patch for a
         // real gap, never a room-to-room shortcut (nodes handle shafts)
         const MAX_DIST: f32 = 80.0;
+        // why: a longer bridge is allowed only when its whole interior is
+        // water (kedge: Shellara's room joins the corridors across a 90u
+        // gap with no mesh floor -- a door or an unwalkable slope)
+        const LONG_DIST: f32 = 130.0;
         let z_lift: f32 = swim_lift();
         // why: taken out for the duration -- polys are mutated below while
         // walls are read; restored at the end
@@ -1468,7 +1504,8 @@ impl ZoneNav {
                     continue;
                 }
                 let d2 = dist2(self.polys[i].center, self.polys[j].center);
-                if d2 <= MAX_DIST * MAX_DIST {
+                let limit = if water.is_some() { LONG_DIST } else { MAX_DIST };
+                if d2 <= limit * limit {
                     cands.push((d2, i as u32, j as u32));
                 }
             }
@@ -1514,6 +1551,20 @@ impl ZoneNav {
             let b = self.route_point(j);
             if !passable(geo, walls.as_ref(), water.as_deref(), a, b) {
                 continue;
+            }
+            // why: a long bridge needs a stronger "inside" than LOS + no
+            // wall crossed: water end to end, or -- where the water map
+            // is blind (kedge: Shellara's whole room reads dry) -- both
+            // ends enclosed by the drawn outline (a sloped corridor between
+            // two floors has no lines at its own heights, but its ends do)
+            if dist2(a, b) > MAX_DIST * MAX_DIST {
+                let wet = water.as_deref().is_some_and(|wm| wm.all_water(a, b));
+                let both_enclosed = walls
+                    .as_ref()
+                    .is_some_and(|w| w.encloses(a, 30.0) && w.encloses(b, 30.0));
+                if !(wet || both_enclosed) {
+                    continue;
+                }
             }
             dbg.1 += 1;
             self.polys[i as usize].edges.push(NavEdge {

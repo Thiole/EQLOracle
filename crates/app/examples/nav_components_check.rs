@@ -134,20 +134,27 @@ fn main() {
                 }
                 hits.sort_by(|x, y| x.0.partial_cmp(&y.0).unwrap());
                 println!("LOS-clear pairs from island to other comps: {}", hits.len());
-                let mut per: std::collections::BTreeMap<u32, (usize, f32)> =
+                let mut per: std::collections::BTreeMap<u32, (usize, f32, usize, usize)> =
                     std::collections::BTreeMap::new();
-                for (d, _, j) in &hits {
-                    let e = per.entry(comp[*j]).or_insert((0, f32::MAX));
+                for (d, i, j) in &hits {
+                    let e = per.entry(comp[*j]).or_insert((0, f32::MAX, 0, 0));
                     e.0 += 1;
-                    e.1 = e.1.min(*d);
+                    if *d < e.1 {
+                        e.1 = *d;
+                        e.2 = *i;
+                        e.3 = *j;
+                    }
                 }
-                for (c, (cnt, mind)) in per {
+                for (c, (cnt, mind, i, j)) in per {
                     let size = sizes
                         .iter()
                         .find(|&&(id, _)| id == c)
                         .map(|&(_, s)| s)
                         .unwrap_or(0);
-                    println!("  -> comp {c} (size {size}): {cnt} clear pairs, nearest {mind:.0}");
+                    println!(
+                        "  -> comp {c} (size {size}): {cnt} clear pairs, nearest {mind:.0}: PAIR {:?} -> {:?}",
+                        nav.polys[i].center, nav.polys[j].center
+                    );
                 }
             }
         }
