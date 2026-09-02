@@ -159,6 +159,61 @@ pub fn list_map_packs(base_dir: &Path) -> Vec<String> {
     packs
 }
 
+/// why: a map pack's labeled point for a named mob is a real 3D spawn
+/// position -- the wiki's own spawn spots are XY only, and in a stacked
+/// swim zone a z-less target resolved to the wrong floor (Kedge: Phinigel
+/// guessed onto the -153 floor, Brewall labels him at -294; "the
+/// navigation just lingers in the entry chamber"). Every installed pack
+/// and layer is searched; a label matches when it folds to the NPC's
+/// name (underscores, backticks, a trailing "(Hunter,Roam)" note
+/// dropped). Nearest match within `max_dist` XY of the wiki spot wins,
+/// so a far-off roam marker can't relocate a mob. Map-file coords.
+pub fn labeled_point_for(
+    base_dir: &Path,
+    zone: &str,
+    name: &str,
+    near: [f32; 2],
+    max_dist: f32,
+) -> Option<[f32; 3]> {
+    let want = fold_label(name);
+    if want.is_empty() {
+        return None;
+    }
+    let mut packs: Vec<Option<String>> = vec![None];
+    packs.extend(list_map_packs(base_dir).into_iter().map(Some));
+    let mut best: Option<(f32, [f32; 3])> = None;
+    for pack in packs {
+        let Ok(map) = load_zone_map(base_dir, pack.as_deref(), zone) else {
+            continue;
+        };
+        for m in &map.markers {
+            if fold_label(&m.label) != want {
+                continue;
+            }
+            let d = ((m.pos.x - near[0]).powi(2) + (m.pos.y - near[1]).powi(2)).sqrt();
+            if d <= max_dist && best.is_none_or(|(bd, _)| d < bd) {
+                best = Some((d, [m.pos.x, m.pos.y, m.pos.z]));
+            }
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
+/// why: "Phinigel_Autropos_(Raid)" and "Phinigel Autropos" are one name
+fn fold_label(label: &str) -> String {
+    let base = label.split("_(").next().unwrap_or(label);
+    let base = base.split(" (").next().unwrap_or(base);
+    base.chars()
+        .map(|c| match c {
+            '_' => ' ',
+            '`' => '\'',
+            c => c.to_ascii_lowercase(),
+        })
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
 /// why: strips a numbered sibling suffix, e.g. "befallen_1" -> "befallen"
 fn zone_stem(file_stem: &str) -> &str {
     match file_stem.rsplit_once('_') {
@@ -353,6 +408,13 @@ L -115.0100, 493.1600, -87.4200, -123.6500, 482, -87.3500, 128, 128, 128
     #[test]
     fn zone_stem_strips_only_a_trailing_numeric_suffix() {
         assert_eq!(zone_stem("befallen_1"), "befallen");
+        assert_eq!(fold_label("Phinigel_Autropos_(Raid)"), "phinigel autropos");
+        assert_eq!(
+            fold_label("Estrella_of_Gloomwater"),
+            "estrella of gloomwater"
+        );
+        assert_eq!(fold_label("a_fierce_impaler_(Hunter)"), "a fierce impaler");
+        assert_eq!(fold_label("to_Dagnor`s_Cauldron"), "to dagnor's cauldron");
         assert_eq!(zone_stem("befallen"), "befallen");
         // why: a zone name ending in digits must not be mistaken for a numbered sibling
         assert_eq!(zone_stem("povalor"), "povalor");

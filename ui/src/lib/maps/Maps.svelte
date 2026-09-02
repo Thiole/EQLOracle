@@ -322,7 +322,7 @@
     if (!from) return;
     // Same `/loc`-space -> map-file transform every other position gets.
     api
-      .findWalkPath($selectedVersion, $selectedZone, from, [-poi.y, -poi.x, poi.z ?? 0], poi.z != null)
+      .findWalkPath($selectedVersion, $selectedZone, from, [-poi.y, -poi.x, poi.z ?? 0], poi.z != null, poi.name)
       .then((p) => (poiWalkPath = p))
       .catch((e) => (poiError = e instanceof Error ? e.message : String(e)));
   });

@@ -63,11 +63,25 @@ fn main() {
     let mut ok = 0;
     let mut fail = 0;
     let mut leaky = 0;
+    let mut labeled = 0;
     let markers = eqlp_app::npcdata::markers_for_zone(zone_name);
     for (name, x, y, z) in &markers {
         // /loc -> map-file, same transform the UI applies; unknown z is
         // resolved exactly as find_walk_path does
         let mut to = [-y, -x, z.unwrap_or(0.0)];
+        let mut z = *z;
+        if z.is_none() {
+            let base = std::path::Path::new(maps)
+                .parent()
+                .expect("maps dir has a parent");
+            if let Some(p) =
+                eqlp_app::mapsdata::labeled_point_for(base, zone, name, [to[0], to[1]], 120.0)
+            {
+                to = p;
+                z = Some(p[2]);
+                labeled += 1;
+            }
+        }
         if z.is_none() {
             if let Some(rz) =
                 emumaps::resolve_unknown_z(&geo, water.as_deref(), to[0], to[1], from[2])
@@ -115,7 +129,7 @@ fn main() {
         }
     }
     println!(
-        "== {} NPC spawn points: {ok} routed ({leaky} with outside waypoints), {fail} unreachable",
+        "== {} NPC spawn points: {ok} routed ({leaky} with outside waypoints), {fail} unreachable, {labeled} placed by a map-pack label",
         markers.len()
     );
 }

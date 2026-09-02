@@ -1532,9 +1532,14 @@ pub struct PathDto {
 
 /// why: missing route is a real retryable outcome, not folded into an empty result
 ///
+/// why: 120u -- Kedge's Shellara label sits 45u from the wiki spot,
+/// roam markers (Cauldronboil) sit hundreds away and must not win
+const LABEL_MATCH_DIST: f32 = 120.0;
+
 /// why: async -- first load of a swim zone bridges its mesh (line-of-
 /// sight work); a sync command would freeze the main thread meanwhile
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // why: IPC fields, one per UI input
 pub async fn find_walk_path(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1543,8 +1548,27 @@ pub async fn find_walk_path(
     from: [f32; 3],
     to: [f32; 3],
     to_z_known: Option<bool>,
+    to_name: Option<String>,
 ) -> Result<PathDto, String> {
     let mut to = to;
+    let mut to_z_known = to_z_known;
+    // why: a z-less wiki spawn spot -- a map pack labeling that mob nearby
+    // is a real 3D position, taken whole (see mapsdata::labeled_point_for)
+    if to_z_known == Some(false) {
+        if let Some(name) = to_name.as_deref() {
+            let base_dir = state
+                .config
+                .lock_recover()
+                .as_ref()
+                .map(|c| c.base_dir.clone());
+            if let Some(p) = base_dir.and_then(|b| {
+                mapsdata::labeled_point_for(&b, &zone, name, [to[0], to[1]], LABEL_MATCH_DIST)
+            }) {
+                to = p;
+                to_z_known = Some(true);
+            }
+        }
+    }
     // why: navmesh first -- the mesh knows floors/ramps/water the line
     // maps can't; disk-cache-only (ensure_emu_zone owns the download)
     if let Ok(app_data) = app.path().app_data_dir() {

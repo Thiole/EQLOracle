@@ -1638,8 +1638,8 @@ export const api = {
   listZoneVersions: (zone: string) => invoke<(string | null)[]>('list_zone_versions', { zone }),
   getMapFile: (pack: string | null, zone: string) => invoke<MapFileDto>('get_map_file', { pack, zone }),
   /** why: a real walking route within one zone's map -- rejects (not just empty-array) when no route exists, see PathDto's own doc */
-  findWalkPath: (pack: string | null, zone: string, from: [number, number, number], to: [number, number, number], toZKnown = true) =>
-    invoke<PathDto>('find_walk_path', { pack, zone, from, to, toZKnown }),
+  findWalkPath: (pack: string | null, zone: string, from: [number, number, number], to: [number, number, number], toZKnown = true, toName: string | null = null) =>
+    invoke<PathDto>('find_walk_path', { pack, zone, from, to, toZKnown, toName }),
   /** why: fetches a zone's EQEmu nav+collision files into the app-data
    * cache -- fire-and-forget on zone open; pathfinding upgrades itself
    * once cached. */

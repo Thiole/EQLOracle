@@ -179,7 +179,20 @@ pub fn parse_locations(location: &str) -> Vec<(f32, f32, Option<f32>)> {
         Regex::new(r"\(?(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)(?:,\s*(-?\d+(?:\.\d+)?))?\)?")
             .unwrap()
     });
-    re.captures_iter(location)
+    // why: the wiki's newer infobox shape, "X: -257 Y: -132 Z: -99"
+    // (labels, no commas) -- folded to the tuple shape the one regex reads
+    static XYZ: OnceLock<Regex> = OnceLock::new();
+    let xyz = XYZ.get_or_init(|| {
+        Regex::new(
+            r"(?i)X:\s*(-?\d+(?:\.\d+)?)\s*Y:\s*(-?\d+(?:\.\d+)?)(?:\s*Z:\s*(-?\d+(?:\.\d+)?))?",
+        )
+        .unwrap()
+    });
+    let folded = xyz.replace_all(location, |c: &regex::Captures| match c.get(3) {
+        Some(z) => format!("({}, {}, {})", &c[1], &c[2], z.as_str()),
+        None => format!("({}, {})", &c[1], &c[2]),
+    });
+    re.captures_iter(&folded)
         .filter_map(|c| {
             let x: f32 = c.get(1)?.as_str().parse().ok()?;
             let y: f32 = c.get(2)?.as_str().parse().ok()?;
@@ -288,6 +301,17 @@ mod location_tests {
     /// why: real npcs.json entries -- Eye of Veeshan has one exact 3D
     /// spawn point; Gorgalosk's location is prose ("3rd Island"), no
     /// coordinates, so it must contribute nothing rather than a junk point
+    /// why: the shape from a current wiki page, pasted by the player:
+    /// "Location: X: -257 Y: -132 Z: -99" -- labels, line breaks, no commas
+    #[test]
+    fn labeled_xyz_location_parses_with_its_z() {
+        assert_eq!(
+            parse_locations("X: -257\n\nY: -132 Z: -99"),
+            vec![(-257.0, -132.0, Some(-99.0))]
+        );
+        assert_eq!(parse_locations("X: 12 Y: 34"), vec![(12.0, 34.0, None)]);
+    }
+
     #[test]
     fn nav_points_come_from_real_coordinates_only() {
         let eye = nav_points_for("Eye of Veeshan");
