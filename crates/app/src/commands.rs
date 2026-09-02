@@ -545,7 +545,7 @@ pub fn get_live_meter(state: State<AppState>) -> Option<combat::LiveMeterDto> {
     // handed at the moment the player saw it read "ended".
     if let Ok(path) = std::env::var("EQLP_METER_TRACE") {
         use std::io::Write;
-        let wall = std::time::SystemTime::now()
+        let wall = std::time::SystemTime::now() // clock-exempt: the trace compares the log clock AGAINST real wall time
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as i64)
             .unwrap_or(0);
