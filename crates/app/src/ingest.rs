@@ -977,6 +977,13 @@ pub struct Ingest {
     /// why: lowercased mob name -> "which encounter am I currently
     /// looting"; see `recent_encounter_for` for how this + loot_claimed match kill order
     loot_cursor: HashMap<String, EncounterId>,
+    /// why: where each mob name most recently DIED (store encounter, at
+    /// ts) -- loot from "<mob>'s corpse" belongs to that fight. The
+    /// anchor/entity scan picked the OLDEST live-ish encounter holding
+    /// the name, so a second kill of a same-named mob sent its loot rows
+    /// to the first kill's fight and the meter followed them there for
+    /// a poll ("deaths are still closing it out, even if similar names")
+    death_enc: HashMap<String, (Millis, EncounterId)>,
     /// why: encounters already claimed by loot -- lets recent_encounter_for advance, not reuse
     loot_claimed: HashSet<EncounterId>,
     /// why: most recent not-yet-attributed Xp row -- Xp is emitted before
@@ -1214,6 +1221,7 @@ impl Default for Ingest {
             zone: Spans::default(),
             wiki_zone_cache: HashMap::new(),
             loot_cursor: HashMap::new(),
+            death_enc: HashMap::new(),
             loot_claimed: HashSet::new(),
             pending_xp: None,
             first_ts: None,
@@ -2533,6 +2541,9 @@ impl Ingest {
                 self.pending_xp = Some(p);
             }
         }
+        if let Some(id) = live_id.or_else(|| self.encounter_id_for_victim(victim)) {
+            self.death_enc.insert(victim.to_lowercase(), (ts, id));
+        }
         let sym = self.sym(victim);
         self.timeline.observed(ts, sym.0, State::Dead);
         self.clear_cc_on_death(ts, victim);
@@ -2864,23 +2875,40 @@ impl Ingest {
     /// once at ingest time, thousands of encounters is well under cost that mattered elsewhere.
     fn recent_encounter_for(&mut self, mob: &str, ts: Millis) -> Option<EncounterId> {
         let key = mob.to_ascii_lowercase();
+        // why: an OPEN fight holding this name wins outright -- the corpse
+        // is this fight's. Checked before the death memory: a same-named
+        // mob that died earlier WITH a death line, while this one died
+        // without, otherwise sent the loot twenty minutes back
+        let open_holder = self.store.encounters.iter().rev().find(|e| {
+            e.is_open()
+                && (self.store.name(e.target).eq_ignore_ascii_case(mob)
+                    || self
+                        .entities_by_enc
+                        .get(&e.id)
+                        .is_some_and(|v| v.iter().any(|n| n.eq_ignore_ascii_case(mob))))
+        });
+        if let Some(e) = open_holder {
+            let id = e.id;
+            self.loot_cursor.insert(key, id);
+            return Some(id);
+        }
+        // why: the fight this mob most recently died in -- see death_enc
+        if let Some(&(died, id)) = self.death_enc.get(&key) {
+            if ts >= died && ts - died <= crate::combat::LOOT_GRACE_MS {
+                self.loot_cursor.insert(key, id);
+                return Some(id);
+            }
+        }
+        // why: the cursor shortcut is honoured only while that fight is
+        // still OPEN -- a closed one within the loot grace kept catching
+        // the next same-named corpse's loot (the third flip the trace showed)
         if let Some(&id) = self.loot_cursor.get(&key) {
-            if let Some(e) = self.store.encounter(id) {
-                let last_activity = e.end_ms.unwrap_or_else(|| {
-                    self.store
-                        .ts
-                        .get(e.last as usize)
-                        .copied()
-                        .unwrap_or(e.start_ms)
-                });
-                if ts.saturating_sub(last_activity) <= crate::combat::LOOT_GRACE_MS {
-                    return Some(id);
-                }
+            if self.store.encounter(id).is_some_and(|e| e.is_open()) {
+                return Some(id);
             }
         }
         let id = {
             let store = &self.store;
-            let claimed = &self.loot_claimed;
             let ents = &self.entities_by_enc;
             // why: any entity of the fight, not just its anchor -- in a
             // whole-stretch encounter most mobs are not the anchor, and an
@@ -2888,22 +2916,29 @@ impl Ingest {
             store
                 .encounters
                 .iter()
+                // why: a fight already looted once is NOT excluded -- a
+                // whole-stretch encounter holds several kills of the same
+                // name, and excluding it pushed the second corpse's loot
+                // onto an older closed fight (the flip the player saw)
                 .filter(|e| {
-                    !claimed.contains(&e.id)
-                        && (store.name(e.target).eq_ignore_ascii_case(mob)
-                            || ents
-                                .get(&e.id)
-                                .is_some_and(|v| v.iter().any(|n| n.eq_ignore_ascii_case(mob))))
+                    store.name(e.target).eq_ignore_ascii_case(mob)
+                        || ents
+                            .get(&e.id)
+                            .is_some_and(|v| v.iter().any(|n| n.eq_ignore_ascii_case(mob)))
                 })
-                .filter(|e| {
+                .filter_map(|e| {
                     let last_activity = e.end_ms.unwrap_or_else(|| {
                         store.ts.get(e.last as usize).copied().unwrap_or(e.start_ms)
                     });
-                    e.start_ms <= ts
-                        && ts.saturating_sub(last_activity) <= crate::combat::LOOT_GRACE_MS
+                    (e.start_ms <= ts
+                        && ts.saturating_sub(last_activity) <= crate::combat::LOOT_GRACE_MS)
+                        .then_some((e.is_open(), last_activity, e.id))
                 })
-                .min_by_key(|e| e.start_ms)?
-                .id
+                // why: the OPEN fight holding this mob first, then the most
+                // recently active one -- the oldest-first pick sent a
+                // second same-named kill's loot to the first kill's fight
+                .max_by_key(|&(open, last, _)| (open, last))?
+                .2
         };
         self.loot_claimed.insert(id);
         self.loot_cursor.insert(key, id);

@@ -19,6 +19,7 @@ fn main() {
     let mut ing = Ingest::default();
     ing.mark_live();
     let mut wall: i64 = 0;
+    let mut last_id: Option<u32> = None;
     for line in &lines {
         let outcome = matcher.classify(line);
         ing.route(&engine, line, &outcome);
@@ -30,7 +31,14 @@ fn main() {
             continue;
         }
         let text = String::from_utf8_lossy(line);
-        if text.contains("slain") {
+        // why: every change of the meter's encounter, plus every death
+        let cur_id = combat::current_encounter(&ing).map(|e| e.id.0);
+        let changed = cur_id != last_id;
+        last_id = cur_id;
+        if text.contains("slain") || changed {
+            if changed {
+                print!("CHANGE ");
+            }
             let cur = combat::current_encounter(&ing).map(|e| (e.id.0, e.is_open()));
             let m = combat::live_meter(&ing);
             let you = m

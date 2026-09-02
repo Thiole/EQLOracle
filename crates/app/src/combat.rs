@@ -1212,7 +1212,13 @@ pub struct LiveMeterDto {
 /// someone else's fight nearby is parsed as an encounter in the backend
 /// but never becomes "the current encounter" the overlay shows.
 pub fn current_encounter(ing: &Ingest) -> Option<&Encounter> {
-    let latest_id = (0..ing.store.len())
+    // why: an OPEN fight you're in always wins -- a loot or XP row that
+    // lands on an already-closed fight (a corpse looted after its fight
+    // ended, a late kill credit) must not drag the meter back to that
+    // dead fight for a poll ("deaths are still closing it out ... the
+    // dps graph is resetting"; live_meter_trace). Only with nothing
+    // open does the newest row's fight give the after-fight summary.
+    let open_id = (0..ing.store.len())
         .rev()
         .map(|i| ing.store.enc[i])
         .find(|&e| {
@@ -1220,8 +1226,23 @@ pub fn current_encounter(ing: &Ingest) -> Option<&Encounter> {
                 && ing
                     .store
                     .encounter(EncounterId(e))
-                    .is_some_and(|enc| enc.involves_you)
-        })?;
+                    .is_some_and(|enc| enc.involves_you && enc.is_open())
+        });
+    // why: nothing open -- the fight that ENDED most recently, not the
+    // one that most recently got a row: a corpse looted late writes a
+    // row onto an old fight and would swap the after-fight summary
+    let latest_id = match open_id {
+        Some(id) => id,
+        None => {
+            ing.store
+                .encounters
+                .iter()
+                .filter(|e| e.involves_you && !e.absorbed)
+                .max_by_key(|e| (e.end_ms.unwrap_or(e.start_ms), e.id.0))?
+                .id
+                .0
+        }
+    };
     let enc = ing.store.encounter(EncounterId(latest_id))?;
     // why: a fight that ended at (or before) the last zone line was left
     // behind -- an evac cast to reset an encounter, a zone-out. Reported
