@@ -42,6 +42,11 @@ pub struct DropWatchRowDto {
     /// tracked -- same "give everything, frontend intersects" split
     /// `get_skill_status` already uses
     pub drops: Vec<String>,
+    /// why: the subset of `drops` that is ASSUMED -- attached by a zone
+    /// rule (the zone page's header table, or the five-trash-droppers
+    /// common pool), not by this mob's own page or your own loot line.
+    /// The widget shows those yellow, confirmed ones green.
+    pub assumed: Vec<String>,
 }
 
 /// why: player's own real ask -- once a tracked item is actually looted
@@ -217,11 +222,18 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         for d in observed
             .iter()
             .chain(crate::npcdata::known_loot_for(name).iter())
-            .chain(zone_items.iter())
-            .chain(npc_zone_items.iter())
         {
             if !drops.iter().any(|x| x.eq_ignore_ascii_case(d)) {
                 drops.push(d.clone());
+            }
+        }
+        // why: zone-rule sources after the mob's own, and remembered as
+        // assumed -- see DropWatchRowDto::assumed
+        let mut assumed: Vec<String> = Vec::new();
+        for d in zone_items.iter().chain(npc_zone_items.iter()) {
+            if !drops.iter().any(|x| x.eq_ignore_ascii_case(d)) {
+                drops.push(d.clone());
+                assumed.push(d.clone());
             }
         }
         if drops.is_empty() {
@@ -233,6 +245,7 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
             Some(DropWatchRowDto {
                 mob: name.to_string(),
                 drops,
+                assumed,
             })
         } else {
             None
@@ -487,6 +500,15 @@ mod tests {
             .find(|r| r.mob == "a froglok")
             .expect("frog row");
         assert!(!frog.drops.iter().any(|d| d == "Shining Metallic Robes"));
+        // why: "yellow if it's an assumed one, green if confirmed" -- the
+        // magus's robes come from your own loot line (confirmed); a
+        // header-table item on the frog is a zone assumption
+        assert!(!magus.assumed.iter().any(|d| d == "Shining Metallic Robes"));
+        assert!(
+            frog.assumed.iter().any(|d| d == "Mask of Deception"),
+            "a zone-header item on a trash mob is assumed, got {:?}",
+            frog.assumed
+        );
     }
 
     /// why: both halves of the zone-pool contract, player-corrected

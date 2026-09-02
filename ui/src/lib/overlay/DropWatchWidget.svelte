@@ -20,7 +20,7 @@
 
   const matches = $derived(
     rows
-      .map((r) => ({ mob: r.mob, drops: r.drops.filter((d) => trackedNames.includes(d)) }))
+      .map((r) => ({ mob: r.mob, drops: r.drops.filter((d) => trackedNames.includes(d)), assumed: r.assumed }))
       .filter((r) => r.drops.length > 0),
   );
 </script>
@@ -48,10 +48,13 @@
         <!-- why: wrap, don't truncate -- a long drop list was silently
              cutting off past the widget's right edge; each name stays
              whole on its line (only breaks BETWEEN drops) -->
-        <span class="flex flex-wrap gap-x-1 text-[11px] font-normal text-good">
-          <span>drops</span>
+        <!-- why: green = this mob's own page or your own loot line says
+             so; yellow = assumed from a zone rule (header table, common
+             pool) -- asked directly -->
+        <span class="flex flex-wrap gap-x-1 text-[11px] font-normal">
+          <span class="text-foreground/70">drops</span>
           {#each m.drops as d, i (d)}
-            <span class="whitespace-nowrap">{d}{i < m.drops.length - 1 ? ',' : ''}</span>
+            <span class="whitespace-nowrap {m.assumed.includes(d) ? 'text-caution' : 'text-good'}" title={m.assumed.includes(d) ? 'assumed from a zone rule' : 'confirmed for this mob'}>{d}{i < m.drops.length - 1 ? ',' : ''}</span>
           {/each}
         </span>
       </div>

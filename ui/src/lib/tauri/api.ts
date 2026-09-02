@@ -401,6 +401,8 @@ export interface DropWatchRowDto {
   /** why: this mob's full known drop list, unfiltered -- intersect with
    * tracked_drop_items client-side, same split get_skill_status uses */
   drops: string[];
+  /** why: the subset of drops attached by a zone rule, not this mob's own page or your loot -- shown yellow */
+  assumed: string[];
 }
 
 export interface TrackedLootDto {
