@@ -2037,6 +2037,14 @@ impl ZoneNav {
         /// why: not literally 0.0 -- a tiny positive cost keeps A*
         /// admissible-ish and route lengths finite under link cycles
         const LINK_COST: f32 = 1.0;
+        /// why: the navmesh is the truth, swim nodes only bridge it --
+        /// at equal cost the 24u swim lattice out-ran the mesh's
+        /// zigzag centers even along corridors the mesh floors, so a
+        /// whole route rode the lattice ("USE THE NAVMESH. the map
+        /// should just be an overlay over the invisible navmesh").
+        /// A hop touching a swim node costs 3x its length.
+        const SWIM_STEP_COST: f32 = 3.0;
+        let is_swim_node = |i: u32| self.swim && self.polys[i as usize].verts.len() < 2;
         // why: swim zones bind each endpoint to the nearest poly/node it
         // can actually see -- the plain nearest may sit behind a wall,
         // and that first/last leg is never otherwise checked
@@ -2082,11 +2090,16 @@ impl ZoneNav {
                 let step = if e.link.is_some() {
                     LINK_COST
                 } else {
-                    dist2(
+                    let d = dist2(
                         self.polys[cur as usize].center,
                         self.polys[e.to as usize].center,
                     )
-                    .sqrt()
+                    .sqrt();
+                    if is_swim_node(cur) || is_swim_node(e.to) {
+                        d * SWIM_STEP_COST
+                    } else {
+                        d
+                    }
                 };
                 let ng = gc + step;
                 if g.get(&e.to).is_none_or(|&old| ng < old) {

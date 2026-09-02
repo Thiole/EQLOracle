@@ -1,10 +1,13 @@
 //! why: how a z-less wiki spawn point resolves in a stacked swim zone --
 //!      every floor surface under its XY, which is wet, which was picked
-//! input: <emu_maps dir> <zone> <zone name>
+//! input: <emu_maps dir> <zone> <zone name> <game maps dir>
 use eqlp_app::emumaps;
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
-    let (cache, zone, zone_name) = (&a[0], &a[1], &a[2]);
+    let (cache, zone, zone_name, maps) = (&a[0], &a[1], &a[2], &a[3]);
+    let base = std::path::Path::new(maps)
+        .parent()
+        .expect("maps dir has a parent");
     let geo = emumaps::parse_map(&std::fs::read(format!("{cache}/{zone}.map")).unwrap()).unwrap();
     let water =
         emumaps::parse_water(&std::fs::read(format!("{cache}/{zone}.wtr")).unwrap()).unwrap();
@@ -15,6 +18,8 @@ fn main() {
         if z.is_some() {
             with_z += 1;
         }
+        let labeled = z.is_none()
+            && eqlp_app::mapsdata::labeled_point_for(base, zone, name, [mx, my], 120.0).is_some();
         let mut surfaces: Vec<(f32, bool)> = Vec::new();
         let mut h = 400.0f32;
         while h > -400.0 {
@@ -26,17 +31,19 @@ fn main() {
             h -= 10.0;
         }
         let wet: Vec<f32> = surfaces.iter().filter(|s| s.1).map(|s| s.0).collect();
-        if wet.len() > 1 {
-            multi += 1;
+        if z.is_some() || labeled || wet.len() < 2 {
+            continue;
         }
-        let picked = emumaps::resolve_unknown_z(&geo, Some(&water), mx, my, 299.0);
-        println!(
-            "{name:<28} z={:?} picked={:?} wet_floors={:?} all={:?}",
-            z,
-            picked,
-            wet,
-            surfaces.iter().map(|s| s.0 as i32).collect::<Vec<_>>()
-        );
+        multi += 1;
+        let rooms: Vec<String> = wet
+            .iter()
+            .map(|&fz| {
+                let l = eqlp_app::mapsdata::label_near(base, zone, [mx, my, fz], 220.0, 50.0)
+                    .unwrap_or_default();
+                format!("z {fz:.0} {l}")
+            })
+            .collect();
+        println!("{name:<28} loc ({x:.0}, {y:.0})  {}", rooms.join(" | "));
     }
     println!(
         "{} markers, {with_z} with z, {multi} with >1 wet floor",

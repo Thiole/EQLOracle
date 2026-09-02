@@ -46,7 +46,7 @@ use crate::windowcap::{self, WindowCapability, WindowCapabilityDto};
 use crate::zonedata;
 use serde::Serialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 #[derive(Debug, Clone, Serialize)]
@@ -1547,6 +1547,28 @@ pub struct TargetFloorDto {
 /// roam markers (Cauldronboil) sit hundreds away and must not win
 const LABEL_MATCH_DIST: f32 = 120.0;
 
+/// why: the last route the viewer asked for, in the probes' own
+/// waypoint shape -- "the pathfinding through the keep is fucked" needs
+/// the exact request the app served, not a probe's reconstruction of it
+fn dump_walk_path(
+    app_data: &Path,
+    zone: &str,
+    name: Option<&str>,
+    from: [f32; 3],
+    to: [f32; 3],
+    source: &str,
+    waypoints: &[[f32; 3]],
+) {
+    let mut out = format!(
+        "zone {zone} name {} from {from:?} to {to:?} source {source}\n",
+        name.unwrap_or("-")
+    );
+    for w in waypoints {
+        out.push_str(&format!("    wp {w:?}\n"));
+    }
+    let _ = std::fs::write(app_data.join("last_walk_path.txt"), out);
+}
+
 /// why: async -- first load of a swim zone bridges its mesh (line-of-
 /// sight work); a sync command would freeze the main thread meanwhile
 #[tauri::command]
@@ -1650,6 +1672,15 @@ pub async fn find_walk_path(
                         }
                     })
                     .collect();
+                dump_walk_path(
+                    &app_data,
+                    &zone,
+                    to_name.as_deref(),
+                    from,
+                    to,
+                    "navmesh",
+                    &waypoints,
+                );
                 return Ok(PathDto {
                     waypoints,
                     source: "navmesh",
@@ -1673,6 +1704,17 @@ pub async fn find_walk_path(
     let path = pathfind::find_path(&parsed, (from[0], from[1], from[2]), (to[0], to[1], to[2]))
         .ok_or("no walkable route found between those points")?;
     let waypoints: Vec<[f32; 3]> = path.into_iter().map(|(x, y, z)| [x, y, z]).collect();
+    if let Ok(app_data) = app.path().app_data_dir() {
+        dump_walk_path(
+            &app_data,
+            &zone,
+            to_name.as_deref(),
+            from,
+            to,
+            "lines",
+            &waypoints,
+        );
+    }
     Ok(PathDto {
         legs: vec![PathLegDto {
             kind: "walk",
