@@ -1546,7 +1546,8 @@ pub async fn find_walk_path(
     // why: navmesh first -- the mesh knows floors/ramps/water the line
     // maps can't; disk-cache-only (ensure_emu_zone owns the download)
     if let Ok(app_data) = app.path().app_data_dir() {
-        if let Some(nav) = emumaps::load_nav(&app_data, &zone) {
+        let walls = swim_walls(&state, pack.as_deref(), &zone);
+        if let Some(nav) = emumaps::load_nav(&app_data, &zone, walls) {
             // why: geo (collision mesh) hugs walk legs to the ground --
             // see emumaps::ground_hug; a swim zone uses it for line-of-
             // sight endpoint binding instead (find_route decides)
@@ -1625,6 +1626,18 @@ pub struct EmuZoneStatusDto {
     pub geo: bool,
 }
 
+/// why: the drawn map's wall lines for a swim zone -- see
+/// emumaps::WallSet; None for land zones or before an install folder exists
+fn swim_walls(state: &AppState, pack: Option<&str>, zone: &str) -> Option<emumaps::WallSet> {
+    if !emumaps::is_underwater(zone) {
+        return None;
+    }
+    let base_dir = state.config.lock_recover().as_ref()?.base_dir.clone();
+    mapsdata::load_zone_map(&base_dir, pack, zone)
+        .ok()
+        .map(|m| emumaps::WallSet::from_lines(&m.lines))
+}
+
 #[tauri::command]
 pub async fn ensure_emu_zone(app: AppHandle, zone: String) -> EmuZoneStatusDto {
     let Ok(app_data) = app.path().app_data_dir() else {
@@ -1637,9 +1650,10 @@ pub async fn ensure_emu_zone(app: AppHandle, zone: String) -> EmuZoneStatusDto {
     // why: warm the parsed (and, underwater, bridged) mesh off-thread
     // now, so the first route click doesn't pay that cost
     if nav {
+        let walls = swim_walls(&app.state::<AppState>(), None, &zone);
         let (app_data, zone) = (app_data.clone(), zone.clone());
         std::thread::spawn(move || {
-            let _ = emumaps::load_nav(&app_data, &zone);
+            let _ = emumaps::load_nav(&app_data, &zone, walls);
         });
     }
     EmuZoneStatusDto { nav, geo }

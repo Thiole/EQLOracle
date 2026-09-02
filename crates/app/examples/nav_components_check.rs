@@ -14,6 +14,16 @@ fn main() {
     if eqlp_app::emumaps::is_underwater(zone) {
         if let Ok(geo_bytes) = std::fs::read(format!("{cache}/{zone}.map")) {
             let geo = eqlp_app::emumaps::parse_map(&geo_bytes).expect("geo parses");
+            nav.swim = true;
+            // EQLP_MAPS_DIR=<install>/maps enables the drawn-wall barrier
+            if let Ok(maps) = std::env::var("EQLP_MAPS_DIR") {
+                let base = std::path::Path::new(&maps)
+                    .parent()
+                    .expect("maps dir has a parent");
+                nav.walls = eqlp_app::mapsdata::load_zone_map(base, None, zone)
+                    .ok()
+                    .map(|m| eqlp_app::emumaps::WallSet::from_lines(&m.lines));
+            }
             nav.bridge_gaps(&geo);
         }
     }

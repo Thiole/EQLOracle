@@ -69,6 +69,8 @@ pub struct ZoneNav {
     /// why: swim zone -- routes chain verified centers, never funnel-
     /// smoothed (a smoothed corner is a line nobody line-of-sight checked)
     pub swim: bool,
+    /// why: drawn-map walls, swim zones only -- see WallSet
+    pub walls: Option<WallSet>,
 }
 
 /// why: what a route is made of -- walk legs on the mesh, hop legs
@@ -102,6 +104,204 @@ const UNDERWATER_ZONES: &[&str] = &["kedge"];
 
 pub fn is_underwater(zone: &str) -> bool {
     UNDERWATER_ZONES.contains(&zone)
+}
+
+/// why: the game map's own wall lines as a hard barrier. Kedge's
+/// collision mesh is incomplete (15% of its navmesh polys have no
+/// geometry under them at all, the entrance tunnel included), so a
+/// line-of-sight test alone reads "clear" through walls that plainly
+/// exist on the drawn map -- the map the player is looking at. A swim
+/// segment may never cross a wall line in XY within that wall's z range.
+#[derive(Debug)]
+pub struct WallSet {
+    walls: Vec<([f32; 3], [f32; 3])>,
+    grid: HashMap<(i32, i32), Vec<u32>>,
+}
+
+impl WallSet {
+    /// why: grayscale lines only -- same rule pathfind.rs applies (brown
+    /// is terrain art, blue is water, magenta is the zone-line marker)
+    pub fn from_lines(lines: &[crate::mapsdata::MapLine]) -> Self {
+        let mut walls = Vec::new();
+        let mut grid: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+        for l in lines {
+            if !(l.r == l.g && l.g == l.b_) {
+                continue;
+            }
+            let a = [l.a.x, l.a.y, l.a.z];
+            let b = [l.b.x, l.b.y, l.b.z];
+            let i = walls.len() as u32;
+            walls.push((a, b));
+            let (x0, x1) = (
+                (a[0].min(b[0]) / CELL).floor() as i32,
+                (a[0].max(b[0]) / CELL).floor() as i32,
+            );
+            let (y0, y1) = (
+                (a[1].min(b[1]) / CELL).floor() as i32,
+                (a[1].max(b[1]) / CELL).floor() as i32,
+            );
+            for cx in x0..=x1 {
+                for cy in y0..=y1 {
+                    grid.entry((cx, cy)).or_default().push(i);
+                }
+            }
+        }
+        WallSet { walls, grid }
+    }
+
+    /// why: "is there a wall drawn around this point at this height" --
+    /// the inside test for a swim node. Void between floors (where
+    /// kedge's collision mesh is blind) has no lines at its height; a
+    /// corridor does. Segment distance in XY, height against the line's z.
+    pub fn nearby(&self, p: [f32; 3], r_xy: f32, dz: f32) -> bool {
+        let (x0, x1) = (
+            ((p[0] - r_xy) / CELL).floor() as i32,
+            ((p[0] + r_xy) / CELL).floor() as i32,
+        );
+        let (y0, y1) = (
+            ((p[1] - r_xy) / CELL).floor() as i32,
+            ((p[1] + r_xy) / CELL).floor() as i32,
+        );
+        let r2 = r_xy * r_xy;
+        for cx in x0..=x1 {
+            for cy in y0..=y1 {
+                let Some(ids) = self.grid.get(&(cx, cy)) else {
+                    continue;
+                };
+                for &wi in ids {
+                    let (a, b) = self.walls[wi as usize];
+                    let zc = (a[2] + b[2]) * 0.5;
+                    if (p[2] - zc).abs() > dz {
+                        continue;
+                    }
+                    let (ex, ey) = (b[0] - a[0], b[1] - a[1]);
+                    let len2 = ex * ex + ey * ey;
+                    let t = if len2 < 1e-9 {
+                        0.0
+                    } else {
+                        (((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / len2).clamp(0.0, 1.0)
+                    };
+                    let (qx, qy) = (a[0] + ex * t, a[1] + ey * t);
+                    if (p[0] - qx).powi(2) + (p[1] - qy).powi(2) <= r2 {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// why: "does this level's drawn outline ENCLOSE the point" -- ray
+    /// parity against the wall lines at that height, along +x and +y
+    /// (both must agree; guards against an outline left open on one
+    /// side). Proximity to a wall wasn't enough: the void beside a
+    /// narrow tunnel is within 40u of its walls yet outside it.
+    pub fn encloses(&self, p: [f32; 3], dz: f32) -> bool {
+        let mut cx = 0u32;
+        let mut cy = 0u32;
+        for &(a, b) in &self.walls {
+            if ((a[2] + b[2]) * 0.5 - p[2]).abs() > dz {
+                continue;
+            }
+            // +x ray: crosses if the segment straddles p.y and the hit is right of p
+            if (a[1] > p[1]) != (b[1] > p[1]) {
+                let t = (p[1] - a[1]) / (b[1] - a[1]);
+                if a[0] + t * (b[0] - a[0]) > p[0] {
+                    cx += 1;
+                }
+            }
+            // +y ray
+            if (a[0] > p[0]) != (b[0] > p[0]) {
+                let t = (p[0] - a[0]) / (b[0] - a[0]);
+                if a[1] + t * (b[1] - a[1]) > p[1] {
+                    cy += 1;
+                }
+            }
+        }
+        cx % 2 == 1 && cy % 2 == 1
+    }
+
+    /// why: 2D crossing with the wall, then the segment's z at that point
+    /// against the wall's own z span (+-10: a wall line is drawn at one
+    /// height per end, the real wall stands taller)
+    pub fn crosses(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        const Z_PAD: f32 = 10.0;
+        let (x0, x1) = (
+            (a[0].min(b[0]) / CELL).floor() as i32,
+            (a[0].max(b[0]) / CELL).floor() as i32,
+        );
+        let (y0, y1) = (
+            (a[1].min(b[1]) / CELL).floor() as i32,
+            (a[1].max(b[1]) / CELL).floor() as i32,
+        );
+        let d = [b[0] - a[0], b[1] - a[1]];
+        let mut seen: Vec<u32> = Vec::new();
+        for cx in x0..=x1 {
+            for cy in y0..=y1 {
+                let Some(ids) = self.grid.get(&(cx, cy)) else {
+                    continue;
+                };
+                for &wi in ids {
+                    if seen.contains(&wi) {
+                        continue;
+                    }
+                    seen.push(wi);
+                    let (wa, wb) = self.walls[wi as usize];
+                    let e = [wb[0] - wa[0], wb[1] - wa[1]];
+                    let denom = d[0] * e[1] - d[1] * e[0];
+                    if denom.abs() < 1e-9 {
+                        continue;
+                    }
+                    let f = [wa[0] - a[0], wa[1] - a[1]];
+                    let t = (f[0] * e[1] - f[1] * e[0]) / denom;
+                    let u = (f[0] * d[1] - f[1] * d[0]) / denom;
+                    if !(0.0..=1.0).contains(&t) || !(0.0..=1.0).contains(&u) {
+                        continue;
+                    }
+                    let seg_z = a[2] + (b[2] - a[2]) * t;
+                    let (lo, hi) = (wa[2].min(wb[2]) - Z_PAD, wa[2].max(wb[2]) + Z_PAD);
+                    if (lo..=hi).contains(&seg_z) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
+/// why: how far above a floor poly a swim route floats. Tunable by env
+/// for probes (EQLP_SWIM_LIFT); the default is the audited value.
+fn swim_lift() -> f32 {
+    std::env::var("EQLP_SWIM_LIFT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2.5)
+}
+
+/// why: the one traversability test for a swim segment -- collision
+/// mesh line of sight AND no drawn wall crossed
+fn passable(geo: &ZoneGeo, walls: Option<&WallSet>, a: [f32; 3], b: [f32; 3]) -> bool {
+    thread_local! {
+        static REJ: std::cell::Cell<(u32, u32, u32)> = const { std::cell::Cell::new((0, 0, 0)) };
+    }
+    let los = geo.los_clear(a, b);
+    let wall = walls.is_some_and(|w| w.crosses(a, b));
+    if std::env::var("EQLP_NAV_DEBUG").is_ok() {
+        REJ.with(|r| {
+            let (t, l, w) = r.get();
+            r.set((t + 1, l + (!los) as u32, w + (los && wall) as u32));
+            if (t + 1) % 100_000 == 0 {
+                eprintln!(
+                    "passable: {} tests, {} LOS-blocked, {} wall-blocked-only",
+                    t + 1,
+                    l + (!los) as u32,
+                    w + (los && wall) as u32
+                );
+            }
+        });
+    }
+    los && !wall
 }
 
 // ------------------------------------------------------------ zone links
@@ -484,6 +684,7 @@ pub fn parse_nav(data: &[u8]) -> Option<ZoneNav> {
         polys,
         links: Vec::new(),
         swim: false,
+        walls: None,
     })
 }
 
@@ -709,6 +910,21 @@ impl ZoneNav {
         }
     }
 
+    /// why: the exact point a swim route draws for poly i -- a mesh
+    /// poly floats 2u above its center, a water node is its own point.
+    /// Every line-of-sight test uses THIS, so what's verified is what's drawn.
+    fn route_point(&self, i: u32) -> [f32; 3] {
+        // why: 2.5u -- clears the floor bump between two adjacent polys
+        // of different slope (2u still clipped in the strict audit) while
+        // keeping the most connectivity of the values swept (2.5..5)
+        let poly = &self.polys[i as usize];
+        let mut c = poly.center;
+        if poly.verts.len() > 1 {
+            c[2] += swim_lift();
+        }
+        c
+    }
+
     /// why: pub wrapper for probes only -- see nav_components_check
     pub fn nearest_poly_pub(&self, p: [f32; 3]) -> Option<u32> {
         self.nearest_poly(p)
@@ -722,15 +938,12 @@ impl ZoneNav {
     /// Nodes become single-vertex polys, so routing/funnel/endpoint
     /// binding need no special case; a void cluster outside the zone
     /// only ever sees itself and stays unreachable.
-    fn add_water_nodes(&mut self, geo: &ZoneGeo, z_lift: f32) {
+    fn add_water_nodes(&mut self, geo: &ZoneGeo, walls: Option<&WallSet>, z_lift: f32) {
         const STEP: f32 = 24.0;
         // why: > STEP*sqrt(3) so diagonal grid neighbors can link;
         // corridor-scale so a hop never crosses a room
         const REACH: f32 = 42.0;
-        // why: a node that sees no poly itself may still sit in a shaft
-        // between two that do -- allowed a few hops from one, bounded so
-        // outside-the-wall points at an opening can't grow a highway
-        const MAX_HOPS_FROM_MESH: u8 = 3;
+
         let n = self.polys.len();
         if n == 0 {
             return;
@@ -792,7 +1005,7 @@ impl ZoneNav {
                                 let mut lc = c;
                                 lc[2] += z_lift;
                                 tests += 1;
-                                if geo.los_clear(*p, lc) {
+                                if passable(geo, walls, *p, lc) {
                                     node_polys[ni].push(pi);
                                 }
                             }
@@ -803,7 +1016,7 @@ impl ZoneNav {
                                     continue;
                                 }
                                 tests += 1;
-                                if geo.los_clear(*p, nodes[nj as usize]) {
+                                if passable(geo, walls, *p, nodes[nj as usize]) {
                                     node_nodes[ni].push(nj);
                                 }
                             }
@@ -817,37 +1030,109 @@ impl ZoneNav {
         // them) and formed a highway around the keep that the zone-line
         // opening let routes escape into ("swimming straight down outside
         // the map"). Node-node links then only ever join inside points.
-        // hop distance from any poly-seeing node, BFS over node links
-        let mut hops: Vec<u8> = vec![u8::MAX; nodes.len()];
-        let mut q = std::collections::VecDeque::new();
-        for ni in 0..nodes.len() {
-            if !node_polys[ni].is_empty() {
-                hops[ni] = 0;
-                q.push_back(ni);
-            }
-        }
-        let mut adj: Vec<Vec<u32>> = vec![Vec::new(); nodes.len()];
-        for ni in 0..nodes.len() {
-            for &nj in &node_nodes[ni] {
-                adj[ni].push(nj);
-                adj[nj as usize].push(ni as u32);
-            }
-        }
-        while let Some(i) = q.pop_front() {
-            let h = hops[i];
-            if h >= MAX_HOPS_FROM_MESH {
-                continue;
-            }
-            for &j in &adj[i] {
-                if hops[j as usize] == u8::MAX {
-                    hops[j as usize] = h + 1;
-                    q.push_back(j as usize);
+        // why: INSIDE test -- a node lives only with navmesh directly
+        // below it in XY and a clear vertical line down to it. In a
+        // building that's every point of every room and shaft; outside
+        // the walls, beyond the tunnel mouth (a zone-line opening with
+        // no collision wall -- LOS through it reads "clear"), or above
+        // the roof it never holds. Sealed by construction, no hop budget.
+        let xy_cell = |x: f32, y: f32| ((x / REACH).floor() as i32, (y / REACH).floor() as i32);
+        let mut poly_xy: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+        for i in 0..n {
+            let mut seen: Vec<(i32, i32)> = Vec::new();
+            for v in &self.polys[i].verts {
+                let c = xy_cell(v[0], v[1]);
+                if !seen.contains(&c) {
+                    seen.push(c);
+                    poly_xy.entry(c).or_default().push(i as u32);
                 }
             }
         }
+        let inside_xy = |poly: &NavPoly, x: f32, y: f32| -> bool {
+            // convex fan, either winding: every edge cross product same sign
+            let vs = &poly.verts;
+            if vs.len() < 3 {
+                return false;
+            }
+            let mut pos = false;
+            let mut neg = false;
+            for k in 0..vs.len() {
+                let (a, b) = (vs[k], vs[(k + 1) % vs.len()]);
+                let cr = (b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0]);
+                if cr > 1e-3 {
+                    pos = true;
+                } else if cr < -1e-3 {
+                    neg = true;
+                }
+            }
+            !(pos && neg)
+        };
+        let mut column_poly: Vec<Option<u32>> = vec![None; nodes.len()];
+        for (ni, p) in nodes.iter().enumerate() {
+            let (cx, cy) = xy_cell(p[0], p[1]);
+            let mut best: Option<(f32, u32)> = None;
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    let Some(ps) = poly_xy.get(&(cx + dx, cy + dy)) else {
+                        continue;
+                    };
+                    for &pi in ps {
+                        let poly = &self.polys[pi as usize];
+                        // why: bounded -- a node lives within one corridor
+                        // height of its floor; open water hundreds of units
+                        // above a floor is a shaft the mesh doesn't describe
+                        // (kedge's collision file is blind there)
+                        const MAX_ABOVE_FLOOR: f32 = 48.0;
+                        let floor_z = poly.center[2];
+                        if floor_z > p[2] + 4.0 || p[2] - floor_z > MAX_ABOVE_FLOOR {
+                            continue;
+                        }
+                        // why: over the footprint, or within half a grid
+                        // step of it in XY -- a corridor's mesh is narrower
+                        // than the corridor (stairs, wall feet), and the
+                        // grid rarely lands exactly inside a small poly
+                        let near = inside_xy(poly, p[0], p[1])
+                            || poly.verts.iter().any(|v| {
+                                (v[0] - p[0]).powi(2) + (v[1] - p[1]).powi(2) <= 14.0 * 14.0
+                            });
+                        if !near {
+                            continue;
+                        }
+                        // nearest floor below wins (a mezzanine over a hall)
+                        if best.is_none_or(|(bz, _)| floor_z > bz) {
+                            best = Some((floor_z, pi));
+                        }
+                    }
+                }
+            }
+            if let Some((_, pi)) = best {
+                tests += 1;
+                let mut c = self.polys[pi as usize].center;
+                c[2] += z_lift;
+                if passable(geo, walls, *p, c) {
+                    column_poly[ni] = Some(pi);
+                }
+            }
+        }
+        // why: inside = drawn walls around the point at its height when the
+        // map is known (kedge's collision mesh is blind between floors);
+        // the column test is the fallback without a map
+        let inside = |ni: usize, p: &[f32; 3]| -> bool {
+            match walls {
+                // why: enclosed by the drawn outline at its height, or --
+                // outlines aren't always closed -- near a wall AND directly
+                // seeing a floor poly (void chains have no floor in reach)
+                Some(w) => {
+                    (w.encloses(*p, 30.0)
+                        && (!node_polys[ni].is_empty() || !node_nodes[ni].is_empty()))
+                        || (w.nearby(*p, 40.0, 30.0) && !node_polys[ni].is_empty())
+                }
+                None => column_poly[ni].is_some(),
+            }
+        };
         let mut keep: Vec<Option<u32>> = vec![None; nodes.len()];
         for (ni, p) in nodes.iter().enumerate() {
-            if hops[ni] <= MAX_HOPS_FROM_MESH {
+            if inside(ni, p) {
                 keep[ni] = Some(self.polys.len() as u32);
                 self.polys.push(NavPoly {
                     verts: vec![*p],
@@ -860,6 +1145,13 @@ impl ZoneNav {
         for ni in 0..nodes.len() {
             let Some(gi) = keep[ni] else { continue };
             let np = nodes[ni];
+            // why: the floor under a node is always a verified vertical
+            // swim, even when it's far below (a shaft, a tall hall)
+            if let Some(pi) = column_poly[ni] {
+                if !node_polys[ni].contains(&pi) {
+                    node_polys[ni].push(pi);
+                }
+            }
             for &pi in &node_polys[ni] {
                 let c = self.polys[pi as usize].center;
                 self.polys[gi as usize].edges.push(NavEdge {
@@ -919,8 +1211,11 @@ impl ZoneNav {
         // corridors; the mesh is the truth and a bridge is a patch for a
         // real gap, never a room-to-room shortcut (nodes handle shafts)
         const MAX_DIST: f32 = 80.0;
-        const Z_LIFT: f32 = 2.0;
-        self.add_water_nodes(geo, Z_LIFT);
+        let z_lift: f32 = swim_lift();
+        // why: taken out for the duration -- polys are mutated below while
+        // walls are read; restored at the end
+        let walls = self.walls.take();
+        self.add_water_nodes(geo, walls.as_ref(), z_lift);
 
         // components over current adjacency
         let n = self.polys.len();
@@ -945,6 +1240,97 @@ impl ZoneNav {
         }
         if c <= 1 {
             return;
+        }
+
+        // why: DROPS -- levels connect through holes in a floor (kedge's
+        // top chamber to the level below: ~120u straight down, past the
+        // doorway-scale cap). A drop from upper poly A to lower poly B is
+        // real only when B's XY is a HOLE in A's level (no poly near A's
+        // height above B) -- the tunnel "dive" went through the tunnel's
+        // own floor, and that floor's polys forbid it here.
+        const DROP_XY: f32 = 30.0;
+        const DROP_MAX: f32 = 400.0;
+        let xy_cell = |x: f32, y: f32| ((x / DROP_XY).floor() as i32, (y / DROP_XY).floor() as i32);
+        let mut by_xy: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
+        for i in 0..n {
+            let c = self.polys[i].center;
+            by_xy.entry(xy_cell(c[0], c[1])).or_default().push(i as u32);
+        }
+        let mut drops: Vec<(f32, u32, u32)> = Vec::new();
+        for a in 0..n {
+            let ca = self.polys[a].center;
+            let (cx, cy) = xy_cell(ca[0], ca[1]);
+            for dx in -1..=1 {
+                for dy in -1..=1 {
+                    let Some(ids) = by_xy.get(&(cx + dx, cy + dy)) else {
+                        continue;
+                    };
+                    for &b in ids {
+                        let cb = self.polys[b as usize].center;
+                        let dz = ca[2] - cb[2];
+                        if !(20.0..=DROP_MAX).contains(&dz) || comp[a] == comp[b as usize] {
+                            continue;
+                        }
+                        let dxy = ((ca[0] - cb[0]).powi(2) + (ca[1] - cb[1]).powi(2)).sqrt();
+                        if !(5.0..=DROP_XY).contains(&dxy) {
+                            continue;
+                        }
+                        // hole test: nothing at A's height above B
+                        let (bx, by) = xy_cell(cb[0], cb[1]);
+                        let mut covered = false;
+                        'outer: for ex in -1..=1 {
+                            for ey in -1..=1 {
+                                let Some(up) = by_xy.get(&(bx + ex, by + ey)) else {
+                                    continue;
+                                };
+                                for &u in up {
+                                    let cu = self.polys[u as usize].center;
+                                    if (cu[2] - ca[2]).abs() <= 15.0
+                                        && (cu[0] - cb[0]).powi(2) + (cu[1] - cb[1]).powi(2)
+                                            <= 6.0 * 6.0
+                                    {
+                                        covered = true;
+                                        break 'outer;
+                                    }
+                                }
+                            }
+                        }
+                        // why: a real pit is INSIDE the upper level's drawn
+                        // outline; the void beside a tunnel is not
+                        let in_upper = walls
+                            .as_ref()
+                            .is_none_or(|w| w.encloses([cb[0], cb[1], ca[2]], 25.0));
+                        if !covered && in_upper {
+                            drops.push((dz, a as u32, b));
+                        }
+                    }
+                }
+            }
+        }
+        drops.sort_by(|p, q| p.0.partial_cmp(&q.0).unwrap_or(Ordering::Equal));
+        let mut drop_edges = 0usize;
+        for (_, a, b) in drops {
+            let pa = self.route_point(a);
+            let pb = self.route_point(b);
+            if !passable(geo, walls.as_ref(), pa, pb) {
+                continue;
+            }
+            self.polys[a as usize].edges.push(NavEdge {
+                to: b,
+                a: pb,
+                b: pb,
+                link: None,
+            });
+            self.polys[b as usize].edges.push(NavEdge {
+                to: a,
+                a: pa,
+                b: pa,
+                link: None,
+            });
+            drop_edges += 1;
+        }
+        if std::env::var("EQLP_NAV_DEBUG").is_ok() {
+            eprintln!("drops: {drop_edges} vertical drop bridges");
         }
 
         // why: greedy union-find over ALL candidate pairs sorted by
@@ -983,10 +1369,6 @@ impl ZoneNav {
             }
             r
         }
-        let lift = |mut p: [f32; 3]| {
-            p[2] += Z_LIFT;
-            p
-        };
         let mut tries: HashMap<(u32, u32), usize> = HashMap::new();
         let mut sets_left = c;
         let mut dbg = (0usize, 0usize); // LOS tests, connected
@@ -1008,9 +1390,9 @@ impl ZoneNav {
             }
             *t += 1;
             dbg.0 += 1;
-            let a = self.polys[i as usize].center;
-            let b = self.polys[j as usize].center;
-            if !geo.los_clear(lift(a), lift(b)) {
+            let a = self.route_point(i);
+            let b = self.route_point(j);
+            if !passable(geo, walls.as_ref(), a, b) {
                 continue;
             }
             dbg.1 += 1;
@@ -1035,6 +1417,7 @@ impl ZoneNav {
                 dbg.0, dbg.1
             );
         }
+        self.walls = walls;
     }
 
     /// why: nearest by the same weighting, but the first one with a
@@ -1052,11 +1435,7 @@ impl ZoneNav {
             .iter()
             .take(TRIES)
             .map(|&(_, i)| i)
-            .find(|&i| {
-                let mut c = self.polys[i as usize].center;
-                c[2] += 2.0;
-                geo.los_clear(p, c)
-            })
+            .find(|&i| passable(geo, self.walls.as_ref(), p, self.route_point(i)))
             .or_else(|| order.first().map(|&(_, i)| i))
     }
 
@@ -1173,30 +1552,28 @@ impl ZoneNav {
         // line from it "comes in from outside"); a mesh-poly waypoint
         // floats 2u above its center
         let swim = self.swim;
-        let lifted = |i: u32| -> [f32; 3] {
-            let mut c = self.polys[i as usize].center;
-            if self.polys[i as usize].verts.len() > 1 {
-                c[2] += 2.0;
-            }
-            c
-        };
-        let mut chain_pts: Vec<[f32; 3]> = if swim {
-            vec![lifted(start)]
+        let lifted = |i: u32| -> [f32; 3] { self.route_point(i) };
+        // (point, whether the segment INTO it is a swim hop to re-verify;
+        // a mesh-to-mesh hop is Detour's own adjacency, trusted as is)
+        let mut chain_pts: Vec<([f32; 3], bool)> = if swim {
+            vec![(lifted(start), false)]
         } else {
-            vec![from]
+            vec![(from, false)]
         };
-        let close_leg = |seg_start: [f32; 3],
-                         end: [f32; 3],
-                         portals: &[([f32; 3], [f32; 3])],
-                         chain_pts: &mut Vec<[f32; 3]>|
+        let mut verify_flags: Vec<Vec<bool>> = Vec::new();
+        let mut close_leg = |seg_start: [f32; 3],
+                             end: [f32; 3],
+                             portals: &[([f32; 3], [f32; 3])],
+                             chain_pts: &mut Vec<([f32; 3], bool)>|
          -> Vec<[f32; 3]> {
             if swim {
                 let mut pts = std::mem::take(chain_pts);
-                if pts.last() != Some(&end) {
-                    pts.push(end);
+                if pts.last().map(|p| p.0) != Some(end) {
+                    pts.push((end, true));
                 }
-                pts.dedup();
-                pts
+                pts.dedup_by(|a, b| a.0 == b.0);
+                verify_flags.push(pts.iter().map(|p| p.1).collect());
+                pts.into_iter().map(|p| p.0).collect()
             } else {
                 ground_hug(funnel(seg_start, end, portals), geo)
             }
@@ -1221,7 +1598,7 @@ impl ZoneNav {
                     label: l.label.clone(),
                 });
                 seg_start = l.to;
-                chain_pts.push(l.to);
+                chain_pts.push((l.to, false));
             } else {
                 portals.push(orient_portal(
                     e.a,
@@ -1230,19 +1607,10 @@ impl ZoneNav {
                     self.polys[e.to as usize].center,
                 ));
                 if swim {
-                    // why: a mesh-to-mesh hop passes explicitly through
-                    // the shared edge's midpoint (the doorway) -- more,
-                    // shorter lines that stay inside both polys; a swim
-                    // hop's portal is already the far point itself
-                    let is_mesh_hop = e.a != e.b;
-                    if is_mesh_hop {
-                        chain_pts.push([
-                            (e.a[0] + e.b[0]) * 0.5,
-                            (e.a[1] + e.b[1]) * 0.5,
-                            (e.a[2] + e.b[2]) * 0.5 + 2.0,
-                        ]);
-                    }
-                    chain_pts.push(lifted(e.to));
+                    // why: EVERY segment is re-verified, mesh hops too --
+                    // a center-to-center hop across a floor bump clipped
+                    // it in the strict audit ("verify each line segment")
+                    chain_pts.push((lifted(e.to), true));
                 }
             }
             cur_poly = e.to;
@@ -1259,11 +1627,20 @@ impl ZoneNav {
         if swim {
             if let Some(g) = geo {
                 let mut bad = 0usize;
+                let mut walk_i = 0usize;
                 for leg in &legs {
                     if let NavLeg::Walk(pts) = leg {
-                        for w in pts.windows(2) {
-                            if !g.los_clear(w[0], w[1]) {
+                        let flags = verify_flags.get(walk_i).cloned().unwrap_or_default();
+                        walk_i += 1;
+                        for (k, w) in pts.windows(2).enumerate() {
+                            if !flags.get(k + 1).copied().unwrap_or(true) {
+                                continue;
+                            }
+                            if !passable(g, self.walls.as_ref(), w[0], w[1]) {
                                 bad += 1;
+                                if std::env::var("EQLP_NAV_DEBUG").is_ok() {
+                                    eprintln!("  unverified: {:?} -> {:?}", w[0], w[1]);
+                                }
                             }
                         }
                     }
@@ -1464,7 +1841,9 @@ fn geo_cache() -> &'static GeoCache {
 /// why: disk-cache-only load, never network -- callers on the command
 /// path must not block on a download. `None` is cached too, so a zone
 /// with no file (or a bad parse) is one disk probe, not one per call.
-pub fn load_nav(app_data: &Path, zone: &str) -> Option<Arc<ZoneNav>> {
+/// why: `walls` = the game map's wall lines, used only for swim zones
+/// (see WallSet); None when the caller has no install folder yet
+pub fn load_nav(app_data: &Path, zone: &str, walls: Option<WallSet>) -> Option<Arc<ZoneNav>> {
     if let Some(hit) = nav_cache().lock_recover().get(zone) {
         return hit.clone();
     }
@@ -1477,6 +1856,7 @@ pub fn load_nav(app_data: &Path, zone: &str) -> Option<Arc<ZoneNav>> {
             // why: swim zones need open water as edges -- see bridge_gaps
             if is_underwater(zone) {
                 nav.swim = true;
+                nav.walls = walls;
                 if let Some(geo) = load_geo(app_data, zone) {
                     nav.bridge_gaps(&geo);
                 }

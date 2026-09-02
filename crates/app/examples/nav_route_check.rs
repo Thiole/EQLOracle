@@ -23,9 +23,18 @@ fn main() {
     let nav = {
         let mut n = emumaps::parse_nav(&nav_bytes).expect("nav parses");
         n.apply_links(emumaps::zone_links(zone));
-        // mirror load_nav: swim-bridge underwater zones
+        // mirror load_nav: swim-bridge underwater zones, drawn walls as barrier
         if emumaps::is_underwater(zone) {
             n.swim = true;
+            let base = std::path::Path::new(maps)
+                .parent()
+                .expect("maps dir has a parent");
+            // EQLP_NO_WALLS=1 disables the drawn-wall barrier for comparison
+            if std::env::var("EQLP_NO_WALLS").is_err() {
+                n.walls = eqlp_app::mapsdata::load_zone_map(base, None, zone)
+                    .ok()
+                    .map(|m| emumaps::WallSet::from_lines(&m.lines));
+            }
             n.bridge_gaps(&geo);
         }
         n
@@ -51,6 +60,9 @@ fn main() {
                     w[0],
                     w[w.len() - 1]
                 );
+                for p in w {
+                    println!("    wp {:?}", p);
+                }
                 flat.extend_from_slice(w);
             }
             NavLeg::Hop { at, to, label } => println!("hop: {label} {at:?} -> {to:?}"),
