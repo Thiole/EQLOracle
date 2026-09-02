@@ -1106,6 +1106,14 @@ pub struct Ingest {
     pub entities_by_enc: HashMap<EncounterId, Vec<String>>,
     /// why: how far into encounters.closed we've synced; Builder only appends, never drains
     closed_seen: usize,
+    /// why: what the log itself saw drop -- mob name (lowercased) -> base
+    /// item names, from your own loot lines. The wiki's dropper can be
+    /// stale ("the ghoul arch magi" there, "the ghoul arch magus" in the
+    /// log); a corpse you looted is the one attribution that can't be.
+    pub observed_drops: HashMap<String, Vec<String>>,
+    /// why: raw zone -> base items (lowercased) seen dropping there, so
+    /// the zone-wide pool can leave those to their droppers
+    pub observed_zone_drops: HashMap<String, std::collections::HashSet<String>>,
     /// why: unresolved summon sightings waiting to match a new actor, pruned to PET_MATCH_WINDOW_MS
     pending_summons: Vec<(Millis, String)>,
     /// why: names ever seen acting, so pending_summons is only checked on an entity's first action
@@ -1241,6 +1249,8 @@ impl Default for Ingest {
             exaltation_procs: ExaltationProcs::default(),
             enc_map: HashMap::new(),
             entities_by_enc: HashMap::new(),
+            observed_drops: HashMap::new(),
+            observed_zone_drops: HashMap::new(),
             closed_seen: 0,
             pending_summons: Vec::new(),
             seen_actors: HashSet::new(),
@@ -2660,6 +2670,18 @@ impl Ingest {
     /// (groups by target text); this is for "what did this pull drop" call sites.
     fn record_loot(&mut self, ts: Millis, item: &str, corpse: &str, qty: u64, sold: bool) {
         let mob = strip_corpse_suffix(corpse);
+        // why: the log's own drop attribution -- see observed_drops
+        let base = crate::inventory::strip_tier(item).0.to_string();
+        let seen = self.observed_drops.entry(mob.to_lowercase()).or_default();
+        if !seen.iter().any(|x| x.eq_ignore_ascii_case(&base)) {
+            seen.push(base.clone());
+        }
+        if let Some(zone) = self.zone.at(ts) {
+            self.observed_zone_drops
+                .entry(zone.to_string())
+                .or_default()
+                .insert(base.to_lowercase());
+        }
         let looter = self.sym("You");
         let target = self.sym(mob);
         let ab = self.store.ability_id(item, 0);

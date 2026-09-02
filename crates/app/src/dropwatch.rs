@@ -141,13 +141,20 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         .at(now)
         .and_then(|raw| {
             let attributed = crate::npcdata::zone_attributed_items(raw);
+            // why: the log's own sightings count as attribution too --
+            // the wiki's dropper name can be stale, the corpse you
+            // looted is not (Ingest::observed_zone_drops)
+            let seen = ing.observed_zone_drops.get(raw);
             crate::zonedata::zones()
                 .iter()
                 .find(|z| crate::zone::zone_matches(raw, &z.name))
                 .map(|z| {
                     z.unique_items
                         .iter()
-                        .filter(|i| !attributed.contains(&i.to_lowercase()))
+                        .filter(|i| {
+                            let k = i.to_lowercase();
+                            !attributed.contains(&k) && !seen.is_some_and(|s| s.contains(&k))
+                        })
                         .cloned()
                         .collect()
                 })
@@ -200,8 +207,16 @@ pub fn drop_watch(ing: &Ingest) -> Vec<DropWatchRowDto> {
         // active zone's own unique_items pool applied to every engaged
         // mob. Deduped case-insensitively, mob-specific first.
         let mut drops: Vec<String> = crate::monsterdata::known_drops(name).to_vec();
-        for d in crate::npcdata::known_loot_for(name)
+        // why: (0) what this log saw drop from this very mob name --
+        // first, since it's the one source that can't be stale
+        let observed = ing
+            .observed_drops
+            .get(&name.to_lowercase())
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
+        for d in observed
             .iter()
+            .chain(crate::npcdata::known_loot_for(name).iter())
             .chain(zone_items.iter())
             .chain(npc_zone_items.iter())
         {
@@ -442,6 +457,35 @@ mod tests {
             frog.drops.iter().any(|d| d == "Mask of Deception"),
             "an unattributed header item still reads zone-wide"
         );
+    }
+
+    /// why: "you've seen in a log who drops it, use that -- magi was
+    /// renamed": the wiki says "the ghoul arch magi", the log loots the
+    /// robes from "the ghoul arch magus". Your own loot line attributes
+    /// the item to the log's name, and takes it out of the zone pool.
+    #[test]
+    fn a_looted_corpse_attributes_the_drop_to_the_logs_own_mob_name() {
+        let ing = run(concat!(
+            "[Tue Jul 28 15:00:00 2026] You have entered Lower Guk.\n",
+            "[Tue Jul 28 15:00:30 2026] --You have looted a Shining Metallic Robes +4 from the ghoul arch magus's corpse.--\n",
+            "[Tue Jul 28 15:01:00 2026] You hit a froglok for 5 points of damage.\n",
+            "[Tue Jul 28 15:01:01 2026] You hit the ghoul arch magus for 5 points of damage.\n",
+        ));
+        let rows = drop_watch(&ing);
+        let magus = rows
+            .iter()
+            .find(|r| r.mob == "the ghoul arch magus")
+            .expect("magus row");
+        assert!(
+            magus.drops.iter().any(|d| d == "Shining Metallic Robes"),
+            "the log's own dropper carries the robes, got {:?}",
+            magus.drops
+        );
+        let frog = rows
+            .iter()
+            .find(|r| r.mob == "a froglok")
+            .expect("frog row");
+        assert!(!frog.drops.iter().any(|d| d == "Shining Metallic Robes"));
     }
 
     /// why: both halves of the zone-pool contract, player-corrected
