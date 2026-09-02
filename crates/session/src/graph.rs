@@ -31,13 +31,9 @@ pub struct Policy {
     /// why: a re-engaged fled mob within this window is one kill, not two
     pub link_ms: Millis,
 
-    /// why: 6s, added to idle_ms for a fight with a same-named survivor
-    /// (a name damaged again after its own death line -- duplicate-name
-    /// pulls, raids). One death there resolves nothing, but the short
-    /// window still armed: a raid taking 11s to reach the next drake
-    /// closed the fight, and the meter reset mid-pull ("mobs with
-    /// duplicate same name, there should be a 5-6s grace period after
-    /// you think a fight ends" -- Plane of Sky drakes, replayed).
+    /// why: 0 -- was 6s for a same-named survivor, withdrawn: "it should
+    /// be 10 total, not 16". Kept as a knob; Live::dupe still records
+    /// the survivor for anything that wants to know.
     pub dupe_grace_ms: Millis,
 
     /// why: off means split-only, useful when a crowded zone adds noise
@@ -53,7 +49,7 @@ impl Default for Policy {
             idle_ms: 10_000,
             idle_unresolved_ms: 300_000,
             link_ms: 60_000,
-            dupe_grace_ms: 6_000,
+            dupe_grace_ms: 0,
             transitive: true,
             max_entities: None,
         }
