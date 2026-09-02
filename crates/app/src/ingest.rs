@@ -1866,6 +1866,9 @@ impl Ingest {
             Action::Mez { who } => {
                 let sym = self.sym(&who);
                 self.timeline.observed(ts, sym.0, State::Mezzed);
+                // why: a mezzed add that never swung is still part of
+                // the pull -- see Builder::engage
+                self.encounters.engage(&who, "You", ts);
                 // why: a mezzed mob is a paused fight, not an over one --
                 // see Builder::touch_entity's own doc
                 self.encounters.touch_entity(&who, ts);

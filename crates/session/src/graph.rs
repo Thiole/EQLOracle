@@ -488,6 +488,27 @@ impl Builder {
         // why: not cleared from `recent` -- would break the backward link
     }
 
+    /// why: crowd control on a mob that is in no fight yet puts it in
+    /// the fight of whoever is fighting -- a mezzed add never swings and
+    /// never gets hit, so it left no engagement line, and the moment the
+    /// group turned to it after the first kill its first hit read as the
+    /// next pull ("timer shouldn't reset when target changes"). A CC
+    /// line IS the pull: the add is part of this encounter.
+    pub fn engage(&mut self, name: &str, with: &str, ts: Millis) {
+        if self.of.contains_key(&fold_key(name)) {
+            return;
+        }
+        if let Some(&id) = self.of.get(&fold_key(with)) {
+            self.entities.observe(name);
+            self.attach(id, name, ts);
+            if let Some(e) = self.live.get_mut(&id) {
+                if ts > e.last_ms {
+                    e.last_ms = ts;
+                }
+            }
+        }
+    }
+
     /// why: a signal that the fight MAY be over without a kill -- a mob
     /// charmed (it changed sides), "Your enemies have forgotten you!" (a
     /// mem blur landed). Arms the 10s window on that entity's fight; any

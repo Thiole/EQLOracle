@@ -399,3 +399,16 @@ fn a_kill_closes_the_door_to_new_mobs() {
         "the drake fight closed on its own 10s; the sphinx fight lives"
     );
 }
+
+/// why: a mezzed add is part of the pull -- it left no swing, but the
+/// mez line puts it in the fight, so turning to it after the first kill
+/// continues the encounter instead of opening the next one
+#[test]
+fn a_mezzed_add_is_in_the_pull() {
+    let mut b = Builder::new(Policy::default().idle_secs(10.0));
+    let fight = b.damage(0, "You", "a dar ghoul knight");
+    b.engage("a zol ghoul knight", "You", 1_000);
+    b.death(5_000, "a dar ghoul knight");
+    let next = b.damage(7_000, "You", "a zol ghoul knight");
+    assert_eq!(next, fight, "the mezzed add was already in this fight");
+}
