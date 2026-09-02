@@ -260,6 +260,8 @@ export interface LiveMeterRowDto {
   pct: number;
   total: number;
   dps: number;
+  /** why: time in encounter -- this entity's first action to the live edge; DPS runs over it */
+  active_ms: number;
   is_player: boolean;
   is_pet: boolean;
 }

@@ -1148,17 +1148,18 @@ fn fight_state_at_windowed(
     out
 }
 
-/// why: one meter row -- % of the side's damage, total, DPS. DPS runs
-/// on the ENCOUNTER's one clock (LiveMeterDto::duration_ms), the same
-/// for every row: "it should be for that encounter, not that mob, not
-/// that whatever, and the time is based on when the player has been
-/// in combat". The personal per-entity window is gone.
+/// why: one meter row, the spec: name, time in encounter, damage, DPS,
+/// % of that team's damage. Totals accumulate over the WHOLE encounter
+/// -- they never reset when a target dies. `active_ms` is this entity's
+/// time in the encounter (its first action to the live edge) and DPS
+/// runs over it; the encounter's own timer is LiveMeterDto::duration_ms.
 #[derive(Debug, Clone, Serialize)]
 pub struct LiveMeterRowDto {
     pub name: String,
     pub pct: f64,
     pub total: u64,
     pub dps: f64,
+    pub active_ms: Millis,
     pub is_player: bool,
     pub is_pet: bool,
 }
@@ -1297,6 +1298,7 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     // -- to the live edge; the encounter's open if You never acted.
     struct Acc {
         total: u64,
+        first_ts: Millis,
         is_player: bool,
         is_pet: bool,
     }
@@ -1327,10 +1329,12 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
             let kind = ing.effective_kind(&actor_name, ts);
             let e = acc.entry(actor_name).or_insert(Acc {
                 total: 0,
+                first_ts: ts,
                 is_player: kind == Kind::Player,
                 is_pet: kind == Kind::Pet,
             });
             e.total += ing.store.amount[i];
+            e.first_ts = e.first_ts.min(ts);
         }
     }
     let start_ms = you_first.unwrap_or(primary.start_ms).min(end);
@@ -1340,17 +1344,23 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
         let team_total: u64 = acc.values().map(|a| a.total).sum();
         let mut rows: Vec<LiveMeterRowDto> = acc
             .into_iter()
-            .map(|(name, a)| LiveMeterRowDto {
-                pct: if team_total > 0 {
-                    100.0 * a.total as f64 / team_total as f64
-                } else {
-                    0.0
-                },
-                dps: a.total as f64 / (duration_ms as f64 / 1000.0),
-                total: a.total,
-                is_player: a.is_player,
-                is_pet: a.is_pet,
-                name,
+            .map(|(name, a)| {
+                // why: time in encounter -- this entity's first action to
+                // the live edge; DPS runs over it
+                let active_ms = (end - a.first_ts).max(1);
+                LiveMeterRowDto {
+                    pct: if team_total > 0 {
+                        100.0 * a.total as f64 / team_total as f64
+                    } else {
+                        0.0
+                    },
+                    dps: a.total as f64 / (active_ms as f64 / 1000.0),
+                    total: a.total,
+                    active_ms,
+                    is_player: a.is_player,
+                    is_pet: a.is_pet,
+                    name,
+                }
             })
             .collect();
         rows.sort_by_key(|r| std::cmp::Reverse(r.total));
@@ -2140,12 +2150,11 @@ mod live_meter_window_tests {
         ing
     }
 
-    /// why: ONE clock for the encounter, from the player's first
-    /// involvement -- "for that encounter, not that mob, not that
-    /// whatever; the time is based on when the player has been in
-    /// combat". Same damage dealt, same DPS, whoever joined late.
+    /// why: the spec -- the encounter's own timer runs from the player's
+    /// first involvement; each row carries its time in the encounter and
+    /// DPS over that; totals accumulate over the whole encounter
     #[test]
-    fn every_row_runs_on_the_encounters_one_clock() {
+    fn rows_carry_time_in_encounter_under_the_encounters_timer() {
         let ing = ingest_from(
             "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
              [Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
@@ -2156,7 +2165,7 @@ mod live_meter_window_tests {
         let m = live_meter(&ing).expect("live fight");
         assert_eq!(
             m.duration_ms, 40_000,
-            "the player's first hit to the live edge"
+            "encounter timer: the player's first hit to the live edge"
         );
         let you = m
             .outgoing
@@ -2168,11 +2177,33 @@ mod live_meter_window_tests {
             .iter()
             .find(|r| r.name == "Kaeus")
             .expect("Kaeus row");
-        assert_eq!(you.total, 200);
-        assert_eq!(kaeus.total, 200);
-        assert!((you.pct - 50.0).abs() < 0.01);
-        assert!((you.dps - kaeus.dps).abs() < 1e-9, "same clock, same dps");
+        assert_eq!((you.total, kaeus.total), (200, 200));
+        assert_eq!((you.active_ms, kaeus.active_ms), (40_000, 20_000));
         assert!((you.dps - 5.0).abs() < 1e-9);
+        assert!((kaeus.dps - 10.0).abs() < 1e-9);
+    }
+
+    /// why: "it shouldn't reset damage per entity ... so it doesn't jump
+    /// back to 0 as soon as a target dies" -- a kill inside the
+    /// encounter, the next mob two seconds later: one encounter, totals
+    /// keep climbing, the timer keeps running
+    #[test]
+    fn totals_survive_a_kill_inside_the_encounter() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:05 2026] You have slain a gnoll!\n\
+             [Tue Jul 28 15:01:07 2026] You hit a gnoll scout for 100 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:10 2026] You hit a gnoll scout for 100 points of fire damage by Burst of Flame.\n",
+        );
+        let m = live_meter(&ing).expect("live fight");
+        let you = m
+            .outgoing
+            .iter()
+            .find(|r| r.name == "You")
+            .expect("You row");
+        assert_eq!(you.total, 300, "the kill did not reset the total");
+        assert_eq!(m.duration_ms, 10_000);
+        assert!(m.target.contains("gnoll"));
     }
 
     /// why: incoming mirrors the calc from the enemy side
