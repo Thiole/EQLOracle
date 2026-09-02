@@ -380,13 +380,14 @@ mod tests {
     fn a_stale_missed_swing_does_not_keep_a_mob_on_the_list() {
         let ing = run(concat!(
             "[Tue Jul 28 15:01:00 2026] Keeper of Souls tries to punch YOU, but YOU dodge!\n",
-            // why: a much later unrelated line advances the log clock well past the window
-            "[Tue Jul 28 15:05:00 2026] You hit a rat for 5 points of damage.\n",
+            // why: 6 minutes -- a whiff now opens a fight like a hit does,
+            // and a fight with no kill only closes on the 5-minute safety net
+            "[Tue Jul 28 15:07:00 2026] You hit a rat for 5 points of damage.\n",
         ));
         let rows = drop_watch(&ing);
         assert!(
             !rows.iter().any(|r| r.mob == "Keeper of Souls"),
-            "a 4-minute-old whiff is not an active engagement"
+            "a 6-minute-old whiff is not an active engagement"
         );
     }
 

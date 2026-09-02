@@ -383,11 +383,13 @@ fn a_kill_closes_the_door_to_new_mobs() {
     let drakes = b.damage(0, "You", "a drake");
     b.damage(1_000, "Gront", "a drake");
     b.death(5_000, "a drake");
-    let sphinx = b.damage(7_000, "Gront", "a sphinx");
+    let sphinx = b.damage(7_000, "You", "a sphinx");
     assert_ne!(drakes, sphinx, "a new mob after a kill is a new fight");
-    let you = b.damage(8_000, "You", "a sphinx");
+    // why: Gront never spoke, so the graph can't side him -- the app
+    // passes its own answer; here he is passed as an ally explicitly
+    let gront = b.damage_sided(8_000, "Gront", "a sphinx", true, false);
     assert_eq!(
-        you, sphinx,
+        gront, sphinx,
         "the next hitter joins the sphinx fight, no merge back"
     );
     b.expire(16_000);

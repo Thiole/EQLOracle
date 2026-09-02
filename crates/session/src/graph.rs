@@ -280,8 +280,29 @@ impl Builder {
         }
     }
 
-    /// One damage edge. Returns the encounter it belongs to.
+    /// One damage edge. Returns the encounter it belongs to. Sides come
+    /// from what the graph itself has proven (a name that spoke on a
+    /// player channel, or "You"); the app passes its own richer answer
+    /// through `damage_sided`.
     pub fn damage(&mut self, ts: Millis, actor: &str, target: &str) -> EncId {
+        let ally = |n: &str| n.eq_ignore_ascii_case("You") || self.entities.kind(n) == Kind::Player;
+        let (aa, ta) = (ally(actor), ally(target));
+        self.damage_sided(ts, actor, target, aa, ta)
+    }
+
+    /// why: the next-pull door (see below) must know which side a
+    /// newcomer is on -- a PLAYER landing a late first hit on a fight
+    /// that already has a kill is joining it, not pulling ("i just saw a
+    /// fight instantly end after a kill again": You, 8s in). Only a new
+    /// MOB engaging a player, or a player engaging a new mob, is a pull.
+    pub fn damage_sided(
+        &mut self,
+        ts: Millis,
+        actor: &str,
+        target: &str,
+        actor_ally: bool,
+        target_ally: bool,
+    ) -> EncId {
         self.expire(ts);
         self.entities.observe(actor);
         self.entities.observe(target);
@@ -300,11 +321,12 @@ impl Builder {
         let id = match (a, b) {
             (None, None) => self.open(ts, actor, target),
             (Some(x), None) => {
-                // why: a NEW NAME after a kill is the next pull; a slain
+                // why: a NEW MOB NAME after a kill is the next pull; a slain
                 // name hit again is a same-named survivor of this pull
                 // (three sphinxes at once) and stays -- per-kill splitting
                 // on names tripled the reset count on a real log
-                if self.resolved(x) && !self.has_name(x, target) {
+                let new_mob = actor_ally && !target_ally;
+                if new_mob && self.resolved(x) && !self.has_name(x, target) {
                     self.open(ts, actor, target)
                 } else {
                     self.attach(x, target, ts);
@@ -313,8 +335,10 @@ impl Builder {
             }
             (None, Some(y)) => {
                 // why: same door, other direction -- a new mob swinging at
-                // a player whose fight is resolved is the next pull too
-                if self.resolved(y) && !self.has_name(y, actor) {
+                // a player whose fight is resolved is the next pull too;
+                // a player's late first swing is just joining
+                let new_mob = target_ally && !actor_ally;
+                if new_mob && self.resolved(y) && !self.has_name(y, actor) {
                     self.open(ts, actor, target)
                 } else {
                     self.attach(y, actor, ts);

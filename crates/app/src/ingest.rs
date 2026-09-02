@@ -2388,9 +2388,14 @@ impl Ingest {
         // why: same normalization as record_damage -- see canonical_you
         let src = canonical_you(src);
         let dst = canonical_you(dst);
-        let enc = self
-            .current_encounter_of(src)
-            .or_else(|| self.current_encounter_of(dst));
+        // why: an avoided swing is an ENGAGEMENT edge, same as a landed
+        // one -- it opens or joins a fight through the graph. Before, a
+        // miss only rode along on an existing fight: a second mob of a
+        // mixed pull whose every swing on the tank missed was not "in"
+        // the fight, so the moment the first mob died its first landed
+        // hit read as a NEW pull and the fight ended instantly ("i just
+        // saw a fight instantly end after a kill again").
+        let enc = Some(self.link(ts, src, dst));
         if let Some(id) = enc {
             // why: an avoided swing proves presence in the fight the same
             // as a landed one -- a fully-dodged puller still pulled
@@ -3322,8 +3327,6 @@ impl Ingest {
     /// seen. A merged-away component keeps its own store counterpart, so
     /// merge pushes a Closed record directly rather than leaving it open forever.
     fn link(&mut self, ts: Millis, actor: &str, target: &str) -> EncounterId {
-        let enc_id = self.encounters.damage(ts, actor, target);
-
         // why: "You" checked alongside proven identity -- Kind::Player for
         // "You" only proves once they've spoken on a player channel.
         // Checks Allegiance::of(kind, state) as of this edge's own
@@ -3332,6 +3335,11 @@ impl Ingest {
         // an unspoken ally reads as a real mob, same known ceiling as list_allies.
         let actor_ally = self.is_ally(actor, ts);
         let target_ally = self.is_ally(target, ts);
+        // why: sides go to the graph -- its next-pull door must not
+        // mistake a late-joining player for a new mob (Builder::damage_sided)
+        let enc_id = self
+            .encounters
+            .damage_sided(ts, actor, target, actor_ally, target_ally);
         // why: None when both sides look like allies (self-inflicted
         // damage, ally-on-ally noise) or both look like mobs -- no opinion on which side is the mob
         let mob_side = match (actor_ally, target_ally) {
