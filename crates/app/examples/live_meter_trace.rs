@@ -5,6 +5,10 @@
 use eqlp_app::combat;
 use eqlp_app::ingest::{framed_lines, Ingest};
 use eqlp_app::parser::build_engine;
+fn m_you(ing: &Ingest) -> Option<u64> {
+    combat::live_meter(ing)
+        .and_then(|m| m.outgoing.iter().find(|r| r.name == "You").map(|r| r.total))
+}
 fn hm(s: &str) -> i64 {
     let p: Vec<i64> = s.split(':').map(|v| v.parse().unwrap()).collect();
     p[0] * 3600 + p[1] * 60
@@ -20,6 +24,7 @@ fn main() {
     ing.mark_live();
     let mut wall: i64 = 0;
     let mut last_id: Option<u32> = None;
+    let mut last_you: Option<u64> = None;
     for line in &lines {
         let outcome = matcher.classify(line);
         ing.route(&engine, line, &outcome);
@@ -35,9 +40,17 @@ fn main() {
         let cur_id = combat::current_encounter(&ing).map(|e| e.id.0);
         let changed = cur_id != last_id;
         last_id = cur_id;
-        if text.contains("slain") || changed {
+        // why: a DROP is the report itself -- your total fell while the
+        // meter still says it is the same encounter
+        let you_now = m_you(&ing);
+        let drop = !changed && you_now.is_some() && last_you.is_some() && you_now < last_you;
+        last_you = you_now;
+        if text.contains("slain") || changed || drop {
             if changed {
                 print!("CHANGE ");
+            }
+            if drop {
+                print!("DROP ");
             }
             let cur = combat::current_encounter(&ing).map(|e| (e.id.0, e.is_open()));
             let m = combat::live_meter(&ing);

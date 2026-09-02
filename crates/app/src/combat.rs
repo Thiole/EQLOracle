@@ -1275,38 +1275,47 @@ pub fn encounter_for(ing: &Ingest, target_sym: Sym) -> Option<&Encounter> {
     ing.store.encounter(EncounterId(id))
 }
 
-/// why: overlay's live poll. Open fight -> rolling window at "now"
-/// (self-corrects in a lull). Closed fight -> window frozen at end_ms
-/// spanning the whole fight, so the summary doesn't decay to 0 after the
-/// fight ends. None before any encounter exists yet this session.
-/// why: the meter tracks the ENGAGEMENT as a whole (asked directly:
-/// "just track for the encounter as a whole, even if other mobs join
-/// the encounter late") -- a late add the graph opened as its own
-/// encounter must fold into the same numbers, not hijack or reset the
-/// meter the way a single-encounter pick did. Engagement = every open
-/// involves_you encounter with activity in the last
-/// ENGAGEMENT_LULL_MS, or the most recent one when nothing is live
-/// (the after-fight read). One continuous window; personal clocks
-/// still start at each entity's own first action.
-const ENGAGEMENT_LULL_MS: Millis = 30_000;
-
+/// why: overlay's live poll. Open engagement -> rolling window at "now"
+/// (self-corrects in a lull). Closed -> window frozen at the end, the
+/// whole engagement, so the summary doesn't decay to 0 after the fight.
+/// None before any encounter exists yet this session.
 pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     let now = ing.now_ms();
     let primary = current_encounter(ing)?;
+    // why: the engagement is EVERY fight of yours that overlapped the
+    // current one in time, open or closed -- the graph can hold one
+    // fight per mob of a pull, and a union of only OPEN fights dropped a
+    // mob's damage the moment its fight closed after its death ("you are
+    // culling ... the dps should be shown as a compendium of the
+    // encounter"). Grown to a fixpoint so a chain of overlaps folds in.
+    let last_of = |e: &Encounter| -> Millis {
+        e.end_ms.unwrap_or_else(|| {
+            ing.store
+                .ts
+                .get(e.last as usize)
+                .copied()
+                .unwrap_or(e.start_ms)
+                .max(now)
+        })
+    };
     let mut encs: Vec<&Encounter> = vec![primary];
-    if primary.is_open() {
+    let (mut span_start, mut span_end) = (primary.start_ms, last_of(primary));
+    loop {
+        let mut grew = false;
         for e in &ing.store.encounters {
-            if e.id != primary.id && e.is_open() && e.involves_you && !e.absorbed {
-                let last_ts = ing
-                    .store
-                    .ts
-                    .get(e.last as usize)
-                    .copied()
-                    .unwrap_or(e.start_ms);
-                if now - last_ts <= ENGAGEMENT_LULL_MS {
-                    encs.push(e);
-                }
+            if !e.involves_you || e.absorbed || encs.iter().any(|x| x.id == e.id) {
+                continue;
             }
+            let (s, l) = (e.start_ms, last_of(e));
+            if s <= span_end && l >= span_start {
+                encs.push(e);
+                span_start = span_start.min(s);
+                span_end = span_end.max(l);
+                grew = true;
+            }
+        }
+        if !grew {
+            break;
         }
     }
     let open = encs.iter().any(|e| e.is_open());
