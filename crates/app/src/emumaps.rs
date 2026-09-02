@@ -71,6 +71,8 @@ pub struct ZoneNav {
     pub swim: bool,
     /// why: drawn-map walls, swim zones only -- see WallSet
     pub walls: Option<WallSet>,
+    /// why: EQEmu water volumes, swim zones only -- see WaterMap
+    pub water: Option<Arc<WaterMap>>,
 }
 
 /// why: what a route is made of -- walk legs on the mesh, hop legs
@@ -104,6 +106,103 @@ const UNDERWATER_ZONES: &[&str] = &["kedge"];
 
 pub fn is_underwater(zone: &str) -> bool {
     UNDERWATER_ZONES.contains(&zone)
+}
+
+/// why: EQEmu's water volumes (`water/<zone>.wtr`, a BSP over the zone's
+/// water regions) -- the one source that says where a swimmer CAN be.
+/// Not complete either (kedge: 12% of navmesh floor polys read dry --
+/// region boundaries and blind spots), so it's a strong signal layered
+/// with line of sight and the drawn walls, never the sole authority.
+/// Frame confirmed empirically: /loc coordinates, i.e. (-mapY, -mapX, z).
+#[derive(Debug)]
+pub struct WaterMap {
+    /// (normal, dist, region_type, left, right) -- children 1-based, 0 = none
+    nodes: Vec<([f32; 3], f32, u32, u32, u32)>,
+}
+
+pub const WATER_REGION: u32 = 1;
+
+pub fn parse_water(data: &[u8]) -> Option<WaterMap> {
+    if data.len() < 18 || &data[..10] != b"EQEMUWATER" {
+        return None;
+    }
+    let count = rd_u32(data, 14) as usize;
+    const NODE: usize = 36;
+    if data.len() < 18 + count * NODE {
+        return None;
+    }
+    let nodes = (0..count)
+        .map(|i| {
+            let o = 18 + i * NODE;
+            (
+                [
+                    rd_f32(data, o + 4),
+                    rd_f32(data, o + 8),
+                    rd_f32(data, o + 12),
+                ],
+                rd_f32(data, o + 16),
+                rd_u32(data, o + 24),
+                rd_u32(data, o + 28),
+                rd_u32(data, o + 32),
+            )
+        })
+        .collect();
+    Some(WaterMap { nodes })
+}
+
+impl WaterMap {
+    /// why: map-file coords in; a 0 child means "no region" (dry)
+    pub fn is_water(&self, p: [f32; 3]) -> bool {
+        let (x, y, z) = (-p[1], -p[0], p[2]);
+        let mut idx = 1usize;
+        for _ in 0..512 {
+            let Some(&(n, dist, region, left, right)) = self.nodes.get(idx - 1) else {
+                return false;
+            };
+            if left == 0 && right == 0 {
+                return region == WATER_REGION;
+            }
+            let next = if n[0] * x + n[1] * y + n[2] * z + dist >= 0.0 {
+                left
+            } else {
+                right
+            };
+            if next == 0 {
+                return false;
+            }
+            idx = next as usize;
+        }
+        false
+    }
+
+    /// why: the water along a segment must be ONE contiguous run -- a
+    /// line that leaves water and re-enters it went through rock/void
+    /// (the dive). Entering or leaving once (a blind region at one end)
+    /// is allowed; dipping out and back is not.
+    pub fn segment_ok(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        let len = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2) + (b[2] - a[2]).powi(2)).sqrt();
+        let steps = (len / 6.0).ceil().max(1.0) as usize;
+        let mut runs = 0u32;
+        let mut prev = false;
+        // why: interior only -- an endpoint sits on a floor, right on the
+        // water region's boundary plane, and flickers wet/dry on a slope
+        for s in 0..=steps {
+            let f = s as f32 / steps as f32;
+            if !(0.15..=0.85).contains(&f) {
+                continue;
+            }
+            let w = self.is_water([
+                a[0] + (b[0] - a[0]) * f,
+                a[1] + (b[1] - a[1]) * f,
+                a[2] + (b[2] - a[2]) * f,
+            ]);
+            if w && !prev {
+                runs += 1;
+            }
+            prev = w;
+        }
+        runs <= 1
+    }
 }
 
 /// why: the game map's own wall lines as a hard barrier. Kedge's
@@ -281,7 +380,16 @@ fn swim_lift() -> f32 {
 
 /// why: the one traversability test for a swim segment -- collision
 /// mesh line of sight AND no drawn wall crossed
-fn passable(geo: &ZoneGeo, walls: Option<&WallSet>, a: [f32; 3], b: [f32; 3]) -> bool {
+fn passable(
+    geo: &ZoneGeo,
+    walls: Option<&WallSet>,
+    water: Option<&WaterMap>,
+    a: [f32; 3],
+    b: [f32; 3],
+) -> bool {
+    if water.is_some_and(|w| !w.segment_ok(a, b)) {
+        return false;
+    }
     thread_local! {
         static REJ: std::cell::Cell<(u32, u32, u32)> = const { std::cell::Cell::new((0, 0, 0)) };
     }
@@ -685,6 +793,7 @@ pub fn parse_nav(data: &[u8]) -> Option<ZoneNav> {
         links: Vec::new(),
         swim: false,
         walls: None,
+        water: None,
     })
 }
 
@@ -938,7 +1047,13 @@ impl ZoneNav {
     /// Nodes become single-vertex polys, so routing/funnel/endpoint
     /// binding need no special case; a void cluster outside the zone
     /// only ever sees itself and stays unreachable.
-    fn add_water_nodes(&mut self, geo: &ZoneGeo, walls: Option<&WallSet>, z_lift: f32) {
+    fn add_water_nodes(
+        &mut self,
+        geo: &ZoneGeo,
+        walls: Option<&WallSet>,
+        water: Option<&WaterMap>,
+        z_lift: f32,
+    ) {
         const STEP: f32 = 24.0;
         // why: > STEP*sqrt(3) so diagonal grid neighbors can link;
         // corridor-scale so a hop never crosses a room
@@ -1005,7 +1120,7 @@ impl ZoneNav {
                                 let mut lc = c;
                                 lc[2] += z_lift;
                                 tests += 1;
-                                if passable(geo, walls, *p, lc) {
+                                if passable(geo, walls, water, *p, lc) {
                                     node_polys[ni].push(pi);
                                 }
                             }
@@ -1016,7 +1131,7 @@ impl ZoneNav {
                                     continue;
                                 }
                                 tests += 1;
-                                if passable(geo, walls, *p, nodes[nj as usize]) {
+                                if passable(geo, walls, water, *p, nodes[nj as usize]) {
                                     node_nodes[ni].push(nj);
                                 }
                             }
@@ -1109,7 +1224,7 @@ impl ZoneNav {
                 tests += 1;
                 let mut c = self.polys[pi as usize].center;
                 c[2] += z_lift;
-                if passable(geo, walls, *p, c) {
+                if passable(geo, walls, water, *p, c) {
                     column_poly[ni] = Some(pi);
                 }
             }
@@ -1123,7 +1238,10 @@ impl ZoneNav {
                 // outlines aren't always closed -- near a wall AND directly
                 // seeing a floor poly (void chains have no floor in reach)
                 Some(w) => {
-                    (w.encloses(*p, 30.0)
+                    // why: in the water volume and linked to anything, or
+                    // (where the volume is blind) beside a drawn wall AND
+                    // directly seeing a floor poly
+                    (water.is_some_and(|wm| wm.is_water(*p))
                         && (!node_polys[ni].is_empty() || !node_nodes[ni].is_empty()))
                         || (w.nearby(*p, 40.0, 30.0) && !node_polys[ni].is_empty())
                 }
@@ -1215,7 +1333,8 @@ impl ZoneNav {
         // why: taken out for the duration -- polys are mutated below while
         // walls are read; restored at the end
         let walls = self.walls.take();
-        self.add_water_nodes(geo, walls.as_ref(), z_lift);
+        let water = self.water.clone();
+        self.add_water_nodes(geo, walls.as_ref(), water.as_deref(), z_lift);
 
         // components over current adjacency
         let n = self.polys.len();
@@ -1297,9 +1416,10 @@ impl ZoneNav {
                         }
                         // why: a real pit is INSIDE the upper level's drawn
                         // outline; the void beside a tunnel is not
-                        let in_upper = walls
-                            .as_ref()
-                            .is_none_or(|w| w.encloses([cb[0], cb[1], ca[2]], 25.0));
+                        let in_upper = water.as_deref().is_some_and(|wm| wm.is_water(cb))
+                            || walls
+                                .as_ref()
+                                .is_none_or(|w| w.encloses([cb[0], cb[1], ca[2]], 25.0));
                         if !covered && in_upper {
                             drops.push((dz, a as u32, b));
                         }
@@ -1312,7 +1432,7 @@ impl ZoneNav {
         for (_, a, b) in drops {
             let pa = self.route_point(a);
             let pb = self.route_point(b);
-            if !passable(geo, walls.as_ref(), pa, pb) {
+            if !passable(geo, walls.as_ref(), water.as_deref(), pa, pb) {
                 continue;
             }
             self.polys[a as usize].edges.push(NavEdge {
@@ -1392,7 +1512,7 @@ impl ZoneNav {
             dbg.0 += 1;
             let a = self.route_point(i);
             let b = self.route_point(j);
-            if !passable(geo, walls.as_ref(), a, b) {
+            if !passable(geo, walls.as_ref(), water.as_deref(), a, b) {
                 continue;
             }
             dbg.1 += 1;
@@ -1435,7 +1555,15 @@ impl ZoneNav {
             .iter()
             .take(TRIES)
             .map(|&(_, i)| i)
-            .find(|&i| passable(geo, self.walls.as_ref(), p, self.route_point(i)))
+            .find(|&i| {
+                passable(
+                    geo,
+                    self.walls.as_ref(),
+                    self.water.as_deref(),
+                    p,
+                    self.route_point(i),
+                )
+            })
             .or_else(|| order.first().map(|&(_, i)| i))
     }
 
@@ -1607,10 +1735,11 @@ impl ZoneNav {
                     self.polys[e.to as usize].center,
                 ));
                 if swim {
-                    // why: EVERY segment is re-verified, mesh hops too --
-                    // a center-to-center hop across a floor bump clipped
-                    // it in the strict audit ("verify each line segment")
-                    chain_pts.push((lifted(e.to), true));
+                    // why: every segment is re-verified (LOS + drawn walls);
+                    // the water-volume rule applies to swim hops only -- a
+                    // mesh hop runs along a floor, the region boundary itself
+                    let is_swim_hop = e.a == e.b;
+                    chain_pts.push((lifted(e.to), is_swim_hop));
                 }
             }
             cur_poly = e.to;
@@ -1633,10 +1762,14 @@ impl ZoneNav {
                         let flags = verify_flags.get(walk_i).cloned().unwrap_or_default();
                         walk_i += 1;
                         for (k, w) in pts.windows(2).enumerate() {
+                            // why: a mesh hop is Detour's own adjacency --
+                            // the mesh is the truth; only swim hops
+                            // (nodes/bridges/drops) are re-verified
                             if !flags.get(k + 1).copied().unwrap_or(true) {
                                 continue;
                             }
-                            if !passable(g, self.walls.as_ref(), w[0], w[1]) {
+                            if !passable(g, self.walls.as_ref(), self.water.as_deref(), w[0], w[1])
+                            {
                                 bad += 1;
                                 if std::env::var("EQLP_NAV_DEBUG").is_ok() {
                                     eprintln!("  unverified: {:?} -> {:?}", w[0], w[1]);
@@ -1857,6 +1990,7 @@ pub fn load_nav(app_data: &Path, zone: &str, walls: Option<WallSet>) -> Option<A
             if is_underwater(zone) {
                 nav.swim = true;
                 nav.walls = walls;
+                nav.water = load_water(app_data, zone);
                 if let Some(geo) = load_geo(app_data, zone) {
                     nav.bridge_gaps(&geo);
                 }
@@ -1864,6 +1998,27 @@ pub fn load_nav(app_data: &Path, zone: &str, walls: Option<WallSet>) -> Option<A
             Arc::new(nav)
         });
     nav_cache()
+        .lock_recover()
+        .insert(zone.to_string(), parsed.clone());
+    parsed
+}
+
+type WaterCache = Mutex<HashMap<String, Option<Arc<WaterMap>>>>;
+fn water_cache() -> &'static WaterCache {
+    static C: OnceLock<WaterCache> = OnceLock::new();
+    C.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// why: disk-cache-only like load_geo; None cached for absent/bad files
+pub fn load_water(app_data: &Path, zone: &str) -> Option<Arc<WaterMap>> {
+    if let Some(hit) = water_cache().lock_recover().get(zone) {
+        return hit.clone();
+    }
+    let parsed = std::fs::read(cache_dir(app_data).join(format!("{zone}.wtr")))
+        .ok()
+        .and_then(|b| parse_water(&b))
+        .map(Arc::new);
+    water_cache()
         .lock_recover()
         .insert(zone.to_string(), parsed.clone());
     parsed
@@ -1891,12 +2046,17 @@ pub async fn ensure_zone(app_data: &Path, zone: &str) -> (bool, bool) {
     let dir = cache_dir(app_data);
     let _ = std::fs::create_dir_all(&dir);
     let mut ok = (false, false);
-    for (sub, ext, slot) in [("nav", "nav", 0usize), ("base", "map", 1usize)] {
+    // why: water volumes are a third file, only meaningful for swim zones
+    let mut wanted = vec![("nav", "nav", 0usize), ("base", "map", 1usize)];
+    if is_underwater(zone) {
+        wanted.push(("water", "wtr", 2usize));
+    }
+    for (sub, ext, slot) in wanted {
         let dest = dir.join(format!("{zone}.{ext}"));
         if dest.exists() {
             if slot == 0 {
                 ok.0 = true;
-            } else {
+            } else if slot == 1 {
                 ok.1 = true;
             }
             continue;
@@ -1913,19 +2073,25 @@ pub async fn ensure_zone(app_data: &Path, zone: &str) -> (bool, bool) {
         };
         // why: parse before persisting -- a 404 HTML page or truncated
         // body must not poison the cache
-        let valid = if slot == 0 {
-            parse_nav(&bytes).is_some()
-        } else {
-            parse_map(&bytes).is_some()
+        let valid = match slot {
+            0 => parse_nav(&bytes).is_some(),
+            1 => parse_map(&bytes).is_some(),
+            _ => parse_water(&bytes).is_some(),
         };
         if valid && crate::diskwrite::write_atomic(&dest, &bytes).is_ok() {
             // why: drop the cached-negative so the next load re-reads
-            if slot == 0 {
-                nav_cache().lock_recover().remove(zone);
-                ok.0 = true;
-            } else {
-                geo_cache().lock_recover().remove(zone);
-                ok.1 = true;
+            match slot {
+                0 => {
+                    nav_cache().lock_recover().remove(zone);
+                    ok.0 = true;
+                }
+                1 => {
+                    geo_cache().lock_recover().remove(zone);
+                    ok.1 = true;
+                }
+                _ => {
+                    water_cache().lock_recover().remove(zone);
+                }
             }
         }
     }

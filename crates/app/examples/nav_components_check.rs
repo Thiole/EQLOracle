@@ -15,6 +15,10 @@ fn main() {
         if let Ok(geo_bytes) = std::fs::read(format!("{cache}/{zone}.map")) {
             let geo = eqlp_app::emumaps::parse_map(&geo_bytes).expect("geo parses");
             nav.swim = true;
+            nav.water = std::fs::read(format!("{cache}/{zone}.wtr"))
+                .ok()
+                .and_then(|b| eqlp_app::emumaps::parse_water(&b))
+                .map(std::sync::Arc::new);
             // EQLP_MAPS_DIR=<install>/maps enables the drawn-wall barrier
             if let Ok(maps) = std::env::var("EQLP_MAPS_DIR") {
                 let base = std::path::Path::new(&maps)

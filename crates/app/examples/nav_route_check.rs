@@ -26,6 +26,10 @@ fn main() {
         // mirror load_nav: swim-bridge underwater zones, drawn walls as barrier
         if emumaps::is_underwater(zone) {
             n.swim = true;
+            n.water = std::fs::read(format!("{cache}/{zone}.wtr"))
+                .ok()
+                .and_then(|b| eqlp_app::emumaps::parse_water(&b))
+                .map(std::sync::Arc::new);
             let base = std::path::Path::new(maps)
                 .parent()
                 .expect("maps dir has a parent");
