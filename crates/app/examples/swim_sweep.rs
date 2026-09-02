@@ -10,9 +10,7 @@ fn main() {
     let f: Vec<f32> = a[4..7].iter().map(|s| s.trim().parse().unwrap()).collect();
     let from = [f[0], f[1], f[2]];
     let geo = emumaps::parse_map(&std::fs::read(format!("{cache}/{zone}.map")).unwrap()).unwrap();
-    let mut nav =
-        emumaps::parse_nav(&std::fs::read(format!("{cache}/{zone}.nav")).unwrap()).unwrap();
-    nav.apply_links(emumaps::zone_links(zone));
+    let nav_bytes = std::fs::read(format!("{cache}/{zone}.nav")).unwrap();
     let base = std::path::Path::new(maps).parent().unwrap();
     let walls = eqlp_app::mapsdata::load_zone_map(
         base,
@@ -25,12 +23,8 @@ fn main() {
         .ok()
         .and_then(|b| emumaps::parse_water(&b))
         .map(std::sync::Arc::new);
-    if emumaps::is_underwater(zone) {
-        nav.swim = true;
-        nav.walls = walls;
-        nav.water = water.clone();
-        nav.bridge_gaps(&geo);
-    }
+    // why: the app's own builder -- see emumaps::build_nav
+    let nav = emumaps::build_nav(&nav_bytes, zone, Some(&geo), water.clone(), walls).unwrap();
     let walls_chk = eqlp_app::mapsdata::load_zone_map(
         base,
         std::env::var("EQLP_MAP_PACK").ok().as_deref(),

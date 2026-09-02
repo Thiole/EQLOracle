@@ -20,33 +20,27 @@ fn main() {
     let nav_bytes = std::fs::read(format!("{cache}/{zone}.nav")).expect("nav cached");
     let geo_bytes = std::fs::read(format!("{cache}/{zone}.map")).expect("map cached");
     let geo = emumaps::parse_map(&geo_bytes).expect("geo parses");
-    let nav = {
-        let mut n = emumaps::parse_nav(&nav_bytes).expect("nav parses");
-        n.apply_links(emumaps::zone_links(zone));
-        // mirror load_nav: swim-bridge underwater zones, drawn walls as barrier
-        if emumaps::is_underwater(zone) {
-            n.swim = true;
-            n.water = std::fs::read(format!("{cache}/{zone}.wtr"))
-                .ok()
-                .and_then(|b| eqlp_app::emumaps::parse_water(&b))
-                .map(std::sync::Arc::new);
-            let base = std::path::Path::new(maps)
-                .parent()
-                .expect("maps dir has a parent");
-            // EQLP_NO_WALLS=1 disables the drawn-wall barrier for comparison
-            if std::env::var("EQLP_NO_WALLS").is_err() {
-                n.walls = eqlp_app::mapsdata::load_zone_map(
-                    base,
-                    std::env::var("EQLP_MAP_PACK").ok().as_deref(),
-                    zone,
-                )
-                .ok()
-                .map(|m| emumaps::WallSet::from_lines(&m.lines));
-            }
-            n.bridge_gaps(&geo);
-        }
-        n
+    // why: the app's own builder -- see emumaps::build_nav
+    let water = std::fs::read(format!("{cache}/{zone}.wtr"))
+        .ok()
+        .and_then(|b| eqlp_app::emumaps::parse_water(&b))
+        .map(std::sync::Arc::new);
+    let base = std::path::Path::new(maps)
+        .parent()
+        .expect("maps dir has a parent");
+    // EQLP_NO_WALLS=1 disables the drawn-wall barrier for comparison
+    let walls = if std::env::var("EQLP_NO_WALLS").is_err() {
+        eqlp_app::mapsdata::load_zone_map(
+            base,
+            std::env::var("EQLP_MAP_PACK").ok().as_deref(),
+            zone,
+        )
+        .ok()
+        .map(|m| emumaps::WallSet::from_lines(&m.lines))
+    } else {
+        None
     };
+    let nav = emumaps::build_nav(&nav_bytes, zone, Some(&geo), water, walls).expect("nav parses");
 
     // endpoint snap audit
     for (name, p) in [("from", from), ("to", to)] {

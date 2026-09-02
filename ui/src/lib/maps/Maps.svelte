@@ -356,7 +356,10 @@
   });
 </script>
 
-<div class="flex flex-col gap-3 p-3">
+<!-- why: fills the module area -- the viewer was pinned at 520px and a
+     bigger window just showed more empty page ("doesn't expand when the
+     window is made bigger") -->
+<div class="flex h-full min-h-[560px] flex-col gap-3 p-3">
   <div class="flex items-center gap-3">
     <Input bind:value={search} placeholder="search zones / filter NPCs…" class="h-7 w-56 text-[12px]" />
     <label class="flex items-center gap-1.5 text-[11px] text-muted-foreground" title="Switches to your current zone's map automatically when you zone -- only once you've picked that zone's map manually at least once this session.">
@@ -365,11 +368,11 @@
     </label>
   </div>
 
-  <div class="flex gap-3">
+  <div class="flex min-h-0 flex-1 gap-3">
     <!-- why: left panel is the NPC browser now (asked directly) -- the
          zone list is gone; the search box up top switches maps when its
          query matches zone names, and filters this NPC list otherwise. -->
-    <Card class="h-[520px] w-64 shrink-0 overflow-y-auto rounded-sm">
+    <Card class="h-full min-h-[480px] w-64 shrink-0 overflow-y-auto rounded-sm">
       <CardContent class="px-2 py-2">
         {#if zoneHits.length}
           <div class="mb-1.5 border-b border-border pb-1.5">
@@ -445,7 +448,7 @@
       </CardContent>
     </Card>
 
-    <Card class="flex h-[520px] flex-1 flex-col rounded-sm">
+    <Card class="flex h-full min-h-[480px] flex-1 flex-col overflow-hidden rounded-sm">
       {#if $selectedZone && ($zoneVersions.length > 1 || $npcZoneCandidates.length > 0)}
         <div class="flex flex-col gap-1 border-b border-border px-2 py-1.5">
           {#if $zoneVersions.length > 1}

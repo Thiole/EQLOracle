@@ -194,6 +194,22 @@ impl WaterMap {
         })
     }
 
+    /// why: does the segment touch water at all (interior samples) --
+    /// on land a hop off the mesh is justified only by swimming
+    pub fn any_water(&self, a: [f32; 3], b: [f32; 3]) -> bool {
+        let len = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2) + (b[2] - a[2]).powi(2)).sqrt();
+        let steps = (len / 6.0).ceil().max(1.0) as usize;
+        (0..=steps).any(|s| {
+            let f = s as f32 / steps as f32;
+            (0.15..=0.85).contains(&f)
+                && self.is_water([
+                    a[0] + (b[0] - a[0]) * f,
+                    a[1] + (b[1] - a[1]) * f,
+                    a[2] + (b[2] - a[2]) * f,
+                ])
+        })
+    }
+
     /// why: the water along a segment must be ONE contiguous run -- a
     /// line that leaves water and re-enters it went through rock/void
     /// (the dive). Entering or leaving once (a blind region at one end)
@@ -558,6 +574,13 @@ fn passable(
     // the bridge search tests thousands of wall-blocked pairs per zone
     let wet = water.is_some_and(|w| w.all_water(a, b));
     if !wet {
+        // why: a land zone (no drawn-wall model) -- the mesh already
+        // describes every walkable surface, so a hop off it is real only
+        // as a swim: the segment must touch water. Without this a
+        // clear line across a cliff or a fence would read as a bridge.
+        if walls.is_none() && water.is_some_and(|w| !w.any_water(a, b)) {
+            return false;
+        }
         if water.is_some_and(|w| !w.segment_ok(a, b)) {
             return false;
         }
@@ -1351,19 +1374,36 @@ impl ZoneNav {
                 .or_default()
                 .push(i as u32);
         }
-        let mut nodes: Vec<[f32; 3]> = Vec::new();
-        let mut x = lo[0] - STEP;
-        while x <= hi[0] + STEP {
-            let mut y = lo[1] - STEP;
-            while y <= hi[1] + STEP {
-                let mut z = lo[2];
-                while z <= hi[2] + STEP {
-                    nodes.push([x, y, z]);
-                    z += STEP;
+        // why: a land zone with water (a lake, a river) keeps candidates
+        // in the water only -- that's the only open volume a route may
+        // leave the mesh for -- and a big lake is thinned to a cap by
+        // widening the step, so an outdoor zone loads in seconds
+        const NODE_CAP: usize = 20_000;
+        let land_water = !self.swim && water.is_some();
+        let gen = |step: f32| -> Vec<[f32; 3]> {
+            let mut nodes: Vec<[f32; 3]> = Vec::new();
+            let mut x = lo[0] - step;
+            while x <= hi[0] + step {
+                let mut y = lo[1] - step;
+                while y <= hi[1] + step {
+                    let mut z = lo[2];
+                    while z <= hi[2] + step {
+                        let p = [x, y, z];
+                        if !land_water || water.is_some_and(|w| w.is_water(p)) {
+                            nodes.push(p);
+                        }
+                        z += step;
+                    }
+                    y += step;
                 }
-                y += STEP;
+                x += step;
             }
-            x += STEP;
+            nodes
+        };
+        let mut nodes = gen(STEP);
+        if land_water && nodes.len() > NODE_CAP {
+            let step = STEP * (nodes.len() as f32 / NODE_CAP as f32).cbrt();
+            nodes = gen(step);
         }
         let mut node_cells: HashMap<(i32, i32, i32), Vec<u32>> = HashMap::new();
         for (i, p) in nodes.iter().enumerate() {
@@ -1530,7 +1570,16 @@ impl ZoneNav {
                         sees_dry_floor && w.nearby(*p, 40.0, 30.0) && w.encloses(*p, 30.0)
                     }
                 }
-                None => column_poly[ni].is_some(),
+                // why: land zone -- a node exists only in water and only
+                // once linked; the bare floor-column test is for a swim
+                // zone with neither map nor water volume
+                None => match water {
+                    Some(wm) => {
+                        wm.is_water(*p)
+                            && (!node_polys[ni].is_empty() || !node_nodes[ni].is_empty())
+                    }
+                    None => column_poly[ni].is_some(),
+                },
             }
         };
         let mut keep: Vec<Option<u32>> = vec![None; nodes.len()];
@@ -1721,6 +1770,17 @@ impl ZoneNav {
         for (_, a, b) in drops {
             let pa = self.route_point(a);
             let pb = self.route_point(b);
+            // why: land zone -- a drop is an edge both ways, and the only
+            // vertical a route may take both ways is a swim: both ends in
+            // the water. A cliff-to-lake jump would read as climbable.
+            let land = walls.is_none();
+            if land
+                && !water
+                    .as_deref()
+                    .is_some_and(|wm| wm.is_water(pa) && wm.is_water(pb))
+            {
+                continue;
+            }
             if !passable(geo, walls.as_ref(), water.as_deref(), pa, pb) {
                 continue;
             }
@@ -2445,25 +2505,47 @@ pub fn load_nav(app_data: &Path, zone: &str, walls: Option<WallSet>) -> Option<A
     }
     let parsed = std::fs::read(cache_dir(app_data).join(format!("{zone}.nav")))
         .ok()
-        .and_then(|b| parse_nav(&b))
-        .map(|mut nav| {
-            // why: pack-declared teleporter/door edges -- see zone_links
-            nav.apply_links(zone_links(zone));
-            // why: swim zones need open water as edges -- see bridge_gaps
-            if is_underwater(zone) {
-                nav.swim = true;
-                nav.walls = walls;
-                nav.water = load_water(app_data, zone);
-                if let Some(geo) = load_geo(app_data, zone) {
-                    nav.bridge_gaps(&geo);
-                }
-            }
-            Arc::new(nav)
-        });
+        .and_then(|b| {
+            let geo = load_geo(app_data, zone);
+            let water = load_water(app_data, zone);
+            build_nav(&b, zone, geo.as_deref(), water, walls)
+        })
+        .map(Arc::new);
     nav_cache()
         .lock_recover()
         .insert(zone.to_string(), parsed.clone());
     parsed
+}
+
+/// why: ONE builder for the app and every probe -- a probe that mirrors
+/// load_nav by hand drifts from it (the swim-wall fix was verified
+/// against a probe that didn't take the viewer's pack). Every zone with
+/// a water volume gets swim bridging: an underwater zone in chain mode
+/// with the drawn walls as barrier; a land zone with a lake or river
+/// keeps funnel walking and bridges mesh islands only through the
+/// water ("navmesh, water etc should be used for all maps pathfinding").
+pub fn build_nav(
+    nav_bytes: &[u8],
+    zone: &str,
+    geo: Option<&ZoneGeo>,
+    water: Option<Arc<WaterMap>>,
+    walls: Option<WallSet>,
+) -> Option<ZoneNav> {
+    let mut nav = parse_nav(nav_bytes)?;
+    // why: pack-declared teleporter/door edges -- see zone_links
+    nav.apply_links(zone_links(zone));
+    if is_underwater(zone) {
+        nav.swim = true;
+        nav.walls = walls;
+        nav.water = water;
+        if let Some(geo) = geo {
+            nav.bridge_gaps(geo);
+        }
+    } else if let (Some(geo), Some(water)) = (geo, water) {
+        nav.water = Some(water);
+        nav.bridge_gaps(geo);
+    }
+    Some(nav)
 }
 
 type WaterCache = Mutex<HashMap<String, Option<Arc<WaterMap>>>>;
@@ -2509,11 +2591,13 @@ pub async fn ensure_zone(app_data: &Path, zone: &str) -> (bool, bool) {
     let dir = cache_dir(app_data);
     let _ = std::fs::create_dir_all(&dir);
     let mut ok = (false, false);
-    // why: water volumes are a third file, only meaningful for swim zones
-    let mut wanted = vec![("nav", "nav", 0usize), ("base", "map", 1usize)];
-    if is_underwater(zone) {
-        wanted.push(("water", "wtr", 2usize));
-    }
+    // why: water volumes for every zone -- most zones have none upstream,
+    // and a miss is remembered (".missing") so a zone open never re-asks
+    let wanted = [
+        ("nav", "nav", 0usize),
+        ("base", "map", 1usize),
+        ("water", "wtr", 2usize),
+    ];
     for (sub, ext, slot) in wanted {
         let dest = dir.join(format!("{zone}.{ext}"));
         if dest.exists() {
@@ -2524,11 +2608,18 @@ pub async fn ensure_zone(app_data: &Path, zone: &str) -> (bool, bool) {
             }
             continue;
         }
+        let missing = dir.join(format!("{zone}.{ext}.missing"));
+        if slot == 2 && missing.exists() {
+            continue;
+        }
         let url = format!("{RAW_BASE}/{sub}/{zone}.{ext}");
         let Ok(resp) = reqwest::get(&url).await else {
             continue;
         };
         if !resp.status().is_success() {
+            if slot == 2 && resp.status() == reqwest::StatusCode::NOT_FOUND {
+                let _ = std::fs::write(&missing, b"");
+            }
             continue;
         }
         let Ok(bytes) = resp.bytes().await else {

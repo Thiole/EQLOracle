@@ -9,28 +9,25 @@ fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
     let (cache, zone) = (&a[0], &a[1]);
     let nav_bytes = std::fs::read(format!("{cache}/{zone}.nav")).expect("nav cached");
-    let mut nav = eqlp_app::emumaps::parse_nav(&nav_bytes).expect("nav parses");
-    // mirror load_nav: swim-bridge underwater zones when geo is cached
-    if eqlp_app::emumaps::is_underwater(zone) {
-        if let Ok(geo_bytes) = std::fs::read(format!("{cache}/{zone}.map")) {
-            let geo = eqlp_app::emumaps::parse_map(&geo_bytes).expect("geo parses");
-            nav.swim = true;
-            nav.water = std::fs::read(format!("{cache}/{zone}.wtr"))
-                .ok()
-                .and_then(|b| eqlp_app::emumaps::parse_water(&b))
-                .map(std::sync::Arc::new);
-            // EQLP_MAPS_DIR=<install>/maps enables the drawn-wall barrier
-            if let Ok(maps) = std::env::var("EQLP_MAPS_DIR") {
-                let base = std::path::Path::new(&maps)
-                    .parent()
-                    .expect("maps dir has a parent");
-                nav.walls = eqlp_app::mapsdata::load_zone_map(base, None, zone)
-                    .ok()
-                    .map(|m| eqlp_app::emumaps::WallSet::from_lines(&m.lines));
-            }
-            nav.bridge_gaps(&geo);
-        }
-    }
+    // why: the app's own builder -- see emumaps::build_nav
+    let geo = std::fs::read(format!("{cache}/{zone}.map"))
+        .ok()
+        .and_then(|b| eqlp_app::emumaps::parse_map(&b));
+    let water = std::fs::read(format!("{cache}/{zone}.wtr"))
+        .ok()
+        .and_then(|b| eqlp_app::emumaps::parse_water(&b))
+        .map(std::sync::Arc::new);
+    // EQLP_MAPS_DIR=<install>/maps enables the drawn-wall barrier
+    let walls = std::env::var("EQLP_MAPS_DIR").ok().and_then(|maps| {
+        let base = std::path::Path::new(&maps)
+            .parent()
+            .expect("maps dir has a parent");
+        eqlp_app::mapsdata::load_zone_map(base, None, zone)
+            .ok()
+            .map(|m| eqlp_app::emumaps::WallSet::from_lines(&m.lines))
+    });
+    let nav = eqlp_app::emumaps::build_nav(&nav_bytes, zone, geo.as_ref(), water, walls)
+        .expect("nav parses");
 
     let n = nav.polys.len();
     let edges: usize = nav.polys.iter().map(|p| p.edges.len()).sum();
