@@ -1168,8 +1168,23 @@ impl ZoneNav {
         // verified swim hop; funnel smoothing would invent unverified
         // straight lines through walls (reported: "straight through
         // the walls on Kedge")
-        let mut chain_pts: Vec<[f32; 3]> = vec![from];
+        // why: swim -- the chain begins ON the mesh (the zone-line label
+        // a fallback start uses sits outside the tunnel mouth, so a
+        // line from it "comes in from outside"); a mesh-poly waypoint
+        // floats 2u above its center
         let swim = self.swim;
+        let lifted = |i: u32| -> [f32; 3] {
+            let mut c = self.polys[i as usize].center;
+            if self.polys[i as usize].verts.len() > 1 {
+                c[2] += 2.0;
+            }
+            c
+        };
+        let mut chain_pts: Vec<[f32; 3]> = if swim {
+            vec![lifted(start)]
+        } else {
+            vec![from]
+        };
         let close_leg = |seg_start: [f32; 3],
                          end: [f32; 3],
                          portals: &[([f32; 3], [f32; 3])],
@@ -1214,14 +1229,21 @@ impl ZoneNav {
                     self.polys[cur_poly as usize].center,
                     self.polys[e.to as usize].center,
                 ));
-                // why: swim -- a floor poly's center lies ON the floor, so
-                // a straight line between two of them dips through any
-                // sag between; a small lift keeps the swim above it
-                let mut c = self.polys[e.to as usize].center;
-                if swim && self.polys[e.to as usize].verts.len() > 1 {
-                    c[2] += 2.0;
+                if swim {
+                    // why: a mesh-to-mesh hop passes explicitly through
+                    // the shared edge's midpoint (the doorway) -- more,
+                    // shorter lines that stay inside both polys; a swim
+                    // hop's portal is already the far point itself
+                    let is_mesh_hop = e.a != e.b;
+                    if is_mesh_hop {
+                        chain_pts.push([
+                            (e.a[0] + e.b[0]) * 0.5,
+                            (e.a[1] + e.b[1]) * 0.5,
+                            (e.a[2] + e.b[2]) * 0.5 + 2.0,
+                        ]);
+                    }
+                    chain_pts.push(lifted(e.to));
                 }
-                chain_pts.push(c);
             }
             cur_poly = e.to;
         }
@@ -1231,6 +1253,29 @@ impl ZoneNav {
             &portals,
             &mut chain_pts,
         )));
+        // why: swim -- every output segment is re-verified against the
+        // collision mesh; a route that would cross a wall is refused,
+        // never drawn ("super verify it doesn't cross any boundaries")
+        if swim {
+            if let Some(g) = geo {
+                let mut bad = 0usize;
+                for leg in &legs {
+                    if let NavLeg::Walk(pts) = leg {
+                        for w in pts.windows(2) {
+                            if !g.los_clear(w[0], w[1]) {
+                                bad += 1;
+                            }
+                        }
+                    }
+                }
+                if std::env::var("EQLP_NAV_DEBUG").is_ok() {
+                    eprintln!("swim route verify: {bad} unverified segments");
+                }
+                if bad > 0 {
+                    return None;
+                }
+            }
+        }
         Some(legs)
     }
 
