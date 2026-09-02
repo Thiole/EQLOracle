@@ -449,6 +449,11 @@
     </Card>
 
     <Card class="flex h-full min-h-[480px] flex-1 flex-col overflow-hidden rounded-sm">
+      <!-- why: the player marker only moves when the log says where you
+           are -- asked for as a plain strip at the top of the map -->
+      <p class="border-b border-bad/40 bg-bad/10 px-2 py-1 text-[11px] text-bad">
+        Location within zone does not auto update -- run /loc to output your location into the log. You can also put it on a hotkey if you like.
+      </p>
       {#if $selectedZone && ($zoneVersions.length > 1 || $npcZoneCandidates.length > 0)}
         <div class="flex flex-col gap-1 border-b border-border px-2 py-1.5">
           {#if $zoneVersions.length > 1}
