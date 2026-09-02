@@ -35,9 +35,13 @@ fn main() {
                 .expect("maps dir has a parent");
             // EQLP_NO_WALLS=1 disables the drawn-wall barrier for comparison
             if std::env::var("EQLP_NO_WALLS").is_err() {
-                n.walls = eqlp_app::mapsdata::load_zone_map(base, None, zone)
-                    .ok()
-                    .map(|m| emumaps::WallSet::from_lines(&m.lines));
+                n.walls = eqlp_app::mapsdata::load_zone_map(
+                    base,
+                    std::env::var("EQLP_MAP_PACK").ok().as_deref(),
+                    zone,
+                )
+                .ok()
+                .map(|m| emumaps::WallSet::from_lines(&m.lines));
             }
             n.bridge_gaps(&geo);
         }

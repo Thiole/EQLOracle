@@ -1085,6 +1085,9 @@ pub struct Ingest {
     /// why: every earned-AA payout (ts, gained, running total), log
     /// order -- the Session overlay's AA/hour reads a suffix of this
     pub aa_points: Vec<(Millis, u64, u64)>,
+    /// why: the last zone line -- a fight closed BY zoning (an evac, a
+    /// zone-out) is left behind, not a summary to keep showing
+    pub last_zone_enter_ms: Option<Millis>,
     /// why: every AA rank purchase this session, see AaLog
     pub aa: AaLog,
     /// why: every spell confirmed known this session, see SpellLog
@@ -1229,6 +1232,7 @@ impl Default for Ingest {
             skills: std::collections::HashMap::new(),
             skill_levels: std::collections::HashMap::new(),
             aa_points: Vec::new(),
+            last_zone_enter_ms: None,
             aa: AaLog::default(),
             spellbook: SpellLog::default(),
             spell_ranks: SpellRanks::default(),
@@ -1567,6 +1571,7 @@ impl Ingest {
             Action::Zone { zone } => {
                 // why: stop fights bleeding across zone changes
                 self.encounters.close_all(ts);
+                self.last_zone_enter_ms = Some(ts);
                 // why: a charmed pet never follows you across a zone line --
                 // real loss even with no "spell has worn off" confirmation
                 // line at all (charm's own break is often silent on zoning)

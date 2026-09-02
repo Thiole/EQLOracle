@@ -1206,7 +1206,15 @@ pub fn current_encounter(ing: &Ingest) -> Option<&Encounter> {
                     .encounter(EncounterId(e))
                     .is_some_and(|enc| enc.involves_you)
         })?;
-    ing.store.encounter(EncounterId(latest_id))
+    let enc = ing.store.encounter(EncounterId(latest_id))?;
+    // why: a fight that ended at (or before) the last zone line was left
+    // behind -- an evac cast to reset an encounter, a zone-out. Reported
+    // directly: "doesn't clear out if an evac is cast". A fight that
+    // ended on its own (kill/wipe) keeps its summary as before.
+    let left_behind = ing
+        .last_zone_enter_ms
+        .is_some_and(|z| enc.end_ms.is_some_and(|e| e <= z));
+    (!left_behind).then_some(enc)
 }
 
 /// why: Skill Tracker's target-effects section -- current_encounter's
@@ -1890,6 +1898,42 @@ mod outcome_tests {
         list.iter()
             .find(|e| e.target == target)
             .expect("target should have its own encounter")
+    }
+
+    /// why: real evac shape -- cast, LOADING, then a zone line (even for
+    /// the same zone). The fight it closes must not linger as "current".
+    #[test]
+    fn an_evac_leaves_the_fight_behind() {
+        let text = "[Tue Jul 28 15:01:00 2026] You hit a target 1 for 5 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:02 2026] A target 1 hits YOU for 12 points of damage.\n\
+             [Tue Jul 28 15:01:05 2026] You begin casting Lesser Evacuate.\n\
+             [Tue Jul 28 15:01:14 2026] LOADING, PLEASE WAIT...\n\
+             [Tue Jul 28 15:01:20 2026] You have entered The Ruins of Old Paineel.\n";
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = text.lines().map(str::as_bytes).collect();
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing.tick(ing.now_ms());
+        assert!(
+            current_encounter(&ing).is_none(),
+            "the evac'd fight must not be current"
+        );
+        assert!(live_meter(&ing).is_none());
+    }
+
+    /// why: the counter-case -- a fight that ended on its own keeps its
+    /// summary (the after-fight read), zone line or not before it
+    #[test]
+    fn a_kill_after_zoning_in_still_shows() {
+        let text = "[Tue Jul 28 15:00:00 2026] You have entered The Ruins of Old Paineel.\n\
+             [Tue Jul 28 15:01:00 2026] You hit a target 1 for 5 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:01 2026] You have slain a target 1!\n";
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = text.lines().map(str::as_bytes).collect();
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing.tick(ing.now_ms());
+        assert!(current_encounter(&ing).is_some());
     }
 
     #[test]

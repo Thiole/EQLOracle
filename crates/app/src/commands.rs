@@ -1645,8 +1645,14 @@ fn swim_walls(state: &AppState, pack: Option<&str>, zone: &str) -> Option<emumap
     if !emumaps::is_underwater(zone) {
         return None;
     }
+    // why: ALWAYS the game's own map file, never the viewing pack -- the
+    // routing rules (door lines, enclosure) are calibrated on it, and the
+    // parsed graph is cached once per zone: the first caller must not
+    // decide what every later route sees (reported: routes stuck in the
+    // top chamber when the viewer was on Brewall)
+    let _ = pack;
     let base_dir = state.config.lock_recover().as_ref()?.base_dir.clone();
-    mapsdata::load_zone_map(&base_dir, pack, zone)
+    mapsdata::load_zone_map(&base_dir, None, zone)
         .ok()
         .map(|m| emumaps::WallSet::from_lines(&m.lines))
 }

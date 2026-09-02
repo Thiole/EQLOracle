@@ -14,9 +14,13 @@ fn main() {
         emumaps::parse_nav(&std::fs::read(format!("{cache}/{zone}.nav")).unwrap()).unwrap();
     nav.apply_links(emumaps::zone_links(zone));
     let base = std::path::Path::new(maps).parent().unwrap();
-    let walls = eqlp_app::mapsdata::load_zone_map(base, None, zone)
-        .ok()
-        .map(|m| emumaps::WallSet::from_lines(&m.lines));
+    let walls = eqlp_app::mapsdata::load_zone_map(
+        base,
+        std::env::var("EQLP_MAP_PACK").ok().as_deref(),
+        zone,
+    )
+    .ok()
+    .map(|m| emumaps::WallSet::from_lines(&m.lines));
     let water = std::fs::read(format!("{cache}/{zone}.wtr"))
         .ok()
         .and_then(|b| emumaps::parse_water(&b))
@@ -27,9 +31,13 @@ fn main() {
         nav.water = water.clone();
         nav.bridge_gaps(&geo);
     }
-    let walls_chk = eqlp_app::mapsdata::load_zone_map(base, None, zone)
-        .ok()
-        .map(|m| emumaps::WallSet::from_lines(&m.lines));
+    let walls_chk = eqlp_app::mapsdata::load_zone_map(
+        base,
+        std::env::var("EQLP_MAP_PACK").ok().as_deref(),
+        zone,
+    )
+    .ok()
+    .map(|m| emumaps::WallSet::from_lines(&m.lines));
     // why: a mesh floor poly is inside by definition -- only swim-node
     // waypoints can be "outside"
     let mesh_pts: std::collections::HashSet<(i32, i32, i32)> = nav
