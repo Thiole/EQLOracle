@@ -234,13 +234,20 @@ impl WaterMap {
 pub struct WallSet {
     walls: Vec<([f32; 3], [f32; 3])>,
     grid: HashMap<(i32, i32), Vec<u32>>,
+    /// why: the short lines -- doors and gates drawn across corridors
+    doors: Vec<([f32; 3], [f32; 3])>,
 }
+
+/// why: a drawn line shorter than this is a doorway, not a wall (every
+/// blocked kedge gap crossed a 10-20u line, 14.0 recurring)
+pub const DOOR_LINE_MAX: f32 = 24.0;
 
 impl WallSet {
     /// why: grayscale lines only -- same rule pathfind.rs applies (brown
     /// is terrain art, blue is water, magenta is the zone-line marker)
     pub fn from_lines(lines: &[crate::mapsdata::MapLine]) -> Self {
         let mut walls = Vec::new();
+        let mut doors = Vec::new();
         let mut grid: HashMap<(i32, i32), Vec<u32>> = HashMap::new();
         for l in lines {
             if !(l.r == l.g && l.g == l.b_) {
@@ -248,6 +255,9 @@ impl WallSet {
             }
             let a = [l.a.x, l.a.y, l.a.z];
             let b = [l.b.x, l.b.y, l.b.z];
+            if (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) < DOOR_LINE_MAX * DOOR_LINE_MAX {
+                doors.push((a, b));
+            }
             let i = walls.len() as u32;
             walls.push((a, b));
             let (x0, x1) = (
@@ -264,7 +274,46 @@ impl WallSet {
                 }
             }
         }
-        WallSet { walls, grid }
+        WallSet { walls, grid, doors }
+    }
+
+    /// why: is this collision triangle a DOOR PANEL -- vertical, and its
+    /// XY footprint lies along a short drawn line. The collision mesh
+    /// holds doors closed (kedge: 14u-wide vertical panels exactly on the
+    /// 14u door lines), so line of sight must see through them.
+    pub fn is_door_panel(&self, tri: &[[f32; 3]; 3]) -> bool {
+        let e1 = [
+            tri[1][0] - tri[0][0],
+            tri[1][1] - tri[0][1],
+            tri[1][2] - tri[0][2],
+        ];
+        let e2 = [
+            tri[2][0] - tri[0][0],
+            tri[2][1] - tri[0][1],
+            tri[2][2] - tri[0][2],
+        ];
+        let nz = e1[0] * e2[1] - e1[1] * e2[0];
+        let nx = e1[1] * e2[2] - e1[2] * e2[1];
+        let ny = e1[2] * e2[0] - e1[0] * e2[2];
+        let len = (nx * nx + ny * ny + nz * nz).sqrt();
+        if len < 1e-6 || (nz / len).abs() > 0.3 {
+            return false; // not a vertical panel
+        }
+        const NEAR: f32 = 3.0;
+        let near_line = |p: [f32; 3], (a, b): &([f32; 3], [f32; 3])| -> bool {
+            let (ex, ey) = (b[0] - a[0], b[1] - a[1]);
+            let len2 = ex * ex + ey * ey;
+            let t = if len2 < 1e-9 {
+                0.0
+            } else {
+                (((p[0] - a[0]) * ex + (p[1] - a[1]) * ey) / len2).clamp(0.0, 1.0)
+            };
+            let (qx, qy) = (a[0] + ex * t, a[1] + ey * t);
+            (p[0] - qx).powi(2) + (p[1] - qy).powi(2) <= NEAR * NEAR
+        };
+        self.doors
+            .iter()
+            .any(|d| tri.iter().all(|v| near_line(*v, d)))
     }
 
     /// why: "is there a wall drawn around this point at this height" --
@@ -339,11 +388,43 @@ impl WallSet {
         cx % 2 == 1 && cy % 2 == 1
     }
 
+    /// why: probe/diagnostic -- lengths of every drawn line the segment
+    /// crosses (a door is a short line across a corridor; a wall is long)
+    pub fn crossed_lengths(&self, a: [f32; 3], b: [f32; 3]) -> Vec<f32> {
+        const Z_PAD: f32 = 10.0;
+        let mut out = Vec::new();
+        let d = [b[0] - a[0], b[1] - a[1]];
+        for &(wa, wb) in &self.walls {
+            let e = [wb[0] - wa[0], wb[1] - wa[1]];
+            let denom = d[0] * e[1] - d[1] * e[0];
+            if denom.abs() < 1e-9 {
+                continue;
+            }
+            let f = [wa[0] - a[0], wa[1] - a[1]];
+            let t = (f[0] * e[1] - f[1] * e[0]) / denom;
+            let u = (f[0] * d[1] - f[1] * d[0]) / denom;
+            if !(0.0..=1.0).contains(&t) || !(0.0..=1.0).contains(&u) {
+                continue;
+            }
+            let seg_z = a[2] + (b[2] - a[2]) * t;
+            let (lo, hi) = (wa[2].min(wb[2]) - Z_PAD, wa[2].max(wb[2]) + Z_PAD);
+            if (lo..=hi).contains(&seg_z) {
+                out.push((e[0] * e[0] + e[1] * e[1]).sqrt());
+            }
+        }
+        out
+    }
+
     /// why: 2D crossing with the wall, then the segment's z at that point
     /// against the wall's own z span (+-10: a wall line is drawn at one
     /// height per end, the real wall stands taller)
     pub fn crosses(&self, a: [f32; 3], b: [f32; 3]) -> bool {
         const Z_PAD: f32 = 10.0;
+        // why: a drawn line shorter than a doorway IS a doorway (doors and
+        // gates are drawn as one short line across a corridor -- every
+        // blocked kedge gap crossed a 10-20u line, 14.0 recurring); walls
+        // are long polylines. Applies to every zone.
+        const DOOR_LINE_MAX: f32 = 24.0;
         let (x0, x1) = (
             (a[0].min(b[0]) / CELL).floor() as i32,
             (a[0].max(b[0]) / CELL).floor() as i32,
@@ -366,6 +447,9 @@ impl WallSet {
                     seen.push(wi);
                     let (wa, wb) = self.walls[wi as usize];
                     let e = [wb[0] - wa[0], wb[1] - wa[1]];
+                    if e[0] * e[0] + e[1] * e[1] < DOOR_LINE_MAX * DOOR_LINE_MAX {
+                        continue;
+                    }
                     let denom = d[0] * e[1] - d[1] * e[0];
                     if denom.abs() < 1e-9 {
                         continue;
@@ -397,6 +481,45 @@ fn swim_lift() -> f32 {
         .unwrap_or(2.5)
 }
 
+/// why: a wiki spawn point has no z. In a swim zone the mob is in the
+/// water column above some floor at that XY -- pick the highest floor
+/// surface whose water-side point is in the water volume (the star room:
+/// a roof at -23 is dry, the floor at -294 is wet); without a water map,
+/// the surface nearest the hint. Map coords in and out.
+pub fn resolve_unknown_z(
+    geo: &ZoneGeo,
+    water: Option<&WaterMap>,
+    x: f32,
+    y: f32,
+    hint: f32,
+) -> Option<f32> {
+    let mut surfaces: Vec<f32> = Vec::new();
+    let mut h = 400.0f32;
+    while h > -400.0 {
+        if let Some(z) = geo.best_z(x, y, h) {
+            if !surfaces.iter().any(|&s| (s - z).abs() < 1.0) {
+                surfaces.push(z);
+            }
+        }
+        h -= 10.0;
+    }
+    if surfaces.is_empty() {
+        return None;
+    }
+    surfaces.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+    if let Some(wm) = water {
+        if let Some(&z) = surfaces.iter().find(|&&z| wm.is_water([x, y, z + 3.0])) {
+            return Some(z);
+        }
+    }
+    surfaces.iter().copied().min_by(|a, b| {
+        (a - hint)
+            .abs()
+            .partial_cmp(&(b - hint).abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
 /// why: the one traversability test for a swim segment -- collision
 /// mesh line of sight AND no drawn wall crossed
 fn passable(
@@ -406,9 +529,36 @@ fn passable(
     a: [f32; 3],
     b: [f32; 3],
 ) -> bool {
-    if water.is_some_and(|w| !w.segment_ok(a, b)) {
-        return false;
+    // why: precedence. Collision line of sight is required. Then, when the
+    // water volume says the segment is water end to end, it IS passable
+    // -- a drawn line across it is a door or a gate (kedge: the north
+    // wing and the southeast rooms hang off 10u doorways drawn as lines).
+    // The drawn walls decide only where the water map is blind or the
+    // segment isn't fully in water.
+    // cheap tests first (water, drawn walls), the collision walk last --
+    // the bridge search tests thousands of wall-blocked pairs per zone
+    let wet = water.is_some_and(|w| w.all_water(a, b));
+    if !wet {
+        if water.is_some_and(|w| !w.segment_ok(a, b)) {
+            return false;
+        }
+        if walls.is_some_and(|w| w.crosses(a, b)) {
+            return false;
+        }
     }
+    match walls {
+        Some(w) => geo.los_clear_through_doors(a, b, w),
+        None => geo.los_clear(a, b),
+    }
+}
+
+#[allow(dead_code)]
+fn passable_debug_counters(
+    geo: &ZoneGeo,
+    walls: Option<&WallSet>,
+    a: [f32; 3],
+    b: [f32; 3],
+) -> bool {
     thread_local! {
         static REJ: std::cell::Cell<(u32, u32, u32)> = const { std::cell::Cell::new((0, 0, 0)) };
     }
@@ -963,6 +1113,90 @@ impl ZoneGeo {
 }
 
 impl ZoneGeo {
+    /// why: line of sight that sees THROUGH door panels -- same walk as
+    /// los_clear, but a hit on a triangle the drawn map identifies as a
+    /// door doesn't block (doors open; the collision mesh holds them shut)
+    pub fn los_clear_through_doors(&self, a: [f32; 3], b: [f32; 3], walls: &WallSet) -> bool {
+        thread_local! {
+            static STAMP2: std::cell::RefCell<(Vec<u32>, u32)> = const { std::cell::RefCell::new((Vec::new(), 0)) };
+        }
+        let dir = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        let len_xy = ((b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2)).sqrt();
+        let steps = (len_xy / (CELL * 0.25)).ceil().max(1.0) as usize;
+        STAMP2.with(|st| {
+            let mut st = st.borrow_mut();
+            if st.0.len() != self.tris.len() {
+                st.0 = vec![0; self.tris.len()];
+                st.1 = 0;
+            }
+            st.1 = st.1.wrapping_add(1);
+            if st.1 == 0 {
+                st.0.iter_mut().for_each(|v| *v = 0);
+                st.1 = 1;
+            }
+            let gen = st.1;
+            let mut last: Option<(i32, i32)> = None;
+            for s in 0..=steps {
+                let f = s as f32 / steps as f32;
+                let x = a[0] + (b[0] - a[0]) * f;
+                let y = a[1] + (b[1] - a[1]) * f;
+                let c = ((x / CELL).floor() as i32, (y / CELL).floor() as i32);
+                if last == Some(c) {
+                    continue;
+                }
+                last = Some(c);
+                let Some(tris) = self.grid.get(&c) else {
+                    continue;
+                };
+                for &ti in tris {
+                    if st.0[ti as usize] == gen {
+                        continue;
+                    }
+                    st.0[ti as usize] = gen;
+                    let [i, j, k] = self.tris[ti as usize];
+                    let tri = [
+                        self.verts[i as usize],
+                        self.verts[j as usize],
+                        self.verts[k as usize],
+                    ];
+                    if seg_hits_tri(a, dir, tri[0], tri[1], tri[2]) && !walls.is_door_panel(&tri) {
+                        return false;
+                    }
+                }
+            }
+            true
+        })
+    }
+
+    /// why: probe-only strict audit that knows about doors -- every
+    /// triangle, no grid; a door panel (see WallSet::is_door_panel) is
+    /// not a hit
+    pub fn segment_hits_non_door(&self, a: [f32; 3], b: [f32; 3], walls: &WallSet) -> bool {
+        let dir = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        self.tris.iter().any(|&[i, j, k]| {
+            let tri = [
+                self.verts[i as usize],
+                self.verts[j as usize],
+                self.verts[k as usize],
+            ];
+            seg_hits_tri(a, dir, tri[0], tri[1], tri[2]) && !walls.is_door_panel(&tri)
+        })
+    }
+
+    /// why: probe-only -- the first collision triangle a segment hits,
+    /// so a blocked doorway can be looked at (door? floor lip? slope?)
+    pub fn first_hit_tri(&self, a: [f32; 3], b: [f32; 3]) -> Option<[[f32; 3]; 3]> {
+        let dir = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+        self.tris.iter().find_map(|&[i, j, k]| {
+            let (v0, v1, v2) = (
+                self.verts[i as usize],
+                self.verts[j as usize],
+                self.verts[k as usize],
+            );
+            seg_hits_tri(a, dir, v0, v1, v2).then_some([v0, v1, v2])
+        })
+    }
+
     /// why: probe-only strict audit -- every triangle, no grid, so a
     /// route can be checked by a method independent of los_clear's own
     /// cell sampling. Slow on purpose; never call from routing.
@@ -1496,7 +1730,7 @@ impl ZoneNav {
         // on kedge (243 sets -> 29k set pairs); this needs a fraction.
         // Per set pair, tries are capped so a hopeless pair (two sets
         // wall-separated everywhere) can't scan the whole zone.
-        const MAX_TRIES: usize = 400;
+        const MAX_TRIES: usize = 20000;
         let mut cands: Vec<(f32, u32, u32)> = Vec::new();
         for i in 0..n {
             for j in (i + 1)..n {
@@ -1541,15 +1775,32 @@ impl ZoneNav {
                 continue;
             }
             let key = (ra.min(rb), ra.max(rb));
-            let t = tries.entry(key).or_insert(0);
-            if *t >= MAX_TRIES {
+            if tries.get(&key).is_some_and(|&t| t >= MAX_TRIES) {
                 continue;
             }
-            *t += 1;
-            dbg.0 += 1;
             let a = self.route_point(i);
             let b = self.route_point(j);
-            if !passable(geo, walls.as_ref(), water.as_deref(), a, b) {
+            // why: the budget counts collision walks only -- a pair the
+            // drawn walls or the water volume reject costs nothing, so a
+            // wing that shares a long wall with the main body (kedge's
+            // north wing: tens of thousands of nearer blocked pairs) still
+            // reaches its one doorway pair
+            let wet = water.as_deref().is_some_and(|w| w.all_water(a, b));
+            if !wet {
+                if water.as_deref().is_some_and(|w| !w.segment_ok(a, b)) {
+                    continue;
+                }
+                if walls.as_ref().is_some_and(|w| w.crosses(a, b)) {
+                    continue;
+                }
+            }
+            *tries.entry(key).or_insert(0) += 1;
+            dbg.0 += 1;
+            let los = match walls.as_ref() {
+                Some(w) => geo.los_clear_through_doors(a, b, w),
+                None => geo.los_clear(a, b),
+            };
+            if !los {
                 continue;
             }
             // why: a long bridge needs a stronger "inside" than LOS + no
@@ -1581,6 +1832,127 @@ impl ZoneNav {
             });
             parent[ra as usize] = rb;
             sets_left -= 1;
+        }
+        // why: phase 2 -- nearest-first with a budget still misses a wing
+        // that shares a long undrawn wall with the main body (kedge's
+        // north wing: thousands of nearer pairs pass the cheap checks and
+        // fail the collision walk before its one doorway comes up). Per
+        // remaining set, every point tests only its K nearest points in
+        // each other set -- a doorway poly's nearest neighbors across the
+        // door are the doorway. Bounded by K, not by luck of ordering.
+        const K_NEAREST: usize = 6;
+        if sets_left > 1 {
+            let cell = |v: f32| (v / LONG_DIST).floor() as i32;
+            let mut by_cell: HashMap<(i32, i32, i32), Vec<u32>> = HashMap::new();
+            for i in 0..n {
+                let c = self.polys[i].center;
+                by_cell
+                    .entry((cell(c[0]), cell(c[1]), cell(c[2])))
+                    .or_default()
+                    .push(i as u32);
+            }
+            let mut roots: Vec<u32> = (0..n).map(|i| find(&mut parent, comp[i])).collect();
+            for i in 0..n {
+                if sets_left <= 1 {
+                    break;
+                }
+                let ri = roots[i];
+                let ci = self.polys[i].center;
+                let (cx, cy, cz) = (cell(ci[0]), cell(ci[1]), cell(ci[2]));
+                // nearest K per foreign root
+                let mut per_root: HashMap<u32, Vec<(f32, u32)>> = HashMap::new();
+                for dx in -1..=1 {
+                    for dy in -1..=1 {
+                        for dz in -1..=1 {
+                            let Some(ids) = by_cell.get(&(cx + dx, cy + dy, cz + dz)) else {
+                                continue;
+                            };
+                            for &j in ids {
+                                let rj = roots[j as usize];
+                                if rj == ri {
+                                    continue;
+                                }
+                                let d2 = dist2(ci, self.polys[j as usize].center);
+                                if d2 > LONG_DIST * LONG_DIST {
+                                    continue;
+                                }
+                                let v = per_root.entry(rj).or_default();
+                                v.push((d2, j));
+                            }
+                        }
+                    }
+                }
+                // debug hook: EQLP_NAV_DEBUG_PAIR="x,y,z" traces one point
+                let traced = std::env::var("EQLP_NAV_DEBUG_PAIR").ok().and_then(|v| {
+                    let f: Vec<f32> = v.split(',').filter_map(|t| t.trim().parse().ok()).collect();
+                    (f.len() == 3 && dist2(ci, [f[0], f[1], f[2]]) < 4.0).then_some(())
+                });
+                if traced.is_some() {
+                    eprintln!(
+                        "trace point {ci:?}: root {ri}, {} foreign roots in reach",
+                        per_root.len()
+                    );
+                }
+                for (rj, mut v) in per_root {
+                    if find(&mut parent, ri) == find(&mut parent, rj) {
+                        continue;
+                    }
+                    v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(Ordering::Equal));
+                    if traced.is_some() {
+                        for &(d2, j) in v.iter().take(K_NEAREST) {
+                            let a = self.route_point(i as u32);
+                            let b = self.route_point(j);
+                            let wet = water.as_deref().is_some_and(|wm| wm.all_water(a, b));
+                            let runs_ok = water.as_deref().is_none_or(|wm| wm.segment_ok(a, b));
+                            let wall = walls.as_ref().is_some_and(|w| w.crosses(a, b));
+                            let los = match walls.as_ref() {
+                                Some(w) => geo.los_clear_through_doors(a, b, w),
+                                None => geo.los_clear(a, b),
+                            };
+                            eprintln!("  -> root {rj} cand {:?} d={:.1} wet={wet} runs_ok={runs_ok} wall={wall} los={los}", self.polys[j as usize].center, d2.sqrt());
+                        }
+                    }
+                    for &(d2, j) in v.iter().take(K_NEAREST) {
+                        let a = self.route_point(i as u32);
+                        let b = self.route_point(j);
+                        if !passable(geo, walls.as_ref(), water.as_deref(), a, b) {
+                            continue;
+                        }
+                        if d2 > MAX_DIST * MAX_DIST {
+                            let wet = water.as_deref().is_some_and(|wm| wm.all_water(a, b));
+                            let both_enclosed = walls
+                                .as_ref()
+                                .is_some_and(|w| w.encloses(a, 30.0) && w.encloses(b, 30.0));
+                            if !(wet || both_enclosed) {
+                                continue;
+                            }
+                        }
+                        dbg.1 += 1;
+                        self.polys[i].edges.push(NavEdge {
+                            to: j,
+                            a: b,
+                            b,
+                            link: None,
+                        });
+                        self.polys[j as usize].edges.push(NavEdge {
+                            to: i as u32,
+                            a,
+                            b: a,
+                            link: None,
+                        });
+                        let (fa, fb) = (find(&mut parent, ri), find(&mut parent, rj));
+                        parent[fa as usize] = fb;
+                        sets_left -= 1;
+                        // refresh roots lazily: only what this loop reads next
+                        for r in roots.iter_mut() {
+                            if *r == fa {
+                                *r = fb;
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
         }
         if std::env::var("EQLP_NAV_DEBUG").is_ok() {
             eprintln!(
@@ -1795,9 +2167,17 @@ impl ZoneNav {
             }
             cur_poly = e.to;
         }
+        // why: a wiki spawn point has no z (the UI sends 0) -- in a swim
+        // zone the final leg ends at the goal poly's own height instead of
+        // diving into the floor and failing verification
+        let end = if swim && (to[2] - self.route_point(goal)[2]).abs() > 20.0 {
+            [to[0], to[1], self.route_point(goal)[2]]
+        } else {
+            to
+        };
         legs.push(NavLeg::Walk(close_leg(
             seg_start,
-            to,
+            end,
             &portals,
             &mut chain_pts,
         )));

@@ -1542,7 +1542,9 @@ pub async fn find_walk_path(
     zone: String,
     from: [f32; 3],
     to: [f32; 3],
+    to_z_known: Option<bool>,
 ) -> Result<PathDto, String> {
+    let mut to = to;
     // why: navmesh first -- the mesh knows floors/ramps/water the line
     // maps can't; disk-cache-only (ensure_emu_zone owns the download)
     if let Ok(app_data) = app.path().app_data_dir() {
@@ -1552,6 +1554,17 @@ pub async fn find_walk_path(
             // see emumaps::ground_hug; a swim zone uses it for line-of-
             // sight endpoint binding instead (find_route decides)
             let geo = emumaps::load_geo(&app_data, &zone);
+            // why: a wiki spawn point has no z -- resolve it to the floor
+            // under that XY that sits in the water (see resolve_unknown_z)
+            if to_z_known == Some(false) && emumaps::is_underwater(&zone) {
+                if let Some(g) = geo.as_deref() {
+                    if let Some(z) =
+                        emumaps::resolve_unknown_z(g, nav.water.as_deref(), to[0], to[1], from[2])
+                    {
+                        to[2] = z;
+                    }
+                }
+            }
             if let Some(route) = nav.find_route(from, to, geo.as_deref()) {
                 let mut waypoints: Vec<[f32; 3]> = Vec::new();
                 let legs: Vec<PathLegDto> = route
