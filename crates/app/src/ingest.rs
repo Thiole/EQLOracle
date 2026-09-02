@@ -2508,6 +2508,16 @@ impl Ingest {
     fn record_death(&mut self, ts: Millis, victim: &str) {
         // why: same normalization as record_damage -- see canonical_you
         let victim = canonical_you(victim);
+        // why: the fight this mob is IN right now, read before death()
+        // drops it from the graph -- the anchor-name scan below found an
+        // OLDER closed encounter that happened to be anchored on the same
+        // name, the XP row landed there, and the live meter flipped to
+        // that dead fight at every kill ("as soon as a target dies, the
+        // name at the top resets and the list resets"; live_meter_trace)
+        let live_id = self
+            .encounters
+            .encounter_of(victim)
+            .and_then(|g| self.enc_map.get(&g).copied());
         self.encounters.death(ts, victim);
         // why: resolves pending_xp; must run after death() (encounter
         // findable) and before drain_closed (before eviction)
@@ -2515,7 +2525,7 @@ impl Ingest {
             if p.ts == ts {
                 // why: same second as this death, consumed either way -- a
                 // non-resolving match won't do better waiting for a later death
-                if let Some(id) = self.encounter_id_for_victim(victim) {
+                if let Some(id) = live_id.or_else(|| self.encounter_id_for_victim(victim)) {
                     self.store.enc[p.row as usize] = id.0;
                 }
             } else {
@@ -2871,11 +2881,19 @@ impl Ingest {
         let id = {
             let store = &self.store;
             let claimed = &self.loot_claimed;
+            let ents = &self.entities_by_enc;
+            // why: any entity of the fight, not just its anchor -- in a
+            // whole-stretch encounter most mobs are not the anchor, and an
+            // anchor-only match sent their loot to an older fight
             store
                 .encounters
                 .iter()
                 .filter(|e| {
-                    store.name(e.target).eq_ignore_ascii_case(mob) && !claimed.contains(&e.id)
+                    !claimed.contains(&e.id)
+                        && (store.name(e.target).eq_ignore_ascii_case(mob)
+                            || ents
+                                .get(&e.id)
+                                .is_some_and(|v| v.iter().any(|n| n.eq_ignore_ascii_case(mob))))
                 })
                 .filter(|e| {
                     let last_activity = e.end_ms.unwrap_or_else(|| {

@@ -267,8 +267,14 @@ export interface LiveMeterRowDto {
 }
 
 export interface LiveMeterDto {
+  /** anchor label, for the Combat tab's fight list */
   target: string;
   open: boolean;
+  /** team v team: distinct allies dealing damage, distinct enemies involved */
+  ally_count: number;
+  enemy_count: number;
+  /** the enemy you most recently exchanged damage with -- shown under the encounter line */
+  current_target: string | null;
   /** why: the encounter's one clock -- the player's first involvement to the live edge */
   start_ms: number;
   duration_ms: number;

@@ -90,10 +90,17 @@
   {#if !meter || (!meter.outgoing.length && !meter.incoming.length)}
     <p class="text-muted-foreground">no active fight</p>
   {:else}
+    <!-- why: the encounter is named as team v team, never after one
+         mob -- a mob's death must not rename the header; the current
+         target sits UNDER it, as asked -->
     <div class="truncate font-medium text-foreground">
-      {meter.target}{meter.open ? '' : ' (ended)'}
+      encounter
       <span class="ml-1 font-mono text-[10px] text-foreground/70 tabular-nums" title="encounter clock -- from your first involvement">{fmtActive(meter.duration_ms)}</span>
+      <span class="ml-1 font-mono text-[10px] text-foreground/70" title="allies dealing damage v enemies involved">{meter.ally_count} v {meter.enemy_count}</span>{meter.open ? '' : ' (ended)'}
     </div>
+    {#if meter.current_target}
+      <div class="truncate text-[10px] text-foreground/70">current target: {meter.current_target}</div>
+    {/if}
 
     {#if meter.outgoing.length}
       <div class="flex flex-col gap-0.5">

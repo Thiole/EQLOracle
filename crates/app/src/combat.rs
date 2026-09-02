@@ -1169,8 +1169,18 @@ pub struct LiveMeterRowDto {
 /// back), not just a flat roster
 #[derive(Debug, Clone, Serialize)]
 pub struct LiveMeterDto {
+    /// why: the anchor label ("a zol ghoul knight +2") -- kept for the
+    /// Combat tab's fight list; the widget header is team v team now
     pub target: String,
     pub open: bool,
+    /// why: "team v team": distinct allies who dealt damage, distinct
+    /// enemies hit or hitting, over the whole encounter
+    pub ally_count: usize,
+    pub enemy_count: usize,
+    /// why: the enemy you most recently exchanged damage with -- shown
+    /// UNDER the encounter line, never as its name ("if you want to do
+    /// that show current target: but under the encounter name")
+    pub current_target: Option<String>,
     /// why: the encounter clock -- from the player's own first
     /// involvement (a hit dealt or taken) to the live edge or the end;
     /// every row's DPS is total over this
@@ -1305,6 +1315,8 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     let mut out_acc: HashMap<String, Acc> = HashMap::new();
     let mut in_acc: HashMap<String, Acc> = HashMap::new();
     let mut you_first: Option<Millis> = None;
+    let mut enemies: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut current_target: Option<(Millis, String)> = None;
     for enc in &encs {
         for i in enc.range() {
             if ing.store.enc[i] != enc.id.0 || ing.store.kind[i] != EventKind::Damage {
@@ -1319,8 +1331,20 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
             let actor_enemy = ing.allegiance_at(&actor_name, ts).is_enemy();
             let target_enemy = ing.allegiance_at(&target_name, ts).is_enemy();
             let acc = if !actor_enemy && target_enemy {
+                enemies.insert(target_name.to_lowercase());
+                if actor_name.eq_ignore_ascii_case("You")
+                    && current_target.as_ref().is_none_or(|(t, _)| ts >= *t)
+                {
+                    current_target = Some((ts, target_name.clone()));
+                }
                 &mut out_acc
             } else if actor_enemy && !target_enemy {
+                enemies.insert(actor_name.to_lowercase());
+                if target_name.eq_ignore_ascii_case("You")
+                    && current_target.as_ref().is_none_or(|(t, _)| ts >= *t)
+                {
+                    current_target = Some((ts, actor_name.clone()));
+                }
                 &mut in_acc
             } else {
                 // ally-on-ally or enemy-on-enemy -- not meter damage
@@ -1376,9 +1400,14 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
         ing.store.name(primary.target).to_string()
     };
 
+    let ally_count = out_acc.len();
+    let enemy_count = enemies.len();
     Some(LiveMeterDto {
         target,
         open,
+        ally_count,
+        enemy_count,
+        current_target: current_target.map(|(_, n)| n),
         start_ms,
         duration_ms,
         outgoing: build(out_acc),
