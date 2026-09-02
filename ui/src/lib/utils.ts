@@ -56,11 +56,13 @@ export function fmtLogDate(ms: number): string {
 export function logMsToLocalInput(ms: number): string {
   const d = new Date(ms);
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
-/** why: datetime-local value (wall clock) -> log ms; null when unparsable */
+/** why: typed wall-clock time ("2026-09-02 15:30", a T also accepted) ->
+ * log ms; null when unparsable. Plain text on purpose -- "don't have a
+ * calendar popup when clicking into the date". */
 export function localInputToLogMs(v: string): number | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(v);
+  const m = /^\s*(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?\s*$/.exec(v);
   if (!m) return null;
   return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], m[6] ? +m[6] : 0);
 }

@@ -205,11 +205,11 @@
               <div class="mb-2 flex flex-wrap items-end gap-2 rounded-sm border border-border bg-muted/30 px-2 py-1.5 text-[11px]">
                 <label class="flex flex-col gap-0.5">
                   <span class="text-[10px] uppercase tracking-wide text-muted-foreground">start</span>
-                  <input type="datetime-local" bind:value={frameStart} class="h-6 rounded-sm border border-border bg-background px-1 font-mono text-[11px]" />
+                  <input type="text" bind:value={frameStart} placeholder="2026-09-02 15:30" spellcheck="false" class="h-6 w-36 rounded-sm border border-border bg-background px-1 font-mono text-[11px]" />
                 </label>
                 <label class="flex flex-col gap-0.5">
                   <span class="text-[10px] uppercase tracking-wide text-muted-foreground">end (blank = now)</span>
-                  <input type="datetime-local" bind:value={frameEnd} class="h-6 rounded-sm border border-border bg-background px-1 font-mono text-[11px]" />
+                  <input type="text" bind:value={frameEnd} placeholder="blank = now" spellcheck="false" class="h-6 w-36 rounded-sm border border-border bg-background px-1 font-mono text-[11px]" />
                 </label>
                 <Button size="sm" class="h-6 text-[11px]" onclick={applyFrame}>apply</Button>
                 <Button size="sm" variant="ghost" class="h-6 text-[11px]" onclick={autoFrame} title="Back to the automatic 30-minute-gap rule">auto</Button>
