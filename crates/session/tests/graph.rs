@@ -316,3 +316,31 @@ fn a_pet_death_does_not_resolve_the_fight() {
     b.expire(45_000);
     assert_eq!(b.live_count(), 0, "the real death arms the short close");
 }
+
+/// why: a same-named survivor (hit after "its" death line) means one
+/// kill resolved nothing -- the fight rides out an 11s lull that the
+/// bare 10s resolved window would have closed (Plane of Sky drakes,
+/// replayed: kill at :50, next swing at :01, meter reset mid-pull).
+#[test]
+fn a_same_named_survivor_earns_the_grace() {
+    let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(60.0));
+    let a = b.damage(0, "You", "a drake");
+    b.death(5_000, "a drake");
+    let again = b.damage(6_000, "You", "a drake");
+    assert_eq!(a, again, "a hit on the slain name stays in the fight");
+    b.expire(17_000);
+    assert_eq!(b.live_count(), 1, "11s lull survives with the grace");
+    b.expire(23_000);
+    assert_eq!(b.live_count(), 0, "past 10s + 6s it closes");
+}
+
+/// why: the counter-case -- one mob, one death, no survivor: the plain
+/// 10s window still closes it so back-to-back pulls keep splitting.
+#[test]
+fn a_clean_kill_keeps_the_short_window() {
+    let mut b = Builder::new(Policy::default().idle_secs(10.0).idle_unresolved_secs(60.0));
+    b.damage(0, "You", "a drake");
+    b.death(5_000, "a drake");
+    b.expire(16_000);
+    assert_eq!(b.live_count(), 0);
+}

@@ -32,6 +32,15 @@ pub struct Policy {
     /// why: a re-engaged fled mob within this window is one kill, not two
     pub link_ms: Millis,
 
+    /// why: 6s, added to idle_ms for a fight with a same-named survivor
+    /// (a name damaged again after its own death line -- duplicate-name
+    /// pulls, raids). One death there resolves nothing, but the short
+    /// window still armed: a raid taking 11s to reach the next drake
+    /// closed the fight, and the meter reset mid-pull ("mobs with
+    /// duplicate same name, there should be a 5-6s grace period after
+    /// you think a fight ends" -- Plane of Sky drakes, replayed).
+    pub dupe_grace_ms: Millis,
+
     /// why: off means split-only, useful when a crowded zone adds noise
     pub transitive: bool,
 
@@ -45,6 +54,7 @@ impl Default for Policy {
             idle_ms: 10_000,
             idle_unresolved_ms: 60_000,
             link_ms: 60_000,
+            dupe_grace_ms: 6_000,
             transitive: true,
             max_entities: None,
         }
@@ -62,6 +72,10 @@ impl Policy {
     }
     pub fn link_secs(mut self, s: f64) -> Self {
         self.link_ms = (s * 1000.0) as Millis;
+        self
+    }
+    pub fn dupe_grace_secs(mut self, s: f64) -> Self {
+        self.dupe_grace_ms = (s * 1000.0) as Millis;
         self
     }
     pub fn no_transitive(mut self) -> Self {
@@ -205,6 +219,9 @@ pub struct Live {
     pub events: u32,
     /// why: flags a merged encounter's per-source split as less trustworthy
     pub merged: bool,
+    /// why: a slain name took damage again -- a same-named mob is still
+    /// up, so a death here doesn't mean the pull is over (Policy::dupe_grace_ms)
+    pub dupe: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -299,6 +316,15 @@ impl Builder {
         if let Some(e) = self.live.get_mut(&id) {
             e.last_ms = ts;
             e.events += 1;
+            // why: either side -- a "slain" name swinging again is the
+            // same proof of a same-named survivor as one being hit
+            if !e.dupe
+                && e.slain
+                    .iter()
+                    .any(|n| fold_key(n) == fold_key(target) || fold_key(n) == fold_key(actor))
+            {
+                e.dupe = true;
+            }
         }
         id
     }
@@ -327,6 +353,7 @@ impl Builder {
                 slain: Vec::new(),
                 events: 0,
                 merged: false,
+                dupe: false,
             },
         );
         self.of.insert(fold_key(a), id);
@@ -356,6 +383,7 @@ impl Builder {
                 dst.events += src.events;
                 dst.start_ms = dst.start_ms.min(src.start_ms);
                 dst.merged = true;
+                dst.dupe |= src.dupe;
             }
             for n in &src.entities {
                 self.of.insert(fold_key(n), keep);
@@ -424,7 +452,7 @@ impl Builder {
                 // isn't a kill"; only a non-pet death arms the short window
                 let real_kill = e.slain.iter().any(|n| !is_pet_suffixed(n));
                 let idle = if real_kill {
-                    self.policy.idle_ms
+                    self.policy.idle_ms + if e.dupe { self.policy.dupe_grace_ms } else { 0 }
                 } else {
                     self.policy.idle_unresolved_ms
                 };
