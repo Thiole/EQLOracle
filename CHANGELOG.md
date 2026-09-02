@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-02 (0.14.0)
+
+### Routing
+
+- Every zone now uses the EQEmu navmesh, collision mesh, and water volume for pathfinding. The water file is fetched on first open like the other two. A land zone with a lake or river bridges mesh islands only through the water; leaving the mesh is only ever a swim. Lake Rathetear: 129 mesh islands down to 10.
+- Swim routes ride the navmesh wherever it exists — swim nodes only bridge the shafts and gaps the mesh can't carry (hops through a swim node cost 3x their length).
+- Kedge Keep: routes follow the tunnel, the chamber, the shafts, doorways, and door panels by rules that apply everywhere; all 70 wiki spawn points route. The routing walls always come from the game's own map file, never the viewing pack.
+- A spawn point with no z: a map-pack label naming that mob nearby (Brewall labels Kedge's named mobs in 3D) is taken as the destination. Otherwise every candidate floor under the spot is listed as ambiguous in the Maps panel, with the route drawn to the top one and a pick re-routing.
+- Zone routes only use a teleport whose spell the log shows you know.
+- The wiki's newer "X: / Y: / Z:" location shape parses, so a re-scrape carries the z.
+
+### Combat
+
+- An evac leaves the fight behind: a fight that ended at or before the last zone line is no longer the current encounter (meter and duration clear).
+- Same-named mobs: a fight where a slain name is hit again gets 6s of grace on top of the 10s resolved idle window, so a raid moving between duplicate-named mobs keeps one fight.
+
+### Maps view
+
+- The map fills the window instead of a fixed 520px card.
+- Drop Watch drop lists wrap instead of truncating off the right edge.
+
 ## 2026-09-01 (0.13.0)
 
 ### Session overlay
