@@ -18,15 +18,14 @@ pub struct Policy {
     /// idle_unresolved_ms instead -- see its own doc.
     pub idle_ms: Millis,
 
-    /// why: 60s, for fights with a LIVE mob still in them -- "it's not
-    /// if anyone dies, all the ones there have to be killed" (the
-    /// reported semantics). A mezz lull or med break writes zero lines
-    /// for way past 10s, and at a flat 10s a quarter of a real 5,864-
-    /// fight log closed as "reset", 355 re-engaging the same target
-    /// within 2 minutes (144 of those chains ended in a KILL); a 60s
-    /// window absorbed 284 of the 355 splits (reset_check.rs,
-    /// 2026-08-31). Safe on duration: closes stamp end_ms at the last
-    /// activity, so patience never inflates a fight's length.
+    /// why: 5 minutes -- a SAFETY net, not a rule. A fight with no kill
+    /// and no end-of-combat flag does not time out on its own: "it should
+    /// be 10 seconds after a kill; if there's actions, even mesmerization,
+    /// it extends until a kill or a flag to possibly end combat -- charm,
+    /// port, memwipe". Zoning already closes every fight; charm and a
+    /// mem blur arm the 10s window (see Live::flagged). This only catches
+    /// a fight the log genuinely never resolved (a mob that just walked
+    /// off), so it can't sit open forever.
     pub idle_unresolved_ms: Millis,
 
     /// why: a re-engaged fled mob within this window is one kill, not two
@@ -52,7 +51,7 @@ impl Default for Policy {
     fn default() -> Self {
         Policy {
             idle_ms: 10_000,
-            idle_unresolved_ms: 60_000,
+            idle_unresolved_ms: 300_000,
             link_ms: 60_000,
             dupe_grace_ms: 6_000,
             transitive: true,
@@ -222,6 +221,9 @@ pub struct Live {
     /// why: a slain name took damage again -- a same-named mob is still
     /// up, so a death here doesn't mean the pull is over (Policy::dupe_grace_ms)
     pub dupe: bool,
+    /// why: an end-of-combat signal landed (a charm on this fight's mob,
+    /// a mem blur) -- "possibly" over: arms the short window like a kill
+    pub flagged: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -354,6 +356,7 @@ impl Builder {
                 events: 0,
                 merged: false,
                 dupe: false,
+                flagged: false,
             },
         );
         self.of.insert(fold_key(a), id);
@@ -384,6 +387,7 @@ impl Builder {
                 dst.start_ms = dst.start_ms.min(src.start_ms);
                 dst.merged = true;
                 dst.dupe |= src.dupe;
+                dst.flagged |= src.flagged;
             }
             for n in &src.entities {
                 self.of.insert(fold_key(n), keep);
@@ -416,6 +420,21 @@ impl Builder {
             }
         }
         // why: not cleared from `recent` -- would break the backward link
+    }
+
+    /// why: a signal that the fight MAY be over without a kill -- a mob
+    /// charmed (it changed sides), "Your enemies have forgotten you!" (a
+    /// mem blur landed). Arms the 10s window on that entity's fight; any
+    /// further action still extends it, so a fight that goes on goes on.
+    pub fn flag_end(&mut self, name: &str, ts: Millis) {
+        if let Some(&id) = self.of.get(&fold_key(name)) {
+            if let Some(e) = self.live.get_mut(&id) {
+                e.flagged = true;
+                if ts > e.last_ms {
+                    e.last_ms = ts;
+                }
+            }
+        }
     }
 
     /// why: active CC on a fight's own entity means the fight is paused,
@@ -451,7 +470,7 @@ impl Builder {
                 // why: pet deaths don't resolve a fight -- "a pet dying
                 // isn't a kill"; only a non-pet death arms the short window
                 let real_kill = e.slain.iter().any(|n| !is_pet_suffixed(n));
-                let idle = if real_kill {
+                let idle = if real_kill || e.flagged {
                     self.policy.idle_ms + if e.dupe { self.policy.dupe_grace_ms } else { 0 }
                 } else {
                     self.policy.idle_unresolved_ms

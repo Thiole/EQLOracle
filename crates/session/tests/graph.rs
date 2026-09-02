@@ -344,3 +344,35 @@ fn a_clean_kill_keeps_the_short_window() {
     b.expire(16_000);
     assert_eq!(b.live_count(), 0);
 }
+
+/// why: no kill, no flag: a fight does not time out on the short
+/// window -- "it extends until a kill or a flag to possibly end combat"
+#[test]
+fn an_unresolved_fight_outlives_the_short_window() {
+    let mut b = Builder::new(Policy::default().idle_secs(10.0));
+    b.damage(0, "You", "a drake");
+    b.expire(60_000);
+    assert_eq!(b.live_count(), 1, "still open a minute later");
+    b.expire(400_000);
+    assert_eq!(b.live_count(), 0, "the safety net closes it eventually");
+}
+
+/// why: a charm (or a mem blur) is an end-of-combat flag: it arms the
+/// same 10s window a kill does, and a later action still extends it
+#[test]
+fn a_charm_flags_the_fight_possibly_over() {
+    let mut b = Builder::new(Policy::default().idle_secs(10.0));
+    b.damage(0, "You", "a drake");
+    b.flag_end("a drake", 5_000);
+    b.expire(14_000);
+    assert_eq!(b.live_count(), 1, "9s after the flag, still open");
+    b.damage(14_000, "You", "a drake");
+    b.expire(23_000);
+    assert_eq!(b.live_count(), 1, "the action extended it");
+    b.expire(25_000);
+    assert_eq!(
+        b.live_count(),
+        0,
+        "10s quiet after the last action closes it"
+    );
+}

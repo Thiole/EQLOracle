@@ -1860,9 +1860,17 @@ impl Ingest {
                 // see Builder::touch_entity's own doc
                 self.encounters.touch_entity(&who, ts);
             }
+            Action::EnemiesForgot => {
+                // why: an end-of-combat flag on your own fight -- see
+                // Builder::flag_end
+                self.encounters.flag_end("You", ts);
+            }
             Action::Charm { who } => {
                 let sym = self.sym(&who);
                 self.timeline.observed(ts, sym.0, State::Charmed);
+                // why: the mob changed sides -- its fight may be over
+                // (Builder::flag_end); any further action still extends it
+                self.encounters.flag_end(&who, ts);
                 // why: remember which spell established the charm -- your
                 // newest begun cast (the "has been charmed." confirm
                 // follows your own charm cast within the retention
@@ -3829,6 +3837,8 @@ enum Action {
     Charm {
         who: String,
     },
+    /// why: "Your enemies have forgotten you!" -- a mem blur landed
+    EnemiesForgot,
     /// why: charm wearing off, or the player's own mez ending
     Recovered {
         who: String,
@@ -4263,6 +4273,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "state.charmed" => Some(Action::Charm {
             who: str_field("who")?,
         }),
+        "combat.enemies_forgot" => Some(Action::EnemiesForgot),
         "state.charm_broken" | "state.you_mesmerized" => Some(Action::Recovered {
             who: str_field("who").unwrap_or_else(|| "You".to_string()),
             spell: str_field("spell"),

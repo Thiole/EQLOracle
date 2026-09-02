@@ -481,12 +481,12 @@ mod tests {
             rows.iter().map(|r| &r.mob).collect::<Vec<_>>()
         );
 
-        // why: 3 minutes, not 60s -- a no-kill fight now stays open for
-        // the 60s unresolved idle window (graph::Policy's own doc), so
-        // "closed and past grace" needs the longer gap to actually mean it
+        // why: 6 minutes -- a no-kill fight no longer times out on its own
+        // (it waits for a kill or an end-of-combat flag), only the 5-minute
+        // safety net closes it, so "closed and past grace" needs that gap
         let mut ing = run(concat!(
             "[Tue Jul 28 15:01:00 2026] You hit Keeper of Souls for 5 points of damage.\n",
-            "[Tue Jul 28 15:04:00 2026] You hit a rat for 5 points of damage.\n",
+            "[Tue Jul 28 15:07:00 2026] You hit a rat for 5 points of damage.\n",
         ));
         ing.tick(0);
         assert!(
