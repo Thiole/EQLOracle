@@ -10,11 +10,12 @@ pub type Millis = i64;
 /// why: game-grounded defaults, but every judgement call stays settable
 #[derive(Debug, Clone, Copy)]
 pub struct Policy {
-    /// why: 10s, for RESOLVED fights only (every non-ally entity dead)
-    /// -- matches the real out-of-combat recovery boundary, and closing
-    /// fast here is what keeps back-to-back pulls from merging into one
-    /// mega-encounter (measured: a flat 30s window halved the log's
-    /// kill count exactly that way). Unresolved fights use
+    /// why: 6s, for RESOLVED fights only (a real death in it, or an
+    /// end-of-combat flag): "no close should happen until 6 seconds
+    /// after a death, not on death". The close is decided then; the
+    /// fight's recorded end stays its last action. Closing fast here is
+    /// what keeps back-to-back pulls from merging (a flat 30s window
+    /// halved a real log's kill count). Unresolved fights use
     /// idle_unresolved_ms instead -- see its own doc.
     pub idle_ms: Millis,
 
@@ -46,7 +47,7 @@ pub struct Policy {
 impl Default for Policy {
     fn default() -> Self {
         Policy {
-            idle_ms: 10_000,
+            idle_ms: 6_000,
             idle_unresolved_ms: 300_000,
             link_ms: 60_000,
             dupe_grace_ms: 0,

@@ -3,8 +3,8 @@
 use eqlp_session::{Builder, Entities, Kind, Policy};
 
 #[test]
-fn policy_defaults_to_ten_seconds_and_is_settable() {
-    assert_eq!(Policy::default().idle_ms, 10_000);
+fn policy_defaults_to_six_seconds_and_is_settable() {
+    assert_eq!(Policy::default().idle_ms, 6_000);
     assert_eq!(Policy::default().idle_secs(30.0).idle_ms, 30_000);
     assert_eq!(Policy::default().link_secs(2.5).link_ms, 2_500);
     assert_eq!(Policy::default().cap_entities(12).max_entities, Some(12));
