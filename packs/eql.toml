@@ -738,6 +738,18 @@ examples = ["[Tue Jul 28 15:02:15 2026] Your Symphonic Aura resumed."]
 song = { from = "song", as = "str" }
 
 [[rule]]
+id = "sing.blocked_by_aura"
+kind = "cast"
+priority = 30
+# why: first-person, only a Bard running Symphonic Aura ever sees it --
+# the aura's own songs print no cast line at all (confirmed real: a
+# whole Lower Guk stint of songs, zero "You begin singing"), so this
+# and the aura's AA toggles are the visit's only Bard evidence
+anchors = ["while Symphonic Aura is enabled"]
+pattern = '''^This song cannot be played while Symphonic Aura is enabled\.$'''
+examples = ["[Wed Sep 02 11:02:30 2026] This song cannot be played while Symphonic Aura is enabled."]
+
+[[rule]]
 id = "track.direction"
 kind = "noise"
 priority = 60

@@ -153,6 +153,10 @@ const INVITE_ACCEPT_WINDOW_MS: Millis = 120_000;
 /// `reaffirm_charm`), not a license to resurrect a long-ended charm
 const CHARM_REAFFIRM_MS: Millis = 60_000;
 
+/// why: observe_cast's slice shape for the one class Symphonic Aura proves
+static BARD_ONLY: std::sync::LazyLock<[String; 1]> =
+    std::sync::LazyLock::new(|| ["Bard".to_string()]);
+
 /// why: a class pick's spell grants land in the same second -- see
 /// `note_spell_granted`; a single grant is a scribe, not a pick
 const GRANT_CLUSTER_MS: Millis = 2_000;
@@ -1185,6 +1189,10 @@ pub struct Ingest {
     /// why: spell.granted timestamps within GRANT_CLUSTER_MS -- see `note_spell_granted`
     recent_grants: Vec<Millis>,
     last_level_up: Option<Millis>,
+    /// why: Symphonic Aura known on for You -- its songs print no cast
+    /// line, so their landings on you are the only trace; see
+    /// `note_self_effect_text`. Off again on a loadout change.
+    symphonic_aura: bool,
     /// why: an ally began casting a gate/teleport at this ts -- if they go
     /// quiet past GATE_SETTLE_MS it took them out of the zone (their own
     /// zone line, which the log never shows), and their chain is cut
@@ -1337,6 +1345,7 @@ impl Default for Ingest {
             self_class_evidence: Default::default(),
             recent_grants: Vec::new(),
             last_level_up: None,
+            symphonic_aura: false,
             ally_pending_leave: HashMap::new(),
             closed_seen: 0,
             pending_summons: Vec::new(),
@@ -1901,6 +1910,17 @@ impl Ingest {
                 self.last_level_up = Some(ts);
             }
             Action::SpellGranted => self.note_spell_granted(ts),
+            Action::SongState { song, enabled } => {
+                // why: any "Your <song> paused/resumed" is your own singing --
+                // Bard evidence either way; only the aura itself flips the flag
+                if song == "Symphonic Aura" {
+                    self.note_symphonic_aura(ts, enabled);
+                } else {
+                    let you = self.sym("You").0;
+                    self.classes
+                        .observe_cast(you, self.zone.index_at(ts), &*BARD_ONLY);
+                }
+            }
             Action::AaEarned { gained, total } => {
                 self.aa_points.push((ts, gained, total));
             }
@@ -1915,6 +1935,10 @@ impl Ingest {
                     self.zone.index_at(ts),
                     &crate::aadata::classes_for(&name),
                 );
+                // why: the aura's on/off is an AA toggle -- see note_symphonic_aura
+                if let Some(state) = name.strip_prefix("Symphonic Aura: ") {
+                    self.note_symphonic_aura(ts, state == "Enabled");
+                }
                 self.aa.observe(ts, name, rank, cost);
             }
             Action::SpellBegan { name } => {
@@ -3493,6 +3517,17 @@ impl Ingest {
     fn note_loadout_change(&mut self, at: Millis) {
         self.self_buffs.retain(|_, (landed, _)| *landed >= at);
         self.self_class_evidence.clear();
+        self.symphonic_aura = false;
+    }
+
+    /// why: a first-person Symphonic Aura line (its AA toggle, a song it
+    /// blocks, its own pause/resume) -- only a Bard ever sees one; the
+    /// visit's Bard evidence when the aura sings silently for you
+    fn note_symphonic_aura(&mut self, ts: Millis, enabled: bool) {
+        self.symphonic_aura = enabled;
+        let you = self.sym("You").0;
+        self.classes
+            .observe_cast(you, self.zone.index_at(ts), &*BARD_ONLY);
     }
 
     /// why: exactly CLASS_COUNT classes at once -- a 4th distinct class
@@ -3532,6 +3567,22 @@ impl Ingest {
     fn note_self_effect_text(&mut self, ts: Millis, text: &str) {
         for spell in crate::spelltext::wearsoff_candidates(text) {
             self.self_buffs.remove(*spell);
+        }
+        // why: an aura song pulsing on you while your aura is known on
+        // is your own singing -- the cast line it never prints (real:
+        // hundreds of Bard-only landings an hour, zero "You begin singing")
+        if self.symphonic_aura {
+            let cands = crate::spelltext::landing_candidates(text);
+            let bard_only = !cands.is_empty()
+                && cands.iter().all(|n| {
+                    crate::spelldata::spell_by_name(n)
+                        .is_some_and(|s| s.classes.iter().all(|c| c.class == "Bard"))
+                });
+            if bard_only {
+                let you = self.sym("You").0;
+                self.classes
+                    .observe_cast(you, self.zone.index_at(ts), &*BARD_ONLY);
+            }
         }
         for name in crate::spelltext::landing_candidates(text) {
             let Some(spell) = crate::spelldata::spell_by_name(name) else {
@@ -4214,6 +4265,12 @@ enum Action {
     },
     /// why: one "granted the following spell" line -- see `note_spell_granted`
     SpellGranted,
+    /// why: "Your <song> paused/resumed", or a song blocked by Symphonic
+    /// Aura (song = "Symphonic Aura", enabled) -- see `note_symphonic_aura`
+    SongState {
+        song: String,
+        enabled: bool,
+    },
     /// why: aa.gained is always rank 1 (never stated), aa.improved parses the trailing digit
     AaGained {
         name: String,
@@ -4785,6 +4842,14 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             level: u64_field("level")?.min(u8::MAX as u64) as u8,
         }),
         "spell.granted" => Some(Action::SpellGranted),
+        "sing.paused" | "sing.resumed" => Some(Action::SongState {
+            song: str_field("song")?,
+            enabled: true,
+        }),
+        "sing.blocked_by_aura" => Some(Action::SongState {
+            song: "Symphonic Aura".to_string(),
+            enabled: true,
+        }),
         "aa.gained" => Some(Action::AaGained {
             name: str_field("name")?,
             rank: 1,
@@ -7201,6 +7266,56 @@ mod stance_evidence_tests {
             ing.self_buffs.is_empty(),
             "{:?}",
             ing.self_buffs.keys().collect::<Vec<_>>()
+        );
+    }
+
+    /// why: real Lower Guk stint -- 1,700 Wizard/Enchanter casts, zero
+    /// "You begin singing", yet songs all session: Symphonic Aura sings
+    /// silently. Its AA toggle and the songs it blocks are first-person
+    /// Bard lines; its pulses on you count as your casts while it's on.
+    #[test]
+    fn symphonic_aura_lines_and_its_pulses_confirm_bard_for_the_visit() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Wed Sep 02 11:00:45 2026] You have entered The Ruins of Old Guk.",
+            b"[Wed Sep 02 11:02:30 2026] This song cannot be played while Symphonic Aura is enabled.",
+            b"[Wed Sep 02 13:24:53 2026] You have entered Erudin.",
+            b"[Wed Sep 02 13:25:00 2026] Your weapons whir with a magical rhythm.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let you = ing.store.names.get("You").expect("You interned");
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        assert!(configured.contains(&"Bard".to_string()), "{configured:?}");
+    }
+
+    /// why: mirror -- the same pulse with no aura known on is just a
+    /// buff landing (another bard's aura reaches you the same way)
+    #[test]
+    fn an_aura_pulse_alone_is_not_bard_evidence() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Wed Sep 02 11:00:45 2026] You have entered The Ruins of Old Guk.",
+            b"[Wed Sep 02 11:02:30 2026] Your weapons whir with a magical rhythm.",
+            b"[Wed Sep 02 13:24:53 2026] You have entered Erudin.",
+            b"[Wed Sep 02 13:25:00 2026] Your weapons whir with a magical rhythm.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let you = ing.store.names.get("You").expect("You interned");
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        assert!(!configured.contains(&"Bard".to_string()), "{configured:?}");
+    }
+
+    #[test]
+    fn the_auras_aa_toggle_is_bard_evidence_under_its_bare_catalog_name() {
+        assert_eq!(
+            crate::aadata::classes_for("Symphonic Aura: Enabled"),
+            vec!["Bard".to_string()]
         );
     }
 

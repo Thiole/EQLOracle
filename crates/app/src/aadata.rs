@@ -81,6 +81,13 @@ pub fn classes_for(name: &str) -> Vec<String> {
         .collect();
     classes.sort();
     classes.dedup();
+    // why: toggle AAs log as "<name>: Enabled"/"<name>: Disabled"
+    // (real: "Symphonic Aura: Enabled 8"); the catalog knows the bare name
+    if classes.is_empty() {
+        if let Some((base, _)) = name.rsplit_once(": ") {
+            return classes_for(base);
+        }
+    }
     classes
 }
 
