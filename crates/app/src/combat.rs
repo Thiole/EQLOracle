@@ -1956,6 +1956,7 @@ mod you_level_tests {
     }
 }
 
+#[cfg(test)]
 mod level_range_tests {
     use super::*;
     use crate::ingest::backfill_lines;
