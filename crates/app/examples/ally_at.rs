@@ -14,19 +14,30 @@ fn main() {
     let mut ing = Ingest::default();
     backfill_lines(&mut ing, &engine, &lines, 8);
     eprintln!("last parsed ts = {}", ing.now_ms());
+    if a[1] == "chains" {
+        let you = ing.store.names.get("You").map(|s| s.0).expect("You");
+        let chains = ing.classes.chains(you);
+        println!("units={} chains={}", ing.units.len(), chains.len());
+        for c in chains.iter().rev().take(12) {
+            println!(
+                "chain first={:?} last={:?} closed={:?} confirmed={:?} prior={:?} cands={:?} floors={:?} ding={:?} units={} conflicts={} weights={:?}",
+                c.first, c.last, c.closed, c.confirmed, c.prior, c.candidates, c.floors, c.max_ding, c.units, c.conflicts, c.weights
+            );
+        }
+        return;
+    }
     if a[1] == "recent" {
         let you = ing.store.names.get("You").map(|s| s.0).expect("You");
-        let cur = ing.zone.index_at(ing.now_ms()).unwrap_or(0);
-        for i in cur.saturating_sub(8)..=cur {
+        let n = ing.units.len();
+        for i in n.saturating_sub(8)..n {
             let cfg = ing.classes.configuration_of_visit(you, Some(i));
             let at = ing
-                .zone
+                .units
                 .bounds(i)
-                .and_then(|(_, end)| end)
-                .map(|e| e - 1)
+                .map(|(s, e)| e.unwrap_or(s))
                 .unwrap_or(ing.now_ms());
             println!(
-                "visit {i}: config={cfg:?} level={:?} ding={:?}",
+                "unit {i}: config={cfg:?} level={:?} ding={:?}",
                 eqlp_app::combat::you_level_at(&ing, you, &cfg, at),
                 ing.levels.at(at)
             );
@@ -39,7 +50,7 @@ fn main() {
             let you = ing.store.names.get("You").map(|s| s.0).expect("You");
             let cfg = ing
                 .classes
-                .configuration_of_visit(you, ing.zone.index_at(at));
+                .configuration_of_visit(you, ing.unit_at(at));
             println!(
                 "You at {at}: visit config={cfg:?} level={:?} ding={:?}",
                 eqlp_app::combat::you_level_at(&ing, you, &cfg, at),

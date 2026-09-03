@@ -153,6 +153,76 @@ const INVITE_ACCEPT_WINDOW_MS: Millis = 120_000;
 /// `reaffirm_charm`), not a license to resurrect a long-ended charm
 const CHARM_REAFFIRM_MS: Millis = 60_000;
 
+/// why: the evidence unit of docs/class-and-level-rules.md P1 -- an
+/// encounter You are in. Evidence outside any encounter attaches to the
+/// next one; a zone line outside any encounter also ends the pending
+/// unit (so two casts either side of a zone line are two units, the
+/// same bar the old per-visit model had).
+#[derive(Debug, Clone, Default)]
+pub struct UnitTrack {
+    /// why: (start, end) per unit in order; end None while open
+    spans: Vec<(Millis, Option<Millis>)>,
+    /// why: store encounters holding the current unit open
+    open_encs: std::collections::HashSet<eqlp_store::EncounterId>,
+}
+
+impl UnitTrack {
+    /// why: the unit evidence arriving now belongs to
+    pub fn current(&self) -> eqlp_session::classdetect::Unit {
+        match self.spans.last() {
+            Some((_, None)) => Some(self.spans.len() - 1),
+            _ => Some(self.spans.len()),
+        }
+    }
+    fn open(&mut self, ts: Millis, enc: eqlp_store::EncounterId) {
+        if self.open_encs.is_empty() {
+            self.spans.push((ts, None));
+        }
+        self.open_encs.insert(enc);
+    }
+    fn close(&mut self, enc: eqlp_store::EncounterId, ts: Millis) {
+        if !self.open_encs.remove(&enc) {
+            return;
+        }
+        if self.open_encs.is_empty() {
+            if let Some((_, end)) = self.spans.last_mut() {
+                *end = Some(ts);
+            }
+        }
+    }
+    fn zone_line(&mut self, ts: Millis) {
+        if self.open_encs.is_empty() {
+            self.spans.push((ts, Some(ts)));
+        }
+    }
+    /// why: the unit after the one open now -- where a between-fights
+    /// event (a loadout swap) draws its line
+    pub fn after_current(&self) -> eqlp_session::classdetect::Unit {
+        Some(self.spans.len())
+    }
+    /// why: the unit covering `ts`, else the one that followed it
+    pub fn at(&self, ts: Millis) -> eqlp_session::classdetect::Unit {
+        let n = self.spans.partition_point(|(start, _)| *start <= ts);
+        if n > 0 {
+            let (_, end) = self.spans[n - 1];
+            if end.is_none_or(|e| ts < e) {
+                return Some(n - 1);
+            }
+        }
+        Some(n)
+    }
+    /// why: (start, end) of one unit, for session splitting and level ranges
+    pub fn bounds(&self, i: usize) -> Option<(Millis, Option<Millis>)> {
+        self.spans.get(i).copied()
+    }
+    pub fn len(&self) -> usize {
+        self.spans.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.spans.is_empty()
+    }
+}
+
 /// why: observe_cast's slice shape for the one class Symphonic Aura proves
 static BARD_ONLY: std::sync::LazyLock<[String; 1]> =
     std::sync::LazyLock::new(|| ["Bard".to_string()]);
@@ -966,6 +1036,9 @@ struct PendingQuickbuffEvidence {
     who: u32,
     classes: &'static [String],
     text: String,
+    /// why: the unit the landing happened in -- the flush comes a window
+    /// later, possibly inside the next fight
+    unit: eqlp_session::classdetect::Unit,
 }
 
 /// why: one not-yet-attributed Xp row -- exists instead of a loot-style search
@@ -1189,6 +1262,8 @@ pub struct Ingest {
     /// why: spell.granted timestamps within GRANT_CLUSTER_MS -- see `note_spell_granted`
     recent_grants: Vec<Millis>,
     last_level_up: Option<Millis>,
+    /// why: evidence units for class detection -- see UnitTrack
+    pub units: UnitTrack,
     /// why: Symphonic Aura known on for You -- its songs print no cast
     /// line, so their landings on you are the only trace; see
     /// `note_self_effect_text`. Off again on a loadout change.
@@ -1346,6 +1421,7 @@ impl Default for Ingest {
             recent_grants: Vec::new(),
             last_level_up: None,
             symphonic_aura: false,
+            units: UnitTrack::default(),
             ally_pending_leave: HashMap::new(),
             closed_seen: 0,
             pending_summons: Vec::new(),
@@ -1553,6 +1629,11 @@ impl Ingest {
     }
 
     /// why: the /who trio for the chain covering `at`, if a row printed in it
+    /// why: the class-evidence unit covering `at` -- see UnitTrack::at
+    pub fn unit_at(&self, at: Millis) -> eqlp_session::classdetect::Unit {
+        self.units.at(at)
+    }
+
     pub fn ally_who(&self, who: &str, at: Millis) -> Option<(u8, &[String])> {
         self.ally_chain_covering(who, at)?
             .who
@@ -1904,6 +1985,13 @@ impl Ingest {
                     self.learned_origin = Some((ts, zone.clone()));
                 }
                 self.zone.enter(ts, zone);
+                // why: P4 -- a zone line weakens the chain, never breaks it
+                self.units.zone_line(ts);
+                // why: no interning -- a zone line with no player activity
+                // yet has nothing to weaken
+                if let Some(you) = self.store.names.get("You").map(|s| s.0) {
+                    self.classes.observe_zone_line(you, self.units.current());
+                }
                 // why: aura pulses count as yours only inside a visit that
                 // printed an aura line of its own (real: a raid full of other
                 // bards' auras lands the same texts on you) -- see
@@ -1913,6 +2001,10 @@ impl Ingest {
             Action::LevelUp { level } => {
                 self.levels.observe(ts, level);
                 self.last_level_up = Some(ts);
+                // why: P6 -- the ding is the trio's lowest, raises what's below
+                if let Some(you) = self.store.names.get("You").map(|s| s.0) {
+                    self.classes.observe_ding(you, self.units.current(), level);
+                }
             }
             Action::SpellGranted => self.note_spell_granted(ts),
             Action::SongState { song, enabled } => {
@@ -1923,7 +2015,7 @@ impl Ingest {
                 } else {
                     let you = self.sym("You").0;
                     self.classes
-                        .observe_cast(you, self.zone.index_at(ts), &*BARD_ONLY);
+                        .observe_cast(you, self.units.current(), &*BARD_ONLY);
                 }
             }
             Action::AaEarned { gained, total } => {
@@ -1937,7 +2029,7 @@ impl Ingest {
                 let you = self.sym("You");
                 self.classes.observe_cast(
                     you.0,
-                    self.zone.index_at(ts),
+                    self.units.current(),
                     &crate::aadata::classes_for(&name),
                 );
                 // why: the aura's on/off is an AA toggle -- see note_symphonic_aura
@@ -2022,12 +2114,31 @@ impl Ingest {
                 if !self.is_pet(&who) {
                     self.classes.observe_cast(
                         caster.0,
-                        self.zone.index_at(ts),
+                        self.units.current(),
                         class_evidence_for_cast(&spell),
                     );
                 }
                 if who == "You" {
-                    self.note_self_class(ts, class_evidence_for_cast(&spell));
+                    let evidence = class_evidence_for_cast(&spell);
+                    self.note_self_class(ts, evidence);
+                    // why: P6's spell floor -- same exclusions as class evidence
+                    if !evidence.is_empty() {
+                        if let Some(sp) = crate::spelldata::spell_by_name(base) {
+                            let pairs: Vec<(String, u8)> = sp
+                                .classes
+                                .iter()
+                                .filter_map(|c| {
+                                    c.level
+                                        .map(|l| (c.class.clone(), l.min(u8::MAX as u32) as u8))
+                                })
+                                .collect();
+                            self.classes.observe_spell_levels(
+                                caster.0,
+                                self.units.current(),
+                                &pairs,
+                            );
+                        }
+                    }
                 }
             }
             Action::CastResisted {
@@ -2077,7 +2188,7 @@ impl Ingest {
                 let you = self.sym("You").0;
                 self.classes.observe_cast(
                     you,
-                    self.zone.index_at(ts),
+                    self.units.current(),
                     class_evidence_for(base_spell_name(&spell)),
                 );
                 if let Some(blocker) = blocker {
@@ -2093,7 +2204,7 @@ impl Ingest {
                 let you = self.sym("You").0;
                 self.classes.observe_cast(
                     you,
-                    self.zone.index_at(ts),
+                    self.units.current(),
                     class_evidence_for(base_spell_name(&spell)),
                 );
                 let resolved = self.resolve_name(&who);
@@ -2116,7 +2227,7 @@ impl Ingest {
                 if !self.is_pet(&who) {
                     self.classes.observe_cast(
                         sym.0,
-                        self.zone.index_at(ts),
+                        self.units.current(),
                         crate::classdata::classes_for(&ability),
                     );
                 }
@@ -2127,7 +2238,7 @@ impl Ingest {
                 let you = self.sym("You");
                 self.classes.observe_cast(
                     you.0,
-                    self.zone.index_at(ts),
+                    self.units.current(),
                     crate::stancedata::classes_for(&stance),
                 );
             }
@@ -2135,7 +2246,7 @@ impl Ingest {
                 let you = self.sym("You");
                 self.classes.observe_cast(
                     you.0,
-                    self.zone.index_at(ts),
+                    self.units.current(),
                     crate::skilldata::classes_for(&skill),
                 );
                 // why: log order -- the last "(N)" seen is the current level
@@ -2145,7 +2256,7 @@ impl Ingest {
                 let you = self.sym("You");
                 self.classes.observe_cast(
                     you.0,
-                    self.zone.index_at(ts),
+                    self.units.current(),
                     crate::invocationdata::classes_for(&invocation),
                 );
                 // why: SpellPerf judges hits against a same-invocation
@@ -3523,16 +3634,22 @@ impl Ingest {
         self.self_buffs.retain(|_, (landed, _)| *landed >= at);
         self.self_class_evidence.clear();
         self.symphonic_aura = false;
+        // why: P8 -- the chain closes here; the fight still counted as
+        // open (backfill only expires it on the next damage line) stays
+        // with the old chain, the next unit starts the new one
+        if let Some(you) = self.store.names.get("You").map(|s| s.0) {
+            self.classes.close_chain(you, self.units.after_current());
+        }
     }
 
     /// why: a first-person Symphonic Aura line (its AA toggle, a song it
     /// blocks, its own pause/resume) -- only a Bard ever sees one; the
     /// visit's Bard evidence when the aura sings silently for you
-    fn note_symphonic_aura(&mut self, ts: Millis, enabled: bool) {
+    fn note_symphonic_aura(&mut self, _ts: Millis, enabled: bool) {
         self.symphonic_aura = enabled;
         let you = self.sym("You").0;
         self.classes
-            .observe_cast(you, self.zone.index_at(ts), &*BARD_ONLY);
+            .observe_cast(you, self.units.current(), &*BARD_ONLY);
     }
 
     /// why: exactly CLASS_COUNT classes at once -- a 4th distinct class
@@ -3586,7 +3703,7 @@ impl Ingest {
             if bard_only {
                 let you = self.sym("You").0;
                 self.classes
-                    .observe_cast(you, self.zone.index_at(ts), &*BARD_ONLY);
+                    .observe_cast(you, self.units.current(), &*BARD_ONLY);
             }
         }
         for name in crate::spelltext::landing_candidates(text) {
@@ -3821,8 +3938,7 @@ impl Ingest {
                 .partition(|p| ts - p.ts <= PULSE_WINDOW_MS);
         self.pending_quickbuff_evidence = still_pending;
         for p in ready {
-            self.classes
-                .observe_cast(p.who, self.zone.index_at(p.ts), p.classes);
+            self.classes.observe_cast(p.who, p.unit, p.classes);
         }
 
         self.recent_flavor_landings
@@ -3869,6 +3985,7 @@ impl Ingest {
                 who: sym,
                 classes,
                 text: text.to_string(),
+                unit: self.units.current(),
             });
     }
 
@@ -4057,6 +4174,28 @@ impl Ingest {
         }
         if self.participant_is_yours(src, ts) || self.participant_is_yours(dst, ts) {
             self.store.mark_involves_you(enc);
+            // why: a new fight's edge links before the previous fight's
+            // close is drained -- an already-closed holder must not keep
+            // the old unit open across this one
+            let pending_close: std::collections::HashSet<eqlp_store::EncounterId> =
+                self.encounters.closed[self.closed_seen..]
+                    .iter()
+                    .filter_map(|c| self.enc_map.get(&c.id).copied())
+                    .collect();
+            let stale: Vec<eqlp_store::EncounterId> = self
+                .units
+                .open_encs
+                .iter()
+                .copied()
+                .filter(|e| {
+                    pending_close.contains(e)
+                        || !self.store.encounter(*e).is_some_and(|x| x.is_open())
+                })
+                .collect();
+            for e in stale {
+                self.units.close(e, ts);
+            }
+            self.units.open(ts, enc);
         }
     }
 
@@ -4079,6 +4218,7 @@ impl Ingest {
                 continue;
             }
             if let Some(&store_id) = self.enc_map.get(&c.id) {
+                self.units.close(store_id, c.end_ms);
                 // why: a confirmed kill means THE TARGET died, not "any
                 // enemy died in this fight". Real bug, caught live: the
                 // Fear dracoliche summons adds literally named "a
@@ -4193,13 +4333,15 @@ impl Ingest {
         // sequential replay -- honest "as of this fight" answer, already
         // alphabetical so same-configuration fights group in by_loadout
         let zone_visit = self.zone.index_at(c.start_ms);
-        let loadout: Vec<String> = self.classes.configuration_of_visit(you.0, zone_visit);
+        let unit = self.unit_at(c.start_ms);
+        let loadout: Vec<String> = self.classes.configuration_of_visit(you.0, unit);
 
         self.pending_history.push(ParseRecord {
             target,
             zone,
             loadout,
             zone_visit,
+            unit,
             start_ms: c.start_ms,
             duration_ms,
             player_damage,
@@ -7190,9 +7332,11 @@ mod stance_evidence_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:01:00 2026] You have slain a gnoll!",
             b"[Tue Jul 28 15:01:01 2026] You assume a berserker stance.",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a rat for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a rat!",
             b"[Tue Jul 28 15:02:01 2026] You assume a berserker stance.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
@@ -7200,7 +7344,7 @@ mod stance_evidence_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(
             configured.contains(&"Berserker".to_string()),
             "{configured:?}"
@@ -7302,9 +7446,11 @@ mod stance_evidence_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Wed Sep 02 11:00:45 2026] You have entered The Ruins of Old Guk.",
+            b"[Wed Sep 02 11:00:45 2026] You hit a gnoll for 10 points of damage.",
+            b"[Wed Sep 02 11:00:45 2026] You have slain a gnoll!",
             b"[Wed Sep 02 11:02:30 2026] This song cannot be played while Symphonic Aura is enabled.",
-            b"[Wed Sep 02 13:24:53 2026] You have entered Erudin.",
+            b"[Wed Sep 02 13:24:53 2026] You hit a rat for 10 points of damage.",
+            b"[Wed Sep 02 13:24:53 2026] You have slain a rat!",
             b"[Wed Sep 02 13:24:58 2026] You have improved Symphonic Aura: Enabled 8 at a cost of 0 ability points.",
             b"[Wed Sep 02 13:25:00 2026] Your weapons whir with a magical rhythm.",
         ];
@@ -7312,7 +7458,7 @@ mod stance_evidence_tests {
         let you = ing.store.names.get("You").expect("You interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(configured.contains(&"Bard".to_string()), "{configured:?}");
         assert!(ing.symphonic_aura, "aura known on inside this visit");
     }
@@ -7337,7 +7483,7 @@ mod stance_evidence_tests {
         let you = ing.store.names.get("You").expect("You interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(!configured.contains(&"Bard".to_string()), "{configured:?}");
     }
 
@@ -7357,16 +7503,18 @@ mod stance_evidence_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:01:00 2026] You have slain a gnoll!",
             b"[Tue Jul 28 15:01:01 2026] You begin casting Conflagration X.",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a rat for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a rat!",
             b"[Tue Jul 28 15:02:01 2026] You begin casting Conflagration X.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
         let you = ing.store.names.get("You").expect("You interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(configured.contains(&"Wizard".to_string()), "{configured:?}");
     }
 
@@ -7386,7 +7534,7 @@ mod stance_evidence_tests {
         let you = ing.store.names.get("You").expect("You interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(
             !configured.contains(&"Wizard".to_string()),
             "{configured:?}"
@@ -7424,7 +7572,7 @@ mod stance_evidence_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(
             !configured.contains(&"Berserker".to_string()),
             "{configured:?}"
@@ -7555,9 +7703,11 @@ mod unreliable_class_evidence_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:01:00 2026] You have slain a gnoll!",
             b"[Tue Jul 28 15:01:01 2026] You begin casting Cascade of Hail.",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a rat for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a rat!",
             b"[Tue Jul 28 15:02:01 2026] You begin casting Cascade of Hail.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
@@ -7565,7 +7715,7 @@ mod unreliable_class_evidence_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(configured.contains(&"Druid".to_string()), "{configured:?}");
     }
 
@@ -7646,13 +7796,16 @@ mod skill_evidence_tests {
         // needs 3 distinct visits to corroborate, a stricter bar than an
         // unambiguous cast's own 2 (see MIN_ELIMINATION_CASTS's own doc)
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:01:00 2026] You have entered Befallen.",
+            b"[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:01:00 2026] You have slain a gnoll!",
             b"[Tue Jul 28 15:01:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:01:02 2026] You begin casting Shock of Lightning.",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a rat for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a rat!",
             b"[Tue Jul 28 15:02:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:02:02 2026] You begin casting Shock of Lightning.",
-            b"[Tue Jul 28 15:03:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:03:00 2026] You hit a bat for 10 points of damage.",
+            b"[Tue Jul 28 15:03:00 2026] You have slain a bat!",
             b"[Tue Jul 28 15:03:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:03:02 2026] You begin casting Shock of Lightning.",
             // why: Endure Fire pool {Beastlord,Cleric,Druid,Ranger,Shaman} --
@@ -7663,13 +7816,15 @@ mod skill_evidence_tests {
             // why: Tracking {Bard,Druid,Ranger} -- only Ranger survives all
             // three pools, but only on this one visit so far -- not proof yet
             b"[Tue Jul 28 15:03:05 2026] You have become better at Tracking! (1)",
-            b"[Tue Jul 28 15:04:00 2026] You have entered Highkeep.",
+            b"[Tue Jul 28 15:04:00 2026] You hit a snake for 10 points of damage.",
+            b"[Tue Jul 28 15:04:00 2026] You have slain a snake!",
             b"[Tue Jul 28 15:04:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:04:02 2026] You begin casting Shock of Lightning.",
             b"[Tue Jul 28 15:04:03 2026] You begin casting Endure Fire.",
             b"[Tue Jul 28 15:04:04 2026] You assume an evasive stance.",
             b"[Tue Jul 28 15:04:05 2026] You have become better at Tracking! (2)",
-            b"[Tue Jul 28 15:05:00 2026] You have entered Runnyeye.",
+            b"[Tue Jul 28 15:05:00 2026] You hit a wolf for 10 points of damage.",
+            b"[Tue Jul 28 15:05:00 2026] You have slain a wolf!",
             b"[Tue Jul 28 15:05:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:05:02 2026] You begin casting Shock of Lightning.",
             b"[Tue Jul 28 15:05:03 2026] You begin casting Endure Fire.",
@@ -7681,7 +7836,7 @@ mod skill_evidence_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert_eq!(
             configured,
             vec![
@@ -7710,13 +7865,16 @@ mod invocation_evidence_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:01:00 2026] You have entered Befallen.",
+            b"[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:01:00 2026] You have slain a gnoll!",
             b"[Tue Jul 28 15:01:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:01:02 2026] You begin casting Shock of Lightning.",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a rat for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a rat!",
             b"[Tue Jul 28 15:02:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:02:02 2026] You begin casting Shock of Lightning.",
-            b"[Tue Jul 28 15:03:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:03:00 2026] You hit a bat for 10 points of damage.",
+            b"[Tue Jul 28 15:03:00 2026] You have slain a bat!",
             b"[Tue Jul 28 15:03:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:03:02 2026] You begin casting Shock of Lightning.",
             // why: Spellblade pool {Beastlord,Paladin,Ranger,Shadow Knight}
@@ -7726,13 +7884,15 @@ mod invocation_evidence_tests {
             // why: Tracking {Bard,Druid,Ranger} -- only Ranger survives all
             // three, but only on this one visit so far -- not proof yet
             b"[Tue Jul 28 15:03:05 2026] You have become better at Tracking! (1)",
-            b"[Tue Jul 28 15:04:00 2026] You have entered Highkeep.",
+            b"[Tue Jul 28 15:04:00 2026] You hit a snake for 10 points of damage.",
+            b"[Tue Jul 28 15:04:00 2026] You have slain a snake!",
             b"[Tue Jul 28 15:04:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:04:02 2026] You begin casting Shock of Lightning.",
             b"[Tue Jul 28 15:04:03 2026] You begin reciting the spellblade invocation.",
             b"[Tue Jul 28 15:04:04 2026] You assume an evasive stance.",
             b"[Tue Jul 28 15:04:05 2026] You have become better at Tracking! (2)",
-            b"[Tue Jul 28 15:05:00 2026] You have entered Runnyeye.",
+            b"[Tue Jul 28 15:05:00 2026] You hit a wolf for 10 points of damage.",
+            b"[Tue Jul 28 15:05:00 2026] You have slain a wolf!",
             b"[Tue Jul 28 15:05:01 2026] You begin casting Kilan's Animation.",
             b"[Tue Jul 28 15:05:02 2026] You begin casting Shock of Lightning.",
             b"[Tue Jul 28 15:05:03 2026] You begin reciting the spellblade invocation.",
@@ -7744,7 +7904,7 @@ mod invocation_evidence_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert_eq!(
             configured,
             vec![
@@ -7771,9 +7931,11 @@ mod aa_evidence_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:01:00 2026] You have slain a gnoll!",
             b"[Fri Aug 07 00:25:51 2026] You have gained the ability \"Innate Sneakiness\" at a cost of 0 ability points.",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a rat for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a rat!",
             b"[Fri Aug 07 00:25:51 2026] You have gained the ability \"Innate Sneakiness\" at a cost of 0 ability points.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
@@ -7781,7 +7943,7 @@ mod aa_evidence_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(configured.contains(&"Rogue".to_string()), "{configured:?}");
     }
 
@@ -7838,7 +8000,7 @@ mod effect_ping_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(configured.is_empty(), "{configured:?}");
 
         // why: the ping itself still landed both times
@@ -7855,10 +8017,12 @@ mod effect_ping_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:01:00 2026] You have entered Befallen.",
+            b"[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:01:00 2026] You have slain a gnoll!",
             b"[Tue Jul 28 15:01:01 2026] You activate Quick Buff.",
             b"[Tue Jul 28 15:01:02 2026] A blast of acid eats at your skin.",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a rat for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a rat!",
             b"[Tue Jul 28 15:02:01 2026] You activate Quick Buff.",
             b"[Tue Jul 28 15:02:02 2026] A blast of acid eats at your skin.",
             // why: past PULSE_WINDOW_MS, flushes pending evidence; a
@@ -7870,7 +8034,7 @@ mod effect_ping_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(
             configured.contains(&"Necromancer".to_string()),
             "{configured:?}"
@@ -7950,10 +8114,12 @@ mod effect_ping_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:01:00 2026] You have entered Befallen.",
+            b"[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:01:00 2026] You have slain a gnoll!",
             b"[Tue Jul 28 15:01:01 2026] You activate Quick Buff.",
             b"[Tue Jul 28 15:01:02 2026] Handstuff's voice booms.",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a rat for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a rat!",
             b"[Tue Jul 28 15:02:01 2026] You activate Quick Buff.",
             b"[Tue Jul 28 15:02:02 2026] Handstuff's voice booms.",
         ];
@@ -8157,9 +8323,11 @@ mod effect_ping_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:01:00 2026] You have entered Befallen.",
+            b"[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:01:00 2026] You have slain a gnoll!",
             b"[Fri Aug 14 21:11:25 2026] Your Color Flux spell did not take hold on Hakujin. (Blocked by Berserker Spirit.)",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a rat for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a rat!",
             b"[Fri Aug 14 21:11:25 2026] Your Color Flux spell did not take hold on Joneker. (Blocked by Berserker Spirit.)",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
@@ -8168,7 +8336,7 @@ mod effect_ping_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(
             configured.contains(&"Enchanter".to_string()),
             "{configured:?}"
@@ -8326,10 +8494,12 @@ mod effect_ping_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:01:00 2026] You have entered Befallen.",
+            b"[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:01:00 2026] You have slain a gnoll!",
             b"[Thu Aug 13 21:46:48 2026] Aella activates Asp Venom.",
             b"[Thu Aug 13 21:46:57 2026] Aella activates Antimagic Poison.",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a rat for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a rat!",
             b"[Thu Aug 13 21:47:05 2026] Aella activates Antimagic Poison.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
@@ -8341,14 +8511,16 @@ mod effect_ping_tests {
             .expect("Aella should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(aella.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(aella.0, ing.unit_at(ing.now_ms()));
         assert!(configured.contains(&"Rogue".to_string()), "{configured:?}");
 
-        // why: Aella herself, not "You" -- log owner gets no evidence from a line they weren't subject of
-        assert!(
-            ing.store.names.get("You").is_none(),
-            "You should never be interned by this"
-        );
+        // why: Aella herself, not "You" -- the log owner (interned by the
+        // fights that make the units) gets no Rogue from a line they weren't subject of
+        let you = ing.store.names.get("You").expect("the fights intern You");
+        let yours = ing
+            .classes
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
+        assert!(!yours.contains(&"Rogue".to_string()), "{yours:?}");
     }
 
     /// why: state-ping half -- fed to Effects on the activator regardless of whether classdata recognizes it
@@ -8376,9 +8548,12 @@ mod effect_ping_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:00:30 2026] You hit a bat for 10 points of damage.",
+            b"[Tue Jul 28 15:00:30 2026] You have slain a bat!",
             b"[Tue Jul 28 15:01:00 2026] You activate Quick Buff.",
             b"[Tue Jul 28 15:01:01 2026] A blast of acid eats at your skin.",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a gnoll!",
             b"[Tue Jul 28 15:02:01 2026] You activate Quick Buff.",
             b"[Tue Jul 28 15:02:02 2026] A blast of acid eats at your skin.",
             // why: different flavor line past PULSE_WINDOW_MS, flushes pending evidence
@@ -8389,7 +8564,7 @@ mod effect_ping_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(
             configured.contains(&"Necromancer".to_string()),
             "{configured:?}"
@@ -8418,7 +8593,7 @@ mod effect_ping_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(
             !configured.contains(&"Magician".to_string()),
             "a group cast on Kabanab too must never confirm Magician for the player: {configured:?}"
@@ -8438,10 +8613,12 @@ mod effect_ping_tests {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:01:00 2026] You have entered Befallen.",
+            b"[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:01:00 2026] You have slain a gnoll!",
             b"[Tue Jul 28 15:01:00 2026] You activate Quick Buff.",
             b"[Tue Jul 28 15:01:02 2026] A blast of acid eats at your skin.",
-            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:00 2026] You hit a rat for 10 points of damage.",
+            b"[Tue Jul 28 15:02:00 2026] You have slain a rat!",
             b"[Tue Jul 28 15:02:00 2026] You activate Quick Buff.",
             b"[Tue Jul 28 15:02:02 2026] A blast of acid eats at your skin.",
             // why: different flavor line past PULSE_WINDOW_MS, flushes the second window's pending evidence
@@ -8452,7 +8629,7 @@ mod effect_ping_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(
             configured.contains(&"Necromancer".to_string()),
             "{configured:?}"
@@ -8483,7 +8660,7 @@ mod effect_ping_tests {
         let you = ing.store.names.get("You").expect("You should be interned");
         let configured = ing
             .classes
-            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you.0, ing.unit_at(ing.now_ms()));
         assert!(
             !configured.contains(&"Bard".to_string()),
             "a maintained ally song must never confirm Bard for the player: {configured:?}"

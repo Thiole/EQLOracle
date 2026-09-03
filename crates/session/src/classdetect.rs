@@ -1,693 +1,646 @@
-//! why: infers class configuration(s) from casts -- no log line states it
+//! why: infers class configurations from what a character does -- no log
+//! line states them. The rules live in docs/class-and-level-rules.md
+//! (P1-P8); this file is their implementation, nothing more.
 //!
-//! Game rule: exactly CLASS_COUNT (3) classes at once, swappable in town.
-//!
-//! ## Design: grouped per zone visit, nothing evicted
-//! why: a single rolling value crowds out rare-but-real configurations --
-//! grouping by zone visit (loadout is stable within one) keeps every
-//! distinct configuration this entity has ever played, not just the loudest.
-//!
-//! ## Confirming a class: unambiguous evidence, or elimination -- as two
-//! ## separate evidence kinds, not one
-//! why: real bug, caught live against a real 2nd player's log. A
-//! handful of real invocations/stances span 6-12 of the 15 classes each
-//! (Recovery/Over Channel/Inversion are all the *same* 12-class list;
-//! Divine is 6; Spellblade is 4). A player who casts several of these
-//! often enough can have two such pools intersect down to a single
-//! residual class *by pure combinatorial chance*, entirely within one
-//! zone visit -- the old code trusted that instantly, same confidence
-//! as a real unambiguous cast repeated on 2 distinct visits.
-//!
-//! Confirmed wrong live, then traced to ground truth: a player who has
-//! "never played Beastlord" (their own words) had it show up in two
-//! resolved configurations, with *zero* Beastlord-eligible spell ever
-//! narrower than a 2-class pool ever landing -- purely elimination
-//! coincidence. Separately, that same player's data *did* show
-//! Enchanter repeatedly, but that one turned out to be real: genuinely
-//! Enchanter-exclusive spells (Mesmerize, several rank-appropriate
-//! Illusion spells, one bought from an Enchanter-only vendor per its
-//! own `where_to_obtain`) landed dozens of times each. Elimination
-//! coincidence and real unambiguous spell evidence look identical once
-//! narrowed to one candidate -- but they are not equally trustworthy,
-//! so they're no longer treated as interchangeable:
-//!
-//! - An unambiguous cast still needs `MIN_UNAMBIGUOUS_CASTS` (2)
-//!   distinct visits, tracked in `pending_unambiguous`.
-//! - Elimination narrowing to exactly one candidate needs
-//!   `MIN_ELIMINATION_CASTS` (3) distinct visits, tracked separately in
-//!   `pending_elimination` -- confirmed live that even a 2nd
-//!   independent coincidence isn't rare enough to trust on its own; see
-//!   `MIN_ELIMINATION_CASTS`'s own doc.
-//!
-//! Both still fully retroactive once their own bar is crossed (every
-//! visit that pointed at the class gets it, not just the one that
-//! tipped it over), and once *either* threshold proves a class, it's
-//! `proven` outright from then on regardless of which kind of evidence
-//! crosses it -- see `propose`.
-//!
-//! ## A real contradiction poisons a visit's narrowing, it doesn't restart it
-//! why: 2nd real bug, found tracing the *same* player's Beastlord false
-//! positive further after the fix above didn't fully clear it. One real
-//! visit's own stance evidence (Balanced/Offensive/Evasive, several real
-//! casts each) agreed with itself down to {Monk, Rogue} -- genuinely
-//! excluding Beastlord along the way, since Striker's own real class
-//! list has no Beastlord in it. A single later {Beastlord, Shaman}
-//! spell pool then contradicted that (empty intersection), and the old
-//! code discarded the *stronger*, multiply-corroborated prior narrowing
-//! and restarted fresh from the *weaker* one-off pool that caused the
-//! contradiction -- which then narrowed cleanly to Beastlord entirely on
-//! its own. Whichever evidence happens to arrive chronologically after a
-//! contradiction has no special claim to being the correct side of it.
-//! Now an empty intersection poisons the visit instead: no further
-//! elimination proposal from that visit, ever (unambiguous evidence is
-//! untouched). See `narrow`'s own doc for the full trace.
-//!
-//! ## Partial evidence is not a smaller configuration
-//! why: a below-CLASS_COUNT visit is lag/unresolved, never shown as its
-//! own legitimate config -- see `visits_by_resolved_configuration`.
-//! Stances feed the same pipeline as spells; disciplines/poisons/Tracking
-//! have no verified class-mapping and contribute no evidence either way.
+//! One rolling evidence chain per entity. The unit of evidence is the
+//! encounter (`Unit`), never the zone visit. Each class carries a
+//! weight: a unit that supports it adds, a unit the entity fought in
+//! without showing it subtracts, a zone line halves everything. A class
+//! is confirmed once its unambiguous weight clears one bar, or its
+//! elimination weight clears a stricter one -- nothing is ever forced.
+//! A confirmed class that decays under the bar stays in the trio as a
+//! prior until fresh evidence re-clears it or another class displaces
+//! it. Contradictions (evidence no trio can hold) count per unit; three
+//! in a row close the chain retroactively at the first of them and a
+//! new chain starts there. Level floors ride the chain: a ding raises
+//! every trio class below it, never lowers one.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-/// why: fixed game rule, also the elimination threshold -- never forced early
+/// why: fixed game rule -- exactly three classes at once
 pub const CLASS_COUNT: usize = 3;
+/// why: the server's cap today (Spencer, 2026-09-03: "50, might change
+/// later"); a wiki spell level above it is not this server's and proves nothing
+pub const LEVEL_CAP: u8 = 50;
 
-/// why: opaque grouping key, `None` for before the first zone.enter
-pub type ZoneVisit = Option<usize>;
-
+/// why: opaque evidence unit -- an encounter index, `None` before the first
+pub type Unit = Option<usize>;
+/// why: the old name, kept so callers read; the meaning is `Unit`
+pub type ZoneVisit = Unit;
 /// why: named to avoid tripping clippy's type_complexity on a bare tuple
-pub type ConfiguredVisits = Vec<(Vec<String>, Vec<ZoneVisit>)>;
+pub type ConfiguredVisits = Vec<(Vec<String>, Vec<Unit>)>;
 
-#[derive(Debug, Default)]
-struct VisitState {
-    /// why: confirmed by either path, undistinguished -- both are real
-    confirmed: BTreeSet<String>,
-    /// why: intersection since CLASS_COUNT-1 confirmed, None until then
+/// why: the numbers Spencer approved 2026-09-03 ("for now, will adjust
+/// later if necessary") -- see docs Q33
+const SUPPORT_GAIN: f32 = 1.0;
+const WEIGHT_CAP: f32 = 3.0;
+const UNSUPPORTED_LOSS: f32 = 0.5;
+const CONTRADICT_LOSS: f32 = 1.0;
+const ZONE_FACTOR: f32 = 0.5;
+const UNAMBIGUOUS_BAR: f32 = 2.0;
+const ELIMINATION_BAR: f32 = 3.0;
+/// why: consecutive conflicting units before the chain closes (P5)
+const CONTRADICTION_RUN: usize = 3;
+
+/// why: `None` maps to 0 so units order as plain integers internally
+fn key(u: Unit) -> usize {
+    u.map_or(0, |i| i + 1)
+}
+fn unit(k: usize) -> Unit {
+    if k == 0 {
+        None
+    } else {
+        Some(k - 1)
+    }
+}
+
+/// Everything one unit said about an entity, deduplicated.
+#[derive(Debug, Clone, Default)]
+struct UnitEvidence {
+    unambiguous: BTreeSet<String>,
+    pools: Vec<BTreeSet<String>>,
+    /// why: (class, level) lists per cast -- a floor only when exactly
+    /// one of the pairs' classes sits in the trio (P6)
+    level_pairs: Vec<Vec<(String, u8)>>,
+    dings: Vec<u8>,
+    zone_lines: u32,
+}
+
+impl UnitEvidence {
+    fn is_empty(&self) -> bool {
+        self.unambiguous.is_empty() && self.pools.is_empty()
+    }
+    fn supports(&self, class: &str) -> bool {
+        self.unambiguous.contains(class) || self.pools.iter().any(|p| p.contains(class))
+    }
+}
+
+/// Why a chain ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChainEnd {
+    /// why: three consecutive conflicting units -- shown as "??" (P5)
+    Contradiction,
+    /// why: a loadout-swap signal from the app (P8)
+    Swap,
+}
+
+/// The derived state of a chain after its committed units.
+#[derive(Debug, Clone, Default)]
+struct Derived {
+    unamb: HashMap<String, f32>,
+    elim: HashMap<String, f32>,
+    /// why: every class that ever cleared a bar in this chain -- a prior
+    /// once it decays, until re-cleared or displaced
+    ever_confirmed: BTreeSet<String>,
     narrowing: Option<BTreeSet<String>>,
-    /// why: ambiguous pools too early to use, replayed once the 2nd class lands
-    pending_pools: Vec<BTreeSet<String>>,
-    /// why: a real contradiction happened -- see `narrow`'s own doc for why
-    /// that permanently disqualifies this visit's elimination narrowing
-    /// rather than restarting from whichever pool arrived after it
-    poisoned: bool,
+    floors: HashMap<String, u8>,
+    max_ding: Option<u8>,
+    conflict_run: Vec<usize>,
+    units_seen: usize,
+}
+
+impl Derived {
+    fn weight(&self, class: &str) -> f32 {
+        self.unamb.get(class).copied().unwrap_or(0.0) + self.elim.get(class).copied().unwrap_or(0.0)
+    }
+    fn clears_bar(&self, class: &str) -> bool {
+        self.unamb.get(class).copied().unwrap_or(0.0) >= UNAMBIGUOUS_BAR
+            || self.elim.get(class).copied().unwrap_or(0.0) >= ELIMINATION_BAR
+    }
+    /// why: confirmed first (heaviest first), then priors by weight, at
+    /// most CLASS_COUNT -- a prior at zero weight is what a newly
+    /// confirmed class displaces
+    fn trio(&self) -> (Vec<String>, Vec<String>) {
+        let mut confirmed: Vec<String> = self
+            .ever_confirmed
+            .iter()
+            .filter(|c| self.clears_bar(c))
+            .cloned()
+            .collect();
+        confirmed.sort_by(|a, b| {
+            self.weight(b)
+                .partial_cmp(&self.weight(a))
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.cmp(b))
+        });
+        confirmed.truncate(CLASS_COUNT);
+        let mut prior: Vec<String> = self
+            .ever_confirmed
+            .iter()
+            .filter(|c| !confirmed.contains(c))
+            .cloned()
+            .collect();
+        prior.sort_by(|a, b| {
+            self.weight(b)
+                .partial_cmp(&self.weight(a))
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.cmp(b))
+        });
+        prior.truncate(CLASS_COUNT - confirmed.len());
+        (confirmed, prior)
+    }
+    fn trio_set(&self) -> BTreeSet<String> {
+        let (c, p) = self.trio();
+        c.into_iter().chain(p).collect()
+    }
+
+    /// why: one unit's evidence folded in, in rule order (P1, P2, P4-P6);
+    /// returns whether the unit conflicted with the trio (P5)
+    fn apply(&mut self, k: usize, ev: &UnitEvidence) -> bool {
+        self.units_seen += 1;
+        // P4: a zone line weakens everything before this unit's own evidence
+        for _ in 0..ev.zone_lines {
+            for w in self.unamb.values_mut().chain(self.elim.values_mut()) {
+                *w *= ZONE_FACTOR;
+            }
+        }
+        let before = self.trio_set();
+        let full = before.len() == CLASS_COUNT;
+        let mut conflict = false;
+
+        // P2: unambiguous support
+        for c in &ev.unambiguous {
+            let w = self.unamb.entry(c.clone()).or_insert(0.0);
+            *w = (*w + SUPPORT_GAIN).min(WEIGHT_CAP);
+            if full && !before.contains(c) {
+                conflict = true;
+            }
+        }
+        // P2: elimination -- pools no trio class explains
+        let unexplained: Vec<&BTreeSet<String>> = ev
+            .pools
+            .iter()
+            .filter(|p| !p.iter().any(|c| before.contains(c)))
+            .collect();
+        if !unexplained.is_empty() {
+            if full {
+                conflict = true;
+            } else if before.len() == CLASS_COUNT - 1 {
+                let mut narrowed = self.narrowing.clone();
+                for p in &unexplained {
+                    narrowed = Some(match narrowed {
+                        Some(n) => n.intersection(p).cloned().collect(),
+                        None => (*p).clone(),
+                    });
+                }
+                match narrowed {
+                    Some(n) if n.is_empty() => {
+                        conflict = true;
+                        self.narrowing = None;
+                    }
+                    Some(n) => {
+                        if n.len() == 1 {
+                            let c = n.iter().next().cloned().unwrap_or_default();
+                            let w = self.elim.entry(c).or_insert(0.0);
+                            *w = (*w + SUPPORT_GAIN).min(WEIGHT_CAP);
+                        }
+                        self.narrowing = Some(n);
+                    }
+                    None => {}
+                }
+            }
+        }
+        // P1: unsupported in a unit the entity acted in shrinks; a
+        // conflicting unit shrinks harder (only classes with any weight)
+        if !ev.is_empty() {
+            let loss = if conflict {
+                CONTRADICT_LOSS
+            } else {
+                UNSUPPORTED_LOSS
+            };
+            let classes: Vec<String> = self
+                .unamb
+                .keys()
+                .chain(self.elim.keys())
+                .cloned()
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            for c in classes {
+                if ev.supports(&c) {
+                    continue;
+                }
+                if let Some(w) = self.unamb.get_mut(&c) {
+                    *w = (*w - loss).max(0.0);
+                }
+                if let Some(w) = self.elim.get_mut(&c) {
+                    *w = (*w - loss).max(0.0);
+                }
+            }
+        }
+        // newly cleared bars join ever_confirmed and pick up the chain's
+        // ding (P6) -- unless the trio was already full: a full trio only
+        // changes through P5's close, never by quietly displacing a
+        // decayed prior (that would rewrite the chain's whole history)
+        let newly: Vec<String> = self
+            .unamb
+            .keys()
+            .chain(self.elim.keys())
+            .filter(|c| !full && self.clears_bar(c) && !self.ever_confirmed.contains(*c))
+            .cloned()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        for c in newly {
+            if let Some(d) = self.max_ding {
+                let f = self.floors.entry(c.clone()).or_insert(0);
+                *f = (*f).max(d);
+            }
+            self.ever_confirmed.insert(c);
+        }
+        // P6: dings raise every trio class below them
+        let trio_now = self.trio_set();
+        for &d in &ev.dings {
+            self.max_ding = Some(self.max_ding.map_or(d, |m| m.max(d)));
+            for c in &trio_now {
+                let f = self.floors.entry(c.clone()).or_insert(0);
+                *f = (*f).max(d);
+            }
+        }
+        // P6: a spell only one trio class could cast raises that class
+        for pairs in &ev.level_pairs {
+            let mut fit = pairs.iter().filter(|(c, _)| trio_now.contains(c));
+            if let (Some((c, l)), None) = (fit.next(), fit.next()) {
+                if *l <= LEVEL_CAP {
+                    let f = self.floors.entry(c.clone()).or_insert(0);
+                    *f = (*f).max(*l);
+                }
+            }
+        }
+        // P5: consecutive conflicts
+        if conflict {
+            self.conflict_run.push(k);
+        } else {
+            self.conflict_run.clear();
+        }
+        conflict
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct Chain {
+    units: BTreeMap<usize, UnitEvidence>,
+    committed: Derived,
+    /// why: the unit still receiving evidence -- folded in provisionally
+    /// on every query, committed when a later unit arrives
+    current: Option<(usize, UnitEvidence)>,
+    closed: Option<ChainEnd>,
+    first: usize,
+}
+
+impl Chain {
+    fn new(first: usize) -> Self {
+        Chain {
+            first,
+            ..Default::default()
+        }
+    }
+    fn last(&self) -> usize {
+        self.current
+            .as_ref()
+            .map(|(k, _)| *k)
+            .or_else(|| self.units.keys().next_back().copied())
+            .unwrap_or(self.first)
+    }
+    fn derived(&self) -> Derived {
+        let mut d = self.committed.clone();
+        if let Some((k, ev)) = &self.current {
+            d.apply(*k, ev);
+        }
+        d
+    }
+    fn evidence_mut(&mut self, k: usize) -> &mut UnitEvidence {
+        match &mut self.current {
+            Some((ck, _)) if *ck == k => {}
+            Some((ck, _)) if *ck > k => {
+                // why: late evidence for an already-committed unit folds
+                // into the current one -- the chain sees it, ordering aside
+            }
+            _ => {
+                if let Some((ck, ev)) = self.current.take() {
+                    self.committed.apply(ck, &ev);
+                    self.units.insert(ck, ev);
+                }
+                self.current = Some((k, UnitEvidence::default()));
+            }
+        }
+        &mut self.current.as_mut().expect("current set").1
+    }
+    /// why: rebuilds from its units -- used after a split
+    fn rebuild(&mut self) {
+        let units = std::mem::take(&mut self.units);
+        self.committed = Derived::default();
+        self.current = None;
+        for (k, ev) in units {
+            self.committed.apply(k, &ev);
+            self.units.insert(k, ev);
+        }
+    }
 }
 
 #[derive(Debug, Default)]
 struct EntityState {
-    by_visit: HashMap<ZoneVisit, VisitState>,
-    /// why: visits with an unambiguous sighting, still under the threshold
-    pending_unambiguous: HashMap<String, BTreeSet<ZoneVisit>>,
-    /// why: visits where elimination narrowed to this class, still under
-    /// its own (stricter) threshold -- kept separate from
-    /// pending_unambiguous rather than merged, so a class never gets
-    /// proven by mixing one real spell sighting with one lucky
-    /// intersection; each evidence kind has to clear its own bar on its own.
-    pending_elimination: HashMap<String, BTreeSet<ZoneVisit>>,
-    /// why: crossed either threshold, confirmed outright from here on
-    proven: BTreeSet<String>,
+    chains: Vec<Chain>,
 }
 
-/// why: needs 2+ distinct visits -- a one-off vendor spell shouldn't confirm
-const MIN_UNAMBIGUOUS_CASTS: usize = 2;
+impl EntityState {
+    /// why: L2 -- a class's floor is the character's, never lowered, so a
+    /// trio swapped back in still reads what its classes reached before
+    fn floor_of(&self, class: &str) -> Option<u8> {
+        self.chains
+            .iter()
+            .filter_map(|c| c.derived().floors.get(class).copied())
+            .max()
+    }
+}
 
-/// why: real bug, caught live -- 2 distinct visits was enough for
-/// *unambiguous* evidence (a genuinely class-exclusive spell landing
-/// twice), but elimination narrowing is a much weaker signal (several
-/// real invocations/stances span 6-12 of 15 classes; two such pools can
-/// intersect to a single residual class by pure combinatorial chance).
-/// Confirmed live: a real player's data had elimination alone narrow to
-/// the same wrong class on 2 separate visits (161, 179) with zero
-/// direct spell evidence ever supporting it. A 3rd independent
-/// coincidence landing on the same wrong class is meaningfully less
-/// likely than a 2nd, without raising the bar for genuinely unambiguous
-/// spell evidence at all.
-const MIN_ELIMINATION_CASTS: usize = 3;
+impl EntityState {
+    fn open_chain(&mut self, k: usize) -> &mut Chain {
+        if self.chains.last().is_none_or(|c| c.closed.is_some()) {
+            self.chains.push(Chain::new(k));
+        }
+        self.chains.last_mut().expect("just ensured")
+    }
+    fn chain_covering(&self, k: usize) -> Option<&Chain> {
+        // why: the open chain covers everything after its first unit
+        self.chains
+            .iter()
+            .rev()
+            .find(|c| c.first <= k && (c.closed.is_none() || c.last() >= k))
+    }
+    /// why: P5 -- close at the first conflicting unit, replay the rest
+    /// into a fresh chain that confirms on its own
+    fn split_last(&mut self, at: usize, end: ChainEnd) {
+        let Some(old) = self.chains.last_mut() else {
+            return;
+        };
+        if let Some((ck, ev)) = old.current.take() {
+            old.units.insert(ck, ev);
+        }
+        let moved: BTreeMap<usize, UnitEvidence> = old.units.split_off(&at);
+        old.closed = Some(end);
+        old.rebuild();
+        let mut fresh = Chain::new(at);
+        fresh.units = moved;
+        fresh.rebuild();
+        self.chains.push(fresh);
+    }
+}
 
-/// why: per-entity evidence by zone visit, never reset/decayed/evicted
+/// A chain as the app reads it.
+#[derive(Debug, Clone)]
+pub struct ChainView {
+    pub first: Unit,
+    pub last: Unit,
+    pub closed: Option<ChainEnd>,
+    pub confirmed: Vec<String>,
+    pub prior: Vec<String>,
+    /// why: what the unresolved slot is stuck between (Q34) -- the
+    /// current elimination narrowing, else every class with weight
+    pub candidates: Vec<String>,
+    pub floors: Vec<(String, u8)>,
+    pub max_ding: Option<u8>,
+    pub units: usize,
+    pub weights: Vec<(String, f32)>,
+    pub conflicts: usize,
+}
+
+impl ChainView {
+    /// why: the trio as shown -- confirmed then priors
+    pub fn trio(&self) -> Vec<String> {
+        let mut v = self.confirmed.clone();
+        v.extend(self.prior.iter().cloned());
+        v
+    }
+    pub fn is_full(&self) -> bool {
+        self.trio().len() == CLASS_COUNT
+    }
+}
+
+/// why: per-entity chains, never reset/decayed/evicted except by the rules
 #[derive(Debug, Default)]
 pub struct Detector {
     by_entity: HashMap<u32, EntityState>,
 }
 
-/// why: which pending map / threshold a proposed class goes through --
-/// see MIN_ELIMINATION_CASTS's own doc for why they differ
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Evidence {
-    Unambiguous,
-    Elimination,
-}
-
 impl Detector {
-    /// why: unambiguous needs MIN_UNAMBIGUOUS_CASTS visits to confirm; an
-    /// ambiguous pool that narrows to exactly one candidate is proposed
-    /// through the identical gate rather than confirmed on the spot --
-    /// see this module's own doc for why single-visit narrowing alone
-    /// isn't trustworthy.
-    pub fn observe_cast(&mut self, entity: u32, zone_visit: ZoneVisit, classes: &[String]) {
+    /// why: one cast/song/stance/skill line's class pool for `entity` in `unit`
+    pub fn observe_cast(&mut self, entity: u32, unit: Unit, classes: &[String]) {
         if classes.is_empty() {
             return;
         }
+        let k = key(unit);
         let state = self.by_entity.entry(entity).or_default();
+        let chain = state.open_chain(k);
+        let ev = chain.evidence_mut(k);
         if classes.len() == 1 {
-            Self::propose(state, zone_visit, classes[0].clone(), Evidence::Unambiguous);
+            ev.unambiguous.insert(classes[0].clone());
+        } else {
+            let pool: BTreeSet<String> = classes.iter().cloned().collect();
+            if !ev.pools.contains(&pool) {
+                ev.pools.push(pool);
+            }
+        }
+        Self::settle(state);
+    }
+
+    /// why: a cast's (class, level) pairs -- P6's spell floor
+    pub fn observe_spell_levels(&mut self, entity: u32, unit: Unit, pairs: &[(String, u8)]) {
+        if pairs.is_empty() {
             return;
         }
-        let candidates: BTreeSet<String> = classes.iter().cloned().collect();
-        let narrowed = {
-            let visit = state.by_visit.entry(zone_visit).or_default();
-            // why: reinforces if already confirmed, else a candidate for elimination
-            if candidates.iter().any(|c| visit.confirmed.contains(c)) {
-                return;
-            }
-            if visit.confirmed.len() != CLASS_COUNT - 1 {
-                // why: too early to narrow -- kept, not dropped, see pending_pools.
-                // Deduped: the same broad invocation pool recast hundreds of
-                // times in one visit used to buffer hundreds of identical
-                // BTreeSets (measured inefficiency, full-app walk 2026-08-29);
-                // replay only needs each distinct pool once.
-                if !visit.pending_pools.contains(&candidates) {
-                    visit.pending_pools.push(candidates);
-                }
-                return;
-            }
-            Self::narrow(visit, candidates)
+        let k = key(unit);
+        let state = self.by_entity.entry(entity).or_default();
+        let ev = state.open_chain(k).evidence_mut(k);
+        let v = pairs.to_vec();
+        if !ev.level_pairs.contains(&v) {
+            ev.level_pairs.push(v);
+        }
+    }
+
+    /// why: P4 -- a zone line weakens, never breaks
+    pub fn observe_zone_line(&mut self, entity: u32, unit: Unit) {
+        let k = key(unit);
+        let state = self.by_entity.entry(entity).or_default();
+        state.open_chain(k).evidence_mut(k).zone_lines += 1;
+    }
+
+    /// why: P6 -- a ding is the trio's lowest; it raises what's below it
+    pub fn observe_ding(&mut self, entity: u32, unit: Unit, level: u8) {
+        let k = key(unit);
+        let state = self.by_entity.entry(entity).or_default();
+        state.open_chain(k).evidence_mut(k).dings.push(level);
+    }
+
+    /// why: P8 -- a swap signal closes the chain now; evidence from
+    /// `unit` on belongs to a fresh one
+    pub fn close_chain(&mut self, entity: u32, unit: Unit) {
+        let k = key(unit);
+        let state = self.by_entity.entry(entity).or_default();
+        let Some(last) = state.chains.last_mut() else {
+            return;
         };
-        if let Some(class) = narrowed {
-            Self::propose(state, zone_visit, class, Evidence::Elimination);
+        if last.closed.is_some() {
+            return;
         }
+        if last.first >= k {
+            // why: nothing before the split point -- the chain simply restarts
+            let fresh = Chain::new(k);
+            *last = fresh;
+            return;
+        }
+        state.split_last(k, ChainEnd::Swap);
     }
 
-    /// why: single funnel for both evidence kinds -- an unambiguous cast
-    /// and a pool narrowed to exactly one candidate are both "this visit
-    /// points at class X" claims, but not equally strong ones (see this
-    /// module's own doc for why elimination gets its own, stricter
-    /// threshold) -- each kind accumulates in its own pending map,
-    /// never mixed, so a class is never proven by combining one real
-    /// spell sighting with lucky intersections. Confirming a class can
-    /// unblock that visit's own buffered pools (`reconcile_pending`),
-    /// which can themselves narrow to a fresh single candidate -- always
-    /// elimination evidence, queued rather than recursed so a chain of
-    /// confirmations across many visits resolves without deep recursion.
-    fn propose(state: &mut EntityState, zone_visit: ZoneVisit, class: String, kind: Evidence) {
-        let mut queue = vec![(zone_visit, class, kind)];
-        while let Some((zv, class, kind)) = queue.pop() {
-            if state.proven.contains(&class) {
-                let visit = state.by_visit.entry(zv).or_default();
-                if visit.confirmed.insert(class) {
-                    queue.extend(
-                        Self::reconcile_pending(visit)
-                            .into_iter()
-                            .map(|c| (zv, c, Evidence::Elimination)),
-                    );
-                }
-                continue;
-            }
-            let (pending_map, threshold) = match kind {
-                Evidence::Unambiguous => (&mut state.pending_unambiguous, MIN_UNAMBIGUOUS_CASTS),
-                Evidence::Elimination => (&mut state.pending_elimination, MIN_ELIMINATION_CASTS),
-            };
-            let pending = pending_map.entry(class.clone()).or_default();
-            pending.insert(zv);
-            if pending.len() < threshold {
-                continue;
-            }
-            let visits = pending_map.remove(&class).unwrap();
-            // why: whichever kind crossed its own bar first proves it --
-            // the other kind's now-stale partial evidence (if any) is
-            // harmless leftover, but dropped for tidiness
-            state.pending_unambiguous.remove(&class);
-            state.pending_elimination.remove(&class);
-            state.proven.insert(class.clone());
-            for v in visits {
-                let visit = state.by_visit.entry(v).or_default();
-                if visit.confirmed.insert(class.clone()) {
-                    queue.extend(
-                        Self::reconcile_pending(visit)
-                            .into_iter()
-                            .map(|c| (v, c, Evidence::Elimination)),
-                    );
-                }
-            }
-        }
-    }
-
-    /// why: intersects one pool into the running narrowing, live or
-    /// replayed -- returns the single remaining candidate whenever
-    /// narrowing sits at exactly one, for the caller to route through
-    /// `propose`'s own cross-visit corroboration (never writes
-    /// `confirmed` directly -- that's `propose`'s job once corroborated).
-    ///
-    /// why an empty intersection poisons rather than restarts: a real
-    /// incident traced live on a 2nd player's log -- one visit's own
-    /// stance evidence (Balanced/Offensive/Evasive/Striker, cast
-    /// several times each, real events) agreed with itself down to
-    /// {Monk, Rogue}, genuinely excluding Beastlord along the way
-    /// (Striker's own real class list has no Beastlord). A single later
-    /// {Beastlord, Shaman} spell pool then contradicted that -- empty
-    /// intersection -- and the old code discarded the *stronger*,
-    /// multiply-corroborated prior narrowing and restarted fresh from
-    /// the *weaker* one-off pool that caused the contradiction, which
-    /// then narrowed cleanly to Beastlord on its own. Whichever evidence
-    /// happens to arrive chronologically after a contradiction has no
-    /// special claim to being the correct side of it. A real
-    /// contradiction inside one visit is itself the signal that this
-    /// visit's own "one visit, one stable loadout" assumption (this
-    /// module's own doc) has broken -- a mid-visit reconfig, or noisy
-    /// data -- so once it happens, this visit stops proposing any
-    /// elimination class at all, permanently, rather than picking a
-    /// side. Its unambiguous evidence (`propose`'s `Evidence::Unambiguous`
-    /// path) is untouched; only this visit's own further elimination
-    /// narrowing is disabled.
-    fn narrow(visit: &mut VisitState, candidates: BTreeSet<String>) -> Option<String> {
-        if visit.poisoned {
-            return None;
-        }
-        let narrowed: BTreeSet<String> = match &visit.narrowing {
-            Some(prev) => prev.intersection(&candidates).cloned().collect(),
-            None => candidates.clone(),
+    /// why: P5's close, checked after every observation on the open chain
+    fn settle(state: &mut EntityState) {
+        let Some(last) = state.chains.last_mut() else {
+            return;
         };
-        if narrowed.is_empty() {
-            visit.poisoned = true;
-            visit.narrowing = None;
-            return None;
+        if last.closed.is_some() {
+            return;
         }
-        let single = (narrowed.len() == 1)
-            .then(|| narrowed.iter().next().cloned())
-            .flatten();
-        visit.narrowing = Some(narrowed);
-        single
+        // why: the current unit counts too -- the third conflicting unit
+        // closes the chain as soon as it conflicts, not one unit later
+        let run = last.derived().conflict_run;
+        if run.len() >= CONTRADICTION_RUN {
+            if let Some((ck, ev)) = last.current.take() {
+                last.committed.apply(ck, &ev);
+                last.units.insert(ck, ev);
+            }
+            state.split_last(run[0], ChainEnd::Contradiction);
+        }
     }
 
-    /// why: replays pending_pools in order once the 2nd class confirms;
-    /// returns any classes freshly narrowed to one by that replay, for
-    /// `propose`'s own queue -- doesn't confirm them itself
-    fn reconcile_pending(visit: &mut VisitState) -> Vec<String> {
-        if visit.confirmed.len() != CLASS_COUNT - 1 || visit.pending_pools.is_empty() {
-            return Vec::new();
+    fn view(state: &EntityState, chain: &Chain) -> ChainView {
+        let d = chain.derived();
+        let (confirmed, prior) = d.trio();
+        let trio: BTreeSet<&String> = confirmed.iter().chain(prior.iter()).collect();
+        let candidates: Vec<String> = if trio.len() < CLASS_COUNT {
+            match &d.narrowing {
+                Some(n) if !n.is_empty() => n.iter().cloned().collect(),
+                _ => {
+                    let mut v: Vec<(String, f32)> = d
+                        .unamb
+                        .keys()
+                        .chain(d.elim.keys())
+                        .filter(|c| !trio.contains(c))
+                        .map(|c| (c.clone(), d.weight(c)))
+                        .filter(|(_, w)| *w > 0.0)
+                        .collect::<BTreeMap<_, _>>()
+                        .into_iter()
+                        .collect();
+                    v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                    v.into_iter().map(|(c, _)| c).collect()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+        let mut weights: Vec<(String, f32)> = d
+            .unamb
+            .keys()
+            .chain(d.elim.keys())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .map(|c| (c.clone(), d.weight(c)))
+            .filter(|(_, w)| *w > 0.0)
+            .collect();
+        weights.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.cmp(&b.0))
+        });
+        let mut floors: Vec<(String, u8)> = trio
+            .iter()
+            .filter_map(|c| state.floor_of(c).map(|l| ((*c).clone(), l)))
+            .collect();
+        floors.sort();
+        ChainView {
+            first: unit(chain.first),
+            last: unit(chain.last()),
+            closed: chain.closed,
+            confirmed,
+            prior,
+            candidates,
+            floors,
+            max_ding: d.max_ding,
+            units: d.units_seen,
+            weights,
+            conflicts: d.conflict_run.len(),
         }
-        let mut narrowed_classes = Vec::new();
-        for candidates in std::mem::take(&mut visit.pending_pools) {
-            if visit.confirmed.len() == CLASS_COUNT {
-                break; // fully resolved by an earlier pool in this same replay
-            }
-            if candidates.iter().any(|c| visit.confirmed.contains(c)) {
-                continue; // explained by something that confirmed after all
-            }
-            if let Some(class) = Self::narrow(visit, candidates) {
-                narrowed_classes.push(class);
-            }
-        }
-        narrowed_classes
     }
 
-    /// why: every distinct configuration, most-visits-first, empty ones excluded
+    /// why: the chain that covers `unit`, as the app reads it
+    pub fn chain_at(&self, entity: u32, unit: Unit) -> Option<ChainView> {
+        let state = self.by_entity.get(&entity)?;
+        state
+            .chain_covering(key(unit))
+            .map(|c| Self::view(state, c))
+    }
+
+    /// why: every chain, oldest first
+    pub fn chains(&self, entity: u32) -> Vec<ChainView> {
+        self.by_entity
+            .get(&entity)
+            .map(|s| s.chains.iter().map(|c| Self::view(s, c)).collect())
+            .unwrap_or_default()
+    }
+
+    /// why: the trio (confirmed then priors) of the chain covering `unit`
+    pub fn configuration_of_visit(&self, entity: u32, unit: Unit) -> Vec<String> {
+        self.chain_at(entity, unit)
+            .map(|v| {
+                let mut t = v.trio();
+                t.sort();
+                t
+            })
+            .unwrap_or_default()
+    }
+
+    /// why: every distinct full trio, most-units-first
     pub fn configurations_of(&self, entity: u32) -> Vec<(Vec<String>, usize)> {
-        let Some(state) = self.by_entity.get(&entity) else {
-            return Vec::new();
-        };
         let mut counts: HashMap<Vec<String>, usize> = HashMap::new();
-        for visit in state.by_visit.values() {
-            if visit.confirmed.is_empty() {
+        for v in self.chains(entity) {
+            if !v.is_full() {
                 continue;
             }
-            *counts
-                .entry(visit.confirmed.iter().cloned().collect())
-                .or_insert(0) += 1;
+            let mut t = v.trio();
+            t.sort();
+            *counts.entry(t).or_insert(0) += v.units.max(1);
         }
-        let mut v: Vec<(Vec<String>, usize)> = counts.into_iter().collect();
-        v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        v
+        let mut out: Vec<(Vec<String>, usize)> = counts.into_iter().collect();
+        out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        out
     }
 
-    /// why: folds partials into their one matching full config, or leaves
-    /// genuinely-ambiguous ones unresolved rather than guessing which
-    pub fn visits_by_resolved_configuration(
-        &self,
-        entity: u32,
-    ) -> (ConfiguredVisits, Vec<ZoneVisit>) {
+    /// why: full chains as (trio, units); partial chains' units as unresolved
+    pub fn visits_by_resolved_configuration(&self, entity: u32) -> (ConfiguredVisits, Vec<Unit>) {
         let Some(state) = self.by_entity.get(&entity) else {
             return (Vec::new(), Vec::new());
         };
-        let mut full: Vec<(BTreeSet<String>, Vec<ZoneVisit>)> = Vec::new();
-        {
-            let mut by_full: HashMap<Vec<String>, Vec<ZoneVisit>> = HashMap::new();
-            for (&visit, vs) in &state.by_visit {
-                if vs.confirmed.len() == CLASS_COUNT {
-                    by_full
-                        .entry(vs.confirmed.iter().cloned().collect())
-                        .or_default()
-                        .push(visit);
-                }
+        let mut full: Vec<(Vec<String>, Vec<Unit>)> = Vec::new();
+        let mut unresolved: Vec<Unit> = Vec::new();
+        for chain in &state.chains {
+            let v = Self::view(state, chain);
+            let mut units: Vec<Unit> = chain.units.keys().map(|k| unit(*k)).collect();
+            if let Some((k, _)) = &chain.current {
+                units.push(unit(*k));
             }
-            full.extend(
-                by_full
-                    .into_iter()
-                    .map(|(c, vs)| (c.into_iter().collect(), vs)),
-            );
-        }
-
-        // why: which full config each already-fully-confirmed visit
-        // belongs to -- frozen from `full` as built above, before any
-        // partial visit folds in below, so every partial visit's own
-        // recency tie-break (see `matches` handling) sees the same
-        // picture regardless of `state.by_visit`'s own HashMap iteration
-        // order. `ZoneVisit`'s derived Ord (None < Some(_), then by
-        // index) doubles as real chronological order -- visits are
-        // created in the order their own zone.enter lines are seen.
-        let mut bucket_of_visit: HashMap<ZoneVisit, usize> = HashMap::new();
-        for (i, (_, visits)) in full.iter().enumerate() {
-            for &v in visits {
-                bucket_of_visit.insert(v, i);
+            if v.is_full() {
+                let mut t = v.trio();
+                t.sort();
+                full.push((t, units));
+            } else {
+                unresolved.extend(units);
             }
         }
-
-        // why: a partial visit only folds into the one full config it's
-        // actually consistent with -- `poisoned` (a real contradiction
-        // happened, see `narrow`'s own doc) rules out every candidate
-        // outright, and a live `narrowing` that doesn't contain a
-        // candidate's own extra class is the same kind of real exclusion
-        // even short of a full contradiction (this visit's own evidence
-        // already ruled that class out, just not down to one yet).
-        // Blindly subset-matching on `confirmed` alone -- the old
-        // behavior -- ignored this and could fold a visit into a config
-        // its own narrowing had already excluded.
-        let mut unresolved: Vec<ZoneVisit> = Vec::new();
-        for (&visit, vs) in &state.by_visit {
-            if vs.confirmed.is_empty() || vs.confirmed.len() == CLASS_COUNT {
-                continue;
-            }
-            let compatible = |f: &BTreeSet<String>| -> bool {
-                if vs.poisoned || !vs.confirmed.is_subset(f) {
-                    return false;
-                }
-                match &vs.narrowing {
-                    Some(narrowing) => f.difference(&vs.confirmed).all(|c| narrowing.contains(c)),
-                    None => true,
-                }
-            };
-            let matches: Vec<usize> = full
-                .iter()
-                .enumerate()
-                .filter(|(_, (f, _))| compatible(f))
-                .map(|(i, _)| i)
-                .collect();
-            match matches.as_slice() {
-                [i] => full[*i].1.push(visit),
-                [] => unresolved.push(visit),
-                _ => {
-                    // why: real, live-confirmed case -- a zone change alone
-                    // is never a class swap in this game (that only happens
-                    // deliberately, in town), so an ambiguous visit that's
-                    // still consistent with whichever config was actually
-                    // confirmed most recently (the nearest earlier visit
-                    // that landed in a full bucket, skipping empty/still-
-                    // unresolved visits in between) carries that config
-                    // forward instead of sitting unresolved. Only among the
-                    // buckets `matches` already allows -- if the most recent
-                    // real evidence points somewhere `compatible` has ruled
-                    // out, that's a real contradiction, not a tie to break.
-                    let carried = bucket_of_visit
-                        .iter()
-                        .filter(|&(&v, bi)| v < visit && matches.contains(bi))
-                        .max_by_key(|&(&v, _)| v)
-                        .map(|(_, &bi)| bi);
-                    match carried {
-                        Some(bi) => full[bi].1.push(visit),
-                        None => unresolved.push(visit),
-                    }
-                }
-            }
-        }
-
-        let mut out: Vec<(Vec<String>, Vec<ZoneVisit>)> = full
-            .into_iter()
-            .map(|(c, vs)| (c.into_iter().collect(), vs))
-            .collect();
-        out.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
-        (out, unresolved)
-    }
-
-    /// why: confirmed classes for one visit, honest "as of this fight" answer
-    pub fn configuration_of_visit(&self, entity: u32, zone_visit: ZoneVisit) -> Vec<String> {
-        self.by_entity
-            .get(&entity)
-            .and_then(|s| s.by_visit.get(&zone_visit))
-            .map(|v| v.confirmed.iter().cloned().collect())
-            .unwrap_or_default()
+        full.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
+        (full, unresolved)
     }
 
     /// Every entity with any evidence at all, ever.
     pub fn known_entities(&self) -> impl Iterator<Item = u32> + '_ {
         self.by_entity.keys().copied()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn strs(v: &[&str]) -> Vec<String> {
-        v.iter().map(|s| s.to_string()).collect()
-    }
-
-    #[test]
-    fn one_sighting_of_an_unambiguous_class_is_not_enough() {
-        let mut d = Detector::default();
-        d.observe_cast(1, Some(0), &strs(&["Wizard"]));
-        assert!(d.configuration_of_visit(1, Some(0)).is_empty());
-    }
-
-    #[test]
-    fn two_distinct_visits_confirm_an_unambiguous_class() {
-        let mut d = Detector::default();
-        d.observe_cast(1, Some(0), &strs(&["Wizard"]));
-        d.observe_cast(1, Some(1), &strs(&["Wizard"]));
-        // Retroactive: both visits, not just the one that tipped it over.
-        assert_eq!(d.configuration_of_visit(1, Some(0)), strs(&["Wizard"]));
-        assert_eq!(d.configuration_of_visit(1, Some(1)), strs(&["Wizard"]));
-    }
-
-    #[test]
-    fn a_burst_within_one_visit_is_only_one_occasion() {
-        let mut d = Detector::default();
-        for _ in 0..5 {
-            d.observe_cast(1, Some(0), &strs(&["Wizard"]));
-        }
-        assert!(
-            d.configuration_of_visit(1, Some(0)).is_empty(),
-            "5 casts on the same visit must not substitute for 2 distinct visits"
-        );
-    }
-
-    /// why: real bug, caught live -- a single visit's own elimination
-    /// narrowing used to confirm outright. Now it's proposed evidence
-    /// like any other, sitting at 2 classes until a 2nd distinct visit
-    /// independently narrows to the same one.
-    #[test]
-    fn a_single_visits_own_elimination_narrowing_is_not_enough_by_itself() {
-        let mut d = Detector::default();
-        for v in [0, 1] {
-            d.observe_cast(1, Some(v), &strs(&["Enchanter"]));
-            d.observe_cast(1, Some(v), &strs(&["Wizard"]));
-        }
-        d.observe_cast(1, Some(2), &strs(&["Enchanter"]));
-        d.observe_cast(1, Some(2), &strs(&["Wizard"]));
-        // why: two pools intersecting to exactly Cleric, all on visit 2 alone
-        d.observe_cast(1, Some(2), &strs(&["Beastlord", "Cleric", "Druid"]));
-        d.observe_cast(1, Some(2), &strs(&["Cleric", "Paladin", "Shaman"]));
-        assert_eq!(
-            d.configuration_of_visit(1, Some(2)),
-            strs(&["Enchanter", "Wizard"]),
-            "narrowed to Cleric on just this one visit -- not proof by itself"
-        );
-        // why: repeating the exact same two pools on the same visit must
-        // not substitute for a 2nd *distinct* visit either
-        for _ in 0..5 {
-            d.observe_cast(1, Some(2), &strs(&["Beastlord", "Cleric", "Druid"]));
-            d.observe_cast(1, Some(2), &strs(&["Cleric", "Paladin", "Shaman"]));
-        }
-        assert_eq!(
-            d.configuration_of_visit(1, Some(2)),
-            strs(&["Enchanter", "Wizard"]),
-            "still just one visit's worth of evidence, however many times it repeats"
-        );
-    }
-
-    #[test]
-    fn elimination_confirms_once_three_distinct_visits_narrow_to_the_same_class() {
-        let mut d = Detector::default();
-        for v in [0, 1] {
-            d.observe_cast(1, Some(v), &strs(&["Enchanter"]));
-            d.observe_cast(1, Some(v), &strs(&["Wizard"]));
-        }
-        for v in [2, 3, 4] {
-            d.observe_cast(1, Some(v), &strs(&["Enchanter"]));
-            d.observe_cast(1, Some(v), &strs(&["Wizard"]));
-            d.observe_cast(1, Some(v), &strs(&["Beastlord", "Cleric", "Druid"]));
-            d.observe_cast(1, Some(v), &strs(&["Cleric", "Paladin", "Shaman"]));
-        }
-        // why: retroactive, same as the pure-unambiguous path -- every
-        // visit that pointed at Cleric gets it, not just the 3rd
-        for v in [2, 3, 4] {
-            assert_eq!(
-                d.configuration_of_visit(1, Some(v)),
-                strs(&["Cleric", "Enchanter", "Wizard"])
-            );
-        }
-    }
-
-    /// why: same evidence, opposite order -- must still resolve identically
-    #[test]
-    fn elimination_still_narrows_when_the_ambiguous_casts_arrive_before_two_slots_are_confirmed() {
-        let mut d = Detector::default();
-        for v in [0, 1] {
-            d.observe_cast(1, Some(v), &strs(&["Enchanter"]));
-            d.observe_cast(1, Some(v), &strs(&["Wizard"]));
-        }
-        // why: ambiguous evidence lands before this visit's own 2nd class
-        d.observe_cast(1, Some(2), &strs(&["Beastlord", "Cleric", "Druid"]));
-        d.observe_cast(1, Some(2), &strs(&["Cleric", "Paladin", "Shaman"]));
-        assert!(
-            d.configuration_of_visit(1, Some(2)).is_empty(),
-            "not yet -- neither slot is confirmed on this visit at all so far"
-        );
-        // why: 2nd class confirms, buffered evidence narrows retroactively
-        // -- but still just this one visit, not enough by itself
-        d.observe_cast(1, Some(2), &strs(&["Enchanter"]));
-        d.observe_cast(1, Some(2), &strs(&["Wizard"]));
-        assert_eq!(
-            d.configuration_of_visit(1, Some(2)),
-            strs(&["Enchanter", "Wizard"])
-        );
-        // why: a 2nd distinct visit, same story -- still not enough (needs 3)
-        d.observe_cast(1, Some(3), &strs(&["Beastlord", "Cleric", "Druid"]));
-        d.observe_cast(1, Some(3), &strs(&["Cleric", "Paladin", "Shaman"]));
-        d.observe_cast(1, Some(3), &strs(&["Enchanter"]));
-        d.observe_cast(1, Some(3), &strs(&["Wizard"]));
-        assert_eq!(
-            d.configuration_of_visit(1, Some(2)),
-            strs(&["Enchanter", "Wizard"]),
-            "narrowed to Cleric on 2 visits now -- still not proof by itself"
-        );
-        // why: a 3rd distinct visit finally corroborates it
-        d.observe_cast(1, Some(4), &strs(&["Beastlord", "Cleric", "Druid"]));
-        d.observe_cast(1, Some(4), &strs(&["Cleric", "Paladin", "Shaman"]));
-        d.observe_cast(1, Some(4), &strs(&["Enchanter"]));
-        d.observe_cast(1, Some(4), &strs(&["Wizard"]));
-        for v in [2, 3, 4] {
-            assert_eq!(
-                d.configuration_of_visit(1, Some(v)),
-                strs(&["Cleric", "Enchanter", "Wizard"])
-            );
-        }
-    }
-
-    #[test]
-    fn a_pool_sharing_no_class_with_the_running_intersection_poisons_this_visit_for_good() {
-        let mut d = Detector::default();
-        for v in [0, 1] {
-            d.observe_cast(1, Some(v), &strs(&["Enchanter"]));
-            d.observe_cast(1, Some(v), &strs(&["Wizard"]));
-        }
-        d.observe_cast(1, Some(2), &strs(&["Enchanter"]));
-        d.observe_cast(1, Some(2), &strs(&["Wizard"]));
-        // why: no-overlap pools = a real contradiction -- see narrow's own
-        // doc for why that poisons this visit's elimination narrowing for
-        // good, rather than restarting from whichever pool arrived after it
-        d.observe_cast(1, Some(2), &strs(&["Beastlord", "Druid"]));
-        d.observe_cast(1, Some(2), &strs(&["Paladin", "Shadow Knight"])); // shares nothing with the above
-        assert_eq!(
-            d.configuration_of_visit(1, Some(2)),
-            strs(&["Enchanter", "Wizard"]),
-            "3rd slot still open -- the contradiction must not fabricate a class"
-        );
-        // why: a pool that *would* have narrowed cleanly, had it arrived
-        // first, must not un-poison this visit just because it arrives after
-        d.observe_cast(1, Some(2), &strs(&["Paladin", "Warrior"]));
-        assert_eq!(
-            d.configuration_of_visit(1, Some(2)),
-            strs(&["Enchanter", "Wizard"]),
-            "poisoned -- must not silently pick Paladin just because it showed up after the contradiction"
-        );
-        // why: repeating on 2 more distinct visits still never confirms
-        // anything for visit 2 -- poisoned is permanent, not a 3rd-visit gate
-        for v in [3, 4] {
-            d.observe_cast(1, Some(v), &strs(&["Enchanter"]));
-            d.observe_cast(1, Some(v), &strs(&["Wizard"]));
-            d.observe_cast(1, Some(v), &strs(&["Beastlord", "Druid"]));
-            d.observe_cast(1, Some(v), &strs(&["Paladin", "Shadow Knight"]));
-            d.observe_cast(1, Some(v), &strs(&["Paladin", "Warrior"]));
-        }
-        assert_eq!(
-            d.configuration_of_visit(1, Some(2)),
-            strs(&["Enchanter", "Wizard"]),
-            "still just Enchanter/Wizard -- visit 2's own contradiction is permanent"
-        );
-    }
-
-    /// why: direct regression test for the real incident -- Recovery/Over
-    /// Channel/Inversion are the *same* real 12-class pool (everything
-    /// but Berserker/Monk/Rogue/Warrior), cast often enough by a real
-    /// player that two of them intersecting with a smaller unrelated
-    /// pool coincidentally landed on Beastlord, on a player who has
-    /// never played Beastlord. This reproduces that shape directly.
-    #[test]
-    fn broad_real_invocation_pools_never_confirm_a_class_from_one_visit_alone() {
-        let mut d = Detector::default();
-        let recovery = strs(&[
-            "Bard",
-            "Beastlord",
-            "Cleric",
-            "Druid",
-            "Enchanter",
-            "Magician",
-            "Necromancer",
-            "Paladin",
-            "Ranger",
-            "Shadow Knight",
-            "Shaman",
-            "Wizard",
-        ]);
-        let divine = strs(&[
-            "Beastlord",
-            "Cleric",
-            "Druid",
-            "Paladin",
-            "Ranger",
-            "Shaman",
-        ]);
-        let spellblade = strs(&["Beastlord", "Paladin", "Ranger", "Shadow Knight"]);
-
-        for v in [0, 1] {
-            d.observe_cast(1, Some(v), &strs(&["Bard"]));
-            d.observe_cast(1, Some(v), &strs(&["Druid"]));
-        }
-        // why: Bard/Druid confirmed on visit 2, then 3 real broad
-        // invocation pools narrow the field to {Beastlord, Paladin,
-        // Ranger}, and one more small ambiguous pool isolates
-        // Beastlord outright -- on this one visit alone, must not confirm it
-        d.observe_cast(1, Some(2), &strs(&["Bard"]));
-        d.observe_cast(1, Some(2), &strs(&["Druid"]));
-        d.observe_cast(1, Some(2), &recovery);
-        d.observe_cast(1, Some(2), &divine);
-        d.observe_cast(1, Some(2), &spellblade);
-        d.observe_cast(1, Some(2), &strs(&["Beastlord", "Cleric", "Magician"]));
-        assert_eq!(
-            d.configuration_of_visit(1, Some(2)),
-            strs(&["Bard", "Druid"]),
-            "Beastlord must not be confirmed from one visit's broad-pool coincidence"
-        );
-    }
-
-    #[test]
-    fn an_ambiguous_pool_that_already_overlaps_a_confirmed_class_is_just_reinforcement() {
-        let mut d = Detector::default();
-        for v in [0, 1] {
-            d.observe_cast(1, Some(v), &strs(&["Enchanter"]));
-        }
-        // why: includes an already-confirmed class, must not disturb anything
-        d.observe_cast(1, Some(0), &strs(&["Enchanter", "Magician"]));
-        assert_eq!(d.configuration_of_visit(1, Some(0)), strs(&["Enchanter"]));
     }
 }

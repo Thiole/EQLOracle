@@ -123,10 +123,14 @@ Code: `crates/session/src/classdetect.rs` (your classes),
 Replaces C2-C8 and L2-L3. One rolling evidence chain per character;
 no static zone lists anywhere.
 
-- P1. The unit of evidence is the encounter. Casts between encounters
-  attach to the next one. Evidence is a rolling weight per class:
-  supported by consecutive encounters it grows, unsupported it shrinks.
-  (numbers: Q33)
+- P1. The unit of evidence is the encounter (one You are in, from the
+  first line that proves your involvement to its close). Casts between
+  encounters attach to the next one; a zone line outside any encounter
+  also ends the pending unit. Evidence is a rolling weight per class:
+  a supporting unit adds 1 (cap 3), a fought unit with no sign of the
+  class subtracts 0.5, a conflicting unit subtracts 1, a zone line halves
+  every weight. Confirmed at 2 (unambiguous) or 3 (elimination).
+  Numbers approved 2026-09-03 "for now".
 - P2. Unambiguous evidence confirms a class after 2 consecutive encounters
   carrying it; elimination after 3. Nothing is ever forced.
 - P3. Sources: casts, songs, stances, invocations, AA lines, skill-up
@@ -153,6 +157,13 @@ no static zone lists anywhere.
   it is. Charm pets prove nothing.
 - P8. Loadout swap signals (S1-S3) close the chain as P5 does, without the
   3-encounter wait.
+- P9. Display (Q34): the You row shows the trio; a prior is dimmed; an
+  open slot shows "?"; a running conflict adds " ?"; a chain closed by
+  contradiction adds " ??". Expanding the row lists what the open slot is
+  stuck between, the priors, the conflict count, and how the chain ended.
+  The configurations view lists chains (full trios only) with their
+  encounter counts; its drill-down shows the zone visits those
+  encounters sat in.
 
 ## Open questions
 
@@ -165,10 +176,4 @@ no static zone lists anywhere.
 - Q9. Wiki class-list errors (Leech listed Necromancer-only, SK casts it
   here): curated exceptions pack, automatic distrust on contradiction
   with a confirmed trio, or both?
-- Q33. P1 numbers, proposed: a supporting encounter adds 1 to a class's
-  weight (cap 3); an encounter in which the trio fights but the class
-  shows nothing subtracts 0.5; a contradicting encounter subtracts 1; a
-  zone line halves every weight. Confirmed at weight 2 (unambiguous) or 3
-  (elimination). Yes/no, or different numbers?
-- Q34. Display of a class under the bar: "ENC/WIZ/?" with the third slot
-  empty, or the leading candidate dimmed?
+

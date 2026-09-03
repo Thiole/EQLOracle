@@ -755,6 +755,14 @@ pub struct AllyDto {
     /// why: how many votes (landed or begun spells, class-only swings) back
     /// an inference; 0 when confirmed
     pub class_evidence: u32,
+    /// why: docs P4/P5/Q34, your own row only -- classes carried as a
+    /// prior (confirmed once, decayed under the bar), what an open slot is
+    /// stuck between, the running conflict count, and how the chain ended
+    pub class_prior: Vec<String>,
+    pub class_candidates: Vec<String>,
+    pub class_conflicts: u32,
+    /// why: "??" for a contradiction close, "swap" for a loadout signal, "" while open
+    pub class_chain_end: &'static str,
     /// why: from the /who row only
     pub level: Option<u8>,
     /// why: how much of `total` arrived via this ally's own pet(s),
@@ -931,45 +939,58 @@ pub fn list_allies(
             // why: your own row shows your detected classes in the same
             // column -- the configuration your own detection resolved
             // for the fight's zone visit, else your best overall
-            let (classes, class_confirmed, class_evidence, level, class_source) =
-                if name.eq_ignore_ascii_case("You") {
-                    let you = ing.store.names.get("You").map(|s| s.0);
-                    let cfg = you
-                        .map(|y| {
-                            let by_visit = ing
-                                .classes
-                                .configuration_of_visit(y, ing.zone.index_at(class_at));
-                            if by_visit.is_empty() {
-                                ing.classes
-                                    .configurations_of(y)
-                                    .into_iter()
-                                    .next()
-                                    .map(|(c, _)| c)
-                                    .unwrap_or_default()
-                            } else {
-                                by_visit
-                            }
-                        })
-                        .unwrap_or_default();
-                    let confirmed = !cfg.is_empty();
-                    let level = you
-                        .and_then(|y| you_level_at(ing, y, &cfg, class_at))
-                        .or_else(|| ing.levels.at(class_at));
-                    (cfg, confirmed, 0, level, "self")
-                } else {
-                    match ing.ally_who(&name, class_at) {
-                        Some((lvl, trio)) => (trio.to_vec(), true, 0, Some(lvl), "who"),
-                        None => {
-                            let (c, n) = ing.ally_classes(&name, class_at);
-                            (c, false, n, None, "inferred")
+            let mut chain: Option<eqlp_session::classdetect::ChainView> = None;
+            let (classes, class_confirmed, class_evidence, level, class_source) = if name
+                .eq_ignore_ascii_case("You")
+            {
+                let you = ing.store.names.get("You").map(|s| s.0);
+                let cfg = you
+                    .map(|y| {
+                        let by_visit = ing.classes.configuration_of_visit(y, ing.unit_at(class_at));
+                        if by_visit.is_empty() {
+                            ing.classes
+                                .configurations_of(y)
+                                .into_iter()
+                                .next()
+                                .map(|(c, _)| c)
+                                .unwrap_or_default()
+                        } else {
+                            by_visit
                         }
+                    })
+                    .unwrap_or_default();
+                let confirmed = !cfg.is_empty();
+                let level = you
+                    .and_then(|y| you_level_at(ing, y, &cfg, class_at))
+                    .or_else(|| ing.levels.at(class_at));
+                chain = you.and_then(|y| ing.classes.chain_at(y, ing.unit_at(class_at)));
+                (cfg, confirmed, 0, level, "self")
+            } else {
+                match ing.ally_who(&name, class_at) {
+                    Some((lvl, trio)) => (trio.to_vec(), true, 0, Some(lvl), "who"),
+                    None => {
+                        let (c, n) = ing.ally_classes(&name, class_at);
+                        (c, false, n, None, "inferred")
                     }
-                };
+                }
+            };
+            let class_chain_end = match chain.as_ref().and_then(|c| c.closed) {
+                Some(eqlp_session::classdetect::ChainEnd::Contradiction) => "??",
+                Some(eqlp_session::classdetect::ChainEnd::Swap) => "swap",
+                None => "",
+            };
             AllyDto {
                 classes,
                 class_confirmed,
                 class_source,
                 class_evidence,
+                class_prior: chain.as_ref().map(|c| c.prior.clone()).unwrap_or_default(),
+                class_candidates: chain
+                    .as_ref()
+                    .map(|c| c.candidates.clone())
+                    .unwrap_or_default(),
+                class_conflicts: chain.as_ref().map(|c| c.conflicts as u32).unwrap_or(0),
+                class_chain_end,
                 level,
                 is_player: kind == Kind::Player,
                 is_pet: kind == Kind::Pet || m.pet_only,
@@ -1566,7 +1587,7 @@ fn split_into_sessions(
         .iter()
         .filter_map(|&v| {
             let i = v?;
-            let (start, next) = ing.zone.bounds(i)?;
+            let (start, next) = ing.units.bounds(i)?;
             Some((start, next.unwrap_or(start), v))
         })
         .collect();
@@ -1632,35 +1653,25 @@ pub fn class_configurations(ing: &Ingest, name: &str) -> ClassConfigurationsDto 
     }
 }
 
-/// why: a ding is the *lowest* of the three classes ("Welcome to level
-/// 41" while leveling a Bard trio next to two 50s -- user-reported, the
-/// row then read "ENC/SHD/WIZ 41"). Each class keeps its own floor,
-/// never lowered: the highest ding on any visit whose resolved trio
-/// held it (a ding under a trio raises all three). The row's level is
-/// the trio's lowest floor, never below the latest ding; a class with
-/// no floor at all leaves the latest ding as the only honest answer.
-/// Spell levels are deliberately NOT a floor: the wiki's levels are not
-/// this server's (real: Improved Invisibility listed Wizard 55 on a
-/// level-50 cap, and it read "WIZ 55" for one visit).
+/// why: docs P6 -- level floors ride the evidence chain. The row shows
+/// the trio's lowest floor, never below the latest ding (G3: a ding is
+/// the trio's lowest). A trio class with no floor in this chain leaves
+/// the latest ding as the only honest answer. Wiki spell levels count
+/// only when one trio class alone could have cast the spell, capped at
+/// `LEVEL_CAP` (G6: Improved Invisibility is listed Wizard 55 here).
 pub fn you_level_at(ing: &Ingest, you: u32, cfg: &[String], at: Millis) -> Option<u8> {
     let effective = ing.levels.at(at);
     if cfg.is_empty() {
         return effective;
     }
-    let mut floor: HashMap<&str, u8> = HashMap::new();
-    let (resolved, _) = ing.classes.visits_by_resolved_configuration(you);
-    for (classes, visits) in &resolved {
-        let Some((_, max)) = level_range_for(ing, visits) else {
-            continue;
-        };
-        for c in classes {
-            let f = floor.entry(c.as_str()).or_insert(0);
-            *f = (*f).max(max);
-        }
-    }
+    let chain = ing.classes.chain_at(you, ing.unit_at(at));
+    let floors: HashMap<&str, u8> = chain
+        .as_ref()
+        .map(|c| c.floors.iter().map(|(n, l)| (n.as_str(), *l)).collect())
+        .unwrap_or_default();
     let lowest = cfg
         .iter()
-        .map(|c| floor.get(c.as_str()).copied().or(effective).unwrap_or(0))
+        .map(|c| floors.get(c.as_str()).copied().or(effective).unwrap_or(0))
         .min()?;
     Some(lowest.max(effective.unwrap_or(0))).filter(|l| *l > 0)
 }
@@ -1677,7 +1688,7 @@ fn level_range_for(
     let levels: Vec<u8> = visits
         .iter()
         .filter_map(|&v| v)
-        .filter_map(|i| ing.zone.bounds(i))
+        .filter_map(|i| ing.units.bounds(i))
         .flat_map(|(start, next_start)| ing.levels.between(start, next_start))
         .collect();
     let min = levels.iter().copied().min()?;
@@ -1707,9 +1718,16 @@ pub fn zone_visits_for_configuration(
         .into_iter()
         .find(|session| level_range_for(ing, session) == level_range)
         .unwrap_or_default();
+    // why: units are encounters; the drill-down shows the zone visits
+    // those encounters sat in
+    let wanted_visits: std::collections::BTreeSet<usize> = wanted
+        .iter()
+        .filter_map(|u| (*u).and_then(|i| ing.units.bounds(i)))
+        .filter_map(|(start, _)| ing.zone.index_at(start))
+        .collect();
     let mut out: Vec<ZoneVisitDto> = zone_visit_dtos(ing)
         .into_iter()
-        .filter(|dto| wanted.contains(&dto.index))
+        .filter(|dto| dto.index.is_some_and(|i| wanted_visits.contains(&i)))
         .collect();
     sort_zone_visits(&mut out);
     out
@@ -1901,38 +1919,57 @@ mod you_level_tests {
         let you = ing.store.names.get("You").expect("You").0;
         let cfg = ing
             .classes
-            .configuration_of_visit(you, ing.zone.index_at(ing.now_ms()));
+            .configuration_of_visit(you, ing.unit_at(ing.now_ms()));
         you_level_at(ing, you, &cfg, ing.now_ms())
     }
 
     /// why: user-reported -- two 50s next to a fresh Bard read 41 once
-    /// back on the 50s' own trio
+    /// back on the 50s' own trio. Units are fights; the swaps are grant
+    /// bursts (S2), the Bard trio's ding is 41.
     #[test]
     fn a_ding_under_a_lower_trio_does_not_drag_the_known_trio_down() {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
-        let trio = |t: &str| -> Vec<Vec<u8>> {
-            vec![
-                format!("[Tue Jul 28 {t}:00 2026] You begin casting Mesmerization.").into_bytes(),
-                format!("[Tue Jul 28 {t}:01 2026] You begin casting Harm Touch.").into_bytes(),
-                format!("[Tue Jul 28 {t}:02 2026] You begin casting Numbing Cold.").into_bytes(),
-            ]
+        let fight = |t: &str, mob: &str, casts: &[&str]| -> Vec<Vec<u8>> {
+            let mut v = vec![
+                format!("[Tue Jul 28 {t}:00 2026] You hit {mob} for 10 points of damage.")
+                    .into_bytes(),
+                format!("[Tue Jul 28 {t}:00 2026] You have slain {mob}!").into_bytes(),
+            ];
+            for (i, c) in casts.iter().enumerate() {
+                v.push(format!("[Tue Jul 28 {t}:{:02} 2026] {c}", i + 1).into_bytes());
+            }
+            v
         };
-        let mut lines: Vec<Vec<u8>> =
-            vec![b"[Tue Jul 28 15:00:00 2026] You have entered Blackburrow.".to_vec()];
-        lines.extend(trio("15:01"));
+        let trio = [
+            "You begin casting Mesmerization.",
+            "You begin casting Harm Touch.",
+            "You begin casting Numbing Cold.",
+        ];
+        let swap = |t: &str| -> Vec<Vec<u8>> {
+            ["Gate", "Frost Bolt", "Root"]
+                .iter()
+                .map(|sp| {
+                    format!(
+                        "[Tue Jul 28 {t}:00 2026] You have been granted the following spell: {sp}."
+                    )
+                    .into_bytes()
+                })
+                .collect()
+        };
+        let mut lines: Vec<Vec<u8>> = Vec::new();
+        lines.extend(fight("15:01", "a gnoll", &trio));
         lines.push(
             b"[Tue Jul 28 15:02:00 2026] You have gained a level! Welcome to level 50!".to_vec(),
         );
-        lines.push(b"[Tue Jul 28 16:00:00 2026] You have entered West Karana.".to_vec());
-        lines.extend(trio("16:01"));
-        lines.push(b"[Tue Jul 28 17:00:00 2026] You have entered Erudin.".to_vec());
-        lines.push(b"[Tue Jul 28 17:00:10 2026] This song cannot be played while Symphonic Aura is enabled.".to_vec());
+        lines.extend(fight("15:03", "a rat", &trio));
+        lines.extend(swap("16:00"));
+        let bard = ["This song cannot be played while Symphonic Aura is enabled."];
+        lines.extend(fight("16:01", "a bat", &bard));
         lines.push(
-            b"[Tue Jul 28 17:00:20 2026] You have gained a level! Welcome to level 41!".to_vec(),
+            b"[Tue Jul 28 16:02:00 2026] You have gained a level! Welcome to level 41!".to_vec(),
         );
-        lines.push(b"[Tue Jul 28 18:00:00 2026] You have entered Paineel.".to_vec());
-        lines.push(b"[Tue Jul 28 18:00:10 2026] This song cannot be played while Symphonic Aura is enabled.".to_vec());
+        lines.extend(fight("16:03", "a snake", &bard));
         let refs: Vec<&[u8]> = lines.iter().map(Vec::as_slice).collect();
         backfill_lines(&mut ing, &engine, &refs, 1);
         assert_eq!(
@@ -1940,17 +1977,27 @@ mod you_level_tests {
             Some(41),
             "on the Bard trio the ding is the answer"
         );
-        let back: Vec<Vec<u8>> = {
-            let mut v = vec![b"[Tue Jul 28 19:00:00 2026] You have entered Blackburrow.".to_vec()];
-            v.extend(trio("19:01"));
-            v
-        };
+        let mut back: Vec<Vec<u8>> = swap("17:00");
+        back.extend(fight("17:01", "a wolf", &trio));
+        back.extend(fight("17:03", "a spider", &trio));
         let refs: Vec<&[u8]> = back.iter().map(Vec::as_slice).collect();
         backfill_lines(&mut ing, &engine, &refs, 1);
+        let you = ing.store.names.get("You").expect("You").0;
+        let cfg = ing
+            .classes
+            .configuration_of_visit(you, ing.unit_at(ing.now_ms()));
+        assert_eq!(
+            cfg,
+            vec![
+                "Enchanter".to_string(),
+                "Shadow Knight".to_string(),
+                "Wizard".to_string()
+            ]
+        );
         assert_eq!(
             level_now(&ing),
             Some(50),
-            "{:?}",
+            "ding {:?}",
             ing.levels.at(ing.now_ms())
         );
     }
@@ -1976,9 +2023,11 @@ mod level_range_tests {
     #[test]
     fn a_mid_visit_ding_is_captured() {
         let text = "\
-[Tue Jul 28 15:00:00 2026] You have entered The Estate of Unrest.
+[Tue Jul 28 15:00:00 2026] You hit a gnoll for 10 points of damage.
+[Tue Jul 28 15:00:00 2026] You have slain a gnoll!
 [Tue Jul 28 15:30:00 2026] You have gained a level! Welcome to level 46!
-[Tue Jul 28 16:00:00 2026] You have entered North Qeynos.
+[Tue Jul 28 16:00:00 2026] You hit a rat for 10 points of damage.
+[Tue Jul 28 16:00:00 2026] You have slain a rat!
 ";
         let ing = run(text, 45);
         let visits: Vec<ZoneVisit> = vec![Some(0)];
@@ -1990,7 +2039,8 @@ mod level_range_tests {
     #[test]
     fn a_level_from_before_the_visit_started_does_not_leak_in() {
         let text = "\
-[Tue Jul 28 15:00:00 2026] You have entered The Estate of Unrest.
+[Tue Jul 28 15:00:00 2026] You hit a gnoll for 10 points of damage.
+[Tue Jul 28 15:00:00 2026] You have slain a gnoll!
 [Tue Jul 28 15:30:00 2026] You have gained a level! Welcome to level 46!
 ";
         let ing = run(text, 45);
@@ -2018,18 +2068,20 @@ mod level_range_tests {
         let text = "\
 [Tue Aug 18 17:10:20 2026] You have gained a level! Welcome to level 29!
 [Tue Aug 18 17:53:45 2026] You have gained a level! Welcome to level 30!
-[Tue Aug 18 20:18:19 2026] You have entered Befallen.
+[Tue Aug 18 20:18:19 2026] You hit a gnoll for 10 points of damage.
+[Tue Aug 18 20:18:19 2026] You have slain a gnoll!
 [Tue Aug 18 20:25:06 2026] You have gained a level! Welcome to level 11!
 [Tue Aug 18 20:33:02 2026] You have gained a level! Welcome to level 12!
 [Tue Aug 18 21:33:53 2026] You have gained a level! Welcome to level 18!
-[Tue Aug 18 21:34:52 2026] You have entered West Karana.
+[Tue Aug 18 21:34:52 2026] You hit a rat for 10 points of damage.
+[Tue Aug 18 21:34:52 2026] You have slain a rat!
 ";
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = text.lines().map(str::as_bytes).collect();
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        // why: Befallen (index 0) is the only zone visit here
+        // why: the gnoll fight (unit 0) is the only unit the dings sit in
         let visits: Vec<ZoneVisit> = vec![Some(0)];
         let range =
             level_range_for(&ing, &visits).expect("3 real dings happened inside this visit");

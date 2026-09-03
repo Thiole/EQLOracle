@@ -1,796 +1,248 @@
-//! Tests for `classdetect`. Kept out of the production module by
-//! convention: src/ contains shipping code only.
+//! why: docs/class-and-level-rules.md P1-P8, one test per rule shape.
+//! Units are encounters (`Some(i)`); a class name alone is unambiguous
+//! evidence, several names are a pool.
 
-use eqlp_session::classdetect::Detector;
+use eqlp_session::classdetect::{ChainEnd, Detector, Unit, CLASS_COUNT};
 
-const YOU: u32 = 1;
-const ALLY: u32 = 2;
-
-const V1: Option<usize> = Some(1);
-const V2: Option<usize> = Some(2);
-const V3: Option<usize> = Some(3);
-const V4: Option<usize> = Some(4);
-const V5: Option<usize> = Some(5);
-
-fn w(s: &str) -> Vec<String> {
-    vec![s.to_string()]
+fn strs(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| s.to_string()).collect()
 }
 
-/// The dominant (most zone visits) configuration's class list, or empty if
-/// this entity has none.
-fn dominant(d: &Detector, entity: u32) -> Vec<String> {
-    d.configurations_of(entity)
-        .into_iter()
-        .next()
-        .map(|(c, _)| c)
-        .unwrap_or_default()
+fn cast(d: &mut Detector, unit: usize, classes: &[&str]) {
+    d.observe_cast(1, Some(unit), &strs(classes));
 }
 
+fn trio(d: &Detector, unit: usize) -> Vec<String> {
+    d.configuration_of_visit(1, Some(unit))
+}
+
+/// P2: one unit of unambiguous evidence is a candidate, two consecutive confirm
 #[test]
-fn a_cast_with_no_known_class_contributes_no_evidence() {
+fn unambiguous_evidence_confirms_on_the_second_consecutive_unit() {
     let mut d = Detector::default();
-    d.observe_cast(YOU, V1, &[]);
-    assert!(d.configurations_of(YOU).is_empty());
+    cast(&mut d, 0, &["Wizard"]);
+    assert!(trio(&d, 0).is_empty(), "one unit is not proof");
+    cast(&mut d, 1, &["Wizard"]);
+    assert_eq!(trio(&d, 1), strs(&["Wizard"]));
+    // why: retroactive over the chain -- unit 0 reads the same
+    assert_eq!(trio(&d, 0), strs(&["Wizard"]));
 }
 
+/// P2: elimination needs three units narrowing to the same class, and
+/// only once two classes are already confirmed
 #[test]
-fn entities_are_tracked_independently() {
+fn elimination_confirms_the_third_class_after_three_units() {
     let mut d = Detector::default();
-    for v in [V1, V2] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(ALLY, v, &w("Cleric"));
+    for u in 0..2 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
     }
-    assert_eq!(dominant(&d, YOU), vec!["Wizard"]);
-    assert_eq!(dominant(&d, ALLY), vec!["Cleric"]);
-    let mut known: Vec<u32> = d.known_entities().collect();
-    known.sort();
-    assert_eq!(known, vec![YOU, ALLY]);
+    for u in 2..5 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+        cast(&mut d, u, &["Beastlord", "Cleric", "Druid"]);
+        cast(&mut d, u, &["Cleric", "Paladin", "Shaman"]);
+        if u < 4 {
+            assert_eq!(trio(&d, u), strs(&["Enchanter", "Wizard"]), "unit {u}");
+        }
+    }
+    assert_eq!(trio(&d, 4), strs(&["Cleric", "Enchanter", "Wizard"]));
+    let view = d.chain_at(1, Some(4)).expect("chain");
+    assert!(view.is_full());
+    assert_eq!(view.candidates, Vec::<String>::new());
 }
 
+/// Q34: the open slot reports what it is stuck between
 #[test]
-fn a_single_unambiguous_cast_does_not_confirm_on_its_own() {
-    // See MIN_UNAMBIGUOUS_CASTS's own doc: one occasion isn't proof -- a
-    // vendor-sold off-class spell, cast exactly once, must not read as a
-    // confirmed class.
+fn an_open_slot_reports_its_candidates() {
     let mut d = Detector::default();
-    d.observe_cast(YOU, V1, &w("Magician"));
+    for u in 0..2 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+    }
+    cast(&mut d, 2, &["Wizard"]);
+    cast(&mut d, 2, &["Enchanter"]);
+    cast(&mut d, 2, &["Beastlord", "Cleric", "Druid"]);
+    let view = d.chain_at(1, Some(2)).expect("chain");
+    assert_eq!(view.candidates, strs(&["Beastlord", "Cleric", "Druid"]));
+}
+
+/// P1: a fought unit that shows nothing of a class shrinks it; six such
+/// units drop a capped class under the bar, into the priors
+#[test]
+fn unsupported_units_decay_a_class_into_a_prior() {
+    let mut d = Detector::default();
+    for u in 0..3 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+    }
+    for u in 3..9 {
+        cast(&mut d, u, &["Wizard"]);
+    }
+    let view = d.chain_at(1, Some(8)).expect("chain");
+    assert_eq!(view.confirmed, strs(&["Wizard"]));
+    assert_eq!(view.prior, strs(&["Enchanter"]), "still shown, as a prior");
+    assert_eq!(trio(&d, 8), strs(&["Enchanter", "Wizard"]));
+}
+
+/// P4: a zone line halves every weight -- the trio carries as a prior
+/// until fresh evidence re-clears the bar
+#[test]
+fn a_zone_line_weakens_the_chain_without_breaking_it() {
+    let mut d = Detector::default();
+    for u in 0..2 {
+        cast(&mut d, u, &["Wizard"]);
+    }
+    d.observe_zone_line(1, Some(2));
+    cast(&mut d, 2, &["Enchanter", "Wizard"]);
+    let view = d.chain_at(1, Some(2)).expect("chain");
+    assert_eq!(view.prior, strs(&["Wizard"]), "{view:?}");
+    assert!(view.confirmed.is_empty());
+    cast(&mut d, 3, &["Wizard"]);
+    let view = d.chain_at(1, Some(3)).expect("chain");
+    assert_eq!(view.confirmed, strs(&["Wizard"]), "re-cleared: {view:?}");
+    assert_eq!(d.chains(1).len(), 1, "one chain throughout");
+}
+
+/// P5: three consecutive conflicting units close the chain at the first
+/// of them, and the new chain confirms on its own
+#[test]
+fn three_conflicting_units_close_the_chain_retroactively() {
+    let mut d = Detector::default();
+    for u in 0..3 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+        cast(&mut d, u, &["Magician"]);
+    }
+    assert_eq!(trio(&d, 2), strs(&["Enchanter", "Magician", "Wizard"]));
+    // a fourth class, three units running
+    for u in 3..6 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+        cast(&mut d, u, &["Druid"]);
+    }
+    let chains = d.chains(1);
+    assert_eq!(chains.len(), 2, "{chains:?}");
+    assert_eq!(chains[0].closed, Some(ChainEnd::Contradiction));
+    assert_eq!(chains[0].last, Some(2), "closed where the conflict began");
+    assert_eq!(chains[1].first, Some(3));
+    assert_eq!(trio(&d, 5), strs(&["Druid", "Enchanter", "Wizard"]));
+    assert_eq!(trio(&d, 2), strs(&["Enchanter", "Magician", "Wizard"]));
+}
+
+/// P5: a single conflicting unit is noise, not a close
+#[test]
+fn one_conflicting_unit_does_not_close_the_chain() {
+    let mut d = Detector::default();
+    for u in 0..3 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+        cast(&mut d, u, &["Magician"]);
+    }
+    cast(&mut d, 3, &["Druid"]);
+    // why: the view is chain-wide -- the run is 1 now, 0 once a clean unit follows
+    assert_eq!(d.chain_at(1, Some(3)).expect("chain").conflicts, 1);
+    cast(&mut d, 4, &["Wizard"]);
+    assert_eq!(d.chains(1).len(), 1);
+    assert_eq!(d.chain_at(1, Some(4)).expect("chain").conflicts, 0);
+}
+
+/// P8: a swap signal closes the chain now; the new chain starts empty
+#[test]
+fn a_swap_signal_closes_the_chain_immediately() {
+    let mut d = Detector::default();
+    for u in 0..2 {
+        cast(&mut d, u, &["Wizard"]);
+    }
+    d.close_chain(1, Some(2));
+    assert!(trio(&d, 2).is_empty());
+    assert_eq!(trio(&d, 1), strs(&["Wizard"]));
+    let chains = d.chains(1);
+    assert_eq!(chains[0].closed, Some(ChainEnd::Swap));
+}
+
+/// P6: a ding raises every trio class below it and never lowers one; a
+/// class confirming later in the chain picks up the chain's ding
+#[test]
+fn dings_raise_floors_and_never_lower_them() {
+    let mut d = Detector::default();
+    for u in 0..2 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+    }
+    d.observe_ding(1, Some(1), 50);
+    for u in 2..4 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+        cast(&mut d, u, &["Bard"]);
+    }
+    d.observe_ding(1, Some(3), 41);
+    let view = d.chain_at(1, Some(3)).expect("chain");
+    let floor = |c: &str| view.floors.iter().find(|(n, _)| n == c).map(|(_, l)| *l);
+    assert_eq!(floor("Wizard"), Some(50));
+    assert_eq!(floor("Enchanter"), Some(50));
+    assert_eq!(
+        floor("Bard"),
+        Some(50),
+        "confirmed later, picks up the chain's ding"
+    );
+}
+
+/// P6: a spell only one trio class could cast raises that class to its
+/// level; above the cap it proves nothing; a multi-class spell proves nothing
+#[test]
+fn spell_levels_raise_only_an_unambiguous_trio_class_under_the_cap() {
+    let mut d = Detector::default();
+    for u in 0..2 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+    }
+    d.observe_spell_levels(1, Some(2), &[("Wizard".to_string(), 43)]);
+    d.observe_spell_levels(
+        1,
+        Some(2),
+        &[("Wizard".to_string(), 55), ("Enchanter".to_string(), 50)],
+    );
+    d.observe_spell_levels(
+        1,
+        Some(2),
+        &[("Enchanter".to_string(), 46), ("Cleric".to_string(), 30)],
+    );
+    cast(&mut d, 2, &["Wizard"]);
+    let view = d.chain_at(1, Some(2)).expect("chain");
+    let floor = |c: &str| view.floors.iter().find(|(n, _)| n == c).map(|(_, l)| *l);
+    assert_eq!(floor("Wizard"), Some(43));
+    assert_eq!(
+        floor("Enchanter"),
+        Some(46),
+        "Cleric is not in the trio, so Enchanter alone fits"
+    );
+}
+
+/// P7/C9 live in the app (pets never reach observe_cast); the detector
+/// itself never exceeds CLASS_COUNT in a trio
+#[test]
+fn a_trio_never_exceeds_class_count() {
+    let mut d = Detector::default();
+    for u in 0..2 {
+        for c in ["Wizard", "Enchanter", "Magician", "Druid"] {
+            cast(&mut d, u, &[c]);
+        }
+    }
+    assert!(trio(&d, 1).len() <= CLASS_COUNT);
+}
+
+/// why: chains split cleanly by units, so a unit query before the first
+/// evidence finds nothing rather than a later chain
+#[test]
+fn a_unit_before_any_evidence_has_no_chain() {
+    let mut d = Detector::default();
+    cast(&mut d, 5, &["Wizard"]);
+    cast(&mut d, 6, &["Wizard"]);
+    let none: Unit = Some(2);
+    assert!(d.chain_at(1, none).is_none());
     assert!(
-        d.configurations_of(YOU).is_empty(),
-        "a lone unambiguous cast must not confirm anything yet"
+        d.chain_at(1, Some(9)).is_some(),
+        "the open chain covers what follows"
     );
-}
-
-#[test]
-fn a_second_occasion_confirms_the_class_retroactively() {
-    // The visit that tips the count over confirms itself *and* every
-    // earlier pending visit -- the first sighting isn't punished for
-    // happening to be first.
-    let mut d = Detector::default();
-    d.observe_cast(YOU, V1, &w("Magician"));
-    assert!(d.configuration_of_visit(YOU, V1).is_empty());
-    d.observe_cast(YOU, V2, &w("Magician"));
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        vec!["Magician".to_string()]
-    );
-    assert_eq!(
-        d.configuration_of_visit(YOU, V2),
-        vec!["Magician".to_string()]
-    );
-}
-
-#[test]
-fn a_repeat_within_the_same_visit_is_still_only_one_occasion() {
-    // Two casts of the same spell in the same visit is one occasion, not
-    // two -- a burst/rapid-fire spam shouldn't cross the bar any faster
-    // than a single cast would.
-    let mut d = Detector::default();
-    d.observe_cast(YOU, V1, &w("Magician"));
-    d.observe_cast(YOU, V1, &w("Magician"));
-    assert!(
-        d.configurations_of(YOU).is_empty(),
-        "same visit, twice, is still one occasion"
-    );
-}
-
-#[test]
-fn an_ambiguous_cast_never_confirms_a_new_class() {
-    // "Alacrity" (Enchanter *and* Shaman) is ambiguous on its own -- with
-    // neither candidate already confirmed this visit, it must add nothing.
-    let mut d = Detector::default();
-    d.observe_cast(YOU, V1, &["Enchanter".to_string(), "Shaman".to_string()]);
-    assert!(
-        d.configurations_of(YOU).is_empty(),
-        "an ambiguous cast must not confirm either candidate on its own"
-    );
-}
-
-#[test]
-fn an_ambiguous_cast_only_reinforces_an_already_confirmed_candidate() {
-    let mut d = Detector::default();
-    for v in [V1, V2] {
-        d.observe_cast(YOU, v, &w("Enchanter")); // unambiguous, confirms Enchanter
-    }
-    d.observe_cast(YOU, V1, &["Enchanter".to_string(), "Shaman".to_string()]); // ambiguous, same visit
-    assert_eq!(
-        dominant(&d, YOU),
-        vec!["Enchanter"],
-        "the ambiguous cast must not have confirmed Shaman too"
-    );
-}
-
-#[test]
-fn one_zone_visit_can_confirm_a_configuration_shorter_than_class_count() {
-    // Nothing pads a visit's confirmed set up to CLASS_COUNT -- a visit
-    // that only produced unambiguous evidence for one class stays at one.
-    let mut d = Detector::default();
-    d.observe_cast(YOU, V1, &w("Wizard"));
-    d.observe_cast(YOU, V2, &w("Wizard"));
-    assert_eq!(dominant(&d, YOU), vec!["Wizard"]);
-}
-
-#[test]
-fn classes_confirmed_in_the_same_zone_visit_form_one_configuration() {
-    let mut d = Detector::default();
-    for v in [V1, V2] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Druid"));
-    }
-    let configs = d.configurations_of(YOU);
-    assert_eq!(configs.len(), 1);
-    assert_eq!(
-        configs[0].0,
-        vec!["Druid", "Enchanter", "Wizard"],
-        "grouped alphabetically"
-    );
-    assert_eq!(configs[0].1, 2, "both zone visits used it");
-}
-
-#[test]
-fn a_different_zone_visit_with_a_different_loadout_is_a_separate_configuration() {
-    // The whole point: an occasional loadout swap doesn't overwrite or
-    // evict the usual one, both are kept as distinct, real configurations.
-    let mut d = Detector::default();
-    for v in [V1, V2] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Druid"));
-    }
-    for v in [V3, V4] {
-        d.observe_cast(YOU, v, &w("Shadow Knight"));
-    }
-
-    let configs = d.configurations_of(YOU);
-    assert_eq!(configs.len(), 2);
-    assert!(configs.iter().any(|(c, n)| c
-        == &vec![
-            "Druid".to_string(),
-            "Enchanter".to_string(),
-            "Wizard".to_string()
-        ]
-        && *n == 2));
-    assert!(configs
-        .iter()
-        .any(|(c, n)| c == &vec!["Shadow Knight".to_string()] && *n == 2));
-}
-
-#[test]
-fn repeated_visits_with_the_same_configuration_are_counted_not_deduplicated_away() {
-    let mut d = Detector::default();
-    for visit in [V1, V2, V3] {
-        d.observe_cast(YOU, visit, &w("Wizard"));
-        d.observe_cast(YOU, visit, &w("Enchanter"));
-        d.observe_cast(YOU, visit, &w("Druid"));
-    }
-    // A one-off loadout still needs a second occasion to confirm at all --
-    // give it one, on a different visit, so it's real evidence too.
-    d.observe_cast(YOU, Some(4), &w("Shadow Knight"));
-    d.observe_cast(YOU, Some(5), &w("Shadow Knight"));
-
-    let configs = d.configurations_of(YOU);
-    // Most zone visits first: the usual three-class loadout (3 visits)
-    // outranks the rare Shadow Knight one (2 visits), but the latter is
-    // still present, not evicted.
-    assert_eq!(configs[0].0, vec!["Druid", "Enchanter", "Wizard"]);
-    assert_eq!(configs[0].1, 3);
-    assert_eq!(configs[1].0, vec!["Shadow Knight"]);
-    assert_eq!(configs[1].1, 2);
-}
-
-#[test]
-fn a_class_confirmed_before_any_zone_line_groups_under_the_none_visit() {
-    // `None` (no `zone.enter` seen yet) is a legitimate grouping key on its
-    // own, not an error case -- casts before the log's first zone line
-    // still confirm real classes, on the same two-occasion terms as any
-    // other visit (a repeat within `None` alone is still one occasion).
-    let mut d = Detector::default();
-    d.observe_cast(YOU, None, &w("Wizard"));
-    d.observe_cast(YOU, V1, &w("Wizard"));
-    assert_eq!(dominant(&d, YOU), vec!["Wizard"]);
-    assert_eq!(
-        d.configuration_of_visit(YOU, None),
-        vec!["Wizard".to_string()]
-    );
-}
-
-#[test]
-fn configuration_of_visit_reports_only_that_visits_evidence() {
-    let mut d = Detector::default();
-    for v in [V1, V4] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-    }
-    for v in [V2, V4] {
-        d.observe_cast(YOU, v, &w("Shadow Knight"));
-    }
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        vec!["Wizard".to_string()]
-    );
-    assert_eq!(
-        d.configuration_of_visit(YOU, V2),
-        vec!["Shadow Knight".to_string()]
-    );
-    assert!(
-        d.configuration_of_visit(YOU, V3).is_empty(),
-        "a visit with no evidence yet reports nothing"
-    );
-}
-
-fn m(classes: &[&str]) -> Vec<String> {
-    classes.iter().map(|s| s.to_string()).collect()
-}
-
-/// Confirms Wizard and Enchanter for `V1` on two separate visits each
-/// (crossing `MIN_UNAMBIGUOUS_CASTS`), then returns to `V1` so a test can
-/// pick up the elimination logic from exactly `CLASS_COUNT - 1` confirmed,
-/// same starting shape the old single-cast setup gave.
-fn with_wizard_and_enchanter_confirmed() -> Detector {
-    let mut d = Detector::default();
-    for v in [V1, V2] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-    }
-    d
-}
-
-#[test]
-fn elimination_confirms_the_third_class_from_two_different_ambiguous_pools() {
-    // The real case this exists for: a Necromancer/Shadow-Knight character
-    // whose only frequent evidence for that slot is spells shared between
-    // the two (`Lifedraw`-shaped). With Wizard and Enchanter already
-    // confirmed, `Lifedraw`'s pool alone can't resolve it -- but
-    // `Ward of Calliav`'s pool (Beastlord/Magician/Necromancer) shares
-    // only Necromancer with it, so the intersection lands on exactly one
-    // class. Neither pool touches Wizard or Enchanter -- see this
-    // function's sibling test for why a pool that does touch an
-    // already-confirmed class can't be used this way.
-    // why: narrowing to exactly one candidate from a single visit's own
-    // pools is real evidence, but not proof by itself -- same real bug
-    // this whole corroboration requirement exists for (see classdetect
-    // module's own doc): broad pools can coincidentally intersect to a
-    // wrong class. Elimination evidence specifically needs a 3rd,
-    // independent distinct visit narrowing to the same class -- a
-    // stricter bar than an unambiguous cast's own 2, since narrowing
-    // is a much weaker signal (see MIN_ELIMINATION_CASTS's own doc).
-    let mut d = with_wizard_and_enchanter_confirmed();
-    // Exactly CLASS_COUNT - 1 confirmed now -- elimination can start.
-    d.observe_cast(YOU, V1, &m(&["Necromancer", "Shadow Knight"])); // Lifedraw-shaped
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        m(&["Enchanter", "Wizard"]),
-        "not resolved yet, only one pool seen"
-    );
-
-    d.observe_cast(YOU, V1, &m(&["Beastlord", "Magician", "Necromancer"])); // Ward of Calliav-shaped
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        m(&["Enchanter", "Wizard"]),
-        "narrowed to Necromancer on just this one visit -- not proof by itself"
-    );
-
-    // A 2nd, distinct visit with the same two pools -- still not enough.
-    d.observe_cast(YOU, V3, &w("Wizard"));
-    d.observe_cast(YOU, V3, &w("Enchanter"));
-    d.observe_cast(YOU, V3, &m(&["Necromancer", "Shadow Knight"]));
-    d.observe_cast(YOU, V3, &m(&["Beastlord", "Magician", "Necromancer"]));
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        m(&["Enchanter", "Wizard"]),
-        "narrowed to Necromancer on 2 visits now -- still not proof by itself"
-    );
-
-    // A 3rd, distinct visit finally corroborates it.
-    d.observe_cast(YOU, V4, &w("Wizard"));
-    d.observe_cast(YOU, V4, &w("Enchanter"));
-    d.observe_cast(YOU, V4, &m(&["Necromancer", "Shadow Knight"]));
-    d.observe_cast(YOU, V4, &m(&["Beastlord", "Magician", "Necromancer"]));
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        m(&["Enchanter", "Necromancer", "Wizard"]),
-        "the intersection of both ambiguous pools narrows to exactly Necromancer, now corroborated"
-    );
-    assert_eq!(
-        d.configuration_of_visit(YOU, V3),
-        m(&["Enchanter", "Necromancer", "Wizard"])
-    );
-    assert_eq!(
-        d.configuration_of_visit(YOU, V4),
-        m(&["Enchanter", "Necromancer", "Wizard"])
-    );
-}
-
-#[test]
-fn a_pool_that_overlaps_an_already_confirmed_class_narrows_nothing() {
-    // `Root` (Cleric/Enchanter/Necromancer/Paladin/Shaman/Wizard) includes
-    // both already-confirmed classes -- it's fully explained by either one
-    // alone, so it must be treated as pure reinforcement (this module's
-    // first ambiguous-cast branch) and never reach narrowing, even though
-    // Necromancer is also in its pool. Confirms the filter in
-    // `elimination_confirms_the_third_class_from_two_different_ambiguous_pools`'s
-    // sibling test is actually doing something, not just coincidentally
-    // inert.
-    let mut d = with_wizard_and_enchanter_confirmed();
-    d.observe_cast(YOU, V1, &m(&["Necromancer", "Shadow Knight"])); // Lifedraw-shaped, narrowing = {Necromancer, Shadow Knight}
-    d.observe_cast(
-        YOU,
-        V1,
-        &m(&[
-            "Cleric",
-            "Enchanter",
-            "Necromancer",
-            "Paladin",
-            "Shaman",
-            "Wizard",
-        ]),
-    ); // Root-shaped
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        m(&["Enchanter", "Wizard"]),
-        "Root-shaped evidence overlaps confirmed classes and must not narrow or confirm anything"
-    );
-}
-
-#[test]
-fn elimination_never_runs_with_more_than_one_slot_open() {
-    // Only Wizard confirmed -- two slots open. Two ambiguous casts that
-    // would narrow to Necromancer if only one slot were open must NOT
-    // confirm anything here: either pool could belong to either open slot,
-    // so intersecting them proves nothing.
-    let mut d = Detector::default();
-    for v in [V1, V2] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-    }
-    d.observe_cast(YOU, V1, &m(&["Necromancer", "Shadow Knight"]));
-    d.observe_cast(
-        YOU,
-        V1,
-        &m(&["Enchanter", "Magician", "Necromancer", "Wizard"]),
-    );
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        vec!["Wizard".to_string()],
-        "still just the one unambiguously confirmed class"
-    );
-}
-
-#[test]
-fn elimination_needs_a_second_pool_to_narrow_a_wide_first_one() {
-    // A single wide ambiguous pool, even with one slot open, isn't enough
-    // on its own -- there's nothing yet to intersect it against.
-    let mut d = with_wizard_and_enchanter_confirmed();
-    d.observe_cast(YOU, V1, &m(&["Cleric", "Druid", "Necromancer", "Shaman"]));
-    let confirmed = d.configuration_of_visit(YOU, V1);
-    assert_eq!(
-        confirmed.len(),
-        2,
-        "a lone ambiguous pool of 4 candidates must not resolve anything by itself"
-    );
-}
-
-#[test]
-fn a_contradictory_pool_poisons_that_visits_narrowing_for_good() {
-    // Two ambiguous pools sharing no class at all, both claiming the same
-    // single open slot, can't both be right -- most likely a bad entry in
-    // spell_classes.json for one of the spells involved, or (the real
-    // incident this guards against) a genuine mid-visit reconfiguration.
-    // See `narrow`'s own doc: a real contradiction poisons this visit's
-    // elimination narrowing permanently rather than restarting from
-    // whichever pool happened to arrive after it.
-    let mut d = with_wizard_and_enchanter_confirmed();
-    d.observe_cast(YOU, V1, &m(&["Necromancer", "Shadow Knight"]));
-    d.observe_cast(YOU, V1, &m(&["Druid", "Shaman"])); // shares nothing with the above -- contradiction
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1).len(),
-        2,
-        "the contradiction must not have confirmed anything"
-    );
-
-    // A pool that *would* have narrowed cleanly to Druid, had it arrived
-    // first, must not un-poison this visit just because it arrives after.
-    let druid_cleric = || {
-        w("Druid")
-            .into_iter()
-            .chain(w("Cleric"))
-            .collect::<Vec<_>>()
-    };
-    d.observe_cast(YOU, V1, &druid_cleric());
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        m(&["Enchanter", "Wizard"]),
-        "poisoned -- must not silently pick Druid just because it showed up after the contradiction"
-    );
-
-    // 3 other, distinct visits independently narrow cleanly to Druid --
-    // no contradiction on any of them -- crossing MIN_ELIMINATION_CASTS
-    // and proving Druid globally.
-    for v in [V3, V4, V5] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &m(&["Druid", "Shaman"]));
-        d.observe_cast(YOU, v, &druid_cleric());
-    }
-    for v in [V3, V4, V5] {
-        assert_eq!(
-            d.configuration_of_visit(YOU, v),
-            m(&["Druid", "Enchanter", "Wizard"])
-        );
-    }
-    // V1's own contradiction is permanent: proving Druid globally through
-    // 3 *other* visits must not retroactively grant it to the visit whose
-    // own evidence was self-contradictory.
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        m(&["Enchanter", "Wizard"]),
-        "V1's own contradiction stays poisoned even after Druid is proven from other visits"
-    );
-}
-
-#[test]
-fn elimination_never_overrides_an_already_confirmed_class() {
-    // Same boundary case as the plain reinforcement test, but exactly at
-    // CLASS_COUNT - 1 confirmed, where elimination logic starts running --
-    // an ambiguous cast that includes an already-confirmed candidate must
-    // still just reinforce, never be treated as elimination evidence.
-    let mut d = with_wizard_and_enchanter_confirmed();
-    d.observe_cast(YOU, V1, &m(&["Enchanter", "Shaman"]));
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        m(&["Enchanter", "Wizard"]),
-        "must not have touched narrowing at all"
-    );
-}
-
-#[test]
-fn a_partial_config_that_is_a_subset_of_exactly_one_full_config_gets_merged() {
-    // "Enchanter" alone (a lagging visit, only one class confirmed so far)
-    // is a subset of both Enchanter/Magician/Wizard AND Enchanter/Wizard --
-    // wait, Enchanter/Wizard isn't full-length, so the only *full*
-    // (CLASS_COUNT-length) candidate it's a subset of is
-    // Enchanter/Magician/Wizard. Must merge into that one, not stand alone.
-    let mut d = Detector::default();
-    for v in [V1, V2] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Magician"));
-    }
-    d.observe_cast(YOU, V3, &w("Enchanter")); // partial: only one class confirmed this visit
-
-    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
-    assert!(
-        unresolved.is_empty(),
-        "the partial visit should have merged, not gone unresolved"
-    );
-    assert_eq!(resolved.len(), 1);
-    assert_eq!(resolved[0].0, vec!["Enchanter", "Magician", "Wizard"]);
-    assert_eq!(
-        resolved[0].1.len(),
-        3,
-        "the two full visits and the merged partial visit all count toward it"
-    );
-}
-
-#[test]
-fn a_partial_config_with_no_preceding_full_config_is_reported_unresolved() {
-    // "Wizard" alone is a subset of both Enchanter/Magician/Wizard and
-    // Enchanter/Necromancer/Wizard -- genuinely ambiguous which one that
-    // visit's incomplete evidence belongs to. The ambiguous visit is
-    // chronologically first here (Some(0), before every full-config
-    // visit), so there's nothing earlier to carry forward from either --
-    // must not guess.
-    let mut d = Detector::default();
-    let ambiguous = Some(0);
-    for v in [V1, Some(10)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Magician"));
-    }
-    for v in [V2, Some(11)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Necromancer"));
-    }
-    d.observe_cast(YOU, ambiguous, &w("Wizard")); // Wizard already proven by now
-
-    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
-    assert_eq!(
-        resolved.iter().map(|(_, vs)| vs.len()).sum::<usize>(),
-        4,
-        "neither full config's count should have absorbed the ambiguous partial"
-    );
-    assert_eq!(unresolved, vec![ambiguous]);
-}
-
-/// why: real case, caught live -- a player's own new zone visit only cast
-/// Enchanter+Wizard, a pair shared by *every* trio they've ever played
-/// (6 different third classes across their real history). Zoning
-/// doesn't swap your active classes -- only a deliberate town visit
-/// does -- so the visit confirmed most recently before this one (not
-/// just whichever's been played the most overall) is the right default
-/// until real evidence says otherwise.
-#[test]
-fn an_ambiguous_partial_carries_forward_the_most_recently_confirmed_full_config() {
-    let mut d = Detector::default();
-    for v in [V1, Some(10)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Magician"));
-    }
-    for v in [V2, Some(11)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Necromancer"));
-    }
-    // why: V3 is later than both full configs' own visits -- V2 (index 2)
-    // is the nearer of the two, so Necromancer's trio should win, not
-    // Magician's, even though Magician's trio has one more real visit
-    d.observe_cast(YOU, V3, &w("Wizard"));
-    d.observe_cast(YOU, V3, &w("Enchanter"));
-
-    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
-    assert!(
-        unresolved.is_empty(),
-        "the most recent real evidence (V2) should have broken the tie"
-    );
-    let necro = resolved
-        .iter()
-        .find(|(c, _)| c.contains(&"Necromancer".to_string()))
-        .expect("Necromancer trio should exist");
-    assert!(
-        necro.1.contains(&V3),
-        "V3 should have carried forward into the more recently confirmed config"
-    );
-    let magician = resolved
-        .iter()
-        .find(|(c, _)| c.contains(&"Magician".to_string()))
-        .expect("Magician trio should exist");
-    assert_eq!(
-        magician.1.len(),
-        2,
-        "the older config must not have absorbed it instead"
-    );
-}
-
-/// why: a naive "just pick whichever full config's own visit has the
-/// highest index" implementation would get fooled here -- Cleric/Druid/
-/// Shaman is the most recent full config chronologically, but it shares
-/// no class at all with the ambiguous visit's own {Enchanter, Wizard},
-/// so it must never even be a candidate. The real nearest *compatible*
-/// config (Necromancer's, older than Cleric/Druid/Shaman but still
-/// newer than Magician's) must win instead.
-#[test]
-fn recency_carry_forward_skips_a_more_recent_but_incompatible_config() {
-    let mut d = Detector::default();
-    for v in [V1, Some(10)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Magician"));
-    }
-    for v in [V2, Some(11)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Necromancer"));
-    }
-    // why: V3 is chronologically nearer to the ambiguous visit than
-    // either V1 or V2, but shares zero classes with {Enchanter, Wizard}
-    for v in [V3, Some(12)] {
-        d.observe_cast(YOU, v, &w("Cleric"));
-        d.observe_cast(YOU, v, &w("Druid"));
-        d.observe_cast(YOU, v, &w("Shaman"));
-    }
-    d.observe_cast(YOU, V4, &w("Wizard"));
-    d.observe_cast(YOU, V4, &w("Enchanter"));
-
-    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
-    assert!(unresolved.is_empty());
-    let necro = resolved
-        .iter()
-        .find(|(c, _)| c.contains(&"Necromancer".to_string()))
-        .expect("Necromancer trio should exist");
-    assert!(
-        necro.1.contains(&V4),
-        "the nearest *compatible* config should have won, not the merely nearest one"
-    );
-    let cleric = resolved
-        .iter()
-        .find(|(c, _)| c.contains(&"Cleric".to_string()))
-        .expect("Cleric/Druid/Shaman trio should exist");
-    assert_eq!(
-        cleric.1.len(),
-        2,
-        "an incompatible config must never absorb the ambiguous visit, however recent"
-    );
-}
-
-/// why: proves the recency search doesn't stop at the first (or
-/// second) compatible candidate it happens to enumerate -- with three
-/// real compatible candidates in play, it must still find the actual
-/// max index, not just "a" match.
-#[test]
-fn recency_carry_forward_finds_the_true_nearest_among_three_compatible_candidates() {
-    let mut d = Detector::default();
-    for v in [V1, Some(10)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Magician"));
-    }
-    for v in [V3, Some(11)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Necromancer"));
-    }
-    for v in [V2, Some(12)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Shadow Knight"));
-    }
-    // why: V2 < V3, so Necromancer (confirmed via V3) is the real
-    // nearest, even though Shadow Knight's config was observed first in
-    // insertion order (V2's own loop ran before V3's own second pass)
-    d.observe_cast(YOU, V5, &w("Wizard"));
-    d.observe_cast(YOU, V5, &w("Enchanter"));
-
-    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
-    assert!(unresolved.is_empty());
-    let necro = resolved
-        .iter()
-        .find(|(c, _)| c.contains(&"Necromancer".to_string()))
-        .expect("Necromancer trio should exist");
-    assert!(
-        necro.1.contains(&V5),
-        "V3 (Necromancer) is the true nearest of the three -- V2's Shadow Knight is older"
-    );
-}
-
-/// why: a visit poisoned by a real contradiction (see `narrow`'s own
-/// doc) must never carry forward, even when a perfectly compatible
-/// config was confirmed right before it -- poisoning means "we
-/// witnessed evidence that rules out every candidate for this visit
-/// specifically", a stronger disqualification than plain ambiguity.
-#[test]
-fn a_poisoned_visit_never_carries_forward_even_with_a_compatible_predecessor() {
-    let mut d = Detector::default();
-    for v in [V1, Some(10)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Magician"));
-    }
-    // why: confirm Enchanter+Wizard for V2 itself (2 of 3), then
-    // contradict its own narrowing with two disjoint ambiguous pools
-    d.observe_cast(YOU, V2, &w("Wizard"));
-    d.observe_cast(YOU, V2, &w("Enchanter"));
-    d.observe_cast(
-        YOU,
-        V2,
-        &["Necromancer", "Shadow Knight"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-    );
-    d.observe_cast(
-        YOU,
-        V2,
-        &["Druid", "Shaman"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect::<Vec<_>>(),
-    ); // shares nothing with the above -- contradiction, poisons V2
-
-    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
-    assert_eq!(
-        unresolved,
-        vec![V2],
-        "poisoned -- must stay unresolved even though Magician's trio (V1) precedes it and would otherwise fit"
-    );
-    let magician = resolved
-        .iter()
-        .find(|(c, _)| c.contains(&"Magician".to_string()))
-        .expect("Magician trio should exist");
-    assert_eq!(magician.1.len(), 2, "V2 must not have been absorbed");
-}
-
-/// why: `ZoneVisit::None` (before the very first zone.enter line) is the
-/// minimum of `ZoneVisit`'s own Ord -- nothing can precede it, so an
-/// ambiguous visit there has no predecessor to carry forward from no
-/// matter what's confirmed later in the same log.
-#[test]
-fn an_ambiguous_none_visit_has_nothing_earlier_to_carry_forward_from() {
-    // why: needs *two* full configs, not one -- a single compatible
-    // candidate merges via the plain single-match path regardless of
-    // recency (correct, pre-existing behavior); the tie-break this test
-    // targets only engages when there's genuine ambiguity to break.
-    let mut d = Detector::default();
-    for v in [V1, Some(10)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Magician"));
-    }
-    for v in [V2, Some(11)] {
-        d.observe_cast(YOU, v, &w("Wizard"));
-        d.observe_cast(YOU, v, &w("Enchanter"));
-        d.observe_cast(YOU, v, &w("Necromancer"));
-    }
-    d.observe_cast(YOU, None, &w("Wizard"));
-    d.observe_cast(YOU, None, &w("Enchanter"));
-
-    let (resolved, unresolved) = d.visits_by_resolved_configuration(YOU);
-    assert_eq!(
-        unresolved,
-        vec![None],
-        "None is the minimum ZoneVisit -- nothing can precede it, however much real evidence follows it"
-    );
-    for name in ["Magician", "Necromancer"] {
-        let bucket = resolved
-            .iter()
-            .find(|(c, _)| c.contains(&name.to_string()))
-            .unwrap_or_else(|| panic!("{name} trio should exist"));
-        assert_eq!(
-            bucket.1.len(),
-            2,
-            "{name}'s trio must not have absorbed None"
-        );
-    }
-}
-
-#[test]
-fn a_partial_config_with_no_full_config_confirmed_at_all_is_unresolved() {
-    let mut d = Detector::default();
-    d.observe_cast(YOU, V1, &w("Wizard"));
-    d.observe_cast(YOU, V2, &w("Wizard")); // crosses the threshold, never reaches 3 classes anywhere
-    let (resolved, mut unresolved) = d.visits_by_resolved_configuration(YOU);
-    assert!(resolved.is_empty());
-    unresolved.sort();
-    assert_eq!(unresolved, vec![V1, V2]);
-}
-
-#[test]
-fn a_single_vendor_bought_off_class_spell_does_not_confirm_a_class() {
-    // The real case MIN_UNAMBIGUOUS_CASTS exists for: a real Enchanter/
-    // Wizard player who bought and cast "Protection of Wood" (wiki-
-    // exclusive to Druid) exactly once, from a vendor that evidently
-    // doesn't enforce class restrictions -- found against a real log.
-    // One cast must not read as a confirmed third class.
-    let mut d = with_wizard_and_enchanter_confirmed();
-    d.observe_cast(YOU, V1, &w("Druid")); // "Protection of Wood"-shaped: one cast, one visit
-    assert_eq!(
-        d.configuration_of_visit(YOU, V1),
-        m(&["Enchanter", "Wizard"]),
-        "a single off-class cast must not promote to a third confirmed class"
-    );
-}
-
-#[test]
-fn a_class_can_be_swapped_back_to_at_any_time_with_no_boundary_needed() {
-    // The whole reason this module doesn't try to model *when* a swap
-    // happens: it can happen at will, in town, with zero log signal. A
-    // class dropped from one visit's evidence can show up again in a later
-    // visit with nothing special required to trigger it.
-    let mut d = Detector::default();
-    d.observe_cast(YOU, V1, &w("Wizard"));
-    d.observe_cast(YOU, V2, &w("Necromancer"));
-    d.observe_cast(YOU, V3, &w("Wizard")); // swapped back, and crosses the threshold
-    assert!(d
-        .configurations_of(YOU)
-        .iter()
-        .any(|(c, _)| c == &vec!["Wizard".to_string()]));
 }

@@ -192,9 +192,7 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         .names
         .get("You")
         .map(|y| {
-            let by_visit = ing
-                .classes
-                .configuration_of_visit(y.0, ing.zone.index_at(now));
+            let by_visit = ing.classes.configuration_of_visit(y.0, ing.unit_at(now));
             if by_visit.is_empty() {
                 ing.classes
                     .configurations_of(y.0)

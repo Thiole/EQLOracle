@@ -53,7 +53,13 @@
                the ally leaves or you zone. -->
           <Table.Cell class="font-mono text-[11px] tabular-nums {a.class_confirmed || a.class_evidence >= 12 ? 'text-good' : 'text-caution'}"
             title={a.class_source === 'self' ? `your own class detection${a.level != null ? ` (level ${a.level})` : ''}` : a.class_confirmed ? `confirmed by /who this presence (level ${a.level})` : a.classes.length ? `inferred from ${a.class_evidence} cast${a.class_evidence === 1 ? '' : 's'}/swing${a.class_evidence === 1 ? '' : 's'}` : 'no class evidence yet'}>
-            {a.classes.map(abbr).join('/')}{a.class_confirmed ? (a.level != null ? ` ${a.level}` : '') : a.classes.length && a.class_evidence < 12 ? '?' : ''}
+            {#if a.class_source === 'self'}
+              <!-- why: docs P9 -- a prior is dimmed, an open slot shows "?",
+                   a running conflict adds " ?", a closed chain " ??" -->
+              {#each a.classes as c, i (c)}{i ? '/' : ''}<span class={a.class_prior.includes(c) ? 'opacity-60' : ''} title={a.class_prior.includes(c) ? `${c}: carried as a prior, reconfirming` : c}>{abbr(c)}</span>{/each}{#if a.classes.length < 3}{a.classes.length ? '/' : ''}<span class="text-caution" title={a.class_candidates.length ? `open slot, between: ${a.class_candidates.join(', ')}` : 'open slot, no candidates yet'}>?</span>{/if}{#if a.class_chain_end === '??'}<span class="text-bad" title="chain closed by contradiction"> ??</span>{:else if a.class_conflicts}<span class="text-caution" title="{a.class_conflicts} conflicting encounter{a.class_conflicts === 1 ? '' : 's'} running"> ?</span>{/if}{a.level != null ? ` ${a.level}` : ''}
+            {:else}
+              {a.classes.map(abbr).join('/')}{a.class_confirmed ? (a.level != null ? ` ${a.level}` : '') : a.classes.length && a.class_evidence < 12 ? '?' : ''}
+            {/if}
           </Table.Cell>
           <Table.Cell class="text-right tabular-nums">{a.total.toLocaleString()}</Table.Cell>
           <Table.Cell class="text-right tabular-nums">{a.pct.toFixed(1)}%</Table.Cell>
@@ -65,6 +71,26 @@
           <Table.Row>
             <Table.Cell colspan={7} class="bg-muted/40 p-0">
               <div class="grid grid-cols-2 gap-3 p-3">
+                {#if a.class_source === 'self' && (a.classes.length < 3 || a.class_prior.length || a.class_conflicts || a.class_chain_end)}
+                  <!-- why: Q34 -- what the open slot is stuck between, and the chain's state -->
+                  <div class="col-span-2 text-[11px]">
+                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">class detection</h4>
+                    {#if a.classes.length < 3}
+                      <p>open slot{a.class_candidates.length ? `, between: ${a.class_candidates.join(', ')}` : ': no candidates yet'}</p>
+                    {/if}
+                    {#if a.class_prior.length}
+                      <p>carried as prior, reconfirming: {a.class_prior.join(', ')}</p>
+                    {/if}
+                    {#if a.class_conflicts}
+                      <p class="text-caution">{a.class_conflicts} conflicting encounter{a.class_conflicts === 1 ? '' : 's'} running (3 close the chain)</p>
+                    {/if}
+                    {#if a.class_chain_end === '??'}
+                      <p class="text-bad">chain closed by contradiction -- a new one is confirming</p>
+                    {:else if a.class_chain_end === 'swap'}
+                      <p class="text-caution">chain closed by a loadout swap signal</p>
+                    {/if}
+                  </div>
+                {/if}
                 <div>
                   <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">abilities</h4>
                   <table class="w-full text-[11px]">

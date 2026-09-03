@@ -48,7 +48,7 @@ pub fn list_debug_encounters(ing: &Ingest, limit: usize) -> Vec<DebugEncounterDt
             player_classes: you
                 .map(|y| {
                     ing.classes
-                        .configuration_of_visit(y.0, ing.zone.index_at(e.start_ms))
+                        .configuration_of_visit(y.0, ing.unit_at(e.start_ms))
                 })
                 .unwrap_or_default(),
         })
@@ -160,10 +160,7 @@ pub fn game_state(ing: &Ingest) -> GameStateDto {
         .store
         .names
         .get("You")
-        .map(|y| {
-            ing.classes
-                .configuration_of_visit(y.0, ing.zone.index_at(now))
-        })
+        .map(|y| ing.classes.configuration_of_visit(y.0, ing.unit_at(now)))
         .unwrap_or_default();
 
     GameStateDto {

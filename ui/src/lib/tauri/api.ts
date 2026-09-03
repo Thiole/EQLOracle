@@ -167,6 +167,12 @@ export interface AllyDto {
   class_evidence: number;
   /** why: from the /who row only */
   level: number | null;
+  /** why: your own row (docs P4/P5/Q34): priors carried under the bar,
+   * what the open slot is stuck between, running conflicts, chain end */
+  class_prior: string[];
+  class_candidates: string[];
+  class_conflicts: number;
+  class_chain_end: '' | '??' | 'swap';
 }
 
 /** why: one source+ability line of a death recap -- see deathrecap.rs */

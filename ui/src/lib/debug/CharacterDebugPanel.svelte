@@ -1,5 +1,5 @@
 <script lang="ts">
-  // why: shows exactly which zone visits fed each detected class configuration -- the evidence behind a level estimate
+  // why: shows each detected class chain (docs P1-P9) with the encounters that fed it -- the evidence behind a level estimate
   import { Card, CardContent } from '$lib/components/ui/card';
   import SortableTh from '$lib/character/SortableTh.svelte';
   import { debugConfigurations } from '$lib/stores/debug';
@@ -47,19 +47,19 @@
   <CardContent class="px-3 py-2.5">
     <h2 class="panel-title mb-1">character · detected class configurations</h2>
     <p class="mb-2 text-[11px] text-muted-foreground">
-      Every 3-class loadout ever confirmed for "You", with the zone visits and level range that back it -- a class-set that
+      Every 3-class loadout ever confirmed for "You", with the encounters and level range that back it -- a class-set that
       recurs across real, widely time-separated sessions (a respec, then coming back to it later) gets its own row per
       session rather than one row spanning the whole gap. Level estimates (Character tab's "Estimate levels") take the
       highest level seen in any row that includes a class, so a single stray row here is exactly what makes one look wrong.
-      Click a row for the visits themselves.
+      Click a row for the zone visits those encounters sat in.
     </p>
     {#if !$debugConfigurations}
       <p class="text-[12px] text-muted-foreground">Loading…</p>
     {:else}
       {#if $debugConfigurations.unresolved_visits}
         <p class="mb-2 text-[11px] text-caution">
-          {$debugConfigurations.unresolved_visits} zone visit{$debugConfigurations.unresolved_visits === 1 ? '' : 's'} had real but
-          incomplete class evidence -- not shown as a configuration of their own.
+          {$debugConfigurations.unresolved_visits} encounter{$debugConfigurations.unresolved_visits === 1 ? '' : 's'} sat in a chain that
+          never filled all three slots -- not shown as a configuration of their own.
         </p>
       {/if}
       {#if !sorted.length}
@@ -70,7 +70,7 @@
             <tr class="border-b border-border">
               <SortableTh label="classes" active={sort.key === 'classes'} dir={sort.dir} onclick={() => toggle('classes')} />
               <SortableTh
-                label="zone visits"
+                label="encounters"
                 align="right"
                 active={sort.key === 'zone_visits'}
                 dir={sort.dir}

@@ -27,8 +27,11 @@ pub struct ParseRecord {
     /// (so `by_loadout` can group by key); empty means no evidence yet, not "no class"
     #[serde(default)]
     pub loadout: Vec<String>,
-    /// why: zone visit index, lets `refresh_loadouts` re-resolve `loadout`
-    /// against the detector's current state
+    /// why: the class-evidence unit (encounter) this fight sat in -- lets
+    /// `refresh_loadouts` re-resolve `loadout` against the detector's chains
+    #[serde(default)]
+    pub unit: Option<usize>,
+    /// why: zone visit index, kept for the zone-visit drill-downs
     #[serde(default)]
     pub zone_visit: Option<usize>,
     pub start_ms: i64,
@@ -87,7 +90,7 @@ pub fn append(app: &AppHandle, record: &ParseRecord) -> Result<(), String> {
 /// so a record is never empty before this can run.
 pub fn refresh_loadouts(records: &mut [ParseRecord], classes: &ClassDetector, you: u32) {
     for r in records.iter_mut() {
-        r.loadout = classes.configuration_of_visit(you, r.zone_visit);
+        r.loadout = classes.configuration_of_visit(you, r.unit);
     }
 }
 
@@ -198,6 +201,7 @@ mod tests {
             target: "Test Mob".to_string(),
             zone: "Befallen".to_string(),
             loadout: strs(loadout),
+            unit: zone_visit,
             zone_visit,
             start_ms: 0,
             duration_ms: 1_000,
@@ -261,19 +265,18 @@ mod tests {
         assert_eq!(records[0].loadout, strs(&["Cleric", "Enchanter", "Wizard"]));
     }
 
-    /// why: a real zone change must never backfill from another visit's evidence
+    /// why: docs P4 -- the open chain carries forward, so a later fight
+    /// reads the trio; a fight from before the chain's first unit has no
+    /// chain to read and stays empty
     #[test]
-    fn a_different_visits_evidence_never_touches_this_visits_record() {
+    fn a_record_before_the_chain_stays_empty_and_a_later_one_carries_the_trio() {
         let mut classes = ClassDetector::default();
-        for v in [Some(0), Some(1)] {
+        for v in [Some(5), Some(6)] {
             classes.observe_cast(1, v, &strs(&["Wizard"]));
         }
-        classes.observe_cast(1, Some(0), &strs(&["Wizard"]));
-        let mut records = vec![fake_record(&[], Some(99))]; // an unrelated, unresolved visit
+        let mut records = vec![fake_record(&[], Some(2)), fake_record(&[], Some(99))];
         refresh_loadouts(&mut records, &classes, 1);
-        assert!(
-            records[0].loadout.is_empty(),
-            "visit 99 has no evidence of its own -- must stay empty, not borrow visit 0's"
-        );
+        assert!(records[0].loadout.is_empty(), "before any evidence");
+        assert_eq!(records[1].loadout, strs(&["Wizard"]), "carried forward");
     }
 }
