@@ -69,13 +69,28 @@ const QUICK_DAMAGE_MIN_CAST: f64 = 3.0;
 const SPELL_CASTING_MASTERY_CUT: [f64; 3] = [0.02, 0.05, 0.10];
 
 /// why: every AA-side modifier the model applies, read once per listing
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct AaMods {
     pub dd_crit_mult: f64,
     pub dot_crit_mult: f64,
     pub quick_damage_cut: f64,
     pub mana_cut: f64,
     pub lifetap_bonus: f64,
+}
+
+impl Default for AaMods {
+    /// why: multipliers default to 1, cuts to 0 -- "no AA bought" leaves
+    /// a spell exactly as the catalog has it (a derived Default zeroed
+    /// the crit multipliers and every total with them)
+    fn default() -> Self {
+        AaMods {
+            dd_crit_mult: 1.0,
+            dot_crit_mult: 1.0,
+            quick_damage_cut: 0.0,
+            mana_cut: 0.0,
+            lifetap_bonus: 0.0,
+        }
+    }
 }
 
 impl AaMods {

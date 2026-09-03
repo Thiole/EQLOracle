@@ -331,8 +331,11 @@ mod tests {
         .unwrap();
         let both = [a.clone(), b.clone()];
         let (m, which) = best(&both, FocusKind::Damage, &shape(50, true, 0.0, 5.0, false));
+        // why: real pack -- I and III share "1% to 20%"; at level 50 the
+        // tier I focus (max level 20) has decayed to nothing, III is whole
         assert_eq!(which.map(|f| f.name.as_str()), Some("Improved Damage III"));
-        assert!(m > 1.0 + a.expected_pct() / 100.0);
+        assert!((m - (1.0 + b.expected_pct() / 100.0)).abs() < 1e-9);
+        assert_eq!(multiplier(&a, &shape(50, true, 0.0, 5.0, false)), None);
     }
 
     #[test]
