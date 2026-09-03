@@ -52,6 +52,26 @@ fn elimination_confirms_the_third_class_after_three_units() {
     assert_eq!(view.candidates, Vec::<String>::new());
 }
 
+/// P2 as Spencer read it: the third slot's three units count from the
+/// start, not from the moment the pair confirms -- pools seen in the
+/// pair's own first two units are replayed against it
+#[test]
+fn elimination_counts_pools_from_before_the_pair_confirmed() {
+    let mut d = Detector::default();
+    for u in 0..3 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+        cast(&mut d, u, &["Paladin", "Shadow Knight", "Warrior"]);
+        cast(&mut d, u, &["Necromancer", "Shadow Knight"]);
+    }
+    assert_eq!(
+        trio(&d, 2),
+        strs(&["Enchanter", "Shadow Knight", "Wizard"]),
+        "{:?}",
+        d.chain_at(1, Some(2))
+    );
+}
+
 /// Q34: the open slot reports what it is stuck between
 #[test]
 fn an_open_slot_reports_its_candidates() {

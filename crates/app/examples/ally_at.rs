@@ -48,9 +48,7 @@ fn main() {
         let at: eqlp_source::Millis = at.parse().expect("ms");
         if a[1] == "You" {
             let you = ing.store.names.get("You").map(|s| s.0).expect("You");
-            let cfg = ing
-                .classes
-                .configuration_of_visit(you, ing.unit_at(at));
+            let cfg = ing.classes.configuration_of_visit(you, ing.unit_at(at));
             println!(
                 "You at {at}: visit config={cfg:?} level={:?} ding={:?}",
                 eqlp_app::combat::you_level_at(&ing, you, &cfg, at),

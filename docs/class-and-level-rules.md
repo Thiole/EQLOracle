@@ -157,6 +157,10 @@ no static zone lists anywhere.
   it is. Charm pets prove nothing.
 - P8. Loadout swap signals (S1-S3) close the chain as P5 does, without the
   3-encounter wait.
+- P10. The stance and invocation in effect are states, not actions: the
+  last one seen counts as evidence in every encounter until changed. A
+  class swap takes you out of every stance (S1-S3, and a P5 close, drop
+  it); the invocation survives a swap.
 - P9. Display (Q34): the You row shows the trio; a prior is dimmed; an
   open slot shows "?"; a running conflict adds " ?"; a chain closed by
   contradiction adds " ??". Expanding the row lists what the open slot is

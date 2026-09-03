@@ -93,6 +93,11 @@ struct Derived {
     /// once it decays, until re-cleared or displaced
     ever_confirmed: BTreeSet<String>,
     narrowing: Option<BTreeSet<String>>,
+    /// why: every unit's pools, so the elimination replay can reach the
+    /// units that came before the second class confirmed
+    pool_history: Vec<(usize, Vec<BTreeSet<String>>)>,
+    /// why: the pair elimination is currently narrowing against
+    elim_pair: Option<BTreeSet<String>>,
     floors: HashMap<String, u8>,
     max_ding: Option<u8>,
     conflict_run: Vec<usize>,
@@ -144,6 +149,38 @@ impl Derived {
         c.into_iter().chain(p).collect()
     }
 
+    /// why: intersects one unit's unexplained pools into the running
+    /// narrowing; a single survivor earns that class one elimination
+    /// unit. Returns Some(conflicted) when there were pools, None when not.
+    fn narrow_unit(&mut self, unexplained: &[&BTreeSet<String>]) -> Option<bool> {
+        if unexplained.is_empty() {
+            return None;
+        }
+        let mut narrowed = self.narrowing.clone();
+        for p in unexplained {
+            narrowed = Some(match narrowed {
+                Some(n) => n.intersection(p).cloned().collect(),
+                None => (*p).clone(),
+            });
+        }
+        match narrowed {
+            Some(n) if n.is_empty() => {
+                self.narrowing = None;
+                Some(true)
+            }
+            Some(n) => {
+                if n.len() == 1 {
+                    let c = n.iter().next().cloned().unwrap_or_default();
+                    let w = self.elim.entry(c).or_insert(0.0);
+                    *w = (*w + SUPPORT_GAIN).min(WEIGHT_CAP);
+                }
+                self.narrowing = Some(n);
+                Some(false)
+            }
+            None => None,
+        }
+    }
+
     /// why: one unit's evidence folded in, in rule order (P1, P2, P4-P6);
     /// returns whether the unit conflicted with the trio (P5)
     fn apply(&mut self, k: usize, ev: &UnitEvidence) -> bool {
@@ -167,37 +204,36 @@ impl Derived {
             }
         }
         // P2: elimination -- pools no trio class explains
+        if !ev.pools.is_empty() {
+            self.pool_history.push((k, ev.pools.clone()));
+        }
         let unexplained: Vec<&BTreeSet<String>> = ev
             .pools
             .iter()
             .filter(|p| !p.iter().any(|c| before.contains(c)))
             .collect();
-        if !unexplained.is_empty() {
-            if full {
-                conflict = true;
-            } else if before.len() == CLASS_COUNT - 1 {
-                let mut narrowed = self.narrowing.clone();
-                for p in &unexplained {
-                    narrowed = Some(match narrowed {
-                        Some(n) => n.intersection(p).cloned().collect(),
-                        None => (*p).clone(),
-                    });
+        if full && !unexplained.is_empty() {
+            conflict = true;
+        } else if before.len() == CLASS_COUNT - 1 {
+            // why: the pair just formed (or changed) -- every earlier
+            // unit's pools count against it too, the elimination is not
+            // three fights after the pair but three fights, whenever
+            if self.elim_pair.as_ref() != Some(&before) {
+                self.elim_pair = Some(before.clone());
+                self.narrowing = None;
+                self.elim.clear();
+                let history = self.pool_history.clone();
+                for (_, pools) in history.iter().filter(|(hk, _)| *hk < k) {
+                    let past: Vec<&BTreeSet<String>> = pools
+                        .iter()
+                        .filter(|p| !p.iter().any(|c| before.contains(c)))
+                        .collect();
+                    // why: a past unit's conflict is history, not this unit's
+                    self.narrow_unit(&past);
                 }
-                match narrowed {
-                    Some(n) if n.is_empty() => {
-                        conflict = true;
-                        self.narrowing = None;
-                    }
-                    Some(n) => {
-                        if n.len() == 1 {
-                            let c = n.iter().next().cloned().unwrap_or_default();
-                            let w = self.elim.entry(c).or_insert(0.0);
-                            *w = (*w + SUPPORT_GAIN).min(WEIGHT_CAP);
-                        }
-                        self.narrowing = Some(n);
-                    }
-                    None => {}
-                }
+            }
+            if let Some(unit_conflict) = self.narrow_unit(&unexplained) {
+                conflict |= unit_conflict;
             }
         }
         // P1: unsupported in a unit the entity acted in shrinks; a
@@ -577,6 +613,12 @@ impl Detector {
         state
             .chain_covering(key(unit))
             .map(|c| Self::view(state, c))
+    }
+
+    /// why: cheap "did a new chain start" probe for callers that hold
+    /// per-chain state of their own (the stance in effect)
+    pub fn chain_count(&self, entity: u32) -> usize {
+        self.by_entity.get(&entity).map_or(0, |s| s.chains.len())
     }
 
     /// why: every chain, oldest first

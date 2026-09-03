@@ -174,11 +174,14 @@ impl UnitTrack {
             _ => Some(self.spans.len()),
         }
     }
-    fn open(&mut self, ts: Millis, enc: eqlp_store::EncounterId) {
-        if self.open_encs.is_empty() {
+    /// why: true when this opened a new unit (not a second holder of one)
+    fn open(&mut self, ts: Millis, enc: eqlp_store::EncounterId) -> bool {
+        let fresh = self.open_encs.is_empty();
+        if fresh {
             self.spans.push((ts, None));
         }
         self.open_encs.insert(enc);
+        fresh
     }
     fn close(&mut self, enc: eqlp_store::EncounterId, ts: Millis) {
         if !self.open_encs.remove(&enc) {
@@ -1264,6 +1267,14 @@ pub struct Ingest {
     last_level_up: Option<Millis>,
     /// why: evidence units for class detection -- see UnitTrack
     pub units: UnitTrack,
+    /// why: docs P10 -- the stance and invocation in effect are states,
+    /// evidence in every unit until changed; a swap drops every stance
+    /// (game rule), the invocation survives it
+    stance_pool: Option<&'static [String]>,
+    invocation_pool: Option<&'static [String]>,
+    /// why: a chain closing (P5) means a swap went undetected -- the
+    /// stance it carried is gone with it
+    you_chain_count: usize,
     /// why: Symphonic Aura known on for You -- its songs print no cast
     /// line, so their landings on you are the only trace; see
     /// `note_self_effect_text`. Off again on a loadout change.
@@ -1422,6 +1433,9 @@ impl Default for Ingest {
             last_level_up: None,
             symphonic_aura: false,
             units: UnitTrack::default(),
+            stance_pool: None,
+            invocation_pool: None,
+            you_chain_count: 0,
             ally_pending_leave: HashMap::new(),
             closed_seen: 0,
             pending_summons: Vec::new(),
@@ -2236,11 +2250,9 @@ impl Ingest {
             Action::PetSummon { owner } => self.note_pet_summon(ts, &owner),
             Action::Stance { stance } => {
                 let you = self.sym("You");
-                self.classes.observe_cast(
-                    you.0,
-                    self.units.current(),
-                    crate::stancedata::classes_for(&stance),
-                );
+                let pool = crate::stancedata::classes_for(&stance);
+                self.classes.observe_cast(you.0, self.units.current(), pool);
+                self.stance_pool = (!pool.is_empty()).then_some(pool);
             }
             Action::SkillUp { skill, level } => {
                 let you = self.sym("You");
@@ -2254,11 +2266,9 @@ impl Ingest {
             }
             Action::Invocation { invocation } => {
                 let you = self.sym("You");
-                self.classes.observe_cast(
-                    you.0,
-                    self.units.current(),
-                    crate::invocationdata::classes_for(&invocation),
-                );
+                let pool = crate::invocationdata::classes_for(&invocation);
+                self.classes.observe_cast(you.0, self.units.current(), pool);
+                self.invocation_pool = (!pool.is_empty()).then_some(pool);
                 // why: SpellPerf judges hits against a same-invocation
                 // baseline -- the recite line is the only switch signal
                 self.current_invocation = Some(invocation.to_ascii_lowercase());
@@ -3625,6 +3635,30 @@ impl Ingest {
         false
     }
 
+    /// why: docs P10 -- the stance and invocation in effect count in every
+    /// unit; fed once per unit as it opens. A chain that closed since
+    /// the last unit means a swap went undetected, so the stance is gone.
+    fn feed_states_to_unit(&mut self) {
+        let Some(you) = self.store.names.get("You").map(|s| s.0) else {
+            return;
+        };
+        let chains = self.classes.chain_count(you);
+        if chains != self.you_chain_count {
+            // why: the first chain appearing is not a close
+            if self.you_chain_count != 0 {
+                self.stance_pool = None;
+            }
+            self.you_chain_count = chains;
+        }
+        let unit = self.units.current();
+        if let Some(pool) = self.stance_pool {
+            self.classes.observe_cast(you, unit, pool);
+        }
+        if let Some(pool) = self.invocation_pool {
+            self.classes.observe_cast(you, unit, pool);
+        }
+    }
+
     /// why: a loadout swap (class set, race, or slot) strips every buff
     /// and prints nothing -- confirmed against the real log (a swap to
     /// Druid in GFay: zone-in, silence, Druid spells memorized, no fade
@@ -3639,7 +3673,10 @@ impl Ingest {
         // with the old chain, the next unit starts the new one
         if let Some(you) = self.store.names.get("You").map(|s| s.0) {
             self.classes.close_chain(you, self.units.after_current());
+            self.you_chain_count = self.classes.chain_count(you);
         }
+        // why: P10 -- a swap takes you out of every stance; the invocation stays
+        self.stance_pool = None;
     }
 
     /// why: a first-person Symphonic Aura line (its AA toggle, a song it
@@ -4195,7 +4232,9 @@ impl Ingest {
             for e in stale {
                 self.units.close(e, ts);
             }
-            self.units.open(ts, enc);
+            if self.units.open(ts, enc) {
+                self.feed_states_to_unit();
+            }
         }
     }
 
@@ -7547,6 +7586,105 @@ mod stance_evidence_tests {
     fn a_proc_only_item_effect_is_not_an_item_click_source() {
         assert!(has_item_click_source("Conflagration"));
         assert!(!has_item_click_source("Affliction"));
+    }
+
+    /// why: docs P10 -- the stance in effect is a state: assumed once, it
+    /// narrows the open slot in every fight until changed. Defensive is
+    /// Paladin/SK/Warrior; with Drain Spirit (SK/Necromancer) that is
+    /// Shadow Knight, three fights running.
+    #[test]
+    fn the_stance_in_effect_keeps_narrowing_later_fights() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let fight = |t: &str, mob: &str, extra: &[&str]| -> Vec<Vec<u8>> {
+            let mut v = vec![
+                format!("[Tue Jul 28 {t}:00 2026] You hit {mob} for 10 points of damage.")
+                    .into_bytes(),
+                format!("[Tue Jul 28 {t}:00 2026] You have slain {mob}!").into_bytes(),
+                format!("[Tue Jul 28 {t}:01 2026] You begin casting Mesmerization.").into_bytes(),
+                format!("[Tue Jul 28 {t}:02 2026] You begin casting Numbing Cold.").into_bytes(),
+                format!("[Tue Jul 28 {t}:03 2026] You begin casting Drain Spirit.").into_bytes(),
+            ];
+            for (i, e) in extra.iter().enumerate() {
+                v.push(format!("[Tue Jul 28 {t}:{:02} 2026] {e}", i + 4).into_bytes());
+            }
+            v
+        };
+        let mut lines: Vec<Vec<u8>> = Vec::new();
+        lines.extend(fight(
+            "15:01",
+            "a gnoll",
+            &["You assume a defensive stance."],
+        ));
+        lines.extend(fight("15:03", "a rat", &[]));
+        lines.extend(fight("15:05", "a bat", &[]));
+        lines.extend(fight("15:07", "a snake", &[]));
+        lines.extend(fight("15:09", "a wolf", &[]));
+        let refs: Vec<&[u8]> = lines.iter().map(Vec::as_slice).collect();
+        backfill_lines(&mut ing, &engine, &refs, 1);
+        let you = ing.store.names.get("You").expect("You").0;
+        let cfg = ing
+            .classes
+            .configuration_of_visit(you, ing.unit_at(ing.now_ms()));
+        assert_eq!(
+            cfg,
+            vec![
+                "Enchanter".to_string(),
+                "Shadow Knight".to_string(),
+                "Wizard".to_string()
+            ]
+        );
+    }
+
+    /// why: P10's other half -- a swap takes you out of every stance, so
+    /// the old stance must not narrow the new trio
+    #[test]
+    fn a_swap_drops_the_stance_in_effect() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let fight = |t: &str, mob: &str, extra: &[&str]| -> Vec<Vec<u8>> {
+            let mut v = vec![
+                format!("[Tue Jul 28 {t}:00 2026] You hit {mob} for 10 points of damage.")
+                    .into_bytes(),
+                format!("[Tue Jul 28 {t}:00 2026] You have slain {mob}!").into_bytes(),
+                format!("[Tue Jul 28 {t}:01 2026] You begin casting Mesmerization.").into_bytes(),
+                format!("[Tue Jul 28 {t}:02 2026] You begin casting Numbing Cold.").into_bytes(),
+                format!("[Tue Jul 28 {t}:03 2026] You begin casting Drain Spirit.").into_bytes(),
+            ];
+            for (i, e) in extra.iter().enumerate() {
+                v.push(format!("[Tue Jul 28 {t}:{:02} 2026] {e}", i + 4).into_bytes());
+            }
+            v
+        };
+        let mut lines: Vec<Vec<u8>> = Vec::new();
+        lines.extend(fight(
+            "15:01",
+            "a gnoll",
+            &["You assume a defensive stance."],
+        ));
+        for sp in ["Gate", "Frost Bolt", "Root"] {
+            lines.push(
+                format!(
+                    "[Tue Jul 28 15:02:00 2026] You have been granted the following spell: {sp}."
+                )
+                .into_bytes(),
+            );
+        }
+        lines.extend(fight("15:03", "a rat", &[]));
+        lines.extend(fight("15:05", "a bat", &[]));
+        lines.extend(fight("15:07", "a snake", &[]));
+        lines.extend(fight("15:09", "a wolf", &[]));
+        let refs: Vec<&[u8]> = lines.iter().map(Vec::as_slice).collect();
+        backfill_lines(&mut ing, &engine, &refs, 1);
+        let you = ing.store.names.get("You").expect("You").0;
+        let cfg = ing
+            .classes
+            .configuration_of_visit(you, ing.unit_at(ing.now_ms()));
+        assert_eq!(
+            cfg,
+            vec!["Enchanter".to_string(), "Wizard".to_string()],
+            "{cfg:?}"
+        );
     }
 
     #[test]
