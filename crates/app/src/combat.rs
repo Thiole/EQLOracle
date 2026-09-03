@@ -783,6 +783,17 @@ pub fn list_allies(
     confirmed_only: bool,
 ) -> Vec<AllyDto> {
     let ids = resolve_ids(ing, zone_visit, encounter_id, confirmed_only);
+    // why: class evidence is per zone visit -- the visit of the fight
+    // being looked at (a selected encounter, else the selected visit,
+    // else now), so an old fight shows the classes in play back then
+    let class_visit: Option<usize> = match (encounter_id, zone_visit) {
+        (Some(eid), _) => ing
+            .store
+            .encounter(EncounterId(eid))
+            .and_then(|e| ing.zone.index_at(e.start_ms)),
+        (None, Some(zv)) => usize::try_from(zv).ok(),
+        (None, None) => ing.zone.index_at(ing.now_ms()),
+    };
     if ids.is_empty() {
         return Vec::new();
     }
@@ -909,13 +920,14 @@ pub fn list_allies(
             // suggestion, not a fact. "You" needs no proving.
             let suggested = !name.eq_ignore_ascii_case("you")
                 && ing.encounters.entities.kind(&name) == Kind::Unproven;
-            let (classes, class_confirmed, class_evidence, level) = match ing.ally_who(&name) {
-                Some((lvl, trio)) => (trio.to_vec(), true, 0, Some(lvl)),
-                None => {
-                    let (c, n) = ing.ally_classes(&name);
-                    (c, false, n, None)
-                }
-            };
+            let (classes, class_confirmed, class_evidence, level) =
+                match ing.ally_who(&name, class_visit) {
+                    Some((lvl, trio)) => (trio.to_vec(), true, 0, Some(lvl)),
+                    None => {
+                        let (c, n) = ing.ally_classes(&name, class_visit);
+                        (c, false, n, None)
+                    }
+                };
             AllyDto {
                 classes,
                 class_confirmed,
@@ -2333,7 +2345,8 @@ mod live_meter_window_tests {
              [Tue Jul 28 15:01:05 2026] Brutall hit a gnoll for 100 points of magic damage by Ice Comet.\n\
              [Tue Jul 28 15:20:00 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
         );
-        let (classes, votes) = ing.ally_classes("Brutall");
+        let visit = ing.zone.index_at(ing.now_ms());
+        let (classes, votes) = ing.ally_classes("Brutall", visit);
         assert_eq!(
             votes, 1,
             "the 19-minute silence started the count over, got {classes:?}"
@@ -2342,14 +2355,31 @@ mod live_meter_window_tests {
             !classes.iter().any(|c| c == "Wizard"),
             "the wizard votes are gone: {classes:?}"
         );
+        // why: your own zone line is a new VISIT -- the new zone starts
+        // clean, and the old visit still answers for its own fights
         let ing = ingest_from(
-            "[Tue Jul 28 15:00:00 2026] Brutall tells the group, 'hi'\n\
-             [Tue Jul 28 15:01:00 2026] Brutall hit a gnoll for 100 points of magic damage by Ice Comet.\n\
+            "[Tue Jul 28 15:00:00 2026] You have entered Upper Guk.\n\
+             [Tue Jul 28 15:00:10 2026] Brutall tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:00 2026] Brutall begins casting Ice Comet.\n\
              [Tue Jul 28 15:01:30 2026] You have entered Lower Guk.\n\
              [Tue Jul 28 15:02:00 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
         );
-        let (classes, votes) = ing.ally_classes("Brutall");
-        assert_eq!(votes, 1, "your zone line started it over, got {classes:?}");
+        let now_visit = ing.zone.index_at(ing.now_ms());
+        let (classes, votes) = ing.ally_classes("Brutall", now_visit);
+        assert_eq!(
+            votes, 1,
+            "the new visit has only the Lifetap vote, got {classes:?}"
+        );
+        let old_visit = now_visit.map(|v| v - 1);
+        let (old, old_votes) = ing.ally_classes("Brutall", old_visit);
+        assert_eq!(
+            old_votes, 1,
+            "the old visit keeps its own vote, got {old:?}"
+        );
+        assert!(
+            old.iter().any(|c| c == "Wizard"),
+            "a 'begins casting' line votes: {old:?}"
+        );
     }
 
     /// why: incoming mirrors the calc from the enemy side

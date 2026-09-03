@@ -14,8 +14,8 @@ fn main() {
     }
     let (mut both, mut subset, mut wrong, mut none) = (0, 0, 0, 0);
     let mut examples: Vec<String> = Vec::new();
-    for (name, (level, trio, _)) in &ing.who_seen {
-        let (cfg, visits) = ing.ally_classes(name);
+    for ((visit, name), (level, trio, _)) in &ing.who_seen {
+        let (cfg, visits) = ing.ally_classes(name, *visit);
         if cfg.is_empty() {
             none += 1;
             continue;

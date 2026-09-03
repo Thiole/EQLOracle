@@ -115,6 +115,12 @@ const PULSE_WINDOW_MS: Millis = 15_000;
 const STALE_ENCOUNTER_MS: Millis = 5 * 60 * 1000;
 /// why: the most one tick may advance the log clock -- see tick
 const MAX_TICK_ELAPSED_MS: Millis = 2_000;
+/// why: (zone visit, ally lowercased) -- ally class evidence is per visit
+pub type VisitKey = (Option<usize>, String);
+/// why: per ally per visit: class scores, vote count, last vote ts
+pub type AllyVotes = HashMap<VisitKey, (HashMap<String, f32>, u32, Millis)>;
+/// why: per ally per visit: level, class trio, when the /who row printed
+pub type WhoSeen = HashMap<VisitKey, (u8, Vec<String>, Millis)>;
 /// why: an ally silent this long has left -- their class votes start over
 /// when they act again (Brutall left Lower Guk mid-session and came back
 /// a different trio, ~15 levels lower; the others never zoned)
@@ -1143,7 +1149,7 @@ pub struct Ingest {
     /// confirms; if the player leaves zone, or zone changes, it becomes
     /// 100% unreliable" -- dropped on your zone line, their absence, or
     /// a group leave/join, exactly like the combat votes.
-    pub who_seen: HashMap<String, (u8, Vec<String>, Millis)>,
+    pub who_seen: WhoSeen,
     /// why: ally class inference THROUGH COMBAT -- per ally (lowercased),
     /// per class, a score: every landed or begun spell splits one vote
     /// across the classes that can cast it, a class-only melee verb or a
@@ -1156,8 +1162,11 @@ pub struct Ingest {
     /// ALLY_ABSENCE_MS (they left the zone and came back, possibly as
     /// different classes), when they leave or join the group, and when
     /// YOU zone -- "that assumption from before shouldn't carry over".
+    /// Keyed by (zone visit, ally): your own zone line starts a new visit,
+    /// so the new zone starts clean while a fight from the old visit
+    /// still shows the classes that were in play there.
     /// (scores, vote count, last vote ts)
-    pub ally_votes: HashMap<String, (HashMap<String, f32>, u32, Millis)>,
+    pub ally_votes: AllyVotes,
     /// why: unresolved summon sightings waiting to match a new actor, pruned to PET_MATCH_WINDOW_MS
     pending_summons: Vec<(Millis, String)>,
     /// why: names ever seen acting, so pending_summons is only checked on an entity's first action
@@ -1400,13 +1409,14 @@ impl Ingest {
             return;
         }
         let share = 1.0 / classes.len() as f32;
-        let e = self.ally_votes.entry(who.to_lowercase()).or_default();
+        let key = (self.zone.index_at(ts), who.to_lowercase());
+        let e = self.ally_votes.entry(key.clone()).or_default();
         // why: a new presence -- silent past ALLY_ABSENCE_MS, start over;
         // the /who row from before is no longer about this presence
         if e.1 > 0 && ts - e.2 > ALLY_ABSENCE_MS {
             e.0.clear();
             e.1 = 0;
-            self.who_seen.remove(&who.to_lowercase());
+            self.who_seen.remove(&key);
         }
         for c in classes {
             *e.0.entry(c.clone()).or_insert(0.0) += share;
@@ -1415,26 +1425,27 @@ impl Ingest {
         e.2 = ts;
     }
 
-    /// why: the ally is gone (left the group, or you zoned) -- whatever
-    /// they were, the next sighting is judged fresh
-    fn forget_ally_classes(&mut self, who: &str) {
-        self.ally_votes.remove(&who.to_lowercase());
-        self.who_seen.remove(&who.to_lowercase());
+    /// why: the ally is gone (left the group) -- whatever they were in
+    /// this visit, the next sighting is judged fresh
+    fn forget_ally_classes(&mut self, ts: Millis, who: &str) {
+        let key = (self.zone.index_at(ts), who.to_lowercase());
+        self.ally_votes.remove(&key);
+        self.who_seen.remove(&key);
     }
 
-    /// why: the /who trio for this presence, if a row printed since the
-    /// last reset -- confirmed, ahead of the combat inference
-    pub fn ally_who(&self, who: &str) -> Option<(u8, &[String])> {
+    /// why: the /who trio for this ally in that zone visit, if a row
+    /// printed since the last reset -- confirmed, ahead of the inference
+    pub fn ally_who(&self, who: &str, visit: Option<usize>) -> Option<(u8, &[String])> {
         self.who_seen
-            .get(&who.to_lowercase())
+            .get(&(visit, who.to_lowercase()))
             .map(|(l, trio, _)| (*l, trio.as_slice()))
     }
 
     /// why: the ally's inferred classes -- the top scorers, at most three,
     /// each within a third of the leader (a class that only ever shared
     /// votes with the real ones drops out), plus the evidence count
-    pub fn ally_classes(&self, who: &str) -> (Vec<String>, u32) {
-        let Some((scores, n, _)) = self.ally_votes.get(&who.to_lowercase()) else {
+    pub fn ally_classes(&self, who: &str, visit: Option<usize>) -> (Vec<String>, u32) {
+        let Some((scores, n, _)) = self.ally_votes.get(&(visit, who.to_lowercase())) else {
             return (Vec::new(), 0);
         };
         let mut v: Vec<(&String, f32)> = scores.iter().map(|(c, s)| (c, *s)).collect();
@@ -1749,10 +1760,6 @@ impl Ingest {
             Action::Zone { zone } => {
                 // why: stop fights bleeding across zone changes
                 self.encounters.close_all(ts);
-                // why: you zoned -- every ally's class votes and /who rows
-                // start over in the new zone (ally_votes' own doc)
-                self.ally_votes.clear();
-                self.who_seen.clear();
                 self.last_zone_enter_ms = Some(ts);
                 // why: a charmed pet never follows you across a zone line --
                 // real loss even with no "spell has worn off" confirmation
@@ -1817,6 +1824,14 @@ impl Ingest {
                 self.exaltation_procs.observe(ts, item);
             }
             Action::Cast { who, spell } => {
+                // why: an ally's cast is class evidence -- the buff round
+                // before a pull is usually the first an ally gives; this
+                // is the line "begins casting" actually becomes (Cast, not
+                // AbilityActivated -- the first hook never fired)
+                if !who.eq_ignore_ascii_case("You") && !self.is_pet(&who) {
+                    let classes = crate::classdata::classes_for(base_spell_name(&spell));
+                    self.vote_ally_classes(ts, &who, classes);
+                }
                 // why: only "Inner Fire" specifically -- measured safe
                 // against the real log; "any first cast" mismatched real
                 // not-yet-proven players near a pet summon
@@ -1947,10 +1962,6 @@ impl Ingest {
             }
             Action::AbilityActivated { who, ability } => {
                 let sym = self.sym(&who);
-                if !who.eq_ignore_ascii_case("You") && !self.is_pet(&who) {
-                    let classes = crate::classdata::classes_for(base_spell_name(&ability));
-                    self.vote_ally_classes(ts, &who, classes);
-                }
                 if !self.is_pet(&who) {
                     self.classes.observe_cast(
                         sym.0,
@@ -2008,7 +2019,7 @@ impl Ingest {
             Action::QuickBuff { who } => self.note_quickbuff(ts, &who),
             Action::GroupJoined { who } => {
                 // why: a fresh presence -- see ally_votes
-                self.forget_ally_classes(&who);
+                self.forget_ally_classes(ts, &who);
                 // why: NPCs and charm pets can't join a group -- this line
                 // is player proof as strong as a chat channel
                 self.encounters.entities.note_player_channel(&who);
@@ -2016,7 +2027,7 @@ impl Ingest {
                 self.groups.joined(&resolved, ts);
             }
             Action::GroupLeft { who } => {
-                self.forget_ally_classes(&who);
+                self.forget_ally_classes(ts, &who);
                 self.encounters.entities.note_player_channel(&who);
                 let resolved = self.resolve_name(&who);
                 self.groups.left(&resolved, ts);
@@ -2057,8 +2068,9 @@ impl Ingest {
                 level,
                 classes,
             } => {
+                let visit = self.zone.index_at(ts);
                 self.who_seen
-                    .insert(name.to_lowercase(), (level, classes, ts));
+                    .insert((visit, name.to_lowercase()), (level, classes, ts));
             }
             Action::EnemiesForgot => {
                 // why: an end-of-combat flag on your own fight -- see
@@ -3439,6 +3451,16 @@ impl Ingest {
         let resolved = self.resolve_name(target_name);
         let sym = self.sym(&resolved).0;
         let (source, skill) = self.attribute_effect(ts, text);
+        // why: a Quick Buff landing has no cast line -- the flavor text
+        // names the effect and the open window names the buffer, so it
+        // votes for the buffer's classes ("quick buff shows spells
+        // landing even though there wasn't an action cast")
+        if let Some(src) = source.as_deref() {
+            if !src.eq_ignore_ascii_case("You") && !self.is_pet(src) {
+                let classes = crate::flavordata::classes_for_flavor(text);
+                self.vote_ally_classes(ts, src, classes);
+            }
+        }
         self.effects
             .push(sym, ts, text, source.as_deref(), skill.as_deref(), true);
 
