@@ -10,9 +10,19 @@ fn main() {
     for chunk in lines.chunks(100_000) {
         backfill_lines(&mut ing, &engine, chunk, 8);
     }
-    let entries = ing.ally_votes.len();
-    let names: std::collections::HashSet<&String> = ing.ally_votes.keys().map(|(_, n)| n).collect();
-    let votes: u32 = ing.ally_votes.values().map(|v| v.1).sum();
-    let bytes: usize = ing.ally_votes.iter().map(|(k, v)| k.1.len() + 32 + v.0.len() * 40).sum();
-    println!("{} lines in {:.1}s; vote entries {entries} ({} distinct names), {votes} votes, ~{} KB", lines.len(), t.elapsed().as_secs_f64(), names.len(), bytes / 1024);
+    let entries: usize = ing.ally_chains.values().map(|v| v.len()).sum();
+    let names = ing.ally_chains.len();
+    let votes: u32 = ing.ally_chains.values().flatten().map(|c| c.votes).sum();
+    let bytes: usize = ing
+        .ally_chains
+        .iter()
+        .map(|(k, v)| k.len() + v.iter().map(|c| 48 + c.scores.len() * 40).sum::<usize>())
+        .sum();
+    println!(
+        "{} lines in {:.1}s; chains {entries} ({} distinct names), {votes} votes, ~{} KB",
+        lines.len(),
+        t.elapsed().as_secs_f64(),
+        names,
+        bytes / 1024
+    );
 }

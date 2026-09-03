@@ -783,16 +783,21 @@ pub fn list_allies(
     confirmed_only: bool,
 ) -> Vec<AllyDto> {
     let ids = resolve_ids(ing, zone_visit, encounter_id, confirmed_only);
-    // why: class evidence is per zone visit -- the visit of the fight
-    // being looked at (a selected encounter, else the selected visit,
-    // else now), so an old fight shows the classes in play back then
-    let class_visit: Option<usize> = match (encounter_id, zone_visit) {
-        (Some(eid), _) => ing
+    // why: class evidence is per activity chain -- read at the time of the
+    // fight being looked at (a selected encounter's start, else the latest
+    // of the selected fights, else now), so an old fight shows the
+    // classes in play back then
+    let class_at: Millis = match encounter_id {
+        Some(eid) => ing
             .store
             .encounter(EncounterId(eid))
-            .and_then(|e| ing.zone.index_at(e.start_ms)),
-        (None, Some(zv)) => usize::try_from(zv).ok(),
-        (None, None) => ing.zone.index_at(ing.now_ms()),
+            .map(|e| e.start_ms)
+            .unwrap_or_else(|| ing.now_ms()),
+        None => ids
+            .iter()
+            .filter_map(|id| ing.store.encounter(*id).map(|e| e.start_ms))
+            .max()
+            .unwrap_or_else(|| ing.now_ms()),
     };
     if ids.is_empty() {
         return Vec::new();
@@ -921,10 +926,10 @@ pub fn list_allies(
             let suggested = !name.eq_ignore_ascii_case("you")
                 && ing.encounters.entities.kind(&name) == Kind::Unproven;
             let (classes, class_confirmed, class_evidence, level) =
-                match ing.ally_who(&name, class_visit) {
+                match ing.ally_who(&name, class_at) {
                     Some((lvl, trio)) => (trio.to_vec(), true, 0, Some(lvl)),
                     None => {
-                        let (c, n) = ing.ally_classes(&name, class_visit);
+                        let (c, n) = ing.ally_classes(&name, class_at);
                         (c, false, n, None)
                     }
                 };
@@ -2333,30 +2338,40 @@ mod live_meter_window_tests {
         );
     }
 
-    /// why: ally class inference is PER PRESENCE -- Brutall left Lower Guk
-    /// mid-session and came back as a different trio; the others never
-    /// zoned. Silence past the absence window, a group leave/join, or
-    /// your own zone line each start the votes over.
+    /// why: ally class inference is per ACTIVITY CHAIN -- Brutall left
+    /// Lower Guk mid-session and came back as a different trio; the
+    /// others never zoned. Silence past the absence window, a group
+    /// leave/join, or your own zone line each start a new chain, and a
+    /// fight reads the chain that contained it.
     #[test]
-    fn an_allys_class_votes_reset_when_they_come_back() {
+    fn an_allys_class_chain_breaks_on_silence_and_on_your_zone_line() {
         let ing = ingest_from(
             "[Tue Jul 28 15:00:00 2026] Brutall tells the group, 'hi'\n\
              [Tue Jul 28 15:01:00 2026] Brutall hit a gnoll for 100 points of magic damage by Ice Comet.\n\
              [Tue Jul 28 15:01:05 2026] Brutall hit a gnoll for 100 points of magic damage by Ice Comet.\n\
              [Tue Jul 28 15:20:00 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
         );
-        let visit = ing.zone.index_at(ing.now_ms());
-        let (classes, votes) = ing.ally_classes("Brutall", visit);
+        let now = ing.now_ms();
+        let (classes, votes) = ing.ally_classes("Brutall", now);
         assert_eq!(
             votes, 1,
-            "the 19-minute silence started the count over, got {classes:?}"
+            "the 19-minute silence started a new chain, got {classes:?}"
         );
-        assert!(
-            !classes.iter().any(|c| c == "Wizard"),
-            "the wizard votes are gone: {classes:?}"
+        // why: soft -- the old wizard score carries as a weak prior, but
+        // the fresh vote leads
+        assert_ne!(
+            classes.first().map(String::as_str),
+            Some("Wizard"),
+            "the fresh vote leads: {classes:?}"
         );
-        // why: your own zone line is a new VISIT -- the new zone starts
-        // clean, and the old visit still answers for its own fights
+        let (old, old_votes) = ing.ally_classes("Brutall", now - 18 * 60_000);
+        assert_eq!(
+            old_votes, 2,
+            "the earlier fight reads its own chain: {old:?}"
+        );
+        assert!(old.iter().any(|c| c == "Wizard"));
+        // why: your own zone line cuts every chain -- the new zone starts
+        // clean, and the fight before it still reads the old chain
         let ing = ingest_from(
             "[Tue Jul 28 15:00:00 2026] You have entered Upper Guk.\n\
              [Tue Jul 28 15:00:10 2026] Brutall tells the group, 'hi'\n\
@@ -2364,21 +2379,52 @@ mod live_meter_window_tests {
              [Tue Jul 28 15:01:30 2026] You have entered Lower Guk.\n\
              [Tue Jul 28 15:02:00 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
         );
-        let now_visit = ing.zone.index_at(ing.now_ms());
-        let (classes, votes) = ing.ally_classes("Brutall", now_visit);
+        let now = ing.now_ms();
+        let (classes, votes) = ing.ally_classes("Brutall", now);
         assert_eq!(
             votes, 1,
-            "the new visit has only the Lifetap vote, got {classes:?}"
+            "the new chain has only the Lifetap vote, got {classes:?}"
         );
-        let old_visit = now_visit.map(|v| v - 1);
-        let (old, old_votes) = ing.ally_classes("Brutall", old_visit);
+        let (old, old_votes) = ing.ally_classes("Brutall", now - 60_000);
         assert_eq!(
             old_votes, 1,
-            "the old visit keeps its own vote, got {old:?}"
+            "the old chain keeps its own vote, got {old:?}"
         );
         assert!(
             old.iter().any(|c| c == "Wizard"),
             "a 'begins casting' line votes: {old:?}"
+        );
+    }
+
+    /// why: THEIR zone line -- a gate they cast and went quiet after cuts
+    /// the chain; one they cast and kept acting after does not. And the
+    /// cut is soft: the old scores carry as a weak prior, the vote count
+    /// starts over, so the guess shows with a "?" until fresh evidence.
+    #[test]
+    fn an_allys_gate_cast_followed_by_silence_cuts_the_chain_softly() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:00:10 2026] Brutall tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:00 2026] Brutall begins casting Ice Comet.\n\
+             [Tue Jul 28 15:01:10 2026] Brutall begins casting Gate.\n\
+             [Tue Jul 28 15:02:00 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
+        );
+        let (classes, votes) = ing.ally_classes("Brutall", ing.now_ms());
+        assert_eq!(votes, 1, "gated and gone 50s: a new chain, got {classes:?}");
+        assert_ne!(
+            classes.first().map(String::as_str),
+            Some("Wizard"),
+            "the carried prior is weak -- the fresh vote leads: {classes:?}"
+        );
+        let ing = ingest_from(
+            "[Tue Jul 28 15:00:10 2026] Brutall tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:00 2026] Brutall begins casting Ice Comet.\n\
+             [Tue Jul 28 15:01:10 2026] Brutall begins casting Gate.\n\
+             [Tue Jul 28 15:01:13 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
+        );
+        let (classes, votes) = ing.ally_classes("Brutall", ing.now_ms());
+        assert_eq!(
+            votes, 3,
+            "acting 3s after the gate: never left, one chain, got {classes:?}"
         );
     }
 

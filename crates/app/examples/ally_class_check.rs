@@ -1,5 +1,5 @@
-//! why: how good is ally class prediction? Every player with a /who row
-//!      AND a predicted configuration: does the prediction fit the trio?
+//! why: how good is ally class inference? Every activity chain that has
+//!      a /who row: does the chain's own inference fit the row's trio?
 //! input: <log>
 use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
 use eqlp_app::parser::build_engine;
@@ -12,28 +12,37 @@ fn main() {
     for chunk in lines.chunks(100_000) {
         backfill_lines(&mut ing, &engine, chunk, 8);
     }
-    let (mut both, mut subset, mut wrong, mut none) = (0, 0, 0, 0);
+    let (mut rows, mut both, mut fits, mut wrong, mut none) = (0, 0, 0, 0, 0);
     let mut examples: Vec<String> = Vec::new();
-    for ((visit, name), (level, trio, _)) in &ing.who_seen {
-        let (cfg, visits) = ing.ally_classes(name, *visit);
-        if cfg.is_empty() {
-            none += 1;
-            continue;
-        }
-        both += 1;
-        let fits = cfg.iter().all(|c| trio.contains(c));
-        if fits {
-            subset += 1;
-        } else {
-            wrong += 1;
-            if examples.len() < 8 {
-                examples.push(format!(
-                    "  {name} ({level}) who={trio:?} inferred={cfg:?} ({visits} votes)"
-                ));
+    for (name, chains) in &ing.ally_chains {
+        for chain in chains {
+            let Some((level, trio)) = &chain.who else {
+                continue;
+            };
+            rows += 1;
+            let (cfg, votes) = ing.ally_classes(name, chain.start);
+            // why: a prior-only chain (no fresh votes) is a "?" in the UI,
+            // not an inference -- it doesn't count either way
+            if cfg.is_empty() || votes == 0 {
+                none += 1;
+                continue;
+            }
+            both += 1;
+            if cfg.iter().all(|c| trio.contains(c)) {
+                fits += 1;
+            } else {
+                wrong += 1;
+                if examples.len() < 8 {
+                    examples.push(format!(
+                        "  {name} ({level}) who={trio:?} inferred={cfg:?} ({votes} votes)"
+                    ));
+                }
             }
         }
     }
-    println!("/who players: {}; with a prediction: {both}; prediction within the trio: {subset}; off: {wrong}; no prediction: {none}", ing.who_seen.len());
+    println!(
+        "/who chains: {rows}; with an inference: {both}; inside the trio: {fits}; off: {wrong}; no inference: {none}"
+    );
     for e in examples {
         println!("{e}");
     }

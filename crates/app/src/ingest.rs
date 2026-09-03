@@ -115,16 +115,31 @@ const PULSE_WINDOW_MS: Millis = 15_000;
 const STALE_ENCOUNTER_MS: Millis = 5 * 60 * 1000;
 /// why: the most one tick may advance the log clock -- see tick
 const MAX_TICK_ELAPSED_MS: Millis = 2_000;
-/// why: (zone visit, ally lowercased) -- ally class evidence is per visit
-pub type VisitKey = (Option<usize>, String);
-/// why: per ally per visit: class scores, vote count, last vote ts
-pub type AllyVotes = HashMap<VisitKey, (HashMap<String, f32>, u32, Millis)>;
-/// why: per ally per visit: level, class trio, when the /who row printed
-pub type WhoSeen = HashMap<VisitKey, (u8, Vec<String>, Millis)>;
+/// why: one stretch of an ally's presence -- consecutive fights with no
+/// gap past ALLY_ABSENCE_MS, no group leave/join, no zone line of yours.
+/// A class can't change inside one; it can only change in a gap. So
+/// evidence accumulates per chain, and a past fight reads the chain
+/// that contained it ("shouldn't it be done per encounter chain?").
+#[derive(Debug, Clone, Default)]
+pub struct AllyChain {
+    pub start: Millis,
+    pub last: Millis,
+    pub scores: HashMap<String, f32>,
+    pub votes: u32,
+    /// why: a /who row that printed inside this chain -- confirmed trio
+    pub who: Option<(u8, Vec<String>)>,
+}
+/// why: ally (lowercased) -> chains, oldest first
+pub type AllyChains = HashMap<String, Vec<AllyChain>>;
 /// why: an ally silent this long has left -- their class votes start over
 /// when they act again (Brutall left Lower Guk mid-session and came back
 /// a different trio, ~15 levels lower; the others never zoned)
 const ALLY_ABSENCE_MS: Millis = 5 * 60 * 1000;
+/// why: an ally still acting this soon after a gate cast never left
+const GATE_SETTLE_MS: Millis = 8_000;
+/// why: the previous chain's scores seed the next as a prior summing to
+/// this -- less than one fresh vote, so one fresh vote already leads
+const CHAIN_PRIOR_WEIGHT: f32 = 0.4;
 /// why: 30 minutes with no party action ends a session -- see note_party_action
 const SESSION_GAP_MS: Millis = 30 * 60 * 1000;
 
@@ -1149,24 +1164,15 @@ pub struct Ingest {
     /// confirms; if the player leaves zone, or zone changes, it becomes
     /// 100% unreliable" -- dropped on your zone line, their absence, or
     /// a group leave/join, exactly like the combat votes.
-    pub who_seen: WhoSeen,
-    /// why: ally class inference THROUGH COMBAT -- per ally (lowercased),
-    /// per class, a score: every landed or begun spell splits one vote
-    /// across the classes that can cast it, a class-only melee verb or a
-    /// class pet gives a whole vote. The classes that keep collecting
-    /// votes are the trio; a one-off shared spell barely moves them.
-    /// Separate from the detector, whose subset elimination needs your
-    /// own dense evidence and read "Bard, Enchanter, Magician, Wizard"
-    /// off two sparse ally visits. /who rows are a hint, not truth.
-    /// Per presence: the votes reset when the ally has been silent for
-    /// ALLY_ABSENCE_MS (they left the zone and came back, possibly as
-    /// different classes), when they leave or join the group, and when
-    /// YOU zone -- "that assumption from before shouldn't carry over".
-    /// Keyed by (zone visit, ally): your own zone line starts a new visit,
-    /// so the new zone starts clean while a fight from the old visit
-    /// still shows the classes that were in play there.
-    /// (scores, vote count, last vote ts)
-    pub ally_votes: AllyVotes,
+    /// why: superseded by ally_chains' `who`; kept out of the struct
+    pub ally_chains: AllyChains,
+    /// why: a group leave/join cuts the ally's chain at this ts
+    ally_cuts: HashMap<String, Millis>,
+    /// why: an ally began casting a gate/teleport at this ts -- if they go
+    /// quiet past GATE_SETTLE_MS it took them out of the zone (their own
+    /// zone line, which the log never shows), and their chain is cut
+    /// there; if they act again sooner it fizzled or was interrupted
+    ally_pending_leave: HashMap<String, Millis>,
     /// why: unresolved summon sightings waiting to match a new actor, pruned to PET_MATCH_WINDOW_MS
     pending_summons: Vec<(Millis, String)>,
     /// why: names ever seen acting, so pending_summons is only checked on an entity's first action
@@ -1308,8 +1314,9 @@ impl Default for Ingest {
             entities_by_enc: HashMap::new(),
             observed_drops: HashMap::new(),
             observed_zone_drops: HashMap::new(),
-            who_seen: HashMap::new(),
-            ally_votes: HashMap::new(),
+            ally_chains: HashMap::new(),
+            ally_cuts: HashMap::new(),
+            ally_pending_leave: HashMap::new(),
             closed_seen: 0,
             pending_summons: Vec::new(),
             seen_actors: HashSet::new(),
@@ -1402,53 +1409,136 @@ impl Ingest {
         }
     }
 
+    /// why: the chain this action belongs to -- the ally's last chain when
+    /// nothing cut it (gap past ALLY_ABSENCE_MS, a group leave/join cut,
+    /// your own zone line since its last action), else a fresh one
+    fn ally_chain_at(&mut self, ts: Millis, who: &str) -> &mut AllyChain {
+        let key = who.to_lowercase();
+        // why: a gate they cast and then went quiet after IS their zone
+        // line -- see ally_pending_leave
+        if let Some(gate_ts) = self.ally_pending_leave.remove(&key) {
+            if ts - gate_ts > GATE_SETTLE_MS {
+                let cut = self.ally_cuts.entry(key.clone()).or_insert(gate_ts);
+                *cut = (*cut).max(gate_ts);
+            }
+        }
+        let cut = self.ally_cuts.get(&key).copied();
+        let zoned = self.last_zone_enter_ms;
+        let chains = self.ally_chains.entry(key).or_default();
+        let fresh = match chains.last() {
+            None => true,
+            Some(c) => {
+                ts - c.last > ALLY_ABSENCE_MS
+                    // why: >= -- a gate cast votes (updating `last`) at the
+                    // very timestamp its cut is recorded at
+                    || cut.is_some_and(|t| t >= c.last)
+                    || zoned.is_some_and(|z| z > c.last)
+            }
+        };
+        if fresh {
+            // why: SOFT -- "it's possible they are the same, but not
+            // everything is locked in": the new chain starts from the old
+            // one's scores scaled to a weak prior, so the guess carries,
+            // while the vote count starts at zero and the "?" stays until
+            // fresh evidence confirms or overturns it
+            // why: normalized to a fixed small weight -- a long old chain
+            // must not outweigh a couple of fresh votes
+            let prior: HashMap<String, f32> = chains
+                .last()
+                .map(|c| {
+                    let total: f32 = c.scores.values().sum();
+                    if total <= 0.0 {
+                        return HashMap::new();
+                    }
+                    c.scores
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v / total * CHAIN_PRIOR_WEIGHT))
+                        .collect()
+                })
+                .unwrap_or_default();
+            chains.push(AllyChain {
+                start: ts,
+                last: ts,
+                scores: prior,
+                ..Default::default()
+            });
+        }
+        let c = chains.last_mut().expect("just pushed or present");
+        if ts > c.last {
+            c.last = ts;
+        }
+        c
+    }
+
     /// why: one vote split across every class that could have done it --
-    /// see ally_votes. An unknown spell (empty set) votes for nothing.
+    /// see AllyChain. An unknown spell (empty set) votes for nothing.
     fn vote_ally_classes(&mut self, ts: Millis, who: &str, classes: &[String]) {
         if classes.is_empty() {
             return;
         }
         let share = 1.0 / classes.len() as f32;
-        let key = (self.zone.index_at(ts), who.to_lowercase());
-        let e = self.ally_votes.entry(key.clone()).or_default();
-        // why: a new presence -- silent past ALLY_ABSENCE_MS, start over;
-        // the /who row from before is no longer about this presence
-        if e.1 > 0 && ts - e.2 > ALLY_ABSENCE_MS {
-            e.0.clear();
-            e.1 = 0;
-            self.who_seen.remove(&key);
+        let c = self.ally_chain_at(ts, who);
+        for class in classes {
+            *c.scores.entry(class.clone()).or_insert(0.0) += share;
         }
-        for c in classes {
-            *e.0.entry(c.clone()).or_insert(0.0) += share;
-        }
-        e.1 += 1;
-        e.2 = ts;
+        c.votes += 1;
     }
 
-    /// why: the ally is gone (left the group) -- whatever they were in
-    /// this visit, the next sighting is judged fresh
+    /// why: an ally began a spell that moves the caster -- a landing in the
+    /// teleport table, or the classic gate/evac/succor shapes -- see
+    /// ally_pending_leave
+    fn note_ally_leaving_cast(&mut self, ts: Millis, who: &str, spell: &str) {
+        let base = base_spell_name(spell);
+        let moves = crate::teleportdata::landing_for(base).is_some()
+            || base == "Gate"
+            || base.contains("Evacuate")
+            || base.contains("Succor")
+            || base.contains("Translocate");
+        if moves {
+            self.ally_pending_leave.insert(who.to_lowercase(), ts);
+        }
+    }
+
+    /// why: a /who row printed -- confirms the trio for the chain it
+    /// lands in ("in the instant it's cast it confirms")
+    fn note_ally_who(&mut self, ts: Millis, who: &str, level: u8, trio: Vec<String>) {
+        let c = self.ally_chain_at(ts, who);
+        c.who = Some((level, trio));
+    }
+
+    /// why: the ally left or joined the group -- the chain is cut here;
+    /// the next action starts a new one
     fn forget_ally_classes(&mut self, ts: Millis, who: &str) {
-        let key = (self.zone.index_at(ts), who.to_lowercase());
-        self.ally_votes.remove(&key);
-        self.who_seen.remove(&key);
+        self.ally_cuts.insert(who.to_lowercase(), ts);
     }
 
-    /// why: the /who trio for this ally in that zone visit, if a row
-    /// printed since the last reset -- confirmed, ahead of the inference
-    pub fn ally_who(&self, who: &str, visit: Option<usize>) -> Option<(u8, &[String])> {
-        self.who_seen
-            .get(&(visit, who.to_lowercase()))
-            .map(|(l, trio, _)| (*l, trio.as_slice()))
+    /// why: the chain covering `at` -- the last chain that started no
+    /// later than `at` (a fight's own time reads the presence it was in)
+    fn ally_chain_covering(&self, who: &str, at: Millis) -> Option<&AllyChain> {
+        self.ally_chains
+            .get(&who.to_lowercase())?
+            .iter()
+            .rev()
+            .find(|c| c.start <= at)
     }
 
-    /// why: the ally's inferred classes -- the top scorers, at most three,
-    /// each within a third of the leader (a class that only ever shared
-    /// votes with the real ones drops out), plus the evidence count
-    pub fn ally_classes(&self, who: &str, visit: Option<usize>) -> (Vec<String>, u32) {
-        let Some((scores, n, _)) = self.ally_votes.get(&(visit, who.to_lowercase())) else {
+    /// why: the /who trio for the chain covering `at`, if a row printed in it
+    pub fn ally_who(&self, who: &str, at: Millis) -> Option<(u8, &[String])> {
+        self.ally_chain_covering(who, at)?
+            .who
+            .as_ref()
+            .map(|(l, trio)| (*l, trio.as_slice()))
+    }
+
+    /// why: the ally's inferred classes in the chain covering `at` -- the
+    /// top scorers, at most three, each within a third of the leader (a
+    /// class that only ever shared votes with the real ones drops out),
+    /// plus the evidence count
+    pub fn ally_classes(&self, who: &str, at: Millis) -> (Vec<String>, u32) {
+        let Some(c) = self.ally_chain_covering(who, at) else {
             return (Vec::new(), 0);
         };
-        let mut v: Vec<(&String, f32)> = scores.iter().map(|(c, s)| (c, *s)).collect();
+        let mut v: Vec<(&String, f32)> = c.scores.iter().map(|(k, s)| (k, *s)).collect();
         v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         let Some(&(_, top)) = v.first() else {
             return (Vec::new(), 0);
@@ -1457,9 +1547,9 @@ impl Ingest {
             .iter()
             .take(3)
             .filter(|(_, s)| *s >= top / 3.0)
-            .map(|(c, _)| (*c).clone())
+            .map(|(k, _)| (*k).clone())
             .collect();
-        (classes, *n)
+        (classes, c.votes)
     }
 
     /// why: feeds the 30-minute gap rule -- every action by you or a
@@ -1831,6 +1921,9 @@ impl Ingest {
                 if !who.eq_ignore_ascii_case("You") && !self.is_pet(&who) {
                     let classes = crate::classdata::classes_for(base_spell_name(&spell));
                     self.vote_ally_classes(ts, &who, classes);
+                    // why: after the vote -- the gate cast itself is
+                    // evidence for this chain, the leaving cuts the next
+                    self.note_ally_leaving_cast(ts, &who, &spell);
                 }
                 // why: only "Inner Fire" specifically -- measured safe
                 // against the real log; "any first cast" mismatched real
@@ -1905,12 +1998,15 @@ impl Ingest {
                 self.record_effect_ping(ts, "Your pet", &spell);
             }
             Action::CastInterrupted { source, spell } => {
+                // why: the gate never went off -- they're still here
+                self.ally_pending_leave.remove(&source.to_lowercase());
                 let src = self.sym(&source).0;
                 let spell_sym = self.store.sym(base_spell_name(&spell)).0;
                 self.casts
                     .resolve(ts, src, spell_sym, CastOutcome::Interrupted);
             }
             Action::CastFizzled { source, spell } => {
+                self.ally_pending_leave.remove(&source.to_lowercase());
                 let src = self.sym(&source).0;
                 let spell_sym = self.store.sym(base_spell_name(&spell)).0;
                 self.casts.resolve(ts, src, spell_sym, CastOutcome::Fizzled);
@@ -2068,9 +2164,7 @@ impl Ingest {
                 level,
                 classes,
             } => {
-                let visit = self.zone.index_at(ts);
-                self.who_seen
-                    .insert((visit, name.to_lowercase()), (level, classes, ts));
+                self.note_ally_who(ts, &name, level, classes);
             }
             Action::EnemiesForgot => {
                 // why: an end-of-combat flag on your own fight -- see
