@@ -25,7 +25,7 @@ fn main() {
         backfill_lines(&mut ing, &engine, chunk, 8);
     }
 
-    let all = list_damage_spells(&ing, false);
+    let all = list_damage_spells(&ing, false, None);
     let (dots, nukes): (Vec<_>, Vec<_>) = all.iter().partition(|s| s.is_dot);
     println!(
         "{} damage candidates total: {} nukes, {} DoTs",

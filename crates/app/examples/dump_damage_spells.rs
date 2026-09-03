@@ -18,6 +18,6 @@ fn main() {
     for chunk in lines.chunks(100_000) {
         backfill_lines(&mut ing, &engine, chunk, 8);
     }
-    let all = list_damage_spells(&ing, false);
+    let all = list_damage_spells(&ing, false, None);
     println!("{}", serde_json::to_string(&all).expect("serialize"));
 }
