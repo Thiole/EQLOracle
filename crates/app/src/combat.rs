@@ -952,7 +952,10 @@ pub fn list_allies(
                         })
                         .unwrap_or_default();
                     let confirmed = !cfg.is_empty();
-                    (cfg, confirmed, 0, ing.levels.at(class_at), "self")
+                    let level = you
+                        .and_then(|y| you_level_at(ing, y, &cfg, class_at))
+                        .or_else(|| ing.levels.at(class_at));
+                    (cfg, confirmed, 0, level, "self")
                 } else {
                     match ing.ally_who(&name, class_at) {
                         Some((lvl, trio)) => (trio.to_vec(), true, 0, Some(lvl), "who"),
@@ -1629,6 +1632,58 @@ pub fn class_configurations(ing: &Ingest, name: &str) -> ClassConfigurationsDto 
     }
 }
 
+/// why: a ding is the *lowest* of the three classes ("Welcome to level
+/// 41" while leveling a Bard trio next to two 50s -- user-reported, the
+/// row then read "ENC/SHD/WIZ 41"). Each class keeps its own floor,
+/// never lowered: the highest ding on any visit whose resolved trio
+/// held it (a ding under a trio raises all three), and the highest
+/// class level of any spell You cast that only it, of the trio at the
+/// time, could cast. The row's level is the trio's lowest floor, never
+/// below the latest ding; a class with no floor at all leaves the
+/// latest ding as the only honest answer.
+pub fn you_level_at(ing: &Ingest, you: u32, cfg: &[String], at: Millis) -> Option<u8> {
+    let effective = ing.levels.at(at);
+    if cfg.is_empty() {
+        return effective;
+    }
+    let mut floor: HashMap<&str, u8> = HashMap::new();
+    let (resolved, _) = ing.classes.visits_by_resolved_configuration(you);
+    for (classes, visits) in &resolved {
+        let Some((_, max)) = level_range_for(ing, visits) else {
+            continue;
+        };
+        for c in classes {
+            let f = floor.entry(c.as_str()).or_insert(0);
+            *f = (*f).max(max);
+        }
+    }
+    for (ts, base) in ing.self_casts.iter().filter(|(ts, _)| *ts <= at) {
+        let Some(spell) = crate::spelldata::spell_by_name(base) else {
+            continue;
+        };
+        let trio = ing
+            .classes
+            .configuration_of_visit(you, ing.zone.index_at(*ts));
+        let mut fit = spell
+            .classes
+            .iter()
+            .filter(|sc| trio.is_empty() || trio.contains(&sc.class));
+        let (Some(only), None) = (fit.next(), fit.next()) else {
+            continue;
+        };
+        let Some(level) = only.level.map(|l| l.min(u8::MAX as u32) as u8) else {
+            continue;
+        };
+        let f = floor.entry(only.class.as_str()).or_insert(0);
+        *f = (*f).max(level);
+    }
+    let lowest = cfg
+        .iter()
+        .map(|c| floor.get(c.as_str()).copied().or(effective).unwrap_or(0))
+        .min()?;
+    Some(lowest.max(effective.unwrap_or(0))).filter(|l| *l > 0)
+}
+
 /// why: real level.up lines fired inside the visit only, never a
 /// boundary snapshot -- an earlier version sampled Levels::at the visit
 /// boundary, confirmed wrong: a config swap drops effective level
@@ -1856,6 +1911,86 @@ mod session_split_tests {
 }
 
 #[cfg(test)]
+mod you_level_tests {
+    use super::*;
+    use crate::ingest::backfill_lines;
+    use crate::parser::build_engine;
+
+    fn level_now(ing: &Ingest) -> Option<u8> {
+        let you = ing.store.names.get("You").expect("You").0;
+        let cfg = ing
+            .classes
+            .configuration_of_visit(you, ing.zone.index_at(ing.now_ms()));
+        you_level_at(ing, you, &cfg, ing.now_ms())
+    }
+
+    /// why: user-reported -- two 50s next to a fresh Bard read 41 once
+    /// back on the 50s' own trio
+    #[test]
+    fn a_ding_under_a_lower_trio_does_not_drag_the_known_trio_down() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let trio = |t: &str| -> Vec<Vec<u8>> {
+            vec![
+                format!("[Tue Jul 28 {t}:00 2026] You begin casting Mesmerization.").into_bytes(),
+                format!("[Tue Jul 28 {t}:01 2026] You begin casting Harm Touch.").into_bytes(),
+                format!("[Tue Jul 28 {t}:02 2026] You begin casting Numbing Cold.").into_bytes(),
+            ]
+        };
+        let mut lines: Vec<Vec<u8>> =
+            vec![b"[Tue Jul 28 15:00:00 2026] You have entered Blackburrow.".to_vec()];
+        lines.extend(trio("15:01"));
+        lines.push(
+            b"[Tue Jul 28 15:02:00 2026] You have gained a level! Welcome to level 50!".to_vec(),
+        );
+        lines.push(b"[Tue Jul 28 16:00:00 2026] You have entered West Karana.".to_vec());
+        lines.extend(trio("16:01"));
+        lines.push(b"[Tue Jul 28 17:00:00 2026] You have entered Erudin.".to_vec());
+        lines.push(b"[Tue Jul 28 17:00:10 2026] This song cannot be played while Symphonic Aura is enabled.".to_vec());
+        lines.push(
+            b"[Tue Jul 28 17:00:20 2026] You have gained a level! Welcome to level 41!".to_vec(),
+        );
+        lines.push(b"[Tue Jul 28 18:00:00 2026] You have entered Paineel.".to_vec());
+        lines.push(b"[Tue Jul 28 18:00:10 2026] This song cannot be played while Symphonic Aura is enabled.".to_vec());
+        let refs: Vec<&[u8]> = lines.iter().map(Vec::as_slice).collect();
+        backfill_lines(&mut ing, &engine, &refs, 1);
+        assert_eq!(
+            level_now(&ing),
+            Some(41),
+            "on the Bard trio the ding is the answer"
+        );
+        let back: Vec<Vec<u8>> = {
+            let mut v = vec![b"[Tue Jul 28 19:00:00 2026] You have entered Blackburrow.".to_vec()];
+            v.extend(trio("19:01"));
+            v
+        };
+        let refs: Vec<&[u8]> = back.iter().map(Vec::as_slice).collect();
+        backfill_lines(&mut ing, &engine, &refs, 1);
+        assert_eq!(
+            level_now(&ing),
+            Some(50),
+            "{:?}",
+            ing.levels.at(ing.now_ms())
+        );
+    }
+
+    /// why: "the spells are above 41" -- a class-exclusive cast proves
+    /// that class is at least the spell's level, dings or not
+    #[test]
+    fn a_cast_proves_its_class_is_at_least_the_spells_level() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:00:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:00:01 2026] You begin casting Conflagration X.",
+            b"[Tue Jul 28 16:00:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 16:00:01 2026] You begin casting Conflagration X.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert_eq!(level_now(&ing), Some(43));
+    }
+}
+
 mod level_range_tests {
     use super::*;
     use crate::ingest::backfill_lines;
