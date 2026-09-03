@@ -14,7 +14,7 @@ import json, re, sys, os, math
 from datetime import datetime
 
 PAIR_MAX_S = 2
-MERGE_UNITS = 5.0
+MERGE_UNITS = 4.0
 NOTES = {"invis", "invisible", "inv"}
 # why: `%t` with nothing targeted expands to the literal word "Target"
 IGNORE = {"target"}
