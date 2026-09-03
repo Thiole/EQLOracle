@@ -1904,6 +1904,11 @@ impl Ingest {
                     self.learned_origin = Some((ts, zone.clone()));
                 }
                 self.zone.enter(ts, zone);
+                // why: aura pulses count as yours only inside a visit that
+                // printed an aura line of its own (real: a raid full of other
+                // bards' auras lands the same texts on you) -- see
+                // note_symphonic_aura; the aura re-announces itself on zone-in
+                self.symphonic_aura = false;
             }
             Action::LevelUp { level } => {
                 self.levels.observe(ts, level);
@@ -7281,6 +7286,7 @@ mod stance_evidence_tests {
             b"[Wed Sep 02 11:00:45 2026] You have entered The Ruins of Old Guk.",
             b"[Wed Sep 02 11:02:30 2026] This song cannot be played while Symphonic Aura is enabled.",
             b"[Wed Sep 02 13:24:53 2026] You have entered Erudin.",
+            b"[Wed Sep 02 13:24:58 2026] You have improved Symphonic Aura: Enabled 8 at a cost of 0 ability points.",
             b"[Wed Sep 02 13:25:00 2026] Your weapons whir with a magical rhythm.",
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
@@ -7289,15 +7295,20 @@ mod stance_evidence_tests {
             .classes
             .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
         assert!(configured.contains(&"Bard".to_string()), "{configured:?}");
+        assert!(ing.symphonic_aura, "aura known on inside this visit");
     }
 
-    /// why: mirror -- the same pulse with no aura known on is just a
-    /// buff landing (another bard's aura reaches you the same way)
+    /// why: mirror -- the same pulse with no aura line in this visit is
+    /// just a buff landing (another bard's aura reaches you the same
+    /// way; real: a Sep 1 raid with five other bards singing); an
+    /// earlier visit's aura line doesn't carry over the zone line
     #[test]
     fn an_aura_pulse_alone_is_not_bard_evidence() {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
         let lines: Vec<&[u8]> = vec![
+            b"[Wed Sep 02 10:00:00 2026] You have entered Erudin Palace.",
+            b"[Wed Sep 02 10:02:30 2026] This song cannot be played while Symphonic Aura is enabled.",
             b"[Wed Sep 02 11:00:45 2026] You have entered The Ruins of Old Guk.",
             b"[Wed Sep 02 11:02:30 2026] Your weapons whir with a magical rhythm.",
             b"[Wed Sep 02 13:24:53 2026] You have entered Erudin.",

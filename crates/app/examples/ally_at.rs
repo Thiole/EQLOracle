@@ -15,6 +15,14 @@ fn main() {
     backfill_lines(&mut ing, &engine, &lines, 8);
     for at in &a[2..] {
         let at: eqlp_source::Millis = at.parse().expect("ms");
+        if a[1] == "You" {
+            let you = ing.store.names.get("You").map(|s| s.0).expect("You");
+            let cfg = ing
+                .classes
+                .configuration_of_visit(you, ing.zone.index_at(at));
+            println!("You at {at}: visit config={cfg:?}");
+            continue;
+        }
         let (classes, votes) = ing.ally_classes(&a[1], at);
         println!(
             "{} at {at}: inferred={classes:?} votes={votes} who={:?}",
