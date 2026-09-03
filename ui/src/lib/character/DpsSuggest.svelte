@@ -4,7 +4,13 @@
   import { ICON_BASE, ALL_CLASSES, MAX_CHARACTER_LEVEL } from '$lib/character/constants';
   import { activeClasses, damageSpells } from '$lib/stores/character';
   import { usableClasses as levelUsableClasses, lineKey, simulateRotation, collapseSequence } from '$lib/character/spellSuggest';
-  import { api, type DamageSpellDto } from '$lib/tauri/api';
+  import { api, type DamageSpellDto, type FocusEffectDto } from '$lib/tauri/api';
+  // why: the model applies worn foci and AAs -- say which, so a number can be traced
+  let equippedFocus = $state<FocusEffectDto[] | null>(null);
+  $effect(() => {
+    if (!open || equippedFocus !== null) return;
+    api.getEquippedFocus().then((f) => (equippedFocus = f)).catch(() => (equippedFocus = []));
+  });
 
   // why: three modes, matching exactly what was asked for -- DPM
   // (mana-limited fights), DPS assuming you actually wait out each
@@ -174,6 +180,11 @@
     {#if open}
     <p class="mb-2 mt-1.5 text-[11px] text-muted-foreground">
       Damage/mana math for every damage spell you can currently cast (level {MAX_CHARACTER_LEVEL} cap, same as the picker above).
+      {#if equippedFocus?.length}
+        Worn foci applied: {equippedFocus.map((f) => `${f.name} (${f.item}${f.lo === f.hi ? `, ${f.lo}%` : `, ${f.lo}-${f.hi}%, counted as ${(f.lo + f.hi) / 2}%`})`).join('; ')}.
+      {:else if equippedFocus}
+        No damage, haste, mana or duration focus on your worn gear (newest inventory dump).
+      {/if}
       Nuke damage is rank-adjusted at +6% per live rank level (I-X), compounding -- the wiki upgrade guide's own rate.
       A DoT's own <i>per-tick</i> damage doesn't scale with rank; only its one-time "on cast" hit (if any) does, though its cast
       time/mana/duration still shrink or grow with rank (wiki-sourced estimate, unverified). A DoT already ticks on its own once

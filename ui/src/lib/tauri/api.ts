@@ -32,6 +32,15 @@ export interface TailStatus {
   pets_attributed: number;
 }
 
+export interface FocusEffectDto {
+  item: string;
+  name: string;
+  kind: 'Damage' | 'Haste' | 'ManaCost' | 'Duration';
+  lo: number;
+  hi: number;
+  max_level: number | null;
+}
+
 export interface BuffRowDto {
   kind: string;
   label: string;
@@ -852,7 +861,13 @@ export interface DamageSpellDto {
   dps_with_reuse: number;
   /** No reuse wait -- instant_damage per second of casting time invested. For a DoT this is NOT its tick-stream rate (see instant_damage's own doc); use dps_with_reuse for "is this DoT worth maintaining". */
   dps_ignoring_reuse: number;
-  /** why: spells sharing one reuse timer ("rain" for every multi-wave AE) -- see dpscalc.rs */
+  /** why: what worn gear and AAs added on top of the rank math (expected percents; a "1% to 20%" focus counts its middle) */
+  focus_damage_pct: number;
+  focus_haste_pct: number;
+  focus_mana_pct: number;
+  focus_duration_pct: number;
+  focus_sources: string[];
+  /** why: spells sharing one reuse timer -- "timer:<id>" from the install's spell file, see dpscalc.rs */
   reuse_group: string | null;
 }
 
@@ -1670,6 +1685,8 @@ export const api = {
 
   /** `assumeMaxRank`: substitutes a flat rank 10 for every spell instead of this session's observed rank. */
   getDamageSpells: (assumeMaxRank: boolean) => invoke<DamageSpellDto[]>('get_damage_spells', { assumeMaxRank }),
+  /** why: the foci on the gear in your newest inventory dump -- see focus.rs */
+  getEquippedFocus: () => invoke<FocusEffectDto[]>('get_equipped_focus'),
 
   getCharacterEstimate: (race: string, classes: string[], classLevels: number[], gear: Record<string, number>) =>
     invoke<CharacterEstimateDto | null>('get_character_estimate', { race, classes, classLevels, gear }),

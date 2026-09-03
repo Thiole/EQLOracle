@@ -20,6 +20,7 @@ pub mod effects;
 pub mod emumaps;
 pub mod epicquests;
 pub mod flavordata;
+pub mod focus;
 pub mod gearplanner;
 pub mod groupbuffs;
 pub mod history;

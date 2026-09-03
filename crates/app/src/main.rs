@@ -301,6 +301,7 @@ fn main() {
             commands::get_spellbook,
             commands::get_spell_ranks,
             commands::get_damage_spells,
+            commands::get_equipped_focus,
             commands::list_spells,
             commands::list_spell_effects,
             commands::get_spell_stacking_groups,

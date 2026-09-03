@@ -55,6 +55,64 @@ const FURY_OF_MAGIC_CHANCE: [f64; 4] = [0.02, 0.04, 0.07, 0.10];
 const DESTRUCTIVE_FURY_BONUS: [f64; 3] = [0.30, 0.60, 1.00];
 const CRITICAL_AFFLICTION_CHANCE: [f64; 3] = [0.03, 0.06, 0.09];
 const DESTRUCTIVE_CASCADE_BONUS: [f64; 3] = [1.25, 1.50, 1.75];
+// why: the rest of the catalog's damage-side AAs (packs/aa.json prose,
+// Spencer: "aa, including crit, dot specific ones, etc") -- class ones
+// count once bought, the catalog only sells them to that class
+const UNBOUND_DESTRUCTION_CHANCE: [f64; 3] = [0.02, 0.04, 0.06];
+const UNBOUND_NATURE_CHANCE: [f64; 3] = [0.02, 0.03, 0.04];
+const UNBOUND_AFFLICTION_CHANCE: [f64; 3] = [0.02, 0.04, 0.06];
+const UNBOUND_DRAIN_BONUS: [f64; 3] = [0.02, 0.04, 0.06];
+/// why: "reduces the base cast time of direct damage spells that have an
+/// initial cast time of 3 seconds or more by 2/5/10%"
+const QUICK_DAMAGE_CUT: [f64; 3] = [0.02, 0.05, 0.10];
+const QUICK_DAMAGE_MIN_CAST: f64 = 3.0;
+const SPELL_CASTING_MASTERY_CUT: [f64; 3] = [0.02, 0.05, 0.10];
+
+/// why: every AA-side modifier the model applies, read once per listing
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AaMods {
+    pub dd_crit_mult: f64,
+    pub dot_crit_mult: f64,
+    pub quick_damage_cut: f64,
+    pub mana_cut: f64,
+    pub lifetap_bonus: f64,
+}
+
+impl AaMods {
+    pub fn read(ing: &crate::ingest::Ingest) -> AaMods {
+        let any_spell_crit = table_value(&UNBOUND_NATURE_CHANCE, aa_rank_of(ing, "Unbound Nature"));
+        AaMods {
+            dd_crit_mult: crit_multiplier(
+                ing,
+                "Fury of Magic",
+                &FURY_OF_MAGIC_CHANCE,
+                "Destructive Fury",
+                &DESTRUCTIVE_FURY_BONUS,
+                table_value(
+                    &UNBOUND_DESTRUCTION_CHANCE,
+                    aa_rank_of(ing, "Unbound Destruction"),
+                ) + any_spell_crit,
+            ),
+            dot_crit_mult: crit_multiplier(
+                ing,
+                "Critical Affliction",
+                &CRITICAL_AFFLICTION_CHANCE,
+                "Destructive Cascade",
+                &DESTRUCTIVE_CASCADE_BONUS,
+                table_value(
+                    &UNBOUND_AFFLICTION_CHANCE,
+                    aa_rank_of(ing, "Unbound Affliction"),
+                ) + any_spell_crit,
+            ),
+            quick_damage_cut: table_value(&QUICK_DAMAGE_CUT, aa_rank_of(ing, "Quick Damage")),
+            mana_cut: table_value(
+                &SPELL_CASTING_MASTERY_CUT,
+                aa_rank_of(ing, "Spell Casting Mastery"),
+            ),
+            lifetap_bonus: table_value(&UNBOUND_DRAIN_BONUS, aa_rank_of(ing, "Unbound Drain")),
+        }
+    }
+}
 
 fn aa_rank_of(ing: &crate::ingest::Ingest, name: &str) -> u8 {
     ing.aa
@@ -84,8 +142,9 @@ fn crit_multiplier(
     chance_table: &[f64],
     bonus_aa: &str,
     bonus_table: &[f64],
+    extra_chance: f64,
 ) -> f64 {
-    let chance = table_value(chance_table, aa_rank_of(ing, chance_aa));
+    let chance = table_value(chance_table, aa_rank_of(ing, chance_aa)) + extra_chance;
     let bonus = table_value(bonus_table, aa_rank_of(ing, bonus_aa));
     1.0 + chance * bonus
 }
@@ -236,6 +295,14 @@ pub struct DamageSpellDto {
     pub mana: f64,
     pub casting_time: f64,
     pub recast_time: f64,
+    /// why: what worn gear and AAs added on top of the rank math --
+    /// expected percents (a "1% to 20%" focus counts its middle), 0 when
+    /// nothing applied; `focus_sources` names the foci that did
+    pub focus_damage_pct: f64,
+    pub focus_haste_pct: f64,
+    pub focus_mana_pct: f64,
+    pub focus_duration_pct: f64,
+    pub focus_sources: Vec<String>,
     /// why: spells sharing one reuse timer lock together in the rotation
     /// -- "timer:<id>" from the install's own spell file (spelltimers),
     /// None when the spell has no shared timer or the file is absent
@@ -261,10 +328,12 @@ pub struct DamageSpellDto {
 fn build_dto(
     spell: &Spell,
     rank: u8,
-    dd_crit_mult: f64,
-    dot_crit_mult: f64,
+    aa: &AaMods,
+    focus: &[crate::focus::FocusEffect],
     timer: Option<u32>,
 ) -> Option<DamageSpellDto> {
+    let dd_crit_mult = aa.dd_crit_mult;
+    let dot_crit_mult = aa.dot_crit_mult;
     let (base_hit, is_dot, base_upfront) = parse_damage(spell)?;
     if base_hit <= 0.0 {
         return None;
@@ -281,7 +350,7 @@ fn build_dto(
     let base_casting_time = spell.casting_time.unwrap_or(0.0);
     let base_recast_time = spell.recast_time.unwrap_or(0.0).max(0.0);
 
-    let (total_damage, instant_damage, duration_secs, mana, casting_time, recast_time, cycle_secs) =
+    let (total_damage, instant_damage, duration_secs, mana, casting_time, recast_time, _cycle_secs) =
         if is_dot {
             let base_dur = spell.duration.as_deref().and_then(parse_duration_secs)?;
             if base_dur <= 0.0 {
@@ -348,6 +417,57 @@ fn build_dto(
             )
         };
 
+    // why: gear focus and the AA-side modifiers, on top of the rank
+    // math -- see focus.rs for the rules (best of a kind, expected
+    // value of a range, level decay). Shape read once per spell.
+    let is_ae = matches!(
+        spell.target_type.as_deref(),
+        Some("Targeted AE") | Some("PB AE")
+    );
+    let shape = crate::focus::SpellShape {
+        level: spell.classes.iter().filter_map(|c| c.level).min(),
+        detrimental: true,
+        duration_secs: duration_secs.unwrap_or(0.0),
+        casting_time,
+        is_ae,
+        deals_damage: true,
+    };
+    let (dmg_mult, dmg_f) = crate::focus::best(focus, crate::focus::FocusKind::Damage, &shape);
+    let (haste_mult, haste_f) = crate::focus::best(focus, crate::focus::FocusKind::Haste, &shape);
+    let (mana_mult, mana_f) = crate::focus::best(focus, crate::focus::FocusKind::ManaCost, &shape);
+    let (dur_mult, dur_f) = if is_dot {
+        crate::focus::best(focus, crate::focus::FocusKind::Duration, &shape)
+    } else {
+        (1.0, None)
+    };
+    let focus_sources: Vec<String> = [dmg_f, haste_f, mana_f, dur_f]
+        .into_iter()
+        .flatten()
+        .map(|f| format!("{} ({})", f.name, f.item))
+        .collect();
+    let lifetap = spell.target_type.as_deref() == Some("Lifetap");
+    let dmg_mult = dmg_mult * if lifetap { 1.0 + aa.lifetap_bonus } else { 1.0 };
+    let quick = if !is_dot && casting_time >= QUICK_DAMAGE_MIN_CAST {
+        1.0 - aa.quick_damage_cut
+    } else {
+        1.0
+    };
+    // why: a duration focus stretches the tick stream, not the burst
+    let tick_part = (total_damage - instant_damage) * dur_mult;
+    let instant_damage = instant_damage * dmg_mult;
+    let total_damage = instant_damage + tick_part * dmg_mult;
+    let duration_secs = duration_secs.map(|d| d * dur_mult);
+    let casting_time = (casting_time * haste_mult * quick).max(0.1);
+    let mana = (mana * mana_mult * (1.0 - aa.mana_cut)).max(1.0);
+    let cycle_secs = match duration_secs {
+        Some(d) => d.max(casting_time + recast_time),
+        None => casting_time + recast_time,
+    };
+    let focus_damage_pct = (dmg_mult - 1.0) * 100.0;
+    let focus_haste_pct = (1.0 - haste_mult) * 100.0;
+    let focus_mana_pct = (1.0 - mana_mult) * 100.0;
+    let focus_duration_pct = (dur_mult - 1.0) * 100.0;
+
     // why: the game's own timer id (spelltimers) -- spells sharing one
     // lock together for the cast spell's own recast. A recast at or under
     // the global cooldown locks nothing beyond what every spell already
@@ -363,6 +483,11 @@ fn build_dto(
         classes: spell.classes.clone(),
         resist: spell.resist.clone(),
         is_dot,
+        focus_damage_pct,
+        focus_haste_pct,
+        focus_mana_pct,
+        focus_duration_pct,
+        focus_sources,
         reuse_group,
         rank,
         duration_secs,
@@ -388,20 +513,9 @@ pub fn list_damage_spells(
     base_dir: Option<&std::path::Path>,
 ) -> Vec<DamageSpellDto> {
     let timers = base_dir.map(crate::spelltimers::timers);
-    let dd_crit_mult = crit_multiplier(
-        ing,
-        "Fury of Magic",
-        &FURY_OF_MAGIC_CHANCE,
-        "Destructive Fury",
-        &DESTRUCTIVE_FURY_BONUS,
-    );
-    let dot_crit_mult = crit_multiplier(
-        ing,
-        "Critical Affliction",
-        &CRITICAL_AFFLICTION_CHANCE,
-        "Destructive Cascade",
-        &DESTRUCTIVE_CASCADE_BONUS,
-    );
+    let focus: Vec<crate::focus::FocusEffect> =
+        base_dir.map(crate::focus::equipped).unwrap_or_default();
+    let aa = AaMods::read(ing);
     spelldata::spells()
         .iter()
         .filter_map(|s| {
@@ -413,8 +527,8 @@ pub fn list_damage_spells(
             build_dto(
                 s,
                 rank,
-                dd_crit_mult,
-                dot_crit_mult,
+                &aa,
+                &focus,
                 timers
                     .as_ref()
                     .and_then(|t| crate::spelltimers::timer_of(t, &s.name)),
@@ -596,24 +710,138 @@ mod tests {
         let rain = spelldata::spell_by_name("Frost Storm").expect("in pack");
         let nuke = spelldata::spell_by_name("Conflagration").expect("in pack");
         assert_eq!(
-            build_dto(rain, 0, 1.0, 1.0, Some(3)).map(|d| d.reuse_group),
+            build_dto(
+                rain,
+                0,
+                &AaMods {
+                    dd_crit_mult: 1.0,
+                    dot_crit_mult: 1.0,
+                    ..Default::default()
+                },
+                &[],
+                Some(3)
+            )
+            .map(|d| d.reuse_group),
             Some(Some("timer:3".to_string()))
         );
         assert_eq!(
-            build_dto(rain, 0, 1.0, 1.0, None).map(|d| d.reuse_group),
+            build_dto(
+                rain,
+                0,
+                &AaMods {
+                    dd_crit_mult: 1.0,
+                    dot_crit_mult: 1.0,
+                    ..Default::default()
+                },
+                &[],
+                None
+            )
+            .map(|d| d.reuse_group),
             Some(None)
         );
         assert_eq!(
-            build_dto(nuke, 0, 1.0, 1.0, None).map(|d| d.reuse_group),
+            build_dto(
+                nuke,
+                0,
+                &AaMods {
+                    dd_crit_mult: 1.0,
+                    dot_crit_mult: 1.0,
+                    ..Default::default()
+                },
+                &[],
+                None
+            )
+            .map(|d| d.reuse_group),
             Some(None)
         );
         // why: real regression -- Rend and Mana Detonation share id 25 at
         // a 1.5s recast; that is the global cooldown, not a shared lock
         assert_eq!(
-            build_dto(nuke, 0, 1.0, 1.0, Some(25)).map(|d| d.reuse_group),
+            build_dto(
+                nuke,
+                0,
+                &AaMods {
+                    dd_crit_mult: 1.0,
+                    dot_crit_mult: 1.0,
+                    ..Default::default()
+                },
+                &[],
+                Some(25)
+            )
+            .map(|d| d.reuse_group),
             Some(None),
             "a global-cooldown recast forms no group"
         );
+    }
+
+    fn dmg_focus(lo: f64, hi: f64, dot: bool) -> crate::focus::FocusEffect {
+        crate::focus::FocusEffect {
+            item: "test cloak".into(),
+            name: "Test Focus".into(),
+            kind: crate::focus::FocusKind::Damage,
+            lo,
+            hi,
+            max_level: None,
+            decay_per_level: 0.0,
+            detrimental_only: true,
+            beneficial_only: false,
+            min_duration_secs: dot.then_some(24.0),
+            max_duration_secs: (!dot).then_some(0.0),
+            min_casting_time: None,
+            exclude_ae: false,
+            current_hp_only: true,
+        }
+    }
+
+    /// why: Spencer -- a "1% to 20%" focus rolls, so the model takes its
+    /// middle; a nuke-only focus leaves a DoT alone; the source is named
+    #[test]
+    fn a_worn_damage_focus_raises_a_nuke_by_its_expected_middle() {
+        let nuke = spelldata::spell_by_name("Conflagration").expect("in pack");
+        let plain = build_dto(nuke, 0, &AaMods::default(), &[], None).unwrap();
+        let focused = build_dto(
+            nuke,
+            0,
+            &AaMods::default(),
+            &[dmg_focus(1.0, 20.0, false)],
+            None,
+        )
+        .unwrap();
+        assert!((focused.total_damage / plain.total_damage - 1.105).abs() < 1e-9);
+        assert!((focused.focus_damage_pct - 10.5).abs() < 1e-9);
+        assert_eq!(
+            focused.focus_sources,
+            vec!["Test Focus (test cloak)".to_string()]
+        );
+        let dot_only = build_dto(
+            nuke,
+            0,
+            &AaMods::default(),
+            &[dmg_focus(1.0, 20.0, true)],
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            dot_only.total_damage, plain.total_damage,
+            "a DoT focus is not a nuke focus"
+        );
+    }
+
+    /// why: the AA side -- Quick Damage cuts a 3s+ nuke's cast, Spell
+    /// Casting Mastery cuts mana, both fold into dps/dpm
+    #[test]
+    fn aa_mods_cut_cast_time_and_mana() {
+        let nuke = spelldata::spell_by_name("Conflagration").expect("in pack");
+        let plain = build_dto(nuke, 0, &AaMods::default(), &[], None).unwrap();
+        let aa = AaMods {
+            quick_damage_cut: 0.10,
+            mana_cut: 0.05,
+            ..Default::default()
+        };
+        let modded = build_dto(nuke, 0, &aa, &[], None).unwrap();
+        assert!((modded.casting_time / plain.casting_time - 0.9).abs() < 1e-9);
+        assert!((modded.mana / plain.mana - 0.95).abs() < 1e-9);
+        assert!(modded.dps_ignoring_reuse > plain.dps_ignoring_reuse);
     }
 
     #[test]
@@ -624,7 +852,18 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&spell, 0, 1.0, 1.0, None).unwrap();
+        let dto = build_dto(
+            &spell,
+            0,
+            &AaMods {
+                dd_crit_mult: 1.0,
+                dot_crit_mult: 1.0,
+                ..Default::default()
+            },
+            &[],
+            None,
+        )
+        .unwrap();
         assert_eq!(dto.total_damage, 100.0);
         assert_eq!(dto.dps_ignoring_reuse, 100.0 / 2.0); // total damage / casting_time
     }
@@ -640,7 +879,18 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&spell, 0, 1.0, 1.0, None).unwrap();
+        let dto = build_dto(
+            &spell,
+            0,
+            &AaMods {
+                dd_crit_mult: 1.0,
+                dot_crit_mult: 1.0,
+                ..Default::default()
+            },
+            &[],
+            None,
+        )
+        .unwrap();
         assert!(dto.is_dot);
         assert_eq!(dto.total_damage, 300.0); // 6 ticks * 50, the real lifetime total
                                              // why: must NOT be total_damage/casting_time (150.0); no upfront, so 0
@@ -658,7 +908,18 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&spell, 0, 1.0, 1.0, None).unwrap();
+        let dto = build_dto(
+            &spell,
+            0,
+            &AaMods {
+                dd_crit_mult: 1.0,
+                dot_crit_mult: 1.0,
+                ..Default::default()
+            },
+            &[],
+            None,
+        )
+        .unwrap();
         assert!(dto.is_dot);
         assert_eq!(dto.total_damage, 340.0); // 40 upfront + 6*50 ticks
                                              // why: only the upfront component, over casting_time
@@ -675,6 +936,7 @@ mod tests {
                 &FURY_OF_MAGIC_CHANCE,
                 "Destructive Fury",
                 &DESTRUCTIVE_FURY_BONUS
+                0.0,
             ),
             1.0
         );
@@ -693,6 +955,7 @@ mod tests {
             &FURY_OF_MAGIC_CHANCE,
             "Destructive Fury",
             &DESTRUCTIVE_FURY_BONUS,
+            0.0,
         );
         assert!((mult - 1.10).abs() < 1e-9);
 
@@ -705,6 +968,7 @@ mod tests {
             &CRITICAL_AFFLICTION_CHANCE,
             "Destructive Cascade",
             &DESTRUCTIVE_CASCADE_BONUS,
+            0.0,
         );
         assert!((dot_mult - 1.075).abs() < 1e-9);
     }
@@ -727,7 +991,18 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&nuke, 0, 1.10, 1.0, None).unwrap();
+        let dto = build_dto(
+            &nuke,
+            0,
+            &AaMods {
+                dd_crit_mult: 1.10,
+                dot_crit_mult: 1.0,
+                ..Default::default()
+            },
+            &[],
+            None,
+        )
+        .unwrap();
         assert!((dto.total_damage - 110.0).abs() < 1e-9);
 
         let dot = make_spell(
@@ -736,7 +1011,18 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&dot, 0, 1.0, 1.075, None).unwrap();
+        let dto = build_dto(
+            &dot,
+            0,
+            &AaMods {
+                dd_crit_mult: 1.0,
+                dot_crit_mult: 1.075,
+                ..Default::default()
+            },
+            &[],
+            None,
+        )
+        .unwrap();
         assert!((dto.total_damage - 322.5).abs() < 1e-9); // 6 ticks * 50 * 1.075
     }
 }

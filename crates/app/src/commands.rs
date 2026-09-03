@@ -493,6 +493,20 @@ pub fn get_damage_spells(state: State<AppState>, assume_max_rank: bool) -> Vec<D
     )
 }
 
+/// why: the DPS panel's own note -- which worn foci the model applied
+
+#[tauri::command]
+pub fn get_equipped_focus(state: State<AppState>) -> Vec<crate::focus::FocusEffect> {
+    let base_dir = state
+        .config
+        .lock_recover()
+        .as_ref()
+        .map(|c| c.base_dir.clone());
+    base_dir
+        .map(|b| crate::focus::equipped(&b))
+        .unwrap_or_default()
+}
+
 /// why: Loot History module's one view -- mob types, kills, loot
 
 #[tauri::command]
