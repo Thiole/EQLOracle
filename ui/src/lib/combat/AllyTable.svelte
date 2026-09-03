@@ -52,7 +52,7 @@
                votes back it, yellow with a "?" before. Both reset when
                the ally leaves or you zone. -->
           <Table.Cell class="font-mono text-[11px] tabular-nums {a.class_confirmed || a.class_evidence >= 12 ? 'text-good' : 'text-caution'}"
-            title={a.class_confirmed ? `confirmed by /who this presence (level ${a.level})` : a.classes.length ? `inferred from ${a.class_evidence} cast${a.class_evidence === 1 ? '' : 's'}/swing${a.class_evidence === 1 ? '' : 's'}` : 'no class evidence yet'}>
+            title={a.class_source === 'self' ? `your own class detection${a.level != null ? ` (level ${a.level})` : ''}` : a.class_confirmed ? `confirmed by /who this presence (level ${a.level})` : a.classes.length ? `inferred from ${a.class_evidence} cast${a.class_evidence === 1 ? '' : 's'}/swing${a.class_evidence === 1 ? '' : 's'}` : 'no class evidence yet'}>
             {a.classes.map(abbr).join('/')}{a.class_confirmed ? (a.level != null ? ` ${a.level}` : '') : a.classes.length && a.class_evidence < 12 ? '?' : ''}
           </Table.Cell>
           <Table.Cell class="text-right tabular-nums">{a.total.toLocaleString()}</Table.Cell>

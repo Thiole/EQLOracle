@@ -749,6 +749,9 @@ pub struct AllyDto {
     /// combat from what this ally cast and swung; empty with no evidence
     pub classes: Vec<String>,
     pub class_confirmed: bool,
+    /// why: where the classes came from -- "who" (a /who row this chain),
+    /// "self" (your own class detection, for the You row), "inferred"
+    pub class_source: &'static str,
     /// why: how many votes (landed or begun spells, class-only swings) back
     /// an inference; 0 when confirmed
     pub class_evidence: u32,
@@ -925,17 +928,44 @@ pub fn list_allies(
             // suggestion, not a fact. "You" needs no proving.
             let suggested = !name.eq_ignore_ascii_case("you")
                 && ing.encounters.entities.kind(&name) == Kind::Unproven;
-            let (classes, class_confirmed, class_evidence, level) =
-                match ing.ally_who(&name, class_at) {
-                    Some((lvl, trio)) => (trio.to_vec(), true, 0, Some(lvl)),
-                    None => {
-                        let (c, n) = ing.ally_classes(&name, class_at);
-                        (c, false, n, None)
+            // why: your own row shows your detected classes in the same
+            // column -- the configuration your own detection resolved
+            // for the fight's zone visit, else your best overall
+            let (classes, class_confirmed, class_evidence, level, class_source) =
+                if name.eq_ignore_ascii_case("You") {
+                    let you = ing.store.names.get("You").map(|s| s.0);
+                    let cfg = you
+                        .map(|y| {
+                            let by_visit = ing
+                                .classes
+                                .configuration_of_visit(y, ing.zone.index_at(class_at));
+                            if by_visit.is_empty() {
+                                ing.classes
+                                    .configurations_of(y)
+                                    .into_iter()
+                                    .next()
+                                    .map(|(c, _)| c)
+                                    .unwrap_or_default()
+                            } else {
+                                by_visit
+                            }
+                        })
+                        .unwrap_or_default();
+                    let confirmed = !cfg.is_empty();
+                    (cfg, confirmed, 0, ing.levels.at(class_at), "self")
+                } else {
+                    match ing.ally_who(&name, class_at) {
+                        Some((lvl, trio)) => (trio.to_vec(), true, 0, Some(lvl), "who"),
+                        None => {
+                            let (c, n) = ing.ally_classes(&name, class_at);
+                            (c, false, n, None, "inferred")
+                        }
                     }
                 };
             AllyDto {
                 classes,
                 class_confirmed,
+                class_source,
                 class_evidence,
                 level,
                 is_player: kind == Kind::Player,

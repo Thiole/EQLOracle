@@ -139,6 +139,8 @@ export interface AllyDto {
   /** why: the trio -- a /who row from this presence when one printed (confirmed), else inferred through combat */
   classes: string[];
   class_confirmed: boolean;
+  /** why: "who" (a /who row this chain), "self" (your own detection), "inferred" */
+  class_source: 'who' | 'self' | 'inferred';
   /** why: votes behind an inference; 0 when confirmed */
   class_evidence: number;
   /** why: from the /who row only */
