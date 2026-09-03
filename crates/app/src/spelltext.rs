@@ -134,6 +134,12 @@ struct Dict {
     /// as ambiguous -- same text, same is_wearsoff split, coarser answer.
     self_landing_polarity: HashMap<&'static str, EffectPolarity>,
     self_wearsoff_polarity: HashMap<&'static str, EffectPolarity>,
+    /// why: every spell behind a self text, shared or not -- the Group
+    /// Buff Tracker's ledger needs "one of these landed on / left you"
+    /// even when the text is shared by rank siblings (Clarity's own
+    /// landing text is shared by 6 real spells)
+    self_landing_all: HashMap<&'static str, Vec<&'static str>>,
+    self_wearsoff_all: HashMap<&'static str, Vec<&'static str>>,
     /// why: same fallback for other_tail keys
     other_landing_polarity: HashMap<&'static str, EffectPolarity>,
 }
@@ -206,6 +212,8 @@ fn build_dict() -> Dict {
     let mut other_ambiguous: HashSet<&str> = HashSet::new();
     let mut self_landing_agg: HashMap<&str, PolarityAgg> = HashMap::new();
     let mut self_wearsoff_agg: HashMap<&str, PolarityAgg> = HashMap::new();
+    let mut self_landing_all: HashMap<&str, Vec<&str>> = HashMap::new();
+    let mut self_wearsoff_all: HashMap<&str, Vec<&str>> = HashMap::new();
     let mut other_landing_agg: HashMap<&str, PolarityAgg> = HashMap::new();
 
     for s in spelldata::spells() {
@@ -225,6 +233,12 @@ fn build_dict() -> Dict {
                 msg,
                 (name, is_wearsoff),
             );
+            let all = if is_wearsoff {
+                &mut self_wearsoff_all
+            } else {
+                &mut self_landing_all
+            };
+            all.entry(msg).or_default().push(name);
             if let Some(p) = polarity {
                 let agg = if is_wearsoff {
                     &mut self_wearsoff_agg
@@ -255,6 +269,8 @@ fn build_dict() -> Dict {
         other_tail,
         self_landing_polarity: finalize_polarity(self_landing_agg),
         self_wearsoff_polarity: finalize_polarity(self_wearsoff_agg),
+        self_landing_all,
+        self_wearsoff_all,
         other_landing_polarity: finalize_polarity(other_landing_agg),
     }
 }
@@ -304,6 +320,25 @@ pub fn match_spell_text(text: &str) -> Option<SpellTextMatch> {
         }
     }
     None
+}
+
+/// why: every spell whose msg_cast_on_you is exactly this text, shared
+/// or not -- see Dict::self_landing_all
+pub fn landing_candidates(text: &str) -> &'static [&'static str] {
+    dict()
+        .self_landing_all
+        .get(text)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
+}
+
+/// why: same for msg_wears_off
+pub fn wearsoff_candidates(text: &str) -> &'static [&'static str] {
+    dict()
+        .self_wearsoff_all
+        .get(text)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
 }
 
 /// why: fallback for text `match_spell_text` had to drop as ambiguous --

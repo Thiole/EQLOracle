@@ -153,6 +153,13 @@ const INVITE_ACCEPT_WINDOW_MS: Millis = 120_000;
 /// `reaffirm_charm`), not a license to resurrect a long-ended charm
 const CHARM_REAFFIRM_MS: Millis = 60_000;
 
+/// why: a class pick's spell grants land in the same second -- see
+/// `note_spell_granted`; a single grant is a scribe, not a pick
+const GRANT_CLUSTER_MS: Millis = 2_000;
+const GRANT_CLUSTER_MIN: usize = 3;
+/// why: a level-up's own grants follow its level line within a second
+const GRANT_LEVEL_UP_MS: Millis = 15_000;
+
 /// why: effective (account) level over time, from level.up lines,
 /// first-person only. The effective level, not any one class's own --
 /// swapping a class drops it silently with no line marking the drop
@@ -1172,6 +1179,12 @@ pub struct Ingest {
     /// expires at; None = permanent). From the catalog's own landing
     /// text on you; a wear-off text ends one early (groupbuffs.rs)
     pub self_buffs: HashMap<String, (Millis, Option<Millis>)>,
+    /// why: distinct single-class evidence from your own casts since the
+    /// last loadout mark -- a 4th class is a swap, see `note_self_class`
+    self_class_evidence: std::collections::BTreeSet<String>,
+    /// why: spell.granted timestamps within GRANT_CLUSTER_MS -- see `note_spell_granted`
+    recent_grants: Vec<Millis>,
+    last_level_up: Option<Millis>,
     /// why: an ally began casting a gate/teleport at this ts -- if they go
     /// quiet past GATE_SETTLE_MS it took them out of the zone (their own
     /// zone line, which the log never shows), and their chain is cut
@@ -1321,6 +1334,9 @@ impl Default for Ingest {
             ally_chains: HashMap::new(),
             ally_cuts: HashMap::new(),
             self_buffs: HashMap::new(),
+            self_class_evidence: Default::default(),
+            recent_grants: Vec::new(),
+            last_level_up: None,
             ally_pending_leave: HashMap::new(),
             closed_seen: 0,
             pending_summons: Vec::new(),
@@ -1882,7 +1898,9 @@ impl Ingest {
             }
             Action::LevelUp { level } => {
                 self.levels.observe(ts, level);
+                self.last_level_up = Some(ts);
             }
+            Action::SpellGranted => self.note_spell_granted(ts),
             Action::AaEarned { gained, total } => {
                 self.aa_points.push((ts, gained, total));
             }
@@ -1978,6 +1996,9 @@ impl Ingest {
                         self.zone.index_at(ts),
                         class_evidence_for(base),
                     );
+                }
+                if who == "You" {
+                    self.note_self_class(ts, class_evidence_for(base));
                 }
             }
             Action::CastResisted {
@@ -2753,6 +2774,10 @@ impl Ingest {
     fn record_death(&mut self, ts: Millis, victim: &str) {
         // why: same normalization as record_damage -- see canonical_you
         let victim = canonical_you(victim);
+        // why: dying drops every buff -- the Group Buff Tracker's ledger with it
+        if victim == "You" {
+            self.self_buffs.clear();
+        }
         // why: the fight this mob is IN right now, read before death()
         // drops it from the graph -- the anchor-name scan below found an
         // OLDER closed encounter that happened to be anchored on the same
@@ -3415,10 +3440,24 @@ impl Ingest {
     /// landed -- see `confirm_spell_effect`). Return value tells the
     /// caller whether the line is understood, just not by a rule.
     fn flavor_evidence_for(&mut self, ts: Millis, text: &str) -> bool {
+        // why: the ledger reads every self text whichever check below
+        // claims it -- Quick Buff flavor (1) owns most real buff landings
+        self.note_self_effect_text(ts, text);
         let classes = crate::flavordata::classes_for_flavor(text);
         if !classes.is_empty() {
             self.record_effect_ping(ts, "You", text);
             self.attribute_flavor_hit(ts, text, classes);
+            return true;
+        }
+        // why: mirrors classify_chunk's SelfEffectText -- see its own doc
+        if !crate::spelltext::wearsoff_candidates(text).is_empty()
+            || !crate::spelltext::landing_candidates(text).is_empty()
+        {
+            if let Some(m) = crate::spelltext::match_spell_text(text) {
+                self.confirm_spell_effect(ts, m);
+            } else {
+                self.record_effect_ping(ts, "You", text);
+            }
             return true;
         }
         if let Some((who, canonical)) = third_person_flavor(text) {
@@ -3437,10 +3476,74 @@ impl Ingest {
         // ambiguous -- still real, still worth a ping, just under the
         // line's own raw text since there's no one name to attach it to.
         if let Some(m) = crate::spelltext::match_effect_polarity(text) {
+            if m.target == "You" {
+                self.note_self_effect_text(ts, text);
+            }
             self.record_effect_ping(ts, &m.target, text);
             return true;
         }
         false
+    }
+
+    /// why: a loadout swap (class set, race, or slot) strips every buff
+    /// and prints nothing -- confirmed against the real log (a swap to
+    /// Druid in GFay: zone-in, silence, Druid spells memorized, no fade
+    /// lines). Only indirect signals exist; each calls this with the
+    /// earliest instant the swap could have happened.
+    fn note_loadout_change(&mut self, at: Millis) {
+        self.self_buffs.retain(|_, (landed, _)| *landed >= at);
+        self.self_class_evidence.clear();
+    }
+
+    /// why: exactly CLASS_COUNT classes at once -- a 4th distinct class
+    /// in your own unambiguous casts means the set changed, i.e. a swap
+    /// happened somewhere before this cast
+    fn note_self_class(&mut self, ts: Millis, classes: &[String]) {
+        let [class] = classes else { return };
+        if self.self_class_evidence.contains(class) {
+            return;
+        }
+        if self.self_class_evidence.len() >= eqlp_session::classdetect::CLASS_COUNT {
+            self.note_loadout_change(ts);
+        }
+        self.self_class_evidence.insert(class.clone());
+    }
+
+    /// why: 3+ spells granted at once with no level-up just before is a
+    /// class being picked in town (new slot, or a class swapped in) --
+    /// confirmed real: 9 such clusters in the log, all class picks; a
+    /// level-up grants the same way but prints its level line first
+    fn note_spell_granted(&mut self, ts: Millis) {
+        self.recent_grants
+            .retain(|t| ts.saturating_sub(*t) <= GRANT_CLUSTER_MS);
+        self.recent_grants.push(ts);
+        let after_level_up = self
+            .last_level_up
+            .is_some_and(|l| ts >= l && ts - l <= GRANT_LEVEL_UP_MS);
+        if self.recent_grants.len() >= GRANT_CLUSTER_MIN && !after_level_up {
+            self.note_loadout_change(ts);
+        }
+    }
+
+    /// why: self text shared by several spells (Clarity's own landing
+    /// text is shared by 6 rank siblings) still says one of them landed
+    /// on / left you -- the ledger keeps every candidate, group_buffs
+    /// reads by kind so any of them counts
+    fn note_self_effect_text(&mut self, ts: Millis, text: &str) {
+        for spell in crate::spelltext::wearsoff_candidates(text) {
+            self.self_buffs.remove(*spell);
+        }
+        for name in crate::spelltext::landing_candidates(text) {
+            let Some(spell) = crate::spelldata::spell_by_name(name) else {
+                continue;
+            };
+            if crate::groupbuffs::is_party_buff(spell)
+                || spell.target_type.as_deref() == Some("Self")
+            {
+                let expires = crate::groupbuffs::expiry_for(spell, ts);
+                self.self_buffs.insert((*name).to_string(), (ts, expires));
+            }
+        }
     }
 
     /// why: shared by the live path (flavor_evidence_for) and backfill's
@@ -4109,6 +4212,8 @@ enum Action {
     LevelUp {
         level: u8,
     },
+    /// why: one "granted the following spell" line -- see `note_spell_granted`
+    SpellGranted,
     /// why: aa.gained is always rank 1 (never stated), aa.improved parses the trailing digit
     AaGained {
         name: String,
@@ -4679,6 +4784,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "level.up" => Some(Action::LevelUp {
             level: u64_field("level")?.min(u8::MAX as u64) as u8,
         }),
+        "spell.granted" => Some(Action::SpellGranted),
         "aa.gained" => Some(Action::AaGained {
             name: str_field("name")?,
             rank: 1,
@@ -5784,6 +5890,13 @@ enum Classified {
         classes: &'static [String],
         text: String,
     },
+    /// why: a self landing/wear-off text the spell catalog knows, claimed
+    /// before the third-person parsers can misread "The cool breeze
+    /// fades." as someone named "The cool breeze" (real, caught by the
+    /// Group Buff Tracker's own ledger test); the merge re-resolves it
+    SelfEffectText {
+        text: String,
+    },
     /// why: known landing message about `who`, not "You"; never class evidence
     ThirdPersonFlavorHit {
         who: String,
@@ -5849,6 +5962,17 @@ fn classify_chunk(engine: &Engine, lines: &[&[u8]]) -> ChunkResult {
                         ts_ms,
                         Some(Classified::SelfFlavorHit {
                             classes,
+                            text: text.to_string(),
+                        }),
+                    ));
+                    true
+                } else if !crate::spelltext::wearsoff_candidates(&text).is_empty()
+                    || !crate::spelltext::landing_candidates(&text).is_empty()
+                {
+                    let ts_ms = ts.secs() * 1000;
+                    matched.push((
+                        ts_ms,
+                        Some(Classified::SelfEffectText {
                             text: text.to_string(),
                         }),
                     ));
@@ -5983,7 +6107,19 @@ pub fn backfill_lines(ing: &mut Ingest, engine: &Engine, lines: &[&[u8]], thread
             ing.note_line_gap(ts_ms);
             match item {
                 Some(Classified::Action(action)) => ing.apply(ts_ms, action),
+                Some(Classified::SelfEffectText { text }) => {
+                    ing.note_self_effect_text(ts_ms, &text);
+                    // why: same resolution the SpellEffectHit / polarity
+                    // arms below give this text -- exact spell confirms a
+                    // pending cast, shared text is still a real ping
+                    if let Some(m) = crate::spelltext::match_spell_text(&text) {
+                        ing.confirm_spell_effect(ts_ms, m);
+                    } else {
+                        ing.record_effect_ping(ts_ms, "You", &text);
+                    }
+                }
                 Some(Classified::SelfFlavorHit { classes, text }) => {
+                    ing.note_self_effect_text(ts_ms, &text);
                     ing.record_effect_ping(ts_ms, "You", &text);
                     ing.attribute_flavor_hit(ts_ms, &text, classes);
                 }
@@ -5991,6 +6127,9 @@ pub fn backfill_lines(ing: &mut Ingest, engine: &Engine, lines: &[&[u8]], thread
                     ing.record_effect_ping(ts_ms, &who, &text);
                 }
                 Some(Classified::EffectPolarityHit { who, text }) => {
+                    if who == "You" {
+                        ing.note_self_effect_text(ts_ms, &text);
+                    }
                     ing.record_effect_ping(ts_ms, &who, &text);
                 }
                 Some(Classified::SpellEffectHit {
@@ -6977,6 +7116,104 @@ mod stance_evidence_tests {
             configured.contains(&"Berserker".to_string()),
             "{configured:?}"
         );
+    }
+
+    /// why: real log shape -- Clarity's landing text is shared by 6 rank
+    /// siblings, so the exact-match path drops it; the ledger must still
+    /// see a mana-regen buff on you, and its shared wear-off text must
+    /// take it back off
+    #[test]
+    fn a_shared_landing_text_still_puts_the_buff_on_you_and_its_wearoff_takes_it_off() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:01 2026] A cool breeze slips through your mind.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert!(
+            ing.self_buffs.keys().any(|k| k.starts_with("Clarity")),
+            "{:?}",
+            ing.self_buffs.keys().collect::<Vec<_>>()
+        );
+        let lines: Vec<&[u8]> = vec![b"[Tue Jul 28 15:20:00 2026] The cool breeze fades."];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert!(
+            ing.self_buffs.is_empty(),
+            "{:?}",
+            ing.self_buffs.keys().collect::<Vec<_>>()
+        );
+    }
+
+    /// why: a loadout swap prints nothing and strips every buff -- a 4th
+    /// distinct class in your own casts is the earliest proof one happened
+    #[test]
+    fn a_fourth_class_in_your_own_casts_clears_buffs_landed_before_it() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:01 2026] A light breeze slips through your mind.",
+            b"[Tue Jul 28 15:01:02 2026] You begin casting Color Flux.",
+            b"[Tue Jul 28 15:01:03 2026] You begin casting Numbing Cold.",
+            b"[Tue Jul 28 15:01:04 2026] You begin casting Burnout.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert!(
+            ing.self_buffs.contains_key("Breeze"),
+            "three classes is the normal set"
+        );
+        let lines: Vec<&[u8]> =
+            vec![b"[Tue Jul 28 15:05:00 2026] You begin casting Protection of Wood."];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert!(
+            ing.self_buffs.is_empty(),
+            "{:?}",
+            ing.self_buffs.keys().collect::<Vec<_>>()
+        );
+    }
+
+    /// why: real log shape -- picking a class in town grants its spells
+    /// in one burst with no level line; a level-up's burst has one
+    #[test]
+    fn a_class_pick_grant_burst_clears_buffs_but_a_level_up_burst_does_not() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:01 2026] A light breeze slips through your mind.",
+            b"[Tue Jul 28 15:02:00 2026] You have gained a level! Welcome to level 12!",
+            b"[Tue Jul 28 15:02:00 2026] You have been granted the following spell: Gate.",
+            b"[Tue Jul 28 15:02:00 2026] You have been granted the following spell: Frost Bolt.",
+            b"[Tue Jul 28 15:02:00 2026] You have been granted the following spell: Root.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert!(
+            ing.self_buffs.contains_key("Breeze"),
+            "a level-up keeps buffs"
+        );
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:30:00 2026] You have been granted the following spell: Cavorting Bones.",
+            b"[Tue Jul 28 15:30:00 2026] You have been granted the following spell: Poison Bolt.",
+            b"[Tue Jul 28 15:30:00 2026] You have been granted the following spell: Leech.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert!(
+            ing.self_buffs.is_empty(),
+            "{:?}",
+            ing.self_buffs.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn your_own_death_clears_your_buffs() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:01 2026] A light breeze slips through your mind.",
+            b"[Tue Jul 28 15:02:00 2026] You have been slain by Guard Fintran!",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert!(ing.self_buffs.is_empty());
     }
 
     /// why: mirror case -- one occurrence isn't enough evidence, same bar a spell is held to
