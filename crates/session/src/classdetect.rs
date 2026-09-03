@@ -393,6 +393,10 @@ struct Chain {
     current: Option<(usize, UnitEvidence)>,
     closed: Option<ChainEnd>,
     first: usize,
+    /// why: a closed chain frozen to its result once a zone is done --
+    /// its evidence and score table are dropped (prediction tables are
+    /// extraneous data, Spencer), only what it concluded stays
+    frozen: Option<(ChainView, Vec<usize>)>,
 }
 
 impl Chain {
@@ -403,6 +407,9 @@ impl Chain {
         }
     }
     fn last(&self) -> usize {
+        if let Some((v, _)) = &self.frozen {
+            return key(v.last);
+        }
         self.current
             .as_ref()
             .map(|(k, _)| *k)
@@ -456,7 +463,10 @@ impl EntityState {
     fn floor_of(&self, class: &str) -> Option<u8> {
         self.chains
             .iter()
-            .filter_map(|c| c.derived().floors.get(class).copied())
+            .filter_map(|c| match &c.frozen {
+                Some((v, _)) => v.floors.iter().find(|(n, _)| n == class).map(|(_, l)| *l),
+                None => c.derived().floors.get(class).copied(),
+            })
             .max()
     }
 }
@@ -620,6 +630,9 @@ impl Detector {
     }
 
     fn view(state: &EntityState, chain: &Chain) -> ChainView {
+        if let Some((v, _)) = &chain.frozen {
+            return v.clone();
+        }
         let d = chain.derived();
         let (confirmed, prior) = d.trio();
         let trio: BTreeSet<&String> = confirmed.iter().chain(prior.iter()).collect();
@@ -674,6 +687,27 @@ impl Detector {
             .map(|c| Self::view(state, c))
     }
 
+    /// why: once a zone is done, every closed chain keeps only its result
+    /// -- the per-unit evidence, pool history and 560-trio score table go
+    pub fn freeze_closed(&mut self, entity: u32) {
+        let Some(state) = self.by_entity.get_mut(&entity) else {
+            return;
+        };
+        let n = state.chains.len();
+        for i in 0..n {
+            if state.chains[i].closed.is_none() || state.chains[i].frozen.is_some() {
+                continue;
+            }
+            let view = Self::view(state, &state.chains[i]);
+            let units: Vec<usize> = state.chains[i].units.keys().copied().collect();
+            let c = &mut state.chains[i];
+            c.frozen = Some((view, units));
+            c.units = BTreeMap::new();
+            c.committed = Derived::default();
+            c.current = None;
+        }
+    }
+
     /// why: cheap "did a new chain start" probe for callers that hold
     /// per-chain state of their own (the stance in effect)
     pub fn chain_count(&self, entity: u32) -> usize {
@@ -724,7 +758,10 @@ impl Detector {
         let mut unresolved: Vec<Unit> = Vec::new();
         for chain in &state.chains {
             let v = Self::view(state, chain);
-            let mut units: Vec<Unit> = chain.units.keys().map(|k| unit(*k)).collect();
+            let mut units: Vec<Unit> = match &chain.frozen {
+                Some((_, keys)) => keys.iter().map(|k| unit(*k)).collect(),
+                None => chain.units.keys().map(|k| unit(*k)).collect(),
+            };
             if let Some((k, _)) = &chain.current {
                 units.push(unit(*k));
             }

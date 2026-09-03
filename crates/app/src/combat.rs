@@ -566,18 +566,20 @@ fn cast_rows(ing: &Ingest, ids: &[EncounterId], actor_sym: Option<Sym>) -> Vec<C
                 fizzled: 0,
                 unconfirmed: 0,
             });
-            row.attempts += 1;
+            // why: a compacted row stands for `n` casts -- Store::compact_before
+            let n = ing.store.count[i];
+            row.attempts += n;
             let fl = ing.store.flags[i];
             if fl & flag::CAST_LANDED != 0 {
-                row.landed += 1;
+                row.landed += n;
             } else if fl & flag::CAST_RESISTED != 0 {
-                row.resisted += 1;
+                row.resisted += n;
             } else if fl & flag::CAST_INTERRUPTED != 0 {
-                row.interrupted += 1;
+                row.interrupted += n;
             } else if fl & flag::CAST_FIZZLED != 0 {
-                row.fizzled += 1;
+                row.fizzled += n;
             } else if fl & flag::CAST_UNCONFIRMED != 0 {
-                row.unconfirmed += 1;
+                row.unconfirmed += n;
             }
         }
     }
@@ -861,9 +863,10 @@ pub fn list_allies(
                 continue; // the mob's own casts, or a non-ally, not "the team"
             }
             let e = casts.entry(actor).or_insert((0, 0));
-            e.0 += 1;
+            let n = ing.store.count[i] as u64;
+            e.0 += n;
             if ing.store.flags[i] & flag::CAST_RESISTED != 0 {
-                e.1 += 1;
+                e.1 += n;
             }
         }
     }

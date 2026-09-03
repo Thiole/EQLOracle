@@ -268,3 +268,31 @@ fn a_unit_before_any_evidence_has_no_chain() {
         "the open chain covers what follows"
     );
 }
+
+/// why: once a zone is done a closed chain keeps only its result --
+/// the trio, the floors and the unit list read the same after the
+/// freeze, the evidence behind them is gone
+#[test]
+fn a_frozen_closed_chain_reads_the_same_as_before() {
+    let mut d = Detector::default();
+    for u in 0..3 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+        cast(&mut d, u, &["Magician"]);
+    }
+    d.observe_ding(1, Some(2), 50);
+    d.close_chain(1, Some(3));
+    cast(&mut d, 3, &["Druid"]);
+    let before = d.chain_at(1, Some(1)).expect("closed chain");
+    let (cfg_before, _) = d.visits_by_resolved_configuration(1);
+    d.freeze_closed(1);
+    let after = d.chain_at(1, Some(1)).expect("frozen chain");
+    assert_eq!(after.trio(), before.trio());
+    assert_eq!(after.floors, before.floors);
+    assert_eq!(after.closed, Some(ChainEnd::Swap));
+    let (cfg_after, _) = d.visits_by_resolved_configuration(1);
+    assert_eq!(cfg_after, cfg_before);
+    // why: the open chain is untouched and still takes evidence
+    cast(&mut d, 4, &["Druid"]);
+    assert_eq!(trio(&d, 4), strs(&["Druid"]));
+}

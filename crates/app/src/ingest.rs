@@ -647,6 +647,15 @@ pub struct Effects {
 }
 
 impl Effects {
+    /// why: once a zone is done its pings are extraneous (Spencer) --
+    /// the scrub of a compacted fight is gone with its rows anyway
+    pub fn cull_before(&mut self, cut_ts: Millis) {
+        for pings in self.by_entity.values_mut() {
+            pings.retain(|p| p.ts >= cut_ts);
+        }
+        self.by_entity.retain(|_, v| !v.is_empty());
+    }
+
     /// why: inserted in timestamp order, same safety Timeline::push uses.
     /// `landed` -- see EffectPing's own doc; every call site before the
     /// Skill Tracker's target-effects section existed was a real landing.
@@ -2025,6 +2034,19 @@ impl Ingest {
                     self.learned_origin = Some((ts, zone.clone()));
                 }
                 self.zone.enter(ts, zone);
+                // why: "once you are done with a zone, cull the calculations"
+                // (Spencer): finished fights' combat rows fold to aggregates,
+                // their effect pings go, closed class chains freeze to their
+                // result -- see Store::compact_before. Idle fights are
+                // closed first: backfill only expires them on the next
+                // damage line, which may be a zone away.
+                self.encounters.expire(ts);
+                self.drain_closed();
+                self.store.compact_before(ts);
+                self.effects.cull_before(ts);
+                if let Some(you) = self.store.names.get("You").map(|s| s.0) {
+                    self.classes.freeze_closed(you);
+                }
                 // why: P4 -- a zone line weakens the chain, never breaks it
                 self.units.zone_line(ts);
                 // why: no interning -- a zone line with no player activity
@@ -7711,6 +7733,46 @@ mod stance_evidence_tests {
             vec!["Enchanter".to_string(), "Wizard".to_string()],
             "{cfg:?}"
         );
+    }
+
+    /// why: Spencer -- "once you are done with a zone, cull the
+    /// calculations": a zone line folds the finished fight's combat rows;
+    /// its totals, hits and crits read the same afterwards, with fewer rows
+    #[test]
+    fn leaving_a_zone_folds_the_finished_fights_rows_without_changing_its_numbers() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let mut lines: Vec<Vec<u8>> =
+            vec![b"[Tue Jul 28 15:00:00 2026] You have entered Blackburrow.".to_vec()];
+        for i in 0..20u32 {
+            let crit = if i % 4 == 0 { " (Critical)" } else { "" };
+            lines.push(
+                format!(
+                    "[Tue Jul 28 15:01:{i:02} 2026] You hit a gnoll for {} points of damage.{crit}",
+                    10 + i
+                )
+                .into_bytes(),
+            );
+        }
+        lines.push(b"[Tue Jul 28 15:01:30 2026] You have slain a gnoll!".to_vec());
+        let refs: Vec<&[u8]> = lines.iter().map(Vec::as_slice).collect();
+        backfill_lines(&mut ing, &engine, &refs, 1);
+        let enc = ing.store.encounters.len() - 1;
+        let before = crate::combat::summarize(&ing, None, Some(enc as u32), None, false);
+        let rows_before = ing.store.len();
+        let zone: Vec<&[u8]> = vec![b"[Tue Jul 28 15:05:00 2026] You have entered West Karana."];
+        backfill_lines(&mut ing, &engine, &zone, 1);
+        let after = crate::combat::summarize(&ing, None, Some(enc as u32), None, false);
+        assert!(
+            ing.store.len() < rows_before,
+            "{} -> {}",
+            rows_before,
+            ing.store.len()
+        );
+        assert_eq!(after.total_damage, before.total_damage);
+        assert_eq!(after.abilities.len(), before.abilities.len());
+        assert_eq!(after.abilities[0].hits, before.abilities[0].hits);
+        assert_eq!(after.abilities[0].crits, before.abilities[0].crits);
     }
 
     #[test]

@@ -189,6 +189,9 @@ pub fn by_ability(store: &Store, f: &Filter) -> Vec<AbilityRow> {
         let a = store.ability[i];
         let amt = store.amount[i];
         let fl = store.flags[i];
+        // why: a compacted row stands for `cnt` rows -- see Store::compact_before
+        let cnt = store.count[i] as u64;
+        let per = if cnt > 1 { amt / cnt } else { amt };
         let r = acc.entry(a).or_insert(AbilityRow {
             ability: a,
             tags: store.abilities.tags(a),
@@ -208,20 +211,20 @@ pub fn by_ability(store: &Store, f: &Filter) -> Vec<AbilityRow> {
         r.flags |= fl;
         // why: a fully-mitigated swing never landed, kept out of hits/total
         if fl & crate::store::flag::MISSED != 0 {
-            r.missed += 1;
+            r.missed += cnt;
         } else if fl & crate::store::flag::BLOCKED != 0 {
-            r.blocked += 1;
+            r.blocked += cnt;
         } else if fl & crate::store::flag::DODGED != 0 {
-            r.dodged += 1;
+            r.dodged += cnt;
         } else if fl & crate::store::flag::PARRIED != 0 {
-            r.parried += 1;
+            r.parried += cnt;
         } else {
             r.total += amt;
-            r.hits += 1;
-            r.min = r.min.min(amt);
-            r.max = r.max.max(amt);
+            r.hits += cnt;
+            r.min = r.min.min(per);
+            r.max = r.max.max(per);
             if fl & crate::store::flag::CRITICAL != 0 {
-                r.crits += 1;
+                r.crits += cnt;
                 r.crit_total += amt;
             }
         }
@@ -237,9 +240,15 @@ pub fn by_ability(store: &Store, f: &Filter) -> Vec<AbilityRow> {
             continue;
         }
         if let Some(&c) = cut.get(&store.ability[i]) {
-            if store.amount[i] >= c {
+            let cnt = store.count[i] as u64;
+            let per = if cnt > 1 {
+                store.amount[i] / cnt
+            } else {
+                store.amount[i]
+            };
+            if per >= c {
                 if let Some(r) = acc.get_mut(&store.ability[i]) {
-                    r.full_power += 1;
+                    r.full_power += cnt;
                 }
             }
         }
@@ -280,10 +289,12 @@ pub fn by_target_and_ability(store: &Store, kind: EventKind) -> HashMap<Sym, Vec
             parried: 0,
             flags: 0,
         });
+        let cnt = store.count[i] as u64;
+        let per = if cnt > 1 { amt / cnt } else { amt };
         r.total += amt;
-        r.hits += 1;
-        r.min = r.min.min(amt);
-        r.max = r.max.max(amt);
+        r.hits += cnt;
+        r.min = r.min.min(per);
+        r.max = r.max.max(per);
         r.flags |= store.flags[i];
     }
 
@@ -324,10 +335,11 @@ pub fn by_actor(store: &Store, f: &Filter) -> Vec<(Sym, u64, u64, u64)> {
             continue;
         }
         let e = acc.entry(store.actor[i]).or_insert((0, 0, 0));
+        let cnt = store.count[i] as u64;
         e.0 += store.amount[i];
-        e.1 += 1;
+        e.1 += cnt;
         if store.flags[i] & crate::store::flag::CRITICAL != 0 {
-            e.2 += 1;
+            e.2 += cnt;
         }
     }
     let mut v: Vec<_> = acc.into_iter().map(|(k, (t, n, c))| (k, t, n, c)).collect();

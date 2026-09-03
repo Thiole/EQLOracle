@@ -5,7 +5,7 @@
 use crate::ability::{Abilities, AbilityId, Interner, Sym, Tags};
 use eqlp_source::Millis;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EventKind {
     Damage,
     Heal,
@@ -140,6 +140,9 @@ pub struct Store {
     pub amount: Vec<u64>,
     pub flags: Vec<Flags>,
     pub enc: Vec<u32>,
+    /// why: rows a compaction folded into this one (1 for a raw row) --
+    /// every reader that counts rows weighs by it, see `compact_before`
+    pub count: Vec<u32>,
     /// why: opaque per-row difficulty byte, app layer fills/filters it
     pub tier: Vec<u8>,
 
@@ -165,8 +168,124 @@ impl Store {
         self.amount.shrink_to_fit();
         self.flags.shrink_to_fit();
         self.enc.shrink_to_fit();
+        self.count.shrink_to_fit();
         self.tier.shrink_to_fit();
         self.encounters.shrink_to_fit();
+    }
+
+    /// why: once you have left a zone nothing more arrives for its
+    /// fights, so their combat rows (Damage/Heal/Miss/Cast) fold into one
+    /// row per (fight, actor, target, ability, kind, flags, tier) with
+    /// `amount` summed and `count` the rows folded -- totals, hits,
+    /// crits, misses, DPS and every ability breakdown read the same
+    /// through the query layer; only per-row detail (min/max hit, the
+    /// per-second series) collapses. Loot, XP, currency, craft and death
+    /// rows stay raw. Rows of a still-open fight, or at/after `cut_ts`,
+    /// stay raw. Encounter ranges are remapped; ids never change.
+    /// Returns rows removed.
+    pub fn compact_before(&mut self, cut_ts: Millis) -> usize {
+        let n = self.len();
+        if n == 0 {
+            return 0;
+        }
+        let closed: Vec<bool> = self.encounters.iter().map(|e| !e.is_open()).collect();
+        let foldable: Vec<bool> = (0..n)
+            .map(|i| {
+                self.ts[i] < cut_ts
+                    && matches!(
+                        self.kind[i],
+                        EventKind::Damage | EventKind::Heal | EventKind::Miss | EventKind::Cast
+                    )
+                    && (self.enc[i] == NO_ENCOUNTER
+                        || closed.get(self.enc[i] as usize).copied().unwrap_or(true))
+            })
+            .collect();
+        type Key = (u32, Sym, Sym, AbilityId, EventKind, Flags, u8);
+        let mut first_of: std::collections::HashMap<Key, usize> = std::collections::HashMap::new();
+        // why: pass 1 -- every foldable row joins the first row of its
+        // key (kept, in place, which keeps time order); the rest drop
+        let mut keep = vec![true; n];
+        for i in 0..n {
+            if !foldable[i] {
+                continue;
+            }
+            let key: Key = (
+                self.enc[i],
+                self.actor[i],
+                self.target[i],
+                self.ability[i],
+                self.kind[i],
+                self.flags[i],
+                self.tier[i],
+            );
+            match first_of.get(&key) {
+                Some(&j) => {
+                    self.amount[j] += self.amount[i];
+                    self.count[j] += self.count[i];
+                    keep[i] = false;
+                }
+                None => {
+                    first_of.insert(key, i);
+                }
+            }
+        }
+        let removed = keep.iter().filter(|k| !**k).count();
+        if removed == 0 {
+            return 0;
+        }
+        // why: pass 2 -- old index -> new index for the encounter ranges
+        let mut new_index = vec![u32::MAX; n];
+        let mut w = 0u32;
+        for i in 0..n {
+            if keep[i] {
+                new_index[i] = w;
+                w += 1;
+            }
+        }
+        macro_rules! compact {
+            ($col:expr) => {{
+                let mut w = 0;
+                for i in 0..n {
+                    if keep[i] {
+                        $col.swap(w, i);
+                        w += 1;
+                    }
+                }
+                $col.truncate(w);
+            }};
+        }
+        compact!(self.ts);
+        compact!(self.kind);
+        compact!(self.actor);
+        compact!(self.target);
+        compact!(self.ability);
+        compact!(self.amount);
+        compact!(self.flags);
+        compact!(self.enc);
+        compact!(self.count);
+        compact!(self.tier);
+        // why: a range's ends may both have been folded away -- walk to
+        // the nearest kept row on each side; a fight with no row left
+        // keeps an empty range (first > last is what `range()` yields)
+        for e in &mut self.encounters {
+            let (f, l) = (e.first as usize, e.last as usize);
+            let mut nf = f;
+            while nf <= l && nf < n && !keep[nf] {
+                nf += 1;
+            }
+            let mut nl = l;
+            while nl > nf && nl < n && !keep[nl] {
+                nl -= 1;
+            }
+            if nf > l || nf >= n || !keep[nf] {
+                e.first = w;
+                e.last = w.wrapping_sub(1);
+                continue;
+            }
+            e.first = new_index[nf];
+            e.last = new_index[nl.min(n - 1)];
+        }
+        removed
     }
 
     pub fn len(&self) -> usize {
@@ -207,6 +326,7 @@ impl Store {
         self.amount.push(amount);
         self.flags.push(flags);
         self.enc.push(enc);
+        self.count.push(1);
         self.tier.push(tier);
         if kind == EventKind::Damage || kind == EventKind::Heal {
             self.abilities.note_amount(ability, amount);
@@ -336,7 +456,7 @@ impl Store {
 
     /// Approximate heap footprint, for deciding when to evict.
     pub fn bytes(&self) -> usize {
-        self.len() * (8 + 1 + 4 + 4 + 4 + 8 + 2 + 4 + 1)
+        self.len() * (8 + 1 + 4 + 4 + 4 + 8 + 4 + 4 + 4 + 1)
             + self.encounters.len() * std::mem::size_of::<Encounter>()
     }
 
@@ -357,6 +477,7 @@ impl Store {
         self.amount.drain(..cut);
         self.flags.drain(..cut);
         self.enc.drain(..cut);
+        self.count.drain(..cut);
         self.tier.drain(..cut);
         self.encounters.drain(..n);
         self.evicted += n as u32;
