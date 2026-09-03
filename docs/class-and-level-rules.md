@@ -118,42 +118,41 @@ Code: `crates/session/src/classdetect.rs` (your classes),
 - T4. "Good" means every buff kind a confirmed (A4) party class can cast
   that benefits your class combo is on you.
 
-## Proposed model (Spencer's caveats of 2026-09-03, not built yet)
+## Chain model (confirmed by Spencer 2026-09-03, being built)
 
-Replaces C2-C8 and L2-L3 once confirmed. One evidence chain per
-character, rolling; nothing below is a static zone list.
+Replaces C2-C8 and L2-L3. One rolling evidence chain per character;
+no static zone lists anywhere.
 
-- P1. The unit of evidence is the encounter, not the zone visit. Casts
-  between encounters attach to the next encounter. (Q29)
+- P1. The unit of evidence is the encounter. Casts between encounters
+  attach to the next one. Evidence is a rolling weight per class:
+  supported by consecutive encounters it grows, unsupported it shrinks.
+  (numbers: Q33)
 - P2. Unambiguous evidence confirms a class after 2 consecutive encounters
   carrying it; elimination after 3. Nothing is ever forced.
-- P3. Evidence sources: casts, songs, stances, invocations, AA lines,
-  ability activations (poisons per G7), melee skills with a class list
-  (Backstab now; Kick/Bash/etc. once their class lists are verified for
-  EQ Legends), Self-target spells landing on you ("Your voice booms."),
-  and Self-target spells landing in third person, which name their
-  caster ("Cauth's voice booms." is Cauth's own Amplification).
+- P3. Sources: casts, songs, stances, invocations, AA lines, skill-up
+  lines (C1b), ability activations (poisons per G7), Bard song landing
+  lines on you ("Your voice booms." and every other Bard-only song text),
+  and Bard song landing lines in third person, which name the singer
+  ("Cauth's voice booms.").
 - P4. A zone line, including a confirmed teleport, never breaks the chain.
-  It weakens it: the current trio carries as a prior that fresh evidence
-  must re-clear at the same bar (P2). Same for a class proven long ago
-  and re-sighted: prior, same bar, then confirmed retroactively over the
-  chain.
-- P5. A contradiction (evidence no configuration of 3 can hold) starts a
-  count. After 3 consecutive encounters of conflicting evidence the chain
-  closes retroactively at the encounter where the conflict began, shown
-  as "??" from there; a new chain starts from that point and confirms on
-  its own. Until then the row shows the old trio with "?".
-- P6. Level: a ding raises every class confirmed in the chain at that
-  moment. A class that confirms later in the same chain gets the chain's
-  highest ding at that moment, retroactively within the chain only. The
-  row shows the lowest level among the trio's classes. A class with no
-  level in this chain shows the latest ding (Q6 answer: no guessing from
-  a multi-class spell; a spell only one trio class could cast raises that
-  class to its level, capped per G6).
-- P7. Pets: a pet's own casts are never evidence, but the summon that
-  produced it is (already the case); charm pets prove nothing.
-- P8. Loadout swap signals (S1-S3) close the chain the same way P5 does,
-  without the 3-encounter wait.
+  It weakens it: the trio carries as a prior that fresh evidence must
+  re-clear at the P2 bar. A class proven long ago and re-sighted: prior,
+  same bar, then confirmed retroactively over the chain.
+- P5. A contradiction (evidence no trio can hold) starts a count. After 3
+  consecutive conflicting encounters the chain closes retroactively at the
+  encounter where the conflict began, shown "??" from there; a new chain
+  starts there and confirms on its own. Until then the row shows the old
+  trio with "?".
+- P6. Level floors per class, never lowered. A ding raises every class
+  confirmed in the chain that is below it; a class already above keeps
+  its floor. A class confirming later in the same chain gets the chain's
+  highest ding, retroactively within the chain only. The row shows the
+  trio's lowest floor. A spell only one trio class could cast raises that
+  class to its level, capped at 50 (G6); a multi-class spell proves nothing.
+- P7. Pets: a pet's own casts are never evidence; the summon that produced
+  it is. Charm pets prove nothing.
+- P8. Loadout swap signals (S1-S3) close the chain as P5 does, without the
+  3-encounter wait.
 
 ## Open questions
 
@@ -166,7 +165,10 @@ character, rolling; nothing below is a static zone list.
 - Q9. Wiki class-list errors (Leech listed Necromancer-only, SK casts it
   here): curated exceptions pack, automatic distrust on contradiction
   with a confirmed trio, or both?
-- Q29. P1: does out-of-combat activity (buffing in town, porting) form
-  its own "encounter" for counting, or attach to the next fight?
-- Q30. P3 third-person Self-target landings for allies: one vote per song
-  per encounter, or every 6-second pulse?
+- Q33. P1 numbers, proposed: a supporting encounter adds 1 to a class's
+  weight (cap 3); an encounter in which the trio fights but the class
+  shows nothing subtracts 0.5; a contradicting encounter subtracts 1; a
+  zone line halves every weight. Confirmed at weight 2 (unambiguous) or 3
+  (elimination). Yes/no, or different numbers?
+- Q34. Display of a class under the bar: "ENC/WIZ/?" with the third slot
+  empty, or the leading candidate dimmed?
