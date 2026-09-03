@@ -34,6 +34,29 @@ use std::sync::OnceLock;
 /// why: 6% compounding per rank level (I-X), not 10% linear -- see module doc
 pub const RANK_DAMAGE_PER_LEVEL: f64 = 0.06;
 pub const TICK_SECS: f64 = 6.0;
+/// why: a reuse this long is a real timer, not the global cooldown --
+/// same-line spells share it (Spike/Spear of Disease at 45s); short
+/// reuses stay independent so lower ranks of a nuke line still weave
+pub const LINE_TIMER_MIN_SECS: f64 = 10.0;
+
+/// why: mirrors the UI's spellLineKey -- digits collapsed so ranks and
+/// upgrades of one line key alike
+fn mask_numbers(description: &str) -> String {
+    let mut out = String::with_capacity(description.len());
+    let mut in_num = false;
+    for ch in description.trim().chars() {
+        if ch.is_ascii_digit() {
+            if !in_num {
+                out.push('#');
+                in_num = true;
+            }
+        } else {
+            in_num = false;
+            out.push(ch);
+        }
+    }
+    out
+}
 
 // why: unverified, wiki-sourced -- see this module's own doc for why
 // these three (and only these three) still borrow the eqlwiki "Spell
@@ -344,7 +367,7 @@ fn build_dto(
             )
         };
 
-    let reuse_group = (!is_dot
+    let is_rain = !is_dot
         && matches!(
             spell.target_type.as_deref(),
             Some("Targeted AE") | Some("PB AE")
@@ -353,8 +376,22 @@ fn build_dto(
             .description
             .as_deref()
             .and_then(parse_wave_count)
-            .is_some_and(|w| w > 1.0))
-    .then(|| "rain".to_string());
+            .is_some_and(|w| w > 1.0);
+    // why: player-confirmed twice -- the rains share one reuse across
+    // lines, and a long-reuse line (Spike/Spear of Disease, 45s) shares
+    // one within the line: "technically it's a spell line, they share a
+    // lot of effects". The line key masks numbers out of the description,
+    // the same key the UI's spellLineKey builds.
+    let reuse_group = if is_rain {
+        Some("rain".to_string())
+    } else if recast_time >= LINE_TIMER_MIN_SECS {
+        spell
+            .description
+            .as_deref()
+            .map(|d| format!("line:{}", mask_numbers(d)))
+    } else {
+        None
+    };
     Some(DamageSpellDto {
         name: spell.name.clone(),
         icon: spell.icon.clone(),
@@ -588,6 +625,21 @@ mod tests {
         assert_eq!(
             build_dto(nuke, 0, 1.0, 1.0).map(|d| d.reuse_group),
             Some(None)
+        );
+    }
+
+    /// why: player-confirmed -- Spike and Spear of Disease are one line
+    /// on one 45s timer; a 1.5s nuke line stays free to weave
+    #[test]
+    fn a_long_reuse_line_shares_its_timer_and_a_short_one_does_not() {
+        let spike = spelldata::spell_by_name("Spike of Disease").expect("in pack");
+        let spear = spelldata::spell_by_name("Spear of Disease").expect("in pack");
+        let g = |sp| build_dto(sp, 0, 1.0, 1.0).and_then(|d| d.reuse_group);
+        assert!(g(spike).is_some());
+        assert_eq!(g(spike), g(spear), "{:?} vs {:?}", g(spike), g(spear));
+        assert_eq!(
+            g(spelldata::spell_by_name("Conflagration").expect("in pack")),
+            None
         );
     }
 
