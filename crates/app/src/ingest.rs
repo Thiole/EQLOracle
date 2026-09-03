@@ -1139,9 +1139,10 @@ pub struct Ingest {
     /// the zone-wide pool can leave those to their droppers
     pub observed_zone_drops: HashMap<String, std::collections::HashSet<String>>,
     /// why: /who rows -- player (lowercased) -> (level, class trio, when).
-    /// Ground truth beside the prediction the class detector makes from
-    /// what an ally casts and swings ("does class detection work for
-    /// those in your party?")
+    /// Confirmation for THIS presence only: "in the instant it's cast it
+    /// confirms; if the player leaves zone, or zone changes, it becomes
+    /// 100% unreliable" -- dropped on your zone line, their absence, or
+    /// a group leave/join, exactly like the combat votes.
     pub who_seen: HashMap<String, (u8, Vec<String>, Millis)>,
     /// why: ally class inference THROUGH COMBAT -- per ally (lowercased),
     /// per class, a score: every landed or begun spell splits one vote
@@ -1400,10 +1401,12 @@ impl Ingest {
         }
         let share = 1.0 / classes.len() as f32;
         let e = self.ally_votes.entry(who.to_lowercase()).or_default();
-        // why: a new presence -- silent past ALLY_ABSENCE_MS, start over
+        // why: a new presence -- silent past ALLY_ABSENCE_MS, start over;
+        // the /who row from before is no longer about this presence
         if e.1 > 0 && ts - e.2 > ALLY_ABSENCE_MS {
             e.0.clear();
             e.1 = 0;
+            self.who_seen.remove(&who.to_lowercase());
         }
         for c in classes {
             *e.0.entry(c.clone()).or_insert(0.0) += share;
@@ -1416,6 +1419,15 @@ impl Ingest {
     /// they were, the next sighting is judged fresh
     fn forget_ally_classes(&mut self, who: &str) {
         self.ally_votes.remove(&who.to_lowercase());
+        self.who_seen.remove(&who.to_lowercase());
+    }
+
+    /// why: the /who trio for this presence, if a row printed since the
+    /// last reset -- confirmed, ahead of the combat inference
+    pub fn ally_who(&self, who: &str) -> Option<(u8, &[String])> {
+        self.who_seen
+            .get(&who.to_lowercase())
+            .map(|(l, trio, _)| (*l, trio.as_slice()))
     }
 
     /// why: the ally's inferred classes -- the top scorers, at most three,
@@ -1737,9 +1749,10 @@ impl Ingest {
             Action::Zone { zone } => {
                 // why: stop fights bleeding across zone changes
                 self.encounters.close_all(ts);
-                // why: you zoned -- every ally's class votes start over
-                // in the new zone (ally_votes' own doc)
+                // why: you zoned -- every ally's class votes and /who rows
+                // start over in the new zone (ally_votes' own doc)
                 self.ally_votes.clear();
+                self.who_seen.clear();
                 self.last_zone_enter_ms = Some(ts);
                 // why: a charmed pet never follows you across a zone line --
                 // real loss even with no "spell has worn off" confirmation

@@ -19,7 +19,7 @@
     <Table.Header>
       <Table.Row>
         <Table.Head>name</Table.Head>
-        <Table.Head title="classes inferred from what they cast and swing; a /who row, if one was seen, is shown as a hint">class</Table.Head>
+        <Table.Head title="green: a /who row from this presence, or a dozen combat votes; yellow: inferred from fewer. Resets when they leave, or you zone.">class</Table.Head>
         <Table.Head class="text-right">total</Table.Head>
         <Table.Head class="text-right">%</Table.Head>
         <Table.Head class="text-right">dps</Table.Head>
@@ -47,12 +47,13 @@
                 title="Damage contributed by this ally's pet">(pet {a.pet_total.toLocaleString()})</span
               >{/if}
           </Table.Cell>
-          <!-- why: inferred through combat -- firm (green) once a dozen
-               votes back it, tentative (yellow) before; a /who row is a
-               hover hint only, it isn't ground truth -->
-          <Table.Cell class="font-mono text-[11px] tabular-nums {a.class_evidence >= 12 ? 'text-good' : 'text-caution'}"
-            title={(a.classes.length ? `inferred from ${a.class_evidence} cast${a.class_evidence === 1 ? '' : 's'}/swing${a.class_evidence === 1 ? '' : 's'}` : 'no class evidence yet') + (a.who_classes.length ? ` · /who said ${a.who_classes.map(abbr).join('/')}${a.who_level != null ? ` at ${a.who_level}` : ''}` : '')}>
-            {a.classes.map(abbr).join('/')}{a.classes.length && a.class_evidence < 12 ? '?' : ''}
+          <!-- why: a /who row from THIS presence confirms (green, with
+               level); else inferred through combat -- green once a dozen
+               votes back it, yellow with a "?" before. Both reset when
+               the ally leaves or you zone. -->
+          <Table.Cell class="font-mono text-[11px] tabular-nums {a.class_confirmed || a.class_evidence >= 12 ? 'text-good' : 'text-caution'}"
+            title={a.class_confirmed ? `confirmed by /who this presence (level ${a.level})` : a.classes.length ? `inferred from ${a.class_evidence} cast${a.class_evidence === 1 ? '' : 's'}/swing${a.class_evidence === 1 ? '' : 's'}` : 'no class evidence yet'}>
+            {a.classes.map(abbr).join('/')}{a.class_confirmed ? (a.level != null ? ` ${a.level}` : '') : a.classes.length && a.class_evidence < 12 ? '?' : ''}
           </Table.Cell>
           <Table.Cell class="text-right tabular-nums">{a.total.toLocaleString()}</Table.Cell>
           <Table.Cell class="text-right tabular-nums">{a.pct.toFixed(1)}%</Table.Cell>

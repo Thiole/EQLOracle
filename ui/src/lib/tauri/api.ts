@@ -124,13 +124,13 @@ export interface AllyDto {
   /** why: a SUGGESTED ally (charm pet or co-occurrence), not a proven
    * one -- rendered visibly tentative, see combat.rs AllyDto's own doc */
   suggested: boolean;
-  /** why: classes inferred through combat -- what they cast and swung; empty with no evidence */
+  /** why: the trio -- a /who row from this presence when one printed (confirmed), else inferred through combat */
   classes: string[];
-  /** why: votes behind the inference */
+  class_confirmed: boolean;
+  /** why: votes behind an inference; 0 when confirmed */
   class_evidence: number;
-  /** why: a /who row when seen -- a hint beside the inference, never in its place */
-  who_classes: string[];
-  who_level: number | null;
+  /** why: from the /who row only */
+  level: number | null;
 }
 
 /** why: one source+ability line of a death recap -- see deathrecap.rs */
