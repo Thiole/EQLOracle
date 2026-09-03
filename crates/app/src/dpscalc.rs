@@ -34,29 +34,6 @@ use std::sync::OnceLock;
 /// why: 6% compounding per rank level (I-X), not 10% linear -- see module doc
 pub const RANK_DAMAGE_PER_LEVEL: f64 = 0.06;
 pub const TICK_SECS: f64 = 6.0;
-/// why: a reuse this long is a real timer, not the global cooldown --
-/// same-line spells share it (Spike/Spear of Disease at 45s); short
-/// reuses stay independent so lower ranks of a nuke line still weave
-pub const LINE_TIMER_MIN_SECS: f64 = 10.0;
-
-/// why: mirrors the UI's spellLineKey -- digits collapsed so ranks and
-/// upgrades of one line key alike
-fn mask_numbers(description: &str) -> String {
-    let mut out = String::with_capacity(description.len());
-    let mut in_num = false;
-    for ch in description.trim().chars() {
-        if ch.is_ascii_digit() {
-            if !in_num {
-                out.push('#');
-                in_num = true;
-            }
-        } else {
-            in_num = false;
-            out.push(ch);
-        }
-    }
-    out
-}
 
 // why: unverified, wiki-sourced -- see this module's own doc for why
 // these three (and only these three) still borrow the eqlwiki "Spell
@@ -256,9 +233,9 @@ pub struct DamageSpellDto {
     pub mana: f64,
     pub casting_time: f64,
     pub recast_time: f64,
-    /// why: player-confirmed -- Lava Storm, Ice Storm, every rain share
-    /// one reuse timer, so a rotation cannot weave two of them. Every
-    /// multi-wave AE is "rain"; a plain nuke has none.
+    /// why: spells sharing one reuse timer lock together in the rotation
+    /// -- "timer:<id>" from the install's own spell file (spelltimers),
+    /// None when the spell has no shared timer or the file is absent
     pub reuse_group: Option<String>,
     /// why: full rank-adjusted damage from one application
     pub total_damage: f64,
@@ -283,6 +260,7 @@ fn build_dto(
     rank: u8,
     dd_crit_mult: f64,
     dot_crit_mult: f64,
+    timer: Option<u32>,
 ) -> Option<DamageSpellDto> {
     let (base_hit, is_dot, base_upfront) = parse_damage(spell)?;
     if base_hit <= 0.0 {
@@ -367,31 +345,9 @@ fn build_dto(
             )
         };
 
-    let is_rain = !is_dot
-        && matches!(
-            spell.target_type.as_deref(),
-            Some("Targeted AE") | Some("PB AE")
-        )
-        && spell
-            .description
-            .as_deref()
-            .and_then(parse_wave_count)
-            .is_some_and(|w| w > 1.0);
-    // why: player-confirmed twice -- the rains share one reuse across
-    // lines, and a long-reuse line (Spike/Spear of Disease, 45s) shares
-    // one within the line: "technically it's a spell line, they share a
-    // lot of effects". The line key masks numbers out of the description,
-    // the same key the UI's spellLineKey builds.
-    let reuse_group = if is_rain {
-        Some("rain".to_string())
-    } else if recast_time >= LINE_TIMER_MIN_SECS {
-        spell
-            .description
-            .as_deref()
-            .map(|d| format!("line:{}", mask_numbers(d)))
-    } else {
-        None
-    };
+    // why: the game's own timer id (spelltimers) -- spells sharing one
+    // lock together in the rotation; no shape heuristics
+    let reuse_group = timer.map(|t| format!("timer:{t}"));
     Some(DamageSpellDto {
         name: spell.name.clone(),
         icon: spell.icon.clone(),
@@ -420,7 +376,9 @@ fn build_dto(
 pub fn list_damage_spells(
     ing: &crate::ingest::Ingest,
     assume_max_rank: bool,
+    base_dir: Option<&std::path::Path>,
 ) -> Vec<DamageSpellDto> {
+    let timers = base_dir.map(crate::spelltimers::timers);
     let dd_crit_mult = crit_multiplier(
         ing,
         "Fury of Magic",
@@ -443,7 +401,15 @@ pub fn list_damage_spells(
             } else {
                 ing.spell_ranks.rank_of(&s.name).unwrap_or(0)
             };
-            build_dto(s, rank, dd_crit_mult, dot_crit_mult)
+            build_dto(
+                s,
+                rank,
+                dd_crit_mult,
+                dot_crit_mult,
+                timers
+                    .as_ref()
+                    .and_then(|t| crate::spelltimers::timer_of(t, &s.name)),
+            )
         })
         .collect()
 }
@@ -613,33 +579,24 @@ mod tests {
         }
     }
 
-    /// why: player-confirmed -- the rains share one reuse timer
+    /// why: the timer id is the only source -- Spencer named Spike/Spear
+    /// of Disease/Spear of Pain and the rains as sharing, and the game
+    /// file agrees; nothing is inferred from shape
     #[test]
-    fn multi_wave_rains_share_the_rain_reuse_group_and_nukes_have_none() {
+    fn the_reuse_group_is_the_spell_files_timer_id_and_nothing_else() {
         let rain = spelldata::spell_by_name("Frost Storm").expect("in pack");
         let nuke = spelldata::spell_by_name("Conflagration").expect("in pack");
         assert_eq!(
-            build_dto(rain, 0, 1.0, 1.0).map(|d| d.reuse_group),
-            Some(Some("rain".to_string()))
+            build_dto(rain, 0, 1.0, 1.0, Some(3)).map(|d| d.reuse_group),
+            Some(Some("timer:3".to_string()))
         );
         assert_eq!(
-            build_dto(nuke, 0, 1.0, 1.0).map(|d| d.reuse_group),
+            build_dto(rain, 0, 1.0, 1.0, None).map(|d| d.reuse_group),
             Some(None)
         );
-    }
-
-    /// why: player-confirmed -- Spike and Spear of Disease are one line
-    /// on one 45s timer; a 1.5s nuke line stays free to weave
-    #[test]
-    fn a_long_reuse_line_shares_its_timer_and_a_short_one_does_not() {
-        let spike = spelldata::spell_by_name("Spike of Disease").expect("in pack");
-        let spear = spelldata::spell_by_name("Spear of Disease").expect("in pack");
-        let g = |sp| build_dto(sp, 0, 1.0, 1.0).and_then(|d| d.reuse_group);
-        assert!(g(spike).is_some());
-        assert_eq!(g(spike), g(spear), "{:?} vs {:?}", g(spike), g(spear));
         assert_eq!(
-            g(spelldata::spell_by_name("Conflagration").expect("in pack")),
-            None
+            build_dto(nuke, 0, 1.0, 1.0, None).map(|d| d.reuse_group),
+            Some(None)
         );
     }
 
@@ -651,7 +608,7 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&spell, 0, 1.0, 1.0).unwrap();
+        let dto = build_dto(&spell, 0, 1.0, 1.0, None).unwrap();
         assert_eq!(dto.total_damage, 100.0);
         assert_eq!(dto.dps_ignoring_reuse, 100.0 / 2.0); // total damage / casting_time
     }
@@ -667,7 +624,7 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&spell, 0, 1.0, 1.0).unwrap();
+        let dto = build_dto(&spell, 0, 1.0, 1.0, None).unwrap();
         assert!(dto.is_dot);
         assert_eq!(dto.total_damage, 300.0); // 6 ticks * 50, the real lifetime total
                                              // why: must NOT be total_damage/casting_time (150.0); no upfront, so 0
@@ -685,7 +642,7 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&spell, 0, 1.0, 1.0).unwrap();
+        let dto = build_dto(&spell, 0, 1.0, 1.0, None).unwrap();
         assert!(dto.is_dot);
         assert_eq!(dto.total_damage, 340.0); // 40 upfront + 6*50 ticks
                                              // why: only the upfront component, over casting_time
@@ -754,7 +711,7 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&nuke, 0, 1.10, 1.0).unwrap();
+        let dto = build_dto(&nuke, 0, 1.10, 1.0, None).unwrap();
         assert!((dto.total_damage - 110.0).abs() < 1e-9);
 
         let dot = make_spell(
@@ -763,7 +720,7 @@ mod tests {
             Some("Single"),
             None,
         );
-        let dto = build_dto(&dot, 0, 1.0, 1.075).unwrap();
+        let dto = build_dto(&dot, 0, 1.0, 1.075, None).unwrap();
         assert!((dto.total_damage - 322.5).abs() < 1e-9); // 6 ticks * 50 * 1.075
     }
 }

@@ -480,7 +480,17 @@ pub fn get_spell_ranks(state: State<AppState>) -> HashMap<String, u8> {
 
 #[tauri::command]
 pub fn get_damage_spells(state: State<AppState>, assume_max_rank: bool) -> Vec<DamageSpellDto> {
-    dpscalc::list_damage_spells(&state.ingest.lock_recover(), assume_max_rank)
+    // why: the install's spell file says which spells share a reuse timer
+    let base_dir = state
+        .config
+        .lock_recover()
+        .as_ref()
+        .map(|c| c.base_dir.clone());
+    dpscalc::list_damage_spells(
+        &state.ingest.lock_recover(),
+        assume_max_rank,
+        base_dir.as_deref(),
+    )
 }
 
 /// why: Loot History module's one view -- mob types, kills, loot

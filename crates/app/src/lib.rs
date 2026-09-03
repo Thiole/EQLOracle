@@ -55,6 +55,7 @@ pub mod spellbookfiles;
 pub mod spelldata;
 pub mod spelleffect;
 pub mod spelltext;
+pub mod spelltimers;
 pub mod stackingdata;
 pub mod stancedata;
 pub mod state;
