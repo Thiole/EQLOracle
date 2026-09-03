@@ -233,6 +233,10 @@ pub struct DamageSpellDto {
     pub mana: f64,
     pub casting_time: f64,
     pub recast_time: f64,
+    /// why: player-confirmed -- Lava Storm, Ice Storm, every rain share
+    /// one reuse timer, so a rotation cannot weave two of them. Every
+    /// multi-wave AE is "rain"; a plain nuke has none.
+    pub reuse_group: Option<String>,
     /// why: full rank-adjusted damage from one application
     pub total_damage: f64,
     /// why: instant portion of total_damage -- all of it for a nuke,
@@ -340,12 +344,24 @@ fn build_dto(
             )
         };
 
+    let reuse_group = (!is_dot
+        && matches!(
+            spell.target_type.as_deref(),
+            Some("Targeted AE") | Some("PB AE")
+        )
+        && spell
+            .description
+            .as_deref()
+            .and_then(parse_wave_count)
+            .is_some_and(|w| w > 1.0))
+    .then(|| "rain".to_string());
     Some(DamageSpellDto {
         name: spell.name.clone(),
         icon: spell.icon.clone(),
         classes: spell.classes.clone(),
         resist: spell.resist.clone(),
         is_dot,
+        reuse_group,
         rank,
         duration_secs,
         mana,
@@ -558,6 +574,21 @@ mod tests {
             categories: vec![],
             icon: None,
         }
+    }
+
+    /// why: player-confirmed -- the rains share one reuse timer
+    #[test]
+    fn multi_wave_rains_share_the_rain_reuse_group_and_nukes_have_none() {
+        let rain = spelldata::spell_by_name("Frost Storm").expect("in pack");
+        let nuke = spelldata::spell_by_name("Conflagration").expect("in pack");
+        assert_eq!(
+            build_dto(rain, 0, 1.0, 1.0).map(|d| d.reuse_group),
+            Some(Some("rain".to_string()))
+        );
+        assert_eq!(
+            build_dto(nuke, 0, 1.0, 1.0).map(|d| d.reuse_group),
+            Some(None)
+        );
     }
 
     #[test]

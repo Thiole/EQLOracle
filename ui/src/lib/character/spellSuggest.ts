@@ -535,6 +535,11 @@ function realizedValueAt(s: DamageSpellDto, castStart: number, windowSecs: numbe
  * pool size squared), and real class combinations easily exceed what a
  * small cap could safely pre-filter (58+ usable damage spells for just
  * two classes, confirmed against the real catalog). */
+/** why: the key a cast locks -- its shared reuse group when it has one, else itself */
+function reuseKey(s: DamageSpellDto): string {
+  return s.reuse_group ?? s.name;
+}
+
 export function simulateRotation(candidates: DamageSpellDto[], windowSecs: number): RotationResult {
   const pool = candidates.filter((s) => s.casting_time > 0 && s.casting_time <= windowSecs);
 
@@ -574,12 +579,12 @@ export function simulateRotation(candidates: DamageSpellDto[], windowSecs: numbe
   while (t < windowSecs) {
     const cursor = Math.max(t, gcdFloor);
     const ready = pool.filter(
-      (s) => (nextAvailable.get(s.name) ?? 0) <= cursor && cursor + s.casting_time <= windowSecs,
+      (s) => (nextAvailable.get(reuseKey(s)) ?? 0) <= cursor && cursor + s.casting_time <= windowSecs,
     );
     if (ready.length === 0) {
       const future = pool.filter((s) => cursor + s.casting_time <= windowSecs);
       if (future.length === 0) break;
-      const nextT = Math.max(cursor, Math.min(...future.map((s) => nextAvailable.get(s.name) ?? 0)));
+      const nextT = Math.max(cursor, Math.min(...future.map((s) => nextAvailable.get(reuseKey(s)) ?? 0)));
       if (nextT <= cursor) break; // defensive -- should be unreachable, avoids ever looping in place
       t = nextT;
       continue;
@@ -595,7 +600,9 @@ export function simulateRotation(candidates: DamageSpellDto[], windowSecs: numbe
     // why: total_damage / dps_with_reuse == cycle_secs (casting + recast,
     // or duration for a DoT) -- already-shipped fields, no new backend data
     const cycleSecs = best.total_damage / best.dps_with_reuse;
-    nextAvailable.set(best.name, castStart + cycleSecs);
+    // why: rains share one reuse timer (player-confirmed: Lava Storm,
+    // Ice Storm, the rains) -- one cast locks the whole group
+    nextAvailable.set(reuseKey(best), castStart + cycleSecs);
   }
 
   return { sequence, totalDamage, avgDps: windowSecs > 0 ? totalDamage / windowSecs : 0 };

@@ -852,6 +852,8 @@ export interface DamageSpellDto {
   dps_with_reuse: number;
   /** No reuse wait -- instant_damage per second of casting time invested. For a DoT this is NOT its tick-stream rate (see instant_damage's own doc); use dps_with_reuse for "is this DoT worth maintaining". */
   dps_ignoring_reuse: number;
+  /** why: spells sharing one reuse timer ("rain" for every multi-wave AE) -- see dpscalc.rs */
+  reuse_group: string | null;
 }
 
 export interface SpellbookEntryDto {
