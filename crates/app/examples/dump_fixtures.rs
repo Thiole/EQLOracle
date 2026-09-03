@@ -239,7 +239,7 @@ fn main() {
     // (falls through to the default "" key), so this single entry covers it
     out.insert(
         "get_damage_spells".to_string(),
-        json!({ "": dpscalc::list_damage_spells(&ing, true) }),
+        json!({ "": dpscalc::list_damage_spells(&ing, true, None) }),
     );
 
     // why: one real representative race/classes/levels combo, not exhaustive
