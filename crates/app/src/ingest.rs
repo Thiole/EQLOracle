@@ -2023,11 +2023,11 @@ impl Ingest {
                     self.classes.observe_cast(
                         caster.0,
                         self.zone.index_at(ts),
-                        class_evidence_for(base),
+                        class_evidence_for_cast(&spell),
                     );
                 }
                 if who == "You" {
-                    self.note_self_class(ts, class_evidence_for(base));
+                    self.note_self_class(ts, class_evidence_for_cast(&spell));
                 }
             }
             Action::CastResisted {
@@ -5192,13 +5192,32 @@ fn has_item_click_source(base_spell: &str) -> bool {
     static ITEM_SOURCED: OnceLock<std::collections::HashSet<&'static str>> = OnceLock::new();
     ITEM_SOURCED
         .get_or_init(|| {
-            crate::spelldata::spells()
+            // why: only a *click* prints "You begin casting" -- a proc,
+            // worn, or focus effect never does (real: Steel Hilted Flint
+            // Dagger procs Conflagration, which used to void every real
+            // Wizard cast of it); read from the items' own effect kinds
+            crate::itemdata::items()
                 .iter()
-                .filter(|s| !s.items_with_effect.is_empty())
-                .map(|s| s.name.as_str())
+                .filter_map(|i| i.effects.get("click"))
+                .filter_map(|e| e.get("name").and_then(|n| n.as_str()))
                 .collect()
         })
         .contains(base_spell)
+}
+
+/// why: the cast line as written -- a rank above I ("Conflagration X")
+/// is a spellbook cast, an item click always casts the bare base spell,
+/// so the item-source exclusion only applies to an unranked line
+fn class_evidence_for_cast(name: &str) -> &'static [String] {
+    let base = base_spell_name(name);
+    if teleportdata::landing_for(base).is_some() {
+        return &[];
+    }
+    let ranked = name.get(base.len() + 1..).is_some_and(|rank| rank != "I");
+    if !ranked && has_item_click_source(base) {
+        return &[];
+    }
+    crate::classdata::classes_for(base)
 }
 
 /// why: real bug, caught live against a real 2nd player's log -- a
@@ -7328,6 +7347,58 @@ mod stance_evidence_tests {
             crate::aadata::classes_for("Symphonic Aura: Enabled"),
             vec!["Bard".to_string()]
         );
+    }
+
+    /// why: real, user-spotted -- "Conflagration X" cast on a visit that
+    /// still read ENC-only: the spell has item clicks, so every cast of
+    /// it was voided, but an item casts the bare spell, never rank X
+    #[test]
+    fn a_ranked_cast_of_an_item_clickable_spell_is_still_class_evidence() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:01 2026] You begin casting Conflagration X.",
+            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:01 2026] You begin casting Conflagration X.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let you = ing.store.names.get("You").expect("You interned");
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        assert!(configured.contains(&"Wizard".to_string()), "{configured:?}");
+    }
+
+    /// why: mirror -- the bare line is exactly what a Wand of
+    /// Conflagration click prints, still no evidence
+    #[test]
+    fn an_unranked_cast_of_an_item_clickable_spell_is_not_evidence() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] You have entered Blackburrow.",
+            b"[Tue Jul 28 15:01:01 2026] You begin casting Conflagration.",
+            b"[Tue Jul 28 15:02:00 2026] You have entered West Karana.",
+            b"[Tue Jul 28 15:02:01 2026] You begin casting Conflagration.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let you = ing.store.names.get("You").expect("You interned");
+        let configured = ing
+            .classes
+            .configuration_of_visit(you.0, ing.zone.index_at(ing.now_ms()));
+        assert!(
+            !configured.contains(&"Wizard".to_string()),
+            "{configured:?}"
+        );
+    }
+
+    /// why: a proc/worn-only item effect never prints a cast line, so it
+    /// must not void real casts -- real catalog case
+    #[test]
+    fn a_proc_only_item_effect_is_not_an_item_click_source() {
+        assert!(has_item_click_source("Conflagration"));
+        assert!(!has_item_click_source("Affliction"));
     }
 
     #[test]
