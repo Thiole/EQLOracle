@@ -13,6 +13,18 @@ fn main() {
     let engine = build_engine().expect("pack builds");
     let mut ing = Ingest::default();
     backfill_lines(&mut ing, &engine, &lines, 8);
+    eprintln!("last parsed ts = {}", ing.now_ms());
+    if a[1] == "recent" {
+        let you = ing.store.names.get("You").map(|s| s.0).expect("You");
+        let cur = ing.zone.index_at(ing.now_ms()).unwrap_or(0);
+        for i in cur.saturating_sub(8)..=cur {
+            println!(
+                "visit {i}: config={:?}",
+                ing.classes.configuration_of_visit(you, Some(i))
+            );
+        }
+        return;
+    }
     for at in &a[2..] {
         let at: eqlp_source::Millis = at.parse().expect("ms");
         if a[1] == "You" {
