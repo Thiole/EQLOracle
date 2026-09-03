@@ -3,6 +3,7 @@
   import { Card, CardContent } from '$lib/components/ui/card';
   import { api } from '$lib/tauri/api';
   import { updateChannel, loadPreferences } from '$lib/stores/settings';
+  import { openChangelog } from '$lib/stores/whatsnew';
 
   // why: Info menu shows current version. Backend command (see
   // commands::get_app_version's doc for why not a raw
@@ -31,12 +32,13 @@
         <p class="text-muted-foreground">
           <span class="text-foreground">{version ?? '…'}</span>
           <span class="text-muted-foreground/70">({$updateChannel === 'beta' ? 'testing channel' : 'public channel'})</span>
+          <button type="button" class="ml-2 text-[11px] text-brand-soft hover:text-primary hover:underline" onclick={openChangelog}>what's new →</button>
         </p>
       </div>
 
       <div>
         <h3 class="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Source</h3>
-        <p class="text-muted-foreground">GitHub: <span class="italic">link coming soon</span></p>
+        <p class="text-muted-foreground">github.com/Thiole/EQLOracle · eqloracle.com</p>
       </div>
 
       <div>

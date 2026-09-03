@@ -63,6 +63,7 @@ pub mod teleportdata;
 pub mod tradeskilldata;
 pub mod uifiles;
 pub mod updater;
+pub mod whatsnew;
 pub mod windowcap;
 pub mod zone;
 pub mod zonedata;

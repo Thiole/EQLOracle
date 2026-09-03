@@ -320,6 +320,9 @@ fn main() {
             commands::install_pending_update,
             commands::restart_app,
             commands::get_app_version,
+            commands::get_whats_new,
+            commands::ack_whats_new,
+            commands::get_changelog,
         ])
         .run(context)
         .expect("error while running eqlp-app");

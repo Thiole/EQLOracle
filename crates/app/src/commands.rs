@@ -42,6 +42,7 @@ use crate::tail_worker::{self, TailStatus};
 use crate::tradeskilldata::{self, TradeskillSkill};
 use crate::uifiles;
 use crate::updater;
+use crate::whatsnew;
 use crate::windowcap::{self, WindowCapability, WindowCapabilityDto};
 use crate::zonedata;
 use serde::Serialize;
@@ -1404,6 +1405,44 @@ pub async fn install_pending_update(
 #[tauri::command]
 pub fn get_app_version(app: AppHandle) -> String {
     app.package_info().version.to_string()
+}
+
+/// why: the "what's new" page -- the changelog sections between the
+/// version the user last acknowledged and the running one. A fresh
+/// install (no last_seen) acknowledges the current version silently.
+#[tauri::command]
+pub fn get_whats_new(app: AppHandle) -> whatsnew::WhatsNewDto {
+    let current = app.package_info().version.to_string();
+    let mut prefs = preferences::load(&app);
+    if prefs.last_seen_version.is_none() {
+        prefs.last_seen_version = Some(current.clone());
+        let _ = preferences::save(&app, &prefs);
+        return whatsnew::WhatsNewDto {
+            current,
+            last_seen: None,
+            sections: Vec::new(),
+        };
+    }
+    let sections = whatsnew::since(&current, prefs.last_seen_version.as_deref());
+    whatsnew::WhatsNewDto {
+        current,
+        last_seen: prefs.last_seen_version,
+        sections,
+    }
+}
+
+/// why: "got it" -- the running version is now the last one seen
+#[tauri::command]
+pub fn ack_whats_new(app: AppHandle) -> Result<(), String> {
+    let mut prefs = preferences::load(&app);
+    prefs.last_seen_version = Some(app.package_info().version.to_string());
+    preferences::save(&app, &prefs)
+}
+
+/// why: the Info panel's own "what's new" -- every section, newest first
+#[tauri::command]
+pub fn get_changelog() -> Vec<whatsnew::ChangelogSection> {
+    whatsnew::sections()
 }
 
 /// why: feeds the Gear Planner's mana weighting; None mostly means "same

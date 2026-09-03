@@ -18,6 +18,8 @@
   import Settings from '$lib/settings/Settings.svelte';
   import InventoryDumpBanner from '$lib/shell/InventoryDumpBanner.svelte';
   import UpdateBanner from '$lib/shell/UpdateBanner.svelte';
+  import WhatsNew from '$lib/shell/WhatsNew.svelte';
+  import { checkWhatsNew } from '$lib/stores/whatsnew';
   import DropWatchLootBanner from '$lib/shell/DropWatchLootBanner.svelte';
   import DeathRecapBanner from '$lib/shell/DeathRecapBanner.svelte';
   import { status, refreshStatusUntilUp } from '$lib/stores/status';
@@ -43,7 +45,11 @@
     // automation opens on a chosen module and skips the prompt.
     void api.getLaunchHints().then((h) => {
       if (h.start_module) activeModule.set(h.start_module);
-      if (!h.skip_update_check) void checkForUpdates();
+      if (!h.skip_update_check) {
+        void checkForUpdates();
+        // why: the first launch after an update opens the unread changelog
+        void checkWhatsNew();
+      }
     }).catch(() => void checkForUpdates());
   });
 </script>
@@ -102,6 +108,7 @@
     </div>
     <InventoryDumpBanner />
     <UpdateBanner />
+    <WhatsNew />
     <DropWatchLootBanner />
     <DeathRecapBanner />
   {/if}

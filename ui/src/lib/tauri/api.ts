@@ -32,6 +32,18 @@ export interface TailStatus {
   pets_attributed: number;
 }
 
+export interface ChangelogSection {
+  version: string;
+  date: string;
+  /** why: the section's markdown -- "### " headings and "- " bullets */
+  body: string;
+}
+export interface WhatsNewDto {
+  current: string;
+  last_seen: string | null;
+  sections: ChangelogSection[];
+}
+
 export interface StatusDto {
   configured: boolean;
   status: TailStatus;
@@ -1545,6 +1557,10 @@ export interface GameStateDto {
 
 export const api = {
   getStatus: () => invoke<StatusDto>('get_status'),
+  /** why: the "what's new" page -- sections between the last acknowledged version and the running one */
+  getWhatsNew: () => invoke<WhatsNewDto>('get_whats_new'),
+  ackWhatsNew: () => invoke<void>('ack_whats_new'),
+  getChangelog: () => invoke<ChangelogSection[]>('get_changelog'),
   /** why: launch-time env hints for screenshot automation -- see commands::get_launch_hints */
   getLaunchHints: () => invoke<{ start_module: string | null; skip_update_check: boolean; maps_zone: string | null; maps_npc: string | null }>('get_launch_hints'),
 

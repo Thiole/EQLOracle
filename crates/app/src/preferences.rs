@@ -84,6 +84,10 @@ pub enum UpdateChannel {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Preferences {
+    /// why: the app version whose "what's new" the user has acknowledged;
+    /// None on a fresh install (whatsnew.rs)
+    #[serde(default)]
+    pub last_seen_version: Option<String>,
     /// why: 0-100, not yet wired to playback -- saved ahead of that port
     #[serde(default = "default_volume")]
     pub volume: u8,
@@ -248,6 +252,7 @@ pub struct Preferences {
 impl Default for Preferences {
     fn default() -> Self {
         Self {
+            last_seen_version: None,
             volume: default_volume(),
             era: None,
             save_profile: false,
@@ -392,6 +397,7 @@ mod tests {
         let mut tracked_drop_seen_counts = HashMap::new();
         tracked_drop_seen_counts.insert("Light Woolen Mask".to_string(), 2u64);
         let p = Preferences {
+            last_seen_version: None,
             volume: 42,
             era: Some("All".to_string()),
             save_profile: true,
