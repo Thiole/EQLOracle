@@ -805,6 +805,7 @@ mod tests {
             min_casting_time: None,
             exclude_ae: false,
             current_hp_only: true,
+            other_effect_only: false,
         }
     }
 

@@ -54,6 +54,11 @@ pub struct FocusEffect {
     pub exclude_ae: bool,
     /// why: "Limit Effect: Current HP" -- damage or heal spells only
     pub current_hp_only: bool,
+    /// why: any other "Limit Effect: X" (Summon Skeleton Pet, Summon Pet,
+    /// ...) restricts the focus to spells carrying that effect -- none of
+    /// which deal damage, so the DPS model never applies it (real:
+    /// Reanimation Haste II was cutting nuke casts by 30% before this)
+    pub other_effect_only: bool,
 }
 
 impl FocusEffect {
@@ -100,6 +105,7 @@ pub fn parse_focus(item: &str, spell: &Spell) -> Option<FocusEffect> {
         min_casting_time: None,
         exclude_ae: false,
         current_hp_only: false,
+        other_effect_only: false,
     };
     for slot in &spell.slots {
         let t = slot.effect.trim();
@@ -141,6 +147,10 @@ pub fn parse_focus(item: &str, spell: &Spell) -> Option<FocusEffect> {
             f.exclude_ae = true;
         } else if t == "Limit Effect: Current HP" {
             f.current_hp_only = true;
+        } else if let Some(rest) = t.strip_prefix("Limit Effect: ") {
+            if !rest.starts_with("Exclude") {
+                f.other_effect_only = true;
+            }
         }
     }
     Some(f)
@@ -167,6 +177,9 @@ pub fn multiplier(f: &FocusEffect, shape: &SpellShape) -> Option<f64> {
         return None;
     }
     if f.current_hp_only && !shape.deals_damage {
+        return None;
+    }
+    if f.other_effect_only {
         return None;
     }
     if f.exclude_ae && shape.is_ae {
@@ -336,6 +349,16 @@ mod tests {
         assert_eq!(which.map(|f| f.name.as_str()), Some("Improved Damage III"));
         assert!((m - (1.0 + b.expected_pct() / 100.0)).abs() < 1e-9);
         assert_eq!(multiplier(&a, &shape(50, true, 0.0, 5.0, false)), None);
+    }
+
+    /// why: real regression -- a pet-haste focus must not touch a nuke
+    #[test]
+    fn a_focus_limited_to_another_effect_never_applies_to_damage() {
+        let s = spelldata::spell_by_name("Reanimation Haste II").expect("in pack");
+        let f = parse_focus("legs", s).expect("parses");
+        assert_eq!(f.kind, FocusKind::Haste);
+        assert!(f.other_effect_only);
+        assert_eq!(multiplier(&f, &shape(40, true, 0.0, 5.0, false)), None);
     }
 
     #[test]
