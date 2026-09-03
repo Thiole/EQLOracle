@@ -30,6 +30,7 @@
     npcZoneCandidates,
     enabledNpcZones,
     npcMarkers,
+    navMesh,
     toggleNpcZone,
     liveFollow,
     setLiveFollow,
@@ -679,6 +680,7 @@
             map={$currentMap}
             zone={$selectedZone}
             npcMarkers={$npcMarkers}
+            navMesh={$navMesh}
             highlightName={selectedNpc}
             zoneContext={$zoneContext}
             path={displayedPath}

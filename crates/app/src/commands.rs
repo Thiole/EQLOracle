@@ -1630,6 +1630,33 @@ pub fn get_launch_hints() -> LaunchHintsDto {
     }
 }
 
+/// why: the navmesh itself, drawn under the map lines -- "fill in the map
+/// with the wireframe navmesh at 60-70% opacity, so if it's a tunnel you
+/// can still see the illuminated path through it". Poly outlines in
+/// map-file coordinates; swim nodes (single-vertex polys) are skipped.
+/// None until the zone's mesh is cached (ensure_emu_zone fetches it).
+#[tauri::command]
+pub async fn get_nav_mesh(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    zone: String,
+) -> Result<Option<Vec<Vec<[f32; 3]>>>, String> {
+    let Ok(app_data) = app.path().app_data_dir() else {
+        return Ok(None);
+    };
+    let walls = swim_walls(&state, None, &zone);
+    let Some(nav) = emumaps::load_nav(&app_data, &zone, walls) else {
+        return Ok(None);
+    };
+    Ok(Some(
+        nav.polys
+            .iter()
+            .filter(|p| p.verts.len() >= 3)
+            .map(|p| p.verts.clone())
+            .collect(),
+    ))
+}
+
 /// why: the last route the viewer asked for, in the probes' own
 /// waypoint shape -- "the pathfinding through the keep is fucked" needs
 /// the exact request the app served, not a probe's reconstruction of it

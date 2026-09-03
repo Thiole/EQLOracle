@@ -206,6 +206,9 @@ export const enabledNpcZones = writable<Set<string>>(new Set());
  * recomputed whenever the enabled set changes, not per-zone state the
  * viewer would have to merge itself. */
 export const npcMarkers = writable<NpcMarkerDto[]>([]);
+/** why: the current zone's navmesh poly outlines (map-file coords), for
+ * MapViewer's translucent floor overlay; null until cached or when none */
+export const navMesh = writable<[number, number, number][][] | null>(null);
 
 let zonesLoaded = false;
 
@@ -265,7 +268,18 @@ export async function selectZone(zone: string) {
   // why: fire-and-forget nav/collision fetch for this zone -- see
   // api.ensureEmuZone. Walk paths route over the mesh once cached;
   // until then the line-grid fallback answers.
-  void api.ensureEmuZone(zone).catch(() => {});
+  // why: the navmesh overlay -- fetched once the zone's mesh is cached
+  // (ensureEmuZone downloads it on first open); null clears the overlay
+  // while a different zone loads
+  navMesh.set(null);
+  void api
+    .ensureEmuZone(zone)
+    .catch(() => ({ nav: false, geo: false }))
+    .then(() => api.getNavMesh(zone))
+    .then((m) => {
+      if (get(selectedZone) === zone) navMesh.set(m ?? null);
+    })
+    .catch(() => {});
   // why: the user picking a zone map while a specific raw zone label is
   // current is the strongest possible training signal for `learnedZoneMap`
   // -- not a guess, their own explicit action -- see that map's own doc.

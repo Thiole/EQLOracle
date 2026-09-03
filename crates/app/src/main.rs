@@ -205,6 +205,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
             commands::get_launch_hints,
+            commands::get_nav_mesh,
             commands::set_session_window,
             commands::pick_log_directory,
             commands::set_log_directory,

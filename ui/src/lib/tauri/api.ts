@@ -1680,6 +1680,8 @@ export const api = {
    * cache -- fire-and-forget on zone open; pathfinding upgrades itself
    * once cached. */
   ensureEmuZone: (zone: string) => invoke<{ nav: boolean; geo: boolean }>('ensure_emu_zone', { zone }),
+  /** why: the zone's navmesh poly outlines (map-file coords) for the translucent overlay; null until cached */
+  getNavMesh: (zone: string) => invoke<[number, number, number][][] | null>('get_nav_mesh', { zone }),
   /** why: the Maps left panel's NPC browser -- catalog NPCs whose wiki
    * zone matches the open map, with drops for the selection expansion */
   listZoneNpcs: (mapZoneName: string) => invoke<ZoneNpcDto[]>('list_zone_npcs', { mapZoneName }),

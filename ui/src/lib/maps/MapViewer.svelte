@@ -29,6 +29,7 @@
     map,
     zone,
     npcMarkers = [],
+    navMesh = null,
     highlightName = null,
     zoneContext = null,
     path = null,
@@ -37,6 +38,10 @@
     map: MapFileDto;
     zone: string;
     npcMarkers?: NpcMarkerDto[];
+    /** why: the zone's navmesh poly outlines (map-file coords) -- drawn as
+     * a translucent floor plus a faint wireframe under the map lines, so
+     * a tunnel reads as walkable space with the path lit through it */
+    navMesh?: [number, number, number][][] | null;
     /** why: the NPC picked in the list -- its spots light up, the rest dim */
     highlightName?: string | null;
     zoneContext?: ZoneContextDto | null;
@@ -76,7 +81,74 @@
   // spawns are different data with different confidence levels, and
   // mixing them into one color would hide that. The hover tooltip tags
   // its source explicitly for the same reason.
-  let hovered = $state<{ label: string; source: 'map' | 'npc' } | null>(null);
+  let hovered = $state<{ label: string; source: 'map' | 'npc'; survey?: boolean } | null>(null);
+  // why: the navmesh overlay's own meshes, swapped whenever `navMesh`
+  // changes -- kept apart from the scene-build effect so a late mesh
+  // download never rebuilds walls/camera
+  let navSceneRef: THREE.Scene | null = null;
+  let navFillMesh: THREE.Mesh | null = null;
+  let navWireMesh: THREE.LineSegments | null = null;
+  $effect(() => {
+    const polys = navMesh; // tracked
+    const scene = navSceneRef;
+    if (navFillMesh) {
+      scene?.remove(navFillMesh);
+      navFillMesh.geometry.dispose();
+      (navFillMesh.material as THREE.Material).dispose();
+      navFillMesh = null;
+    }
+    if (navWireMesh) {
+      scene?.remove(navWireMesh);
+      navWireMesh.geometry.dispose();
+      (navWireMesh.material as THREE.Material).dispose();
+      navWireMesh = null;
+    }
+    if (!polys || !polys.length || !scene) return;
+    // fan-triangulate each convex poly; edges for the wireframe
+    let tri = 0;
+    let edge = 0;
+    for (const p of polys) {
+      tri += Math.max(0, p.length - 2);
+      edge += p.length;
+    }
+    const fill = new Float32Array(tri * 9);
+    const wire = new Float32Array(edge * 6);
+    let fi = 0;
+    let wi = 0;
+    const put = (arr: Float32Array, at: number, v: [number, number, number]) => {
+      arr[at] = v[0];
+      arr[at + 1] = v[2]; // Y-up: elevation -> three.js Y, same as the wall lines
+      arr[at + 2] = v[1];
+    };
+    for (const p of polys) {
+      for (let k = 1; k + 1 < p.length; k++) {
+        put(fill, fi, p[0]);
+        put(fill, fi + 3, p[k]);
+        put(fill, fi + 6, p[k + 1]);
+        fi += 9;
+      }
+      for (let k = 0; k < p.length; k++) {
+        put(wire, wi, p[k]);
+        put(wire, wi + 3, p[(k + 1) % p.length]);
+        wi += 6;
+      }
+    }
+    const fg = new THREE.BufferGeometry();
+    fg.setAttribute('position', new THREE.BufferAttribute(fill, 3));
+    // why: 65% opacity, no depth write -- the map lines and the green
+    // path draw through it, which is the whole point of the overlay
+    navFillMesh = new THREE.Mesh(
+      fg,
+      new THREE.MeshBasicMaterial({ color: 0x2b4a6a, transparent: true, opacity: 0.65, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    navFillMesh.renderOrder = -2;
+    const wg = new THREE.BufferGeometry();
+    wg.setAttribute('position', new THREE.BufferAttribute(wire, 3));
+    navWireMesh = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x6aa3d5, transparent: true, opacity: 0.35, depthWrite: false }));
+    navWireMesh.renderOrder = -1;
+    scene.add(navFillMesh);
+    scene.add(navWireMesh);
+  });
   let hoverPos = $state<{ x: number; y: number }>({ x: 0, y: 0 });
   /** why: drives the small caption near the bottom instructions -- a real
    * `/loc` reading or a teleport landing (both `confirmed`) and the
@@ -411,6 +483,7 @@
     wallGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     const walls = new THREE.LineSegments(wallGeo, new THREE.LineBasicMaterial({ vertexColors: true }));
     localScene.add(walls);
+    navSceneRef = localScene;
 
     // ---- markers: one Points draw call, hover-picked via raycasting.
     const markerCount = map.markers.length;
@@ -511,7 +584,7 @@
         // -- a toggle after this effect last ran must not hover stale
         // entries or index past the end of a shrunk array.
         const m = liveNpcMarkers[npcHit.index ?? -1];
-        hovered = m ? { label: m.name, source: 'npc' } : null;
+        hovered = m ? { label: m.name, source: 'npc', survey: m.source === 'survey' } : null;
       } else {
         hovered = null;
       }
@@ -727,9 +800,9 @@
       style:left="{hoverPos.x + 12}px"
       style:top="{hoverPos.y + 12}px"
     >
-      <span class="size-1.5 rounded-full" style:background={hovered.source === 'npc' ? '#2dd4ff' : 'var(--color-foreground)'}></span>
+      <span class="size-1.5 rounded-full" style:background={hovered.source === 'npc' ? (hovered.survey ? '#22c55e' : '#2dd4ff') : 'var(--color-foreground)'}></span>
       {hovered.label}
-      {#if hovered.source === 'npc'}<span class="text-muted-foreground">(wiki NPC)</span>{/if}
+      {#if hovered.source === 'npc'}<span class="text-muted-foreground">{hovered.survey ? '(surveyed spawn)' : '(wiki spot)'}</span>{/if}
     </div>
   {/if}
   <p class="pointer-events-none absolute bottom-2 left-2 text-[10px] text-muted-foreground">
