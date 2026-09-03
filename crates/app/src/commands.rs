@@ -767,6 +767,8 @@ pub async fn set_overlay_enabled(
         "cc_tracker" => cc_tracker_dims(&preferences::load(&app).overlay_cc_tracker_size),
         // why: compact square, asked directly -- three stat columns + a mote strip
         "session" => (250.0, 162.0),
+        // why: a verdict line plus a short list of buff kinds
+        "group_buffs" => (280.0, 220.0),
         _ => (360.0, 240.0),
     };
     // why: built hidden, shown only after hide_from_window_switcher --
@@ -1405,6 +1407,12 @@ pub async fn install_pending_update(
 #[tauri::command]
 pub fn get_app_version(app: AppHandle) -> String {
     app.package_info().version.to_string()
+}
+
+/// why: the Group Buff Tracker overlay's whole data source -- see groupbuffs.rs
+#[tauri::command]
+pub fn get_group_buffs(state: State<AppState>) -> crate::groupbuffs::GroupBuffsDto {
+    crate::groupbuffs::group_buffs(&state.ingest.lock_recover())
 }
 
 /// why: the "what's new" page -- the changelog sections between the

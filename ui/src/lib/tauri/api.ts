@@ -32,6 +32,28 @@ export interface TailStatus {
   pets_attributed: number;
 }
 
+export interface BuffRowDto {
+  kind: string;
+  label: string;
+  /** why: the spell on you now, when one of this kind is */
+  active: string | null;
+  best_spell: string;
+  casters: string[];
+}
+export interface PartyMemberDto {
+  name: string;
+  classes: string[];
+  level: number | null;
+  confirmed: boolean;
+}
+export interface GroupBuffsDto {
+  good: boolean;
+  my_classes: string[];
+  party: PartyMemberDto[];
+  rows: BuffRowDto[];
+  extra_active: string[];
+}
+
 export interface ChangelogSection {
   version: string;
   date: string;
@@ -1617,6 +1639,8 @@ export const api = {
 
   /** why: Overview's plat/hr, xp%/hr, current level + progress, ETA to next ding */
   getSession: () => invoke<SessionDto>('get_session'),
+  /** why: the Group Buff Tracker overlay -- see groupbuffs.rs */
+  getGroupBuffs: () => invoke<GroupBuffsDto>('get_group_buffs'),
 
   /** why: Overview Session card's own "restart" button -- see Ingest::reset_session's own doc */
   resetSession: () => invoke<SessionDto>('reset_session'),

@@ -16,6 +16,7 @@
     type TargetEffectsDto,
     type DropWatchRowDto,
     type SessionDto,
+    type GroupBuffsDto,
   } from '$lib/tauri/api';
   import { listen } from '$lib/tauri/invoke';
   import { currentOverlayWidget } from '$lib/tauri/window';
@@ -25,6 +26,7 @@
   import DropWatchWidget from './DropWatchWidget.svelte';
   import CCTrackerWidget from './CCTrackerWidget.svelte';
   import SessionWidget from './SessionWidget.svelte';
+  import GroupBuffsWidget from './GroupBuffsWidget.svelte';
   import { asCcSize, CC_SIZE_WINDOW_DIMS, DEFAULT_CC_SIZE, type CcSize } from './ccSize';
 
   const widget = currentOverlayWidget();
@@ -43,6 +45,7 @@
   let targetEffects = $state<TargetEffectsDto | null>(null);
   let dropRows = $state<DropWatchRowDto[]>([]);
   let sessionData = $state<SessionDto | null>(null);
+  let groupBuffsData = $state<GroupBuffsDto | null>(null);
   let ccSize = $state<CcSize>(DEFAULT_CC_SIZE);
   let rootEl: HTMLDivElement | undefined = $state();
 
@@ -78,6 +81,9 @@
     } else if (widget === 'session') {
       opacity = p.overlay_session_opacity;
       overallOpacity = p.overlay_session_overall_opacity;
+    } else if (widget === 'group_buffs') {
+      opacity = p.overlay_group_buffs_opacity;
+      overallOpacity = p.overlay_group_buffs_overall_opacity;
     } else if (widget === 'cc_tracker') {
       opacity = p.overlay_cc_tracker_opacity;
       overallOpacity = p.overlay_cc_tracker_overall_opacity;
@@ -108,6 +114,8 @@
       dropRows = await api.getDropWatch();
     } else if (widget === 'session') {
       sessionData = await api.getSession();
+    } else if (widget === 'group_buffs') {
+      groupBuffsData = await api.getGroupBuffs();
     } else if (widget === 'cc_tracker') {
       status = await api.getStatusEffects();
     }
@@ -210,6 +218,8 @@
     <DropWatchWidget rows={dropRows} trackedNames={trackedDropNames} {opacity} {overallOpacity} />
   {:else if widget === 'session'}
     <SessionWidget session={sessionData} {opacity} {overallOpacity} />
+  {:else if widget === 'group_buffs'}
+    <GroupBuffsWidget data={groupBuffsData} {opacity} {overallOpacity} />
   {:else if widget === 'cc_tracker'}
     <CCTrackerWidget {status} {opacity} {overallOpacity} size={ccSize} />
   {/if}

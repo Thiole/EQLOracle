@@ -49,6 +49,12 @@
     setSessionWidgetOpacity,
     sessionWidgetOverallOpacity,
     setSessionWidgetOverallOpacity,
+    groupBuffsEnabled,
+    groupBuffsOpacity,
+    setGroupBuffsEnabled,
+    setGroupBuffsOpacity,
+    groupBuffsOverallOpacity,
+    setGroupBuffsOverallOpacity,
     loadPreferences,
   } from '$lib/stores/settings';
   import type { CcSize } from './ccSize';
@@ -65,6 +71,7 @@
   let dropWatchError = $state<string | null>(null);
   let ccTrackerError = $state<string | null>(null);
   let sessionError = $state<string | null>(null);
+  let groupBuffsError = $state<string | null>(null);
   // why: each widget's own window starts locked (click-through) --
   // matches every widget window's own real default at open
   let locked = $state<Record<string, boolean>>({
@@ -73,6 +80,7 @@
     drop_watch: true,
     cc_tracker: true,
     session: true,
+    group_buffs: true,
   });
 
   async function onToggleDpsMeter(on: boolean) {
@@ -112,6 +120,16 @@
       locked.cc_tracker = true;
     } catch (e) {
       ccTrackerError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  async function onToggleGroupBuffs(on: boolean) {
+    groupBuffsError = null;
+    try {
+      await setGroupBuffsEnabled(on);
+      locked.group_buffs = true;
+    } catch (e) {
+      groupBuffsError = e instanceof Error ? e.message : String(e);
     }
   }
 
@@ -403,6 +421,42 @@
           capped,
           'everything',
           'Fades the whole widget together -- numbers included, not just the panel behind them.',
+          true,
+        )}
+      </CardContent>
+    </Card>
+
+    <Card class="rounded-sm">
+      <CardContent class="px-3 py-2.5">
+        <h2 class="panel-title mb-1.5">Group Buffs</h2>
+        <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
+          <Checkbox checked={$groupBuffsEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleGroupBuffs(v)} />
+          enable
+        </label>
+        <p class="mt-0.5 text-[11px] text-muted-foreground">"Good" when every buff your party's confirmed classes can put on you, that helps your own classes, is on you -- else what's missing and who could cast it.</p>
+        {#if capped}
+          <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
+        {/if}
+        {#if groupBuffsError}
+          <p class="mt-1 text-[11px] text-bad">{groupBuffsError}</p>
+        {/if}
+        {#if $groupBuffsEnabled && !capped}
+          {@render repositionButton('group_buffs')}
+        {/if}
+        {@render alphaPreview(
+          $groupBuffsOpacity,
+          (v) => void setGroupBuffsOpacity(v),
+          capped,
+          'background opacity',
+          'How see-through the panel behind the list reads.',
+          false,
+        )}
+        {@render alphaPreview(
+          $groupBuffsOverallOpacity,
+          (v) => void setGroupBuffsOverallOpacity(v),
+          capped,
+          'everything',
+          'Fades the whole widget together.',
           true,
         )}
       </CardContent>

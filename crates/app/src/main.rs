@@ -321,6 +321,7 @@ fn main() {
             commands::restart_app,
             commands::get_app_version,
             commands::get_whats_new,
+            commands::get_group_buffs,
             commands::ack_whats_new,
             commands::get_changelog,
         ])

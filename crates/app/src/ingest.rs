@@ -1168,6 +1168,10 @@ pub struct Ingest {
     pub ally_chains: AllyChains,
     /// why: a group leave/join cuts the ally's chain at this ts
     ally_cuts: HashMap<String, Millis>,
+    /// why: beneficial spells currently on YOU -- spell -> (landed at,
+    /// expires at; None = permanent). From the catalog's own landing
+    /// text on you; a wear-off text ends one early (groupbuffs.rs)
+    pub self_buffs: HashMap<String, (Millis, Option<Millis>)>,
     /// why: an ally began casting a gate/teleport at this ts -- if they go
     /// quiet past GATE_SETTLE_MS it took them out of the zone (their own
     /// zone line, which the log never shows), and their chain is cut
@@ -1316,6 +1320,7 @@ impl Default for Ingest {
             observed_zone_drops: HashMap::new(),
             ally_chains: HashMap::new(),
             ally_cuts: HashMap::new(),
+            self_buffs: HashMap::new(),
             ally_pending_leave: HashMap::new(),
             closed_seen: 0,
             pending_summons: Vec::new(),
@@ -3444,6 +3449,20 @@ impl Ingest {
     /// one, see `CastResolver::resolve`'s own doc); a wears-off is the
     /// opposite end of an already-landed buff, nothing to resolve.
     fn confirm_spell_effect(&mut self, ts: Millis, m: crate::spelltext::SpellTextMatch) {
+        // why: the Group Buff Tracker's own ledger -- a beneficial spell's
+        // landing text on you puts it on you, its wear-off text takes it off
+        if m.target.eq_ignore_ascii_case("You") {
+            if m.is_wearsoff {
+                self.self_buffs.remove(m.spell);
+            } else if let Some(spell) = crate::spelldata::spell_by_name(m.spell) {
+                if crate::groupbuffs::is_party_buff(spell)
+                    || spell.target_type.as_deref() == Some("Self")
+                {
+                    let expires = crate::groupbuffs::expiry_for(spell, ts);
+                    self.self_buffs.insert(m.spell.to_string(), (ts, expires));
+                }
+            }
+        }
         self.record_effect_ping(ts, &m.target, m.spell);
         if !m.is_wearsoff {
             let you = self.sym("You").0;

@@ -35,6 +35,8 @@
     setCcTrackerEnabled,
     sessionWidgetEnabled,
     setSessionWidgetEnabled,
+    groupBuffsEnabled,
+    setGroupBuffsEnabled,
   } from '$lib/stores/settings';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
 
@@ -55,6 +57,7 @@
     drop_watch: true,
     cc_tracker: true,
     session: true,
+    group_buffs: true,
   });
 
   // why: reads the widget id off the clicked element's own data-widget
@@ -163,6 +166,7 @@
           {@render row('drop_watch', 'Drop Watch', $dropWatchEnabled, (v) => void setDropWatchEnabled(v))}
           {@render row('cc_tracker', 'CC Tracker', $ccTrackerEnabled, (v) => void setCcTrackerEnabled(v))}
           {@render row('session', 'Session', $sessionWidgetEnabled, (v) => void setSessionWidgetEnabled(v))}
+          {@render row('group_buffs', 'Group Buffs', $groupBuffsEnabled, (v) => void setGroupBuffsEnabled(v))}
         </div>
       {/if}
     </div>

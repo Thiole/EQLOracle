@@ -71,6 +71,10 @@ export const sessionWidgetOpacity = writable(0.85);
 /** why: see dpsMeterOverallOpacity's own doc -- same "everything" fade,
  * this widget's own */
 export const sessionWidgetOverallOpacity = writable(1.0);
+/** why: Group Buff Tracker widget -- same on/off and opacity contract as the Session widget */
+export const groupBuffsEnabled = writable(false);
+export const groupBuffsOpacity = writable(0.85);
+export const groupBuffsOverallOpacity = writable(1.0);
 /** why: CC Tracker's own layout knob -- see ccSize.ts's own doc */
 export const ccTrackerSize = writable<CcSize>(DEFAULT_CC_SIZE);
 /** why: any ability/spell the player has "track"ed for the Skill
@@ -149,6 +153,8 @@ export function loadPreferences(): Promise<void> {
     ccTrackerOverallOpacity.set(prefs.overlay_cc_tracker_overall_opacity);
     sessionWidgetOpacity.set(prefs.overlay_session_opacity);
     sessionWidgetOverallOpacity.set(prefs.overlay_session_overall_opacity);
+    groupBuffsOpacity.set(prefs.overlay_group_buffs_opacity);
+    groupBuffsOverallOpacity.set(prefs.overlay_group_buffs_overall_opacity);
     ccTrackerSize.set(asCcSize(prefs.overlay_cc_tracker_size));
     trackedDropItems.set(prefs.tracked_drop_items ?? []);
     trackedDropSeenCounts.set(prefs.tracked_drop_seen_counts ?? {});
@@ -177,6 +183,8 @@ function currentPrefs(): PreferencesDto {
     overlay_cc_tracker_overall_opacity: get(ccTrackerOverallOpacity),
     overlay_session_opacity: get(sessionWidgetOpacity),
     overlay_session_overall_opacity: get(sessionWidgetOverallOpacity),
+    overlay_group_buffs_opacity: get(groupBuffsOpacity),
+    overlay_group_buffs_overall_opacity: get(groupBuffsOverallOpacity),
     overlay_cc_tracker_size: get(ccTrackerSize),
     tracked_drop_items: get(trackedDropItems),
     tracked_drop_seen_counts: get(trackedDropSeenCounts),
@@ -340,7 +348,24 @@ export async function setOverlayEnabledAll(on: boolean) {
     setDropWatchEnabled(on).catch(() => {}),
     setCcTrackerEnabled(on).catch(() => {}),
     setSessionWidgetEnabled(on).catch(() => {}),
+    setGroupBuffsEnabled(on).catch(() => {}),
   ]);
+}
+
+/** why: same contract as setSessionWidgetEnabled -- see its own doc */
+export async function setGroupBuffsEnabled(on: boolean) {
+  groupBuffsEnabled.set(on);
+  await api.setOverlayEnabled('group_buffs', on);
+}
+export async function setGroupBuffsOpacity(v: number) {
+  groupBuffsOpacity.set(v);
+  void api.setOverlayOpacity('group_buffs', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_group_buffs_opacity: v }).catch(() => {});
+}
+export async function setGroupBuffsOverallOpacity(v: number) {
+  groupBuffsOverallOpacity.set(v);
+  void api.setOverlayOverallOpacity('group_buffs', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_group_buffs_overall_opacity: v }).catch(() => {});
 }
 
 /** why: same contract as setDpsMeterEnabled -- see its own doc */

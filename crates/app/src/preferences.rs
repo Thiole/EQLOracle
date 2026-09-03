@@ -167,6 +167,11 @@ pub struct Preferences {
     /// "everything" fade, this widget's own.
     #[serde(default = "default_overall_opacity")]
     pub overlay_session_overall_opacity: f64,
+    /// why: the Group Buff Tracker's own opacities -- same pattern
+    #[serde(default = "default_overlay_opacity")]
+    pub overlay_group_buffs_opacity: f64,
+    #[serde(default = "default_overall_opacity")]
+    pub overlay_group_buffs_overall_opacity: f64,
     /// why: "small"/"medium"/"large" -- CC Tracker's own layout knob, not
     /// shared by any other widget today. A plain String, not a Rust enum
     /// -- same "unrecognized value falls back, no hard error" contract
@@ -268,6 +273,8 @@ impl Default for Preferences {
             overlay_cc_tracker_overall_opacity: default_overall_opacity(),
             overlay_session_opacity: default_overlay_opacity(),
             overlay_session_overall_opacity: default_overall_opacity(),
+            overlay_group_buffs_opacity: default_overlay_opacity(),
+            overlay_group_buffs_overall_opacity: default_overall_opacity(),
             overlay_cc_tracker_size: default_cc_tracker_size(),
             tracked_skills: default_tracked_skills(),
             tracked_target_effects: Vec::new(),
@@ -413,6 +420,8 @@ mod tests {
             overlay_cc_tracker_overall_opacity: 0.6,
             overlay_session_opacity: 0.45,
             overlay_session_overall_opacity: 0.65,
+            overlay_group_buffs_opacity: 0.45,
+            overlay_group_buffs_overall_opacity: 0.65,
             overlay_cc_tracker_size: "large".to_string(),
             tracked_skills: vec!["Kick".to_string(), "Backstab".to_string()],
             tracked_target_effects: vec!["Tashania".to_string()],

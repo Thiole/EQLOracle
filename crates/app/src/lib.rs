@@ -21,6 +21,7 @@ pub mod emumaps;
 pub mod epicquests;
 pub mod flavordata;
 pub mod gearplanner;
+pub mod groupbuffs;
 pub mod history;
 pub mod hpdata;
 pub mod ingest;
