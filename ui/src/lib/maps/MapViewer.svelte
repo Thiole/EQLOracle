@@ -146,12 +146,14 @@
       fg,
       // why: barely there -- the floor should read as space, not compete
       // with the walls, the dots or the path ("much more subtle")
-      new THREE.MeshBasicMaterial({ color: 0x1e2a38, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }),
+      // why: one clear step above the canvas -- the walkable floor reads
+      // as space without competing with walls, dots or the path
+      new THREE.MeshBasicMaterial({ color: 0x1c2735, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }),
     );
     navFillMesh.renderOrder = -2;
     const wg = new THREE.BufferGeometry();
     wg.setAttribute('position', new THREE.BufferAttribute(wire, 3));
-    navWireMesh = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x2f4256, transparent: true, opacity: 0.22, depthWrite: false }));
+    navWireMesh = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x33475c, transparent: true, opacity: 0.45, depthWrite: false }));
     navWireMesh.renderOrder = -1;
     scene.add(navFillMesh);
     scene.add(navWireMesh);
@@ -446,7 +448,7 @@
     // clearly against this.
     // why: a dark ground -- the con-colored dots and the magenta path read
     // against it; the map files' black wall lines are lifted below
-    localScene.background = new THREE.Color(0x141a22);
+    localScene.background = new THREE.Color(0x0e1218);
     scene = localScene;
 
     const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100_000);
@@ -533,15 +535,44 @@
     const initialNpcMarkers = untrack(() => npcMarkers);
     liveNpcMarkers = initialNpcMarkers;
     const npcGeo = new THREE.BufferGeometry();
-    npcGeo.setAttribute('position', new THREE.BufferAttribute(npcPositionsOf(initialNpcMarkers), 3));
-    npcGeo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(initialNpcMarkers, untrack(() => highlightName), untrack(() => playerLevel)), 3));
+    fillNpcGeometry(npcGeo, initialNpcMarkers, untrack(() => highlightName), untrack(() => playerLevel));
+    // why: a small shader, not PointsMaterial -- each dot gets its own
+    // size (by threat) and a border ring, so a dot pops without being
+    // big; the con color fills the disc, the ring is dark on wiki spots
+    // and light on surveyed ones
     const localNpcPoints = new THREE.Points(
       npcGeo,
-      // why: vertexColors -- a surveyed spawn (the in-game /loc pack) is
-      // green, a wiki XY-only spot stays cyan, same confirmed/assumed
-      // split the drop list uses
-      new THREE.PointsMaterial({ vertexColors: true, size: 9, sizeAttenuation: false }),
+      new THREE.ShaderMaterial({
+        uniforms: { uDpr: { value: Math.min(window.devicePixelRatio || 1, 2) } },
+        vertexShader: `
+          attribute float size;
+          attribute float border;
+          varying vec3 vColor;
+          varying float vBorder;
+          uniform float uDpr;
+          void main() {
+            vColor = color;
+            vBorder = border;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            gl_PointSize = size * uDpr;
+          }`,
+        fragmentShader: `
+          varying vec3 vColor;
+          varying float vBorder;
+          void main() {
+            vec2 c = gl_PointCoord - vec2(0.5);
+            float d = length(c) * 2.0;
+            if (d > 1.0) discard;
+            vec3 ring = vec3(vBorder);
+            vec3 col = d > 0.72 ? ring : vColor;
+            gl_FragColor = vec4(col, 1.0);
+          }`,
+        vertexColors: true,
+        transparent: false,
+        depthTest: false,
+      }),
     );
+    localNpcPoints.renderOrder = 10;
     localScene.add(localNpcPoints);
     npcPointsMesh = localNpcPoints;
 
@@ -691,7 +722,49 @@
     if (diff >= 1) return [0.98, 0.8, 0.2]; // yellow
     if (diff === 0) return [0.95, 0.95, 0.95]; // white
     if (diff >= -8) return [0.35, 0.6, 1.0]; // blue
-    return [0.3, 0.8, 0.35]; // green
+    return [0.36, 0.62, 0.4]; // green, muted -- trivial, out of the way
+  }
+
+  // why: size by threat -- what can kill you is what must be in view;
+  // a trivial (green) mob is a small dot, a red one is the biggest. The
+  // picked mob's spots are bigger still; with a pick active every
+  // other dot shrinks so the picked ones own the map.
+  function conSize(level: string | null, me: number | null): number {
+    if (!level || me == null) return 6;
+    const nums = level.match(/\d+/g)?.map(Number) ?? [];
+    if (!nums.length) return 6;
+    const diff = Math.max(...nums) - me;
+    if (diff >= 3) return 10;
+    if (diff >= 1) return 8;
+    if (diff === 0) return 7;
+    if (diff >= -8) return 6;
+    return 5;
+  }
+  function npcSizesOf(markers: NpcMarkerDto[], highlight: string | null, me: number | null): Float32Array {
+    const out = new Float32Array(markers.length);
+    const key = highlight ? foldMob(highlight) : null;
+    for (let i = 0; i < markers.length; i++) {
+      const base = conSize(markers[i].level, me);
+      out[i] = !key ? base : foldMob(markers[i].name) === key ? 14 : base * 0.7;
+    }
+    return out;
+  }
+  // why: the ring -- a light border marks a surveyed (3D, confirmed)
+  // spawn, a dark one a wiki spot; both pop against the ground
+  function npcBordersOf(markers: NpcMarkerDto[], highlight: string | null): Float32Array {
+    const out = new Float32Array(markers.length);
+    const key = highlight ? foldMob(highlight) : null;
+    for (let i = 0; i < markers.length; i++) {
+      const picked = key != null && foldMob(markers[i].name) === key;
+      out[i] = picked ? 1.0 : markers[i].source === 'survey' ? 0.85 : 0.08;
+    }
+    return out;
+  }
+  function fillNpcGeometry(geo: THREE.BufferGeometry, markers: NpcMarkerDto[], highlight: string | null, me: number | null) {
+    geo.setAttribute('position', new THREE.BufferAttribute(npcPositionsOf(markers), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(markers, highlight, me), 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(npcSizesOf(markers, highlight, me), 1));
+    geo.setAttribute('border', new THREE.BufferAttribute(npcBordersOf(markers, highlight), 1));
   }
 
   function npcColorsOf(markers: NpcMarkerDto[], highlight: string | null, me: number | null): Float32Array {
@@ -742,8 +815,7 @@
     if (!npcPointsMesh) return;
     const oldGeo = npcPointsMesh.geometry;
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(npcPositionsOf(markers), 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(markers, highlight, me), 3));
+    fillNpcGeometry(geo, markers, highlight, me);
     npcPointsMesh.geometry = geo;
     oldGeo.dispose();
   });
