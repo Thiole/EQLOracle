@@ -34,6 +34,9 @@ use std::sync::OnceLock;
 /// why: 6% compounding per rank level (I-X), not 10% linear -- see module doc
 pub const RANK_DAMAGE_PER_LEVEL: f64 = 0.06;
 pub const TICK_SECS: f64 = 6.0;
+/// why: every spell's floor recast -- a shared timer id at this recast
+/// shares nothing more than the cooldown everyone has
+pub const GLOBAL_COOLDOWN_SECS: f64 = 1.5;
 
 // why: unverified, wiki-sourced -- see this module's own doc for why
 // these three (and only these three) still borrow the eqlwiki "Spell
@@ -346,8 +349,14 @@ fn build_dto(
         };
 
     // why: the game's own timer id (spelltimers) -- spells sharing one
-    // lock together in the rotation; no shape heuristics
-    let reuse_group = timer.map(|t| format!("timer:{t}"));
+    // lock together for the cast spell's own recast. A recast at or under
+    // the global cooldown locks nothing beyond what every spell already
+    // has (real: Rend and Mana Detonation share id 25 at 1.5s, Ice
+    // Comet's id 23 is on 885 spells), so only a longer recast forms a
+    // group. No shape heuristics.
+    let reuse_group = timer
+        .filter(|_| recast_time > GLOBAL_COOLDOWN_SECS)
+        .map(|t| format!("timer:{t}"));
     Some(DamageSpellDto {
         name: spell.name.clone(),
         icon: spell.icon.clone(),
@@ -597,6 +606,13 @@ mod tests {
         assert_eq!(
             build_dto(nuke, 0, 1.0, 1.0, None).map(|d| d.reuse_group),
             Some(None)
+        );
+        // why: real regression -- Rend and Mana Detonation share id 25 at
+        // a 1.5s recast; that is the global cooldown, not a shared lock
+        assert_eq!(
+            build_dto(nuke, 0, 1.0, 1.0, Some(25)).map(|d| d.reuse_group),
+            Some(None),
+            "a global-cooldown recast forms no group"
         );
     }
 
