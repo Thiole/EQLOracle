@@ -444,9 +444,13 @@
     liveNpcMarkers = initialNpcMarkers;
     const npcGeo = new THREE.BufferGeometry();
     npcGeo.setAttribute('position', new THREE.BufferAttribute(npcPositionsOf(initialNpcMarkers), 3));
+    npcGeo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(initialNpcMarkers), 3));
     const localNpcPoints = new THREE.Points(
       npcGeo,
-      new THREE.PointsMaterial({ color: 0x2dd4ff, size: 7, sizeAttenuation: false }),
+      // why: vertexColors -- a surveyed spawn (the in-game /loc pack) is
+      // green, a wiki XY-only spot stays cyan, same confirmed/assumed
+      // split the drop list uses
+      new THREE.PointsMaterial({ vertexColors: true, size: 7, sizeAttenuation: false }),
     );
     localScene.add(localNpcPoints);
     npcPointsMesh = localNpcPoints;
@@ -576,6 +580,17 @@
     };
   });
 
+  function npcColorsOf(markers: NpcMarkerDto[]): Float32Array {
+    const out = new Float32Array(markers.length * 3);
+    for (let i = 0; i < markers.length; i++) {
+      const survey = markers[i].source === 'survey';
+      out[i * 3] = survey ? 0.13 : 0.18;
+      out[i * 3 + 1] = survey ? 0.77 : 0.83;
+      out[i * 3 + 2] = survey ? 0.37 : 1.0;
+    }
+    return out;
+  }
+
   function npcPositionsOf(markers: NpcMarkerDto[]): Float32Array {
     // `z` is null for most real entries (the wiki scrape is 2D for the
     // majority of mobs) -- rendered at 0 rather than guessed from nearby
@@ -600,6 +615,7 @@
     const oldGeo = npcPointsMesh.geometry;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(npcPositionsOf(markers), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(markers), 3));
     npcPointsMesh.geometry = geo;
     oldGeo.dispose();
   });

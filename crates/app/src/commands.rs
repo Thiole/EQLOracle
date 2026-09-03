@@ -2213,15 +2213,23 @@ pub struct NpcMarkerDto {
     pub y: f32,
     /// why: None for a 2D-only wiki spot, most real entries
     pub z: Option<f32>,
+    /// why: "survey" (the in-game /loc pack, 3D) or "wiki" (XY only)
+    pub source: &'static str,
 }
 
 /// why: real spawn points for an exact `Npc::zone` value, not a name to fuzzy-match again
 
 #[tauri::command]
 pub fn get_npc_markers_for_zone(zone: String) -> Vec<NpcMarkerDto> {
-    npcdata::markers_for_zone(&zone)
+    npcdata::markers_for_zone_sourced(&zone)
         .into_iter()
-        .map(|(name, x, y, z)| NpcMarkerDto { name, x, y, z })
+        .map(|(name, x, y, z, source)| NpcMarkerDto {
+            name,
+            x,
+            y,
+            z,
+            source,
+        })
         .collect()
 }
 

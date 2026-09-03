@@ -299,6 +299,20 @@ pub fn candidate_zones(target: &str) -> Vec<String> {
 /// have no single place to route to and contribute nothing
 pub fn nav_points_for(name: &str) -> Vec<(String, f32, f32, Option<f32>)> {
     let mut out = Vec::new();
+    // why: surveyed points first -- they carry a z (see spawndata); the
+    // zone is the wiki zone the raw log zone folds to, so routing keys
+    // stay the ones zone_matches already resolves everywhere else
+    for s in crate::spawndata::spawns() {
+        if !crate::spawndata::same_mob(&s.name, name) {
+            continue;
+        }
+        let zone = crate::zonedata::zones()
+            .iter()
+            .find(|z| crate::zone::zone_matches(&s.zone, &z.name))
+            .map(|z| z.name.clone())
+            .unwrap_or_else(|| s.zone.clone());
+        out.push((zone, s.x, s.y, Some(s.z)));
+    }
     for n in npcs() {
         if !n.name.eq_ignore_ascii_case(name) {
             continue;
@@ -307,23 +321,62 @@ pub fn nav_points_for(name: &str) -> Vec<(String, f32, f32, Option<f32>)> {
             continue;
         };
         for (x, y, z) in parse_locations(loc) {
+            // why: a wiki spot a survey point already covers is dropped --
+            // one marker, the one with a z
+            if out.iter().any(|(oz, ox, oy, _)| {
+                oz == zone && ((ox - x).powi(2) + (oy - y).powi(2)).sqrt() <= SURVEY_COVERS_UNITS
+            }) {
+                continue;
+            }
             out.push((zone.clone(), x, y, z));
         }
     }
     out
 }
 
+/// why: a wiki spot this close to a surveyed point is the same spawn
+const SURVEY_COVERS_UNITS: f32 = 15.0;
+
 /// why: exact match -- fuzzy work already happened in `candidate_zones`;
 /// multi-spawn mobs contribute one marker per point, not deduplicated
 pub fn markers_for_zone(zone: &str) -> Vec<(String, f32, f32, Option<f32>)> {
-    let mut out = Vec::new();
+    markers_for_zone_sourced(zone)
+        .into_iter()
+        .map(|(name, x, y, z, _)| (name, x, y, z))
+        .collect()
+}
+
+/// why: markers with their source -- "survey" (the in-game /loc pack,
+/// has a z) or "wiki" (XY only) -- so the map can color them apart.
+/// Survey points come first and cover any wiki spot within
+/// SURVEY_COVERS_UNITS of them.
+pub fn markers_for_zone_sourced(zone: &str) -> Vec<(String, f32, f32, Option<f32>, &'static str)> {
+    let mut out: Vec<(String, f32, f32, Option<f32>, &'static str)> = Vec::new();
+    for s in crate::spawndata::spawns_in_wiki_zone(zone) {
+        // why: the wiki's own name for the mob when it has one, so the
+        // marker label and the NPC list agree ("an orc legionnaire")
+        let name = npcs()
+            .iter()
+            .find(|n| {
+                n.zone.as_deref() == Some(zone) && crate::spawndata::same_mob(&n.name, &s.name)
+            })
+            .map(|n| n.name.clone())
+            .unwrap_or_else(|| s.name.clone());
+        out.push((name, s.x, s.y, Some(s.z), "survey"));
+    }
     for n in npcs() {
         if n.zone.as_deref() != Some(zone) {
             continue;
         }
         let Some(loc) = &n.location else { continue };
         for (x, y, z) in parse_locations(loc) {
-            out.push((n.name.clone(), x, y, z));
+            if out.iter().any(|(_, ox, oy, _, src)| {
+                *src == "survey"
+                    && ((ox - x).powi(2) + (oy - y).powi(2)).sqrt() <= SURVEY_COVERS_UNITS
+            }) {
+                continue;
+            }
+            out.push((n.name.clone(), x, y, z, "wiki"));
         }
     }
     out

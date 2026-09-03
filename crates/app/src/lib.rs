@@ -49,6 +49,7 @@ pub mod settings;
 pub mod skilldata;
 pub mod skilltracker;
 pub mod skyquests;
+pub mod spawndata;
 pub mod spellbookfiles;
 pub mod spelldata;
 pub mod spelleffect;
