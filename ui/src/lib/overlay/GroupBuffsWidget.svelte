@@ -41,7 +41,12 @@
           {#if r.active}
             <span class="truncate text-good" title="on you">{r.active}</span>
           {:else}
-            <span class="truncate text-caution" title="not on you -- who could cast it">{r.best_spell} ({r.casters.join(', ')})</span>
+            <!-- why: name the lines assumed missing, not just the kind --
+                 ranks of a line are one entry, best rank first -->
+            <span
+              class="truncate text-caution"
+              title={r.lines.map((l) => `${l.best_spell} -- ${l.casters.join(', ')}`).join('\n')}
+            >{r.lines.map((l) => l.line).join(', ') || 'nobody can cast it'}</span>
           {/if}
         </div>
       {/each}

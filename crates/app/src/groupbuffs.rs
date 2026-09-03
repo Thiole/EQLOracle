@@ -150,15 +150,27 @@ pub fn benefits(kind: BuffKind, my_classes: &[String]) -> bool {
     }
 }
 
+/// why: one spell LINE the party could put on you -- ranks of a line are
+/// one entry (Clarity I/II/III is "Clarity"), because casting any of them
+/// covers the same slot
+#[derive(Debug, Clone, Serialize)]
+pub struct BuffLineDto {
+    /// why: the line as named, rank numeral stripped
+    pub line: String,
+    /// why: the highest-level rank of it the party can actually cast
+    pub best_spell: String,
+    pub casters: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BuffRowDto {
     pub kind: BuffKind,
     pub label: &'static str,
     /// why: on you right now -- the spell's name when it is
     pub active: Option<String>,
-    /// why: the best spell of this kind someone in the party can cast, and who
-    pub best_spell: String,
-    pub casters: Vec<String>,
+    /// why: every line of this kind the party could cast, best first --
+    /// what is assumed missing when nothing of the kind is on you
+    pub lines: Vec<BuffLineDto>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -184,6 +196,32 @@ pub struct GroupBuffsDto {
 /// why: a class counts as confirmed with this many combat votes, same
 /// bar the ally table turns green at
 const CONFIRMED_VOTES: u32 = 12;
+
+/// why: "Clarity II" and "Clarity" are one line -- a trailing roman
+/// numeral is a rank, same rule the spellbook's own line grouping uses
+fn base_name(name: &str) -> &str {
+    match name.rsplit_once(' ') {
+        Some((base, tail))
+            if !tail.is_empty()
+                && tail
+                    .bytes()
+                    .all(|b| matches!(b, b'I' | b'V' | b'X' | b'L' | b'C' | b'D' | b'M')) =>
+        {
+            base
+        }
+        _ => name,
+    }
+}
+
+/// why: the line a spell belongs to. Real data (2026-09-03): "Clarity"
+/// and "Clarity II" carry different descriptions (the higher rank
+/// appends a forum link and a min-level note), so only the rank-stripped
+/// name groups them. Renamed tiers of one family (Breeze, Clarity) stay
+/// separate lines on purpose -- either one covers the slot, and naming
+/// both tells you what the party could actually cast.
+fn line_key(spell: &Spell) -> String {
+    base_name(&spell.name).to_string()
+}
 
 pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
     let now = ing.now_ms();
@@ -228,7 +266,8 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
 
     // why: per kind, the best (highest-level) party-castable spell and
     // everyone who could cast it -- confirmed classes only
-    let mut best: BTreeMap<BuffKind, (u32, String, HashSet<String>)> = BTreeMap::new();
+    type LineAcc = BTreeMap<String, (u32, String, HashSet<String>)>;
+    let mut best: BTreeMap<BuffKind, LineAcc> = BTreeMap::new();
     for member in party.iter().filter(|m| m.confirmed) {
         for spell in spells().iter().filter(|s| is_party_buff(s)) {
             let Some(kind) = kind_of(spell) else { continue };
@@ -245,11 +284,13 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             let rank = sc.level.unwrap_or(0);
             let e = best
                 .entry(kind)
+                .or_default()
+                .entry(line_key(spell))
                 .or_insert_with(|| (0, spell.name.clone(), HashSet::new()));
-            if rank > e.0 || e.2.is_empty() {
-                if rank > e.0 {
-                    e.2.clear();
-                }
+            // why: within a line, the highest rank anyone can cast is the
+            // one worth naming; every member who can cast any rank of it
+            // is a caster for the line
+            if rank >= e.0 {
                 e.0 = rank;
                 e.1 = spell.name.clone();
             }
@@ -279,15 +320,28 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
 
     let rows: Vec<BuffRowDto> = best
         .into_iter()
-        .map(|(kind, (_, best_spell, casters))| {
-            let mut casters: Vec<String> = casters.into_iter().collect();
-            casters.sort();
+        .map(|(kind, by_line)| {
+            let mut lines: Vec<(u32, BuffLineDto)> = by_line
+                .into_values()
+                .map(|(rank, best_spell, casters)| {
+                    let mut casters: Vec<String> = casters.into_iter().collect();
+                    casters.sort();
+                    (
+                        rank,
+                        BuffLineDto {
+                            line: base_name(&best_spell).to_string(),
+                            best_spell,
+                            casters,
+                        },
+                    )
+                })
+                .collect();
+            lines.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.line.cmp(&b.1.line)));
             BuffRowDto {
                 kind,
                 label: kind.label(),
                 active: active_by_kind.get(&kind).cloned(),
-                best_spell,
-                casters,
+                lines: lines.into_iter().map(|(_, l)| l).collect(),
             }
         })
         .collect();
@@ -323,6 +377,21 @@ mod tests {
         assert_eq!(k("Clarity"), Some(BuffKind::ManaRegen));
         assert_eq!(k("Aegolism"), Some(BuffKind::Hp));
         assert_eq!(k("Spirit of Wolf"), Some(BuffKind::Movement));
+    }
+
+    /// why: Spencer -- the tracker should name the lines assumed missing.
+    /// Ranks of one line are one entry; genuinely different lines are not
+    /// folded together
+    #[test]
+    fn ranks_of_a_line_share_an_entry_and_different_lines_do_not() {
+        let clarity = crate::spelldata::spell_by_name("Clarity").expect("in pack");
+        let clarity_ii = crate::spelldata::spell_by_name("Clarity II").expect("in pack");
+        let breeze = crate::spelldata::spell_by_name("Breeze").expect("in pack");
+        assert_eq!(line_key(clarity), line_key(clarity_ii));
+        assert_ne!(line_key(clarity), line_key(breeze));
+        assert_eq!(line_key(clarity_ii), "Clarity");
+        assert_eq!(base_name("Clarity II"), "Clarity");
+        assert_eq!(base_name("Spirit of Wolf"), "Spirit of Wolf");
     }
 
     #[test]

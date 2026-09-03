@@ -41,13 +41,19 @@ export interface FocusEffectDto {
   max_level: number | null;
 }
 
+export interface BuffLineDto {
+  /** why: the line, rank numeral stripped ("Clarity", not "Clarity II") */
+  line: string;
+  best_spell: string;
+  casters: string[];
+}
 export interface BuffRowDto {
   kind: string;
   label: string;
   /** why: the spell on you now, when one of this kind is */
   active: string | null;
-  best_spell: string;
-  casters: string[];
+  /** why: every line of this kind the party could cast, best first -- what is assumed missing */
+  lines: BuffLineDto[];
 }
 export interface PartyMemberDto {
   name: string;
