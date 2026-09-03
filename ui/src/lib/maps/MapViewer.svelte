@@ -140,16 +140,18 @@
     }
     const fg = new THREE.BufferGeometry();
     fg.setAttribute('position', new THREE.BufferAttribute(fill, 3));
-    // why: 65% opacity, no depth write -- the map lines and the green
+    // why: translucent, no depth write -- the map lines and the magenta
     // path draw through it, which is the whole point of the overlay
     navFillMesh = new THREE.Mesh(
       fg,
-      new THREE.MeshBasicMaterial({ color: 0x2b4a6a, transparent: true, opacity: 0.65, side: THREE.DoubleSide, depthWrite: false }),
+      // why: barely there -- the floor should read as space, not compete
+      // with the walls, the dots or the path ("much more subtle")
+      new THREE.MeshBasicMaterial({ color: 0x1e2a38, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }),
     );
     navFillMesh.renderOrder = -2;
     const wg = new THREE.BufferGeometry();
     wg.setAttribute('position', new THREE.BufferAttribute(wire, 3));
-    navWireMesh = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x6aa3d5, transparent: true, opacity: 0.35, depthWrite: false }));
+    navWireMesh = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x2f4256, transparent: true, opacity: 0.22, depthWrite: false }));
     navWireMesh.renderOrder = -1;
     scene.add(navFillMesh);
     scene.add(navWireMesh);
@@ -442,7 +444,7 @@
     // the format's other common wall color) and the app's own marker
     // colors (red/bright-yellow "here", cyan NPC dots) all still read
     // clearly against this.
-    // why: a dark ground -- the con-colored dots and the green path read
+    // why: a dark ground -- the con-colored dots and the magenta path read
     // against it; the map files' black wall lines are lifted below
     localScene.background = new THREE.Color(0x141a22);
     scene = localScene;
@@ -779,7 +781,7 @@
       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       return geo;
     };
-    // why: bright green, distinct from every existing marker color (red
+    // why: hot magenta, distinct from every marker and con color (red
     // confirmed, bright yellow guess, cyan NPC) -- `linewidth` is a real
     // WebGL limitation, not a mistake here: most GPU/driver combinations
     // render `LineBasicMaterial` at a flat 1px regardless of this value,
@@ -795,10 +797,15 @@
       const geo = toGeo(leg.waypoints);
       let mesh: THREE.Line;
       if (leg.kind === 'hop') {
-        mesh = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: 0x22c55e, dashSize: 8, gapSize: 6 }));
+        mesh = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: 0xff2bd6, dashSize: 8, gapSize: 6, depthTest: false }));
+        mesh.renderOrder = 20;
         mesh.computeLineDistances();
       } else {
-        mesh = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0x22c55e, linewidth: 2 }));
+        // why: hot magenta, drawn on top of everything -- the green was
+        // blending into the green con dots and the floor ("make the
+        // pathing color very apparent")
+        mesh = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xff2bd6, linewidth: 2, depthTest: false }));
+        mesh.renderOrder = 20;
       }
       scene.add(mesh);
       pathLineMeshes.push(mesh);

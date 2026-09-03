@@ -636,7 +636,7 @@
             <p class="border-b border-border px-2 py-1.5 text-[11px] text-bad">couldn't draw the path to {$navigationPoi?.name}: {poiError}</p>
           {:else if poiWalkPath}
             <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">
-              path to {$navigationPoi?.name} drawn on the map (green) -- {poiWalkPath.waypoints.length} waypoints.
+              path to {$navigationPoi?.name} drawn on the map (magenta) -- {poiWalkPath.waypoints.length} waypoints.
             </p>
             {#if poiFloors.length > 1}
               <div class="border-b border-border px-2 py-1.5 text-[11px]">
@@ -656,7 +656,7 @@
           {:else if gpsError}
             <p class="border-b border-border px-2 py-1.5 text-[11px] text-bad">couldn't draw the next step: {gpsError}</p>
           {:else if gpsWalkPath}
-            <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">next-step path drawn on the map (green).</p>
+            <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">next-step path drawn on the map (magenta).</p>
           {:else if $activeRoute && $activeRoute !== 'loading' && $activeRoute !== 'error' && $activeRoute.hops.length > 0 && !viewingLiveZone}
             <p class="border-b border-border px-2 py-1.5 text-[11px] text-muted-foreground">open your current zone's map to see the next-step path drawn.</p>
           {/if}
