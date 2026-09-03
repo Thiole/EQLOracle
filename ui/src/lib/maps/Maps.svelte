@@ -445,10 +445,10 @@
                 </button>
                 {#if open}
                   <div class="px-2 pt-0.5 pb-1.5 text-[10px] text-muted-foreground">
-                    {#if n.race || n.class}
-                      <p>{[n.race, n.class].filter(Boolean).join(' · ')}{n.has_markers ? ' · on map' : ''}</p>
+                    {#if n.race || n.class || n.has_markers}
+                      <p>{[n.race, n.class].filter(Boolean).join(' · ')}{n.has_markers ? `${n.race || n.class ? ' · ' : ''}${n.spawn_count} spot${n.spawn_count === 1 ? '' : 's'} lit on the map` : ''}</p>
                     {/if}
-                    {#if selectedNavPoint}
+                    {#if selectedNavPoint && n.routable}
                       <button
                         type="button"
                         class="mt-0.5 flex items-center gap-1 rounded-sm border border-primary/40 px-1.5 py-0.5 text-[10px] text-primary hover:bg-primary/10"
@@ -679,6 +679,7 @@
             map={$currentMap}
             zone={$selectedZone}
             npcMarkers={$npcMarkers}
+            highlightName={selectedNpc}
             zoneContext={$zoneContext}
             path={displayedPath}
             onMarkerClick={walkMode ? onMarkerClicked : null}

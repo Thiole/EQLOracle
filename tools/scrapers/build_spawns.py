@@ -4,8 +4,8 @@ macro writes two lines within a second; each pair is one sighting of
 that mob at that spot, in the zone of the last zone line. A `/say invis`
 right before a pair flags that sighting as seen while invisible. Same
 name within MERGE_UNITS collapses into one entry with a higher count
-(the surveyor may have keyed the same mob twice). Merges into the
-existing pack so every session's survey accumulates.
+(the surveyor may have keyed the same mob twice). Rebuilt from the
+given logs every run (idempotent) -- pass every surveyed log together.
 input:  one or more eqlog_*.txt
 output: packs/spawns.json  [{zone, name, x, y, z, count, invis, first_seen, last_seen}]
 run:    python3 tools/scrapers/build_spawns.py <log> [<log>...]
@@ -16,6 +16,8 @@ from datetime import datetime
 PAIR_MAX_S = 2
 MERGE_UNITS = 5.0
 NOTES = {"invis", "invisible", "inv"}
+# why: `%t` with nothing targeted expands to the literal word "Target"
+IGNORE = {"target"}
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 OUT = os.path.join(ROOT, "packs", "spawns.json")
@@ -53,6 +55,8 @@ def survey(paths):
                     said = s.group(1).strip()
                     if said.lower() in NOTES:
                         invis = True
+                    elif said.lower() in IGNORE:
+                        pending = None
                     else:
                         pending = (ts, said)
                     continue
@@ -65,13 +69,6 @@ def survey(paths):
                     pending = None
                     invis = False
     return sightings
-
-def load_existing():
-    try:
-        with open(OUT) as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
 
 def merge(entries, sightings):
     for zone, name, x, y, z, invis, ts in sightings:
@@ -102,7 +99,10 @@ def main():
     if not logs:
         print(__doc__); sys.exit(2)
     sightings = survey(logs)
-    entries = merge(load_existing(), sightings)
+    # why: rebuilt from the logs every run, never merged into the old
+    # pack -- the log persists, so a re-run must give the same pack,
+    # not doubled counts; pass every surveyed log together
+    entries = merge([], sightings)
     entries.sort(key=lambda e: (e["zone"], e["name"].lower(), e["x"], e["y"]))
     with open(OUT, "w") as f:
         json.dump(entries, f, indent=1)

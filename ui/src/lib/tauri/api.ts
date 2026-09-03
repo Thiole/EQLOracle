@@ -1067,6 +1067,10 @@ export interface ZoneNpcDto {
   class: string | null;
   drops: string[];
   has_markers: boolean;
+  /** why: spots on the map for it, survey + wiki */
+  spawn_count: number;
+  /** why: named mobs only get 'set path here'; generic ones light up on the map instead */
+  routable: boolean;
 }
 
 /** One route leg: 'walk' carries mesh waypoints; 'hop' is a location

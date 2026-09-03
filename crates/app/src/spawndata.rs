@@ -44,6 +44,14 @@ pub fn fold_mob_name(name: &str) -> String {
     lower
 }
 
+/// why: EQ's naming -- a named mob is capitalized ("Emperor Crush",
+/// "Orc Warden", "A very unpleasant hand"); a generic one starts
+/// lowercase ("orc centurion", "an orc thaumaturgist"). Routing is for
+/// the named ones; a generic mob has many spots and none is "the" spawn.
+pub fn is_named_mob(name: &str) -> bool {
+    name.trim().chars().next().is_some_and(|c| c.is_uppercase())
+}
+
 pub fn same_mob(a: &str, b: &str) -> bool {
     fold_mob_name(a) == fold_mob_name(b)
 }
@@ -64,6 +72,10 @@ mod tests {
         assert!(same_mob("orc centurion", "an orc centurion"));
         assert!(same_mob("A dwarven smith", "a dwarven smith"));
         assert!(!same_mob("orc centurion", "orc legionnaire"));
+        assert!(is_named_mob("Emperor Crush"));
+        assert!(is_named_mob("A very unpleasant hand"));
+        assert!(!is_named_mob("orc centurion"));
+        assert!(!is_named_mob("an orc thaumaturgist"));
         // why: the first survey -- Crushbone, keyed by the raw log zone
         assert!(spawns_in_wiki_zone("Crushbone").any(|s| same_mob(&s.name, "Emperor Crush")));
     }

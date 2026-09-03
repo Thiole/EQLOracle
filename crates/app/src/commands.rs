@@ -2178,6 +2178,12 @@ pub struct ZoneNpcDto {
     pub drops: Vec<String>,
     /// why: whether the marker overlay has plottable spots for it
     pub has_markers: bool,
+    /// why: how many spots the map has for it (survey + wiki)
+    pub spawn_count: usize,
+    /// why: "routing should only have the named mobs" -- a generic mob
+    /// has many spots and none is the one to path to; its spots light
+    /// up on the map instead (spawndata::is_named_mob)
+    pub routable: bool,
 }
 
 #[tauri::command]
@@ -2185,24 +2191,58 @@ pub fn list_zone_npcs(map_zone_name: String) -> Vec<ZoneNpcDto> {
     let zones: std::collections::HashSet<String> = npcdata::candidate_zones(&map_zone_name)
         .into_iter()
         .collect();
-    let marker_names: std::collections::HashSet<String> = npcdata::markers_for_zone(&map_zone_name)
-        .into_iter()
-        .map(|(name, _, _, _)| name)
-        .collect();
+    // why: spots per folded name, across every candidate wiki zone --
+    // survey points included, so a surveyed mob the wiki has no page
+    // for ("orc centurion") still gets a row, once, with its count
+    let mut spots: std::collections::HashMap<String, (String, usize)> =
+        std::collections::HashMap::new();
+    for z in &zones {
+        for (name, _, _, _) in npcdata::markers_for_zone(z) {
+            let e = spots
+                .entry(crate::spawndata::fold_mob_name(&name))
+                .or_insert((name.clone(), 0));
+            e.1 += 1;
+        }
+    }
     let mut out: Vec<ZoneNpcDto> = npcdata::npcs()
         .iter()
         .filter(|n| n.zone.as_ref().is_some_and(|z| zones.contains(z)))
-        .map(|n| ZoneNpcDto {
-            name: n.name.clone(),
-            level: n.level.clone(),
-            race: n.race.clone(),
-            class: n.class.clone(),
-            drops: n.known_loot.iter().map(|l| l.item.clone()).collect(),
-            has_markers: marker_names.contains(&n.name),
+        .map(|n| {
+            let count = spots
+                .get(&crate::spawndata::fold_mob_name(&n.name))
+                .map_or(0, |e| e.1);
+            ZoneNpcDto {
+                name: n.name.clone(),
+                level: n.level.clone(),
+                race: n.race.clone(),
+                class: n.class.clone(),
+                drops: n.known_loot.iter().map(|l| l.item.clone()).collect(),
+                has_markers: count > 0,
+                spawn_count: count,
+                routable: crate::spawndata::is_named_mob(&n.name),
+            }
         })
         .collect();
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    out.dedup_by(|a, b| a.name == b.name);
+    let known: std::collections::HashSet<String> = out
+        .iter()
+        .map(|n| crate::spawndata::fold_mob_name(&n.name))
+        .collect();
+    for (key, (name, count)) in &spots {
+        if !known.contains(key) {
+            out.push(ZoneNpcDto {
+                name: name.clone(),
+                level: None,
+                race: None,
+                class: None,
+                drops: Vec::new(),
+                has_markers: true,
+                spawn_count: *count,
+                routable: crate::spawndata::is_named_mob(name),
+            });
+        }
+    }
+    out.sort_by_key(|n| n.name.to_lowercase());
+    out.dedup_by(|a, b| crate::spawndata::same_mob(&a.name, &b.name));
     out
 }
 
@@ -2252,6 +2292,10 @@ pub struct NpcNavPointDto {
 /// alias fold `zone_matches` applies everywhere else.
 #[tauri::command]
 pub fn get_npc_nav_points(name: String) -> Vec<NpcNavPointDto> {
+    // why: routing is for named mobs only -- see ZoneNpcDto::routable
+    if !crate::spawndata::is_named_mob(&name) {
+        return Vec::new();
+    }
     npcdata::nav_points_for(&name)
         .into_iter()
         .map(|(zone, x, y, z)| {

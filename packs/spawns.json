@@ -1684,17 +1684,6 @@
  },
  {
   "zone": "Clan Crushbone",
-  "name": "Target",
-  "x": -618.08,
-  "y": 201.8,
-  "z": 3.81,
-  "count": 1,
-  "invis": false,
-  "first_seen": "2026-09-03 01:05:45",
-  "last_seen": "2026-09-03 01:05:45"
- },
- {
-  "zone": "Clan Crushbone",
   "name": "The Prophet",
   "x": 324.4,
   "y": 22.4,
@@ -1736,28 +1725,6 @@
   "invis": false,
   "first_seen": "2026-09-03 01:04:19",
   "last_seen": "2026-09-03 01:04:19"
- },
- {
-  "zone": "The Greater Faydark",
-  "name": "Target",
-  "x": 1403.0,
-  "y": 243.12,
-  "z": -23.04,
-  "count": 1,
-  "invis": false,
-  "first_seen": "2026-09-03 01:03:44",
-  "last_seen": "2026-09-03 01:03:44"
- },
- {
-  "zone": "The Greater Faydark",
-  "name": "Target",
-  "x": 2371.41,
-  "y": 9.04,
-  "z": 19.21,
-  "count": 1,
-  "invis": false,
-  "first_seen": "2026-09-03 01:04:07",
-  "last_seen": "2026-09-03 01:04:07"
  },
  {
   "zone": "The Northern Desert of Ro",

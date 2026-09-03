@@ -29,6 +29,7 @@
     map,
     zone,
     npcMarkers = [],
+    highlightName = null,
     zoneContext = null,
     path = null,
     onMarkerClick = null,
@@ -36,6 +37,8 @@
     map: MapFileDto;
     zone: string;
     npcMarkers?: NpcMarkerDto[];
+    /** why: the NPC picked in the list -- its spots light up, the rest dim */
+    highlightName?: string | null;
     zoneContext?: ZoneContextDto | null;
     /** why: a computed walking route to draw, from `Maps.svelte`'s own
      * `findWalkPath` query -- `null` when no route is currently shown.
@@ -444,7 +447,7 @@
     liveNpcMarkers = initialNpcMarkers;
     const npcGeo = new THREE.BufferGeometry();
     npcGeo.setAttribute('position', new THREE.BufferAttribute(npcPositionsOf(initialNpcMarkers), 3));
-    npcGeo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(initialNpcMarkers), 3));
+    npcGeo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(initialNpcMarkers, untrack(() => highlightName)), 3));
     const localNpcPoints = new THREE.Points(
       npcGeo,
       // why: vertexColors -- a surveyed spawn (the in-game /loc pack) is
@@ -580,13 +583,33 @@
     };
   });
 
-  function npcColorsOf(markers: NpcMarkerDto[]): Float32Array {
+  // why: "orc centurion", "an orc centurion" are one mob -- same fold
+  // the backend applies (spawndata::fold_mob_name)
+  function foldMob(name: string): string {
+    const l = name.trim().toLowerCase();
+    for (const a of ['an ', 'a ', 'the ']) if (l.startsWith(a)) return l.slice(a.length);
+    return l;
+  }
+
+  function npcColorsOf(markers: NpcMarkerDto[], highlight: string | null): Float32Array {
     const out = new Float32Array(markers.length * 3);
+    const key = highlight ? foldMob(highlight) : null;
     for (let i = 0; i < markers.length; i++) {
       const survey = markers[i].source === 'survey';
-      out[i * 3] = survey ? 0.13 : 0.18;
-      out[i * 3 + 1] = survey ? 0.77 : 0.83;
-      out[i * 3 + 2] = survey ? 0.37 : 1.0;
+      let r = survey ? 0.13 : 0.18;
+      let g = survey ? 0.77 : 0.83;
+      let b = survey ? 0.37 : 1.0;
+      if (key) {
+        // why: the picked mob's spots light up yellow, everything else dims
+        if (foldMob(markers[i].name) === key) {
+          r = 1.0; g = 0.85; b = 0.1;
+        } else {
+          r *= 0.25; g *= 0.25; b *= 0.25;
+        }
+      }
+      out[i * 3] = r;
+      out[i * 3 + 1] = g;
+      out[i * 3 + 2] = b;
     }
     return out;
   }
@@ -610,12 +633,13 @@
   // mesh's geometry in place, camera/controls/walls untouched.
   $effect(() => {
     const markers = npcMarkers; // tracked read -- this effect's whole point
+    const highlight = highlightName; // tracked too -- a list pick recolors
     liveNpcMarkers = markers;
     if (!npcPointsMesh) return;
     const oldGeo = npcPointsMesh.geometry;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(npcPositionsOf(markers), 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(markers), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(markers, highlight), 3));
     npcPointsMesh.geometry = geo;
     oldGeo.dispose();
   });
