@@ -315,6 +315,11 @@ pub struct DamageSpellDto {
     /// nothing applied; `focus_sources` names the foci that did
     pub focus_damage_pct: f64,
     pub focus_haste_pct: f64,
+    /// why: the rank-scaled cast before any cut, and every cut summed as a
+    /// share of it (focus + Quick Damage) -- the UI adds the invocation's
+    /// share to this, never multiplies
+    pub base_casting_time: f64,
+    pub cast_cut_pct: f64,
     pub focus_mana_pct: f64,
     pub focus_duration_pct: f64,
     pub focus_sources: Vec<String>,
@@ -345,10 +350,11 @@ fn build_dto(
     rank: u8,
     aa: &AaMods,
     focus: &[crate::focus::FocusEffect],
-    timer: Option<u32>,
+    game: Option<crate::spelltimers::SpellFileEntry>,
 ) -> Option<DamageSpellDto> {
     let dd_crit_mult = aa.dd_crit_mult;
     let dot_crit_mult = aa.dot_crit_mult;
+    let timer = game.map(|g| g.timer).filter(|t| *t != 0);
     let (base_hit, is_dot, base_upfront) = parse_damage(spell)?;
     if base_hit <= 0.0 {
         return None;
@@ -362,8 +368,17 @@ fn build_dto(
     let upfront = base_upfront * hit_mult * dd_crit_mult;
 
     let base_mana = spell.mana.unwrap_or(0.0);
-    let base_casting_time = spell.casting_time.unwrap_or(0.0);
-    let base_recast_time = spell.recast_time.unwrap_or(0.0).max(0.0);
+    // why: the game's own cast/recast win over the wiki's (real:
+    // Lifebite's wiki page has neither, and a 0 cast floored to 0.1s
+    // turned it into "Lifebite x118" in a rotation); a spell with no
+    // cast time from either source cannot be modeled and is left out
+    let game_cast = game.map(|g| g.cast_ms as f64 / 1000.0).filter(|c| *c > 0.0);
+    let game_recast = game.map(|g| g.recast_ms as f64 / 1000.0);
+    let base_casting_time = game_cast.or(spell.casting_time).unwrap_or(0.0);
+    if base_casting_time <= 0.0 {
+        return None;
+    }
+    let base_recast_time = game_recast.or(spell.recast_time).unwrap_or(0.0).max(0.0);
 
     let (total_damage, instant_damage, duration_secs, mana, casting_time, recast_time, _cycle_secs) =
         if is_dot {
@@ -462,17 +477,22 @@ fn build_dto(
         .collect();
     let lifetap = spell.target_type.as_deref() == Some("Lifetap");
     let dmg_mult = dmg_mult * if lifetap { 1.0 + aa.lifetap_bonus } else { 1.0 };
-    let quick = if !is_dot && casting_time >= QUICK_DAMAGE_MIN_CAST {
-        1.0 - aa.quick_damage_cut
+    // why: every cast cut is a share of the BASE cast (Spencer: "spell
+    // haste is base cast speeds, not after arcane") -- focus, Quick
+    // Damage and the invocation add up, they never compound
+    let quick_cut = if !is_dot && casting_time >= QUICK_DAMAGE_MIN_CAST {
+        aa.quick_damage_cut
     } else {
-        1.0
+        0.0
     };
+    let cast_cut = (1.0 - haste_mult) + quick_cut;
+    let base_casting_time_out = casting_time;
     // why: a duration focus stretches the tick stream, not the burst
     let tick_part = (total_damage - instant_damage) * dur_mult;
     let instant_damage = instant_damage * dmg_mult;
     let total_damage = instant_damage + tick_part * dmg_mult;
     let duration_secs = duration_secs.map(|d| d * dur_mult);
-    let casting_time = (casting_time * haste_mult * quick).max(0.1);
+    let casting_time = (base_casting_time_out * (1.0 - cast_cut)).max(0.1);
     let mana = (mana * mana_mult * (1.0 - aa.mana_cut)).max(1.0);
     let cycle_secs = match duration_secs {
         Some(d) => d.max(casting_time + recast_time),
@@ -480,6 +500,7 @@ fn build_dto(
     };
     let focus_damage_pct = (dmg_mult - 1.0) * 100.0;
     let focus_haste_pct = (1.0 - haste_mult) * 100.0;
+    let cast_cut_pct = cast_cut * 100.0;
     let focus_mana_pct = (1.0 - mana_mult) * 100.0;
     let focus_duration_pct = (dur_mult - 1.0) * 100.0;
 
@@ -500,6 +521,8 @@ fn build_dto(
         is_dot,
         focus_damage_pct,
         focus_haste_pct,
+        base_casting_time: base_casting_time_out,
+        cast_cut_pct,
         focus_mana_pct,
         focus_duration_pct,
         focus_sources,
@@ -527,7 +550,7 @@ pub fn list_damage_spells(
     assume_max_rank: bool,
     base_dir: Option<&std::path::Path>,
 ) -> Vec<DamageSpellDto> {
-    let timers = base_dir.map(crate::spelltimers::timers);
+    let game = base_dir.map(crate::spelltimers::spell_file);
     let focus: Vec<crate::focus::FocusEffect> =
         base_dir.map(crate::focus::equipped).unwrap_or_default();
     let aa = AaMods::read(ing);
@@ -544,9 +567,8 @@ pub fn list_damage_spells(
                 rank,
                 &aa,
                 &focus,
-                timers
-                    .as_ref()
-                    .and_then(|t| crate::spelltimers::timer_of(t, &s.name)),
+                game.as_ref()
+                    .and_then(|g| crate::spelltimers::entry_of(g, &s.name)),
             )
         })
         .collect()
@@ -734,7 +756,11 @@ mod tests {
                     ..Default::default()
                 },
                 &[],
-                Some(3)
+                Some(crate::spelltimers::SpellFileEntry {
+                    cast_ms: 5000,
+                    recast_ms: 12000,
+                    timer: 3
+                })
             )
             .map(|d| d.reuse_group),
             Some(Some("timer:3".to_string()))
@@ -781,7 +807,11 @@ mod tests {
                     ..Default::default()
                 },
                 &[],
-                Some(25)
+                Some(crate::spelltimers::SpellFileEntry {
+                    cast_ms: 5000,
+                    recast_ms: 1500,
+                    timer: 25
+                })
             )
             .map(|d| d.reuse_group),
             Some(None),
@@ -841,6 +871,59 @@ mod tests {
             dot_only.total_damage, plain.total_damage,
             "a DoT focus is not a nuke focus"
         );
+    }
+
+    /// why: real regression -- Lifebite's wiki page has no cast time, the
+    /// game file has 1.75s; the game wins, and a spell with neither is out
+    #[test]
+    fn the_game_files_cast_time_wins_and_no_cast_time_means_no_row() {
+        let lifebite = spelldata::spell_by_name("Lifebite").expect("in pack");
+        assert!(
+            lifebite.casting_time.is_none(),
+            "the premise: the wiki has none"
+        );
+        assert!(build_dto(lifebite, 0, &AaMods::default(), &[], None).is_none());
+        let game = crate::spelltimers::SpellFileEntry {
+            cast_ms: 1750,
+            recast_ms: 1500,
+            timer: 0,
+        };
+        let d = build_dto(lifebite, 0, &AaMods::default(), &[], Some(game)).expect("modeled");
+        assert!((d.casting_time - 1.75).abs() < 1e-9);
+        assert!((d.recast_time - 1.5).abs() < 1e-9);
+    }
+
+    /// why: Spencer -- "spell haste is base cast speeds, not after
+    /// arcane": a 15% focus and a 10% Quick Damage take 25% off the base
+    /// together, never 15% then 10% of what's left
+    #[test]
+    fn cast_cuts_add_up_on_the_base_cast() {
+        let nuke = spelldata::spell_by_name("Conflagration").expect("in pack");
+        let haste = crate::focus::FocusEffect {
+            item: "robe".into(),
+            name: "Spell Haste II".into(),
+            kind: crate::focus::FocusKind::Haste,
+            lo: 15.0,
+            hi: 15.0,
+            max_level: None,
+            decay_per_level: 0.0,
+            detrimental_only: false,
+            beneficial_only: false,
+            min_duration_secs: None,
+            max_duration_secs: None,
+            min_casting_time: Some(2.0),
+            exclude_ae: false,
+            current_hp_only: false,
+            other_effect_only: false,
+        };
+        let aa = AaMods {
+            quick_damage_cut: 0.10,
+            ..Default::default()
+        };
+        let d = build_dto(nuke, 0, &aa, &[haste], None).expect("modeled");
+        assert!((d.base_casting_time - 5.0).abs() < 1e-9);
+        assert!((d.cast_cut_pct - 25.0).abs() < 1e-9);
+        assert!((d.casting_time - 3.75).abs() < 1e-9, "{}", d.casting_time);
     }
 
     /// why: the AA side -- Quick Damage cuts a 3s+ nuke's cast, Spell

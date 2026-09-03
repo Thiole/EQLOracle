@@ -864,6 +864,9 @@ export interface DamageSpellDto {
   /** why: what worn gear and AAs added on top of the rank math (expected percents; a "1% to 20%" focus counts its middle) */
   focus_damage_pct: number;
   focus_haste_pct: number;
+  /** why: the cast before any cut, and every cut (focus + Quick Damage) as a share of it -- the invocation's share ADDS to this */
+  base_casting_time: number;
+  cast_cut_pct: number;
   focus_mana_pct: number;
   focus_duration_pct: number;
   focus_sources: string[];

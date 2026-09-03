@@ -94,7 +94,9 @@
       if (n > 0) {
         const timeCut = 0.2 + 0.1 * (n - 1);
         const manaCut = 0.1 + 0.05 * (n - 1);
-        casting_time *= 1 - timeCut;
+        // why: a share of the BASE cast, added to the focus/AA cuts the
+        // backend already took -- never compounded on the cut cast
+        casting_time = s.base_casting_time * Math.max(0.05, 1 - s.cast_cut_pct / 100 - timeCut);
         recast_time *= 1 - timeCut;
         mana *= 1 - manaCut;
       }
