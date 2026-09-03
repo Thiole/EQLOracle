@@ -21,9 +21,15 @@ Code: `crates/session/src/classdetect.rs` (your classes),
   cast, but always the bare spell name. Rank suffixes (X, IX ...) are
   spellbook casts only.
 - G5. Symphonic Aura sings silently: no "You begin singing" for its songs.
-  Only a Bard has it.
-- G6. Wiki spell levels are not this server's levels (Improved Invisibility
-  is listed Wizard 55 on a level-50 cap). They are never used as evidence.
+  Only a Bard has it. Its Self-target songs still land: "Your voice
+  booms." on the singer, "<Name>'s voice booms." in everyone else's log
+  (Amplification), every 6 seconds.
+- G6. Wiki spell levels are not always this server's levels (Improved
+  Invisibility is listed Wizard 55 on a level-50 cap). Any wiki level
+  above the cap is discarded for that class (Q1 pending).
+- G7. Poisons are Rogue-only. They are ability activations whose name ends
+  in " Venom" or " Poison"; the follow-up is "<Name> coats their blades in
+  ...". Backstab is Rogue-only.
 
 ## Your own classes (classdetect)
 
@@ -104,17 +110,55 @@ Code: `crates/session/src/classdetect.rs` (your classes),
 - T4. "Good" means every buff kind a confirmed (A4) party class can cast
   that benefits your class combo is on you.
 
+## Proposed model (Spencer's caveats of 2026-09-03, not built yet)
+
+Replaces C2-C8 and L2-L3 once confirmed. One evidence chain per
+character, rolling; nothing below is a static zone list.
+
+- P1. The unit of evidence is the encounter, not the zone visit. Casts
+  between encounters attach to the next encounter. (Q29)
+- P2. Unambiguous evidence confirms a class after 2 consecutive encounters
+  carrying it; elimination after 3. Nothing is ever forced.
+- P3. Evidence sources: casts, songs, stances, invocations, AA lines,
+  ability activations (poisons per G7), melee skills with a class list
+  (Backstab now; Kick/Bash/etc. once their class lists are verified for
+  EQ Legends), Self-target spells landing on you ("Your voice booms."),
+  and Self-target spells landing in third person, which name their
+  caster ("Cauth's voice booms." is Cauth's own Amplification).
+- P4. A zone line, including a confirmed teleport, never breaks the chain.
+  It weakens it: the current trio carries as a prior that fresh evidence
+  must re-clear at the same bar (P2). Same for a class proven long ago
+  and re-sighted: prior, same bar, then confirmed retroactively over the
+  chain.
+- P5. A contradiction (evidence no configuration of 3 can hold) starts a
+  count. After 3 consecutive encounters of conflicting evidence the chain
+  closes retroactively at the encounter where the conflict began, shown
+  as "??" from there; a new chain starts from that point and confirms on
+  its own. Until then the row shows the old trio with "?".
+- P6. Level: a ding raises every class confirmed in the chain at that
+  moment. A class that confirms later in the same chain gets the chain's
+  highest ding at that moment, retroactively within the chain only. The
+  row shows the lowest level among the trio's classes. A class with no
+  level in this chain shows the latest ding (Q6 answer: no guessing from
+  a multi-class spell; a spell only one trio class could cast raises that
+  class to its level, capped per G6).
+- P7. Pets: a pet's own casts are never evidence, but the summon that
+  produced it is (already the case); charm pets prove nothing.
+- P8. Loadout swap signals (S1-S3) close the chain the same way P5 does,
+  without the 3-encounter wait.
+
 ## Open questions
 
-- Q1. Level cap: is the server cap 50 right now? Should any level above
-  it be treated as data error?
-- Q2. L3 when a trio class has never dinged under a resolved trio: show
-  the latest ding, or show "?" for the level?
-- Q3. S1 uses the wiki's class lists. Leech is listed Necromancer-only
-  but SK casts it here. Is a curated "server exceptions" list wanted, or
-  keep the rare false swap (cost: one wrong "missing" until Quick Buff)?
+- Q1. Level cap: is the server cap 50 right now?
 - Q4. Should a /who on yourself (if it prints your own classes) override
-  detection for that visit the way it does for allies?
-- Q5. Which character does the app tail? Newest-modified eqlog in the
-  install's Logs folder. With two boxes logging to one folder it would
-  flip between them. Is a character picker wanted?
+  detection the way it does for allies?
+- Q5. The app tails the newest-modified eqlog in the install's Logs
+  folder. Two boxes logging to one folder would make it flip. Character
+  picker wanted?
+- Q9. Wiki class-list errors (Leech listed Necromancer-only, SK casts it
+  here): curated exceptions pack, automatic distrust on contradiction
+  with a confirmed trio, or both?
+- Q29. P1: does out-of-combat activity (buffing in town, porting) form
+  its own "encounter" for counting, or attach to the next fight?
+- Q30. P3 third-person Self-target landings for allies: one vote per song
+  per encounter, or every 6-second pulse?
