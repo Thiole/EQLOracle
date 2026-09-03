@@ -1636,11 +1636,12 @@ pub fn class_configurations(ing: &Ingest, name: &str) -> ClassConfigurationsDto 
 /// 41" while leveling a Bard trio next to two 50s -- user-reported, the
 /// row then read "ENC/SHD/WIZ 41"). Each class keeps its own floor,
 /// never lowered: the highest ding on any visit whose resolved trio
-/// held it (a ding under a trio raises all three), and the highest
-/// class level of any spell You cast that only it, of the trio at the
-/// time, could cast. The row's level is the trio's lowest floor, never
-/// below the latest ding; a class with no floor at all leaves the
-/// latest ding as the only honest answer.
+/// held it (a ding under a trio raises all three). The row's level is
+/// the trio's lowest floor, never below the latest ding; a class with
+/// no floor at all leaves the latest ding as the only honest answer.
+/// Spell levels are deliberately NOT a floor: the wiki's levels are not
+/// this server's (real: Improved Invisibility listed Wizard 55 on a
+/// level-50 cap, and it read "WIZ 55" for one visit).
 pub fn you_level_at(ing: &Ingest, you: u32, cfg: &[String], at: Millis) -> Option<u8> {
     let effective = ing.levels.at(at);
     if cfg.is_empty() {
@@ -1656,26 +1657,6 @@ pub fn you_level_at(ing: &Ingest, you: u32, cfg: &[String], at: Millis) -> Optio
             let f = floor.entry(c.as_str()).or_insert(0);
             *f = (*f).max(max);
         }
-    }
-    for (ts, base) in ing.self_casts.iter().filter(|(ts, _)| *ts <= at) {
-        let Some(spell) = crate::spelldata::spell_by_name(base) else {
-            continue;
-        };
-        let trio = ing
-            .classes
-            .configuration_of_visit(you, ing.zone.index_at(*ts));
-        let mut fit = spell
-            .classes
-            .iter()
-            .filter(|sc| trio.is_empty() || trio.contains(&sc.class));
-        let (Some(only), None) = (fit.next(), fit.next()) else {
-            continue;
-        };
-        let Some(level) = only.level.map(|l| l.min(u8::MAX as u32) as u8) else {
-            continue;
-        };
-        let f = floor.entry(only.class.as_str()).or_insert(0);
-        *f = (*f).max(level);
     }
     let lowest = cfg
         .iter()
@@ -1972,22 +1953,6 @@ mod you_level_tests {
             "{:?}",
             ing.levels.at(ing.now_ms())
         );
-    }
-
-    /// why: "the spells are above 41" -- a class-exclusive cast proves
-    /// that class is at least the spell's level, dings or not
-    #[test]
-    fn a_cast_proves_its_class_is_at_least_the_spells_level() {
-        let engine = build_engine().expect("pack builds");
-        let mut ing = Ingest::default();
-        let lines: Vec<&[u8]> = vec![
-            b"[Tue Jul 28 15:00:00 2026] You have entered Blackburrow.",
-            b"[Tue Jul 28 15:00:01 2026] You begin casting Conflagration X.",
-            b"[Tue Jul 28 16:00:00 2026] You have entered West Karana.",
-            b"[Tue Jul 28 16:00:01 2026] You begin casting Conflagration X.",
-        ];
-        backfill_lines(&mut ing, &engine, &lines, 1);
-        assert_eq!(level_now(&ing), Some(43));
     }
 }
 

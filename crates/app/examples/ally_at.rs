@@ -19,7 +19,12 @@ fn main() {
         let cur = ing.zone.index_at(ing.now_ms()).unwrap_or(0);
         for i in cur.saturating_sub(8)..=cur {
             let cfg = ing.classes.configuration_of_visit(you, Some(i));
-            let at = ing.zone.bounds(i).map(|(_, end)| end - 1).unwrap_or(ing.now_ms());
+            let at = ing
+                .zone
+                .bounds(i)
+                .and_then(|(_, end)| end)
+                .map(|e| e - 1)
+                .unwrap_or(ing.now_ms());
             println!(
                 "visit {i}: config={cfg:?} level={:?} ding={:?}",
                 eqlp_app::combat::you_level_at(&ing, you, &cfg, at),
@@ -35,7 +40,11 @@ fn main() {
             let cfg = ing
                 .classes
                 .configuration_of_visit(you, ing.zone.index_at(at));
-            println!("You at {at}: visit config={cfg:?}");
+            println!(
+                "You at {at}: visit config={cfg:?} level={:?} ding={:?}",
+                eqlp_app::combat::you_level_at(&ing, you, &cfg, at),
+                ing.levels.at(at)
+            );
             continue;
         }
         let (classes, votes) = ing.ally_classes(&a[1], at);

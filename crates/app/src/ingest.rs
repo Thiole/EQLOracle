@@ -1189,10 +1189,6 @@ pub struct Ingest {
     /// why: spell.granted timestamps within GRANT_CLUSTER_MS -- see `note_spell_granted`
     recent_grants: Vec<Millis>,
     last_level_up: Option<Millis>,
-    /// why: every spell You cast (base name), log order -- the level
-    /// floors read it back against the final class configurations, see
-    /// combat::you_level_at
-    pub self_casts: Vec<(Millis, String)>,
     /// why: Symphonic Aura known on for You -- its songs print no cast
     /// line, so their landings on you are the only trace; see
     /// `note_self_effect_text`. Off again on a loadout change.
@@ -1350,7 +1346,6 @@ impl Default for Ingest {
             recent_grants: Vec::new(),
             last_level_up: None,
             symphonic_aura: false,
-            self_casts: Vec::new(),
             ally_pending_leave: HashMap::new(),
             closed_seen: 0,
             pending_summons: Vec::new(),
@@ -2033,7 +2028,6 @@ impl Ingest {
                 }
                 if who == "You" {
                     self.note_self_class(ts, class_evidence_for_cast(&spell));
-                    self.self_casts.push((ts, base.to_string()));
                 }
             }
             Action::CastResisted {
