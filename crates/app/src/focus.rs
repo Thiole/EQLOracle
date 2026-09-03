@@ -259,12 +259,24 @@ pub fn equipped(base_dir: &Path) -> Vec<FocusEffect> {
     let Ok(inv) = crate::inventory::parse(&path) else {
         return Vec::new();
     };
+    // why: a focus reaches you two ways -- on the worn item itself, or
+    // through an exaltation socketed into it ("Back-Slot7 White
+    // Dragonscale Cloak (Exaltation)" carries that cloak's Improved
+    // Damage III; Spencer: "if the inventory has the foci in, use it,
+    // the game handles that logic"). Which sockets an item may take is
+    // the game's rule, already applied by the time the dump is written.
+    let mut sources: Vec<String> = inv.equipped.values().map(|i| i.name.clone()).collect();
+    for sockets in inv.exalted.values() {
+        for source in sockets.values() {
+            sources.push(format!("{source} (Exaltation)"));
+        }
+    }
     let mut out = Vec::new();
-    for item in inv.equipped.values() {
-        let base = base_item_name(&item.name);
+    for worn in sources {
+        let base = base_item_name(worn.trim_end_matches(" (Exaltation)"));
         let Some(pack_item) = crate::itemdata::items()
             .iter()
-            .find(|i| i.name == base || i.name == item.name)
+            .find(|i| i.name == base || i.name == worn)
         else {
             continue;
         };
@@ -279,7 +291,7 @@ pub fn equipped(base_dir: &Path) -> Vec<FocusEffect> {
         let Some(spell) = spelldata::spell_by_name(focus_name) else {
             continue;
         };
-        if let Some(f) = parse_focus(&item.name, spell) {
+        if let Some(f) = parse_focus(&worn, spell) {
             out.push(f);
         }
     }
