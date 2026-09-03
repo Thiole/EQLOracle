@@ -2315,6 +2315,37 @@ mod live_meter_window_tests {
         );
     }
 
+    /// why: ally class inference is PER PRESENCE -- Brutall left Lower Guk
+    /// mid-session and came back as a different trio; the others never
+    /// zoned. Silence past the absence window, a group leave/join, or
+    /// your own zone line each start the votes over.
+    #[test]
+    fn an_allys_class_votes_reset_when_they_come_back() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:00:00 2026] Brutall tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:00 2026] Brutall hit a gnoll for 100 points of magic damage by Ice Comet.\n\
+             [Tue Jul 28 15:01:05 2026] Brutall hit a gnoll for 100 points of magic damage by Ice Comet.\n\
+             [Tue Jul 28 15:20:00 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
+        );
+        let (classes, votes) = ing.ally_classes("Brutall");
+        assert_eq!(
+            votes, 1,
+            "the 19-minute silence started the count over, got {classes:?}"
+        );
+        assert!(
+            !classes.iter().any(|c| c == "Wizard"),
+            "the wizard votes are gone: {classes:?}"
+        );
+        let ing = ingest_from(
+            "[Tue Jul 28 15:00:00 2026] Brutall tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:00 2026] Brutall hit a gnoll for 100 points of magic damage by Ice Comet.\n\
+             [Tue Jul 28 15:01:30 2026] You have entered Lower Guk.\n\
+             [Tue Jul 28 15:02:00 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
+        );
+        let (classes, votes) = ing.ally_classes("Brutall");
+        assert_eq!(votes, 1, "your zone line started it over, got {classes:?}");
+    }
+
     /// why: incoming mirrors the calc from the enemy side
     #[test]
     fn incoming_rows_carry_the_same_shape() {

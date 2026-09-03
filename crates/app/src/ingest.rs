@@ -115,6 +115,10 @@ const PULSE_WINDOW_MS: Millis = 15_000;
 const STALE_ENCOUNTER_MS: Millis = 5 * 60 * 1000;
 /// why: the most one tick may advance the log clock -- see tick
 const MAX_TICK_ELAPSED_MS: Millis = 2_000;
+/// why: an ally silent this long has left -- their class votes start over
+/// when they act again (Brutall left Lower Guk mid-session and came back
+/// a different trio, ~15 levels lower; the others never zoned)
+const ALLY_ABSENCE_MS: Millis = 5 * 60 * 1000;
 /// why: 30 minutes with no party action ends a session -- see note_party_action
 const SESSION_GAP_MS: Millis = 30 * 60 * 1000;
 
@@ -1147,7 +1151,12 @@ pub struct Ingest {
     /// Separate from the detector, whose subset elimination needs your
     /// own dense evidence and read "Bard, Enchanter, Magician, Wizard"
     /// off two sparse ally visits. /who rows are a hint, not truth.
-    pub ally_votes: HashMap<String, (HashMap<String, f32>, u32)>,
+    /// Per presence: the votes reset when the ally has been silent for
+    /// ALLY_ABSENCE_MS (they left the zone and came back, possibly as
+    /// different classes), when they leave or join the group, and when
+    /// YOU zone -- "that assumption from before shouldn't carry over".
+    /// (scores, vote count, last vote ts)
+    pub ally_votes: HashMap<String, (HashMap<String, f32>, u32, Millis)>,
     /// why: unresolved summon sightings waiting to match a new actor, pruned to PET_MATCH_WINDOW_MS
     pending_summons: Vec<(Millis, String)>,
     /// why: names ever seen acting, so pending_summons is only checked on an entity's first action
@@ -1385,23 +1394,35 @@ impl Ingest {
 
     /// why: one vote split across every class that could have done it --
     /// see ally_votes. An unknown spell (empty set) votes for nothing.
-    fn vote_ally_classes(&mut self, who: &str, classes: &[String]) {
+    fn vote_ally_classes(&mut self, ts: Millis, who: &str, classes: &[String]) {
         if classes.is_empty() {
             return;
         }
         let share = 1.0 / classes.len() as f32;
         let e = self.ally_votes.entry(who.to_lowercase()).or_default();
+        // why: a new presence -- silent past ALLY_ABSENCE_MS, start over
+        if e.1 > 0 && ts - e.2 > ALLY_ABSENCE_MS {
+            e.0.clear();
+            e.1 = 0;
+        }
         for c in classes {
             *e.0.entry(c.clone()).or_insert(0.0) += share;
         }
         e.1 += 1;
+        e.2 = ts;
+    }
+
+    /// why: the ally is gone (left the group, or you zoned) -- whatever
+    /// they were, the next sighting is judged fresh
+    fn forget_ally_classes(&mut self, who: &str) {
+        self.ally_votes.remove(&who.to_lowercase());
     }
 
     /// why: the ally's inferred classes -- the top scorers, at most three,
     /// each within a third of the leader (a class that only ever shared
     /// votes with the real ones drops out), plus the evidence count
     pub fn ally_classes(&self, who: &str) -> (Vec<String>, u32) {
-        let Some((scores, n)) = self.ally_votes.get(&who.to_lowercase()) else {
+        let Some((scores, n, _)) = self.ally_votes.get(&who.to_lowercase()) else {
             return (Vec::new(), 0);
         };
         let mut v: Vec<(&String, f32)> = scores.iter().map(|(c, s)| (c, *s)).collect();
@@ -1716,6 +1737,9 @@ impl Ingest {
             Action::Zone { zone } => {
                 // why: stop fights bleeding across zone changes
                 self.encounters.close_all(ts);
+                // why: you zoned -- every ally's class votes start over
+                // in the new zone (ally_votes' own doc)
+                self.ally_votes.clear();
                 self.last_zone_enter_ms = Some(ts);
                 // why: a charmed pet never follows you across a zone line --
                 // real loss even with no "spell has worn off" confirmation
@@ -1912,7 +1936,7 @@ impl Ingest {
                 let sym = self.sym(&who);
                 if !who.eq_ignore_ascii_case("You") && !self.is_pet(&who) {
                     let classes = crate::classdata::classes_for(base_spell_name(&ability));
-                    self.vote_ally_classes(&who, classes);
+                    self.vote_ally_classes(ts, &who, classes);
                 }
                 if !self.is_pet(&who) {
                     self.classes.observe_cast(
@@ -1970,6 +1994,8 @@ impl Ingest {
             }
             Action::QuickBuff { who } => self.note_quickbuff(ts, &who),
             Action::GroupJoined { who } => {
+                // why: a fresh presence -- see ally_votes
+                self.forget_ally_classes(&who);
                 // why: NPCs and charm pets can't join a group -- this line
                 // is player proof as strong as a chat channel
                 self.encounters.entities.note_player_channel(&who);
@@ -1977,6 +2003,7 @@ impl Ingest {
                 self.groups.joined(&resolved, ts);
             }
             Action::GroupLeft { who } => {
+                self.forget_ally_classes(&who);
                 self.encounters.entities.note_player_channel(&who);
                 let resolved = self.resolve_name(&who);
                 self.groups.left(&resolved, ts);
@@ -2353,10 +2380,10 @@ impl Ingest {
         if !src.eq_ignore_ascii_case("You") && !self.is_pet(src) {
             if tags & tag::SPELL != 0 {
                 let classes = crate::classdata::classes_for(base_spell_name(ability));
-                self.vote_ally_classes(src, classes);
+                self.vote_ally_classes(ts, src, classes);
             } else if tags & tag::MELEE != 0 {
                 if let Some(class) = class_only_melee(ability) {
-                    self.vote_ally_classes(src, &[class.to_string()]);
+                    self.vote_ally_classes(ts, src, &[class.to_string()]);
                 }
             }
         }
