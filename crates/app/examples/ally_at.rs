@@ -14,6 +14,38 @@ fn main() {
     let mut ing = Ingest::default();
     backfill_lines(&mut ing, &engine, &lines, 8);
     eprintln!("last parsed ts = {}", ing.now_ms());
+    if a[1] == "mem" {
+        let rss = || {
+            std::fs::read_to_string("/proc/self/status")
+                .ok()
+                .and_then(|t| {
+                    t.lines()
+                        .find(|l| l.starts_with("VmRSS"))
+                        .map(|l| l.to_string())
+                })
+                .unwrap_or_default()
+        };
+        println!("after backfill: {}", rss());
+        println!(
+            "store events={} encounters={} names={} abilities={} | graph closed={} | entities_by_enc={} ({} names) | recent={} lines total={}",
+            ing.store.len(),
+            ing.store.encounters.len(),
+            ing.store.names.len(),
+            ing.store.abilities.len(),
+            ing.encounters.closed.len(),
+            ing.entities_by_enc.len(),
+            ing.entities_by_enc.values().map(|v| v.len()).sum::<usize>(),
+            ing.recent.len(),
+            ing.counts.total
+        );
+        println!("store columns ~{} MB", ing.store.len() * 38 / 1_048_576);
+        drop(ing);
+        println!("after dropping the parsed state: {}", rss());
+        drop(lines);
+        drop(bytes);
+        println!("after dropping the file too: {}", rss());
+        return;
+    }
     if a[1] == "chains" {
         let you = ing.store.names.get("You").map(|s| s.0).expect("You");
         let chains = ing.classes.chains(you);

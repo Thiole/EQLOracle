@@ -1643,6 +1643,19 @@ impl Ingest {
     }
 
     /// why: the /who trio for the chain covering `at`, if a row printed in it
+    /// why: memory -- every NPC caster used to get its own class chain
+    /// (12k entities, 51 MB on a real log); only You, proven players, and
+    /// current group members are worth a chain. Pets never are.
+    fn tracks_classes(&mut self, who: &str, ts: Millis) -> bool {
+        if who == "You" {
+            return true;
+        }
+        if self.is_pet(who) {
+            return false;
+        }
+        self.encounters.entities.kind(who) == Kind::Player || self.groups.currently_grouped(who, ts)
+    }
+
     /// why: the class-evidence unit covering `at` -- see UnitTrack::at
     pub fn unit_at(&self, at: Millis) -> eqlp_session::classdetect::Unit {
         self.units.at(at)
@@ -1749,6 +1762,9 @@ impl Ingest {
     /// the clock by real elapsed time too, not just new-line timestamps
     pub fn mark_live(&mut self) {
         self.live = true;
+        // why: the seam is the one moment backfill's doubling slack is
+        // known to be dead weight -- see Store::shrink_to_fit
+        self.store.shrink_to_fit();
         self.last_wall_ms = None; // why: next tick sets the baseline, not a jump
                                   // why: measured on the full-app walk 2026-08-29 -- after
                                   // backfill, accounted live data was ~110MB but RSS sat near
@@ -2125,7 +2141,7 @@ impl Ingest {
                 // own doc, unlike classdetect's pet exclusion, a pet's real
                 // cast is real information here, not misleading class evidence
                 self.recent_casts.push(ts, caster.0, base.to_string());
-                if !self.is_pet(&who) {
+                if self.tracks_classes(&who, ts) {
                     self.classes.observe_cast(
                         caster.0,
                         self.units.current(),

@@ -153,6 +153,22 @@ pub struct Store {
 pub const NO_ENCOUNTER: u32 = u32::MAX;
 
 impl Store {
+    /// why: backfill grows the columns by doubling; the slack is a third
+    /// of the event table on a real log (152 MB held for 107 MB of
+    /// events). Called once at the live seam.
+    pub fn shrink_to_fit(&mut self) {
+        self.ts.shrink_to_fit();
+        self.kind.shrink_to_fit();
+        self.actor.shrink_to_fit();
+        self.target.shrink_to_fit();
+        self.ability.shrink_to_fit();
+        self.amount.shrink_to_fit();
+        self.flags.shrink_to_fit();
+        self.enc.shrink_to_fit();
+        self.tier.shrink_to_fit();
+        self.encounters.shrink_to_fit();
+    }
+
     pub fn len(&self) -> usize {
         self.ts.len()
     }
