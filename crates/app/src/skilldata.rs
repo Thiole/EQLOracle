@@ -3,6 +3,10 @@
 //! Only skills purely class-gated count as evidence. Tracking included
 //! (Bard/Druid/Ranger only). Forage deliberately excluded -- Iksar/Wood
 //! Elf get it from race regardless of class, would false-positive.
+//! Single-class skills verified on the wiki's own class pages
+//! (2026-09-03); multi-class pools (Kick, Bash, Sneak ...) stay out
+//! until every class page can be checked -- 11 have no skill section,
+//! and an incomplete pool would falsely eliminate a class.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -36,6 +40,16 @@ mod tests {
     #[test]
     fn forage_is_deliberately_not_here() {
         assert!(classes_for("Forage").is_empty());
+    }
+
+    /// why: verified on the class pages -- Rogue's Combat Skills lists
+    /// Backstab and no other page does; Monk's lists Flying Kick likewise
+    #[test]
+    fn verified_single_class_skills_map_to_their_one_class() {
+        assert_eq!(classes_for("Backstab"), &["Rogue".to_string()]);
+        assert_eq!(classes_for("Flying Kick"), &["Monk".to_string()]);
+        assert_eq!(classes_for("Frenzy"), &["Berserker".to_string()]);
+        assert!(classes_for("Kick").is_empty(), "pools stay out");
     }
 
     #[test]

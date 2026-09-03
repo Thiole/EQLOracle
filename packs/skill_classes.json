@@ -1,3 +1,85 @@
 {
-  "Tracking": ["Bard", "Druid", "Ranger"]
+  "Tracking": [
+    "Bard",
+    "Druid",
+    "Ranger"
+  ],
+  "Backstab": [
+    "Rogue"
+  ],
+  "Pick Lock": [
+    "Rogue"
+  ],
+  "Pick Pocket": [
+    "Rogue"
+  ],
+  "Pick Pockets": [
+    "Rogue"
+  ],
+  "Disarm Trap": [
+    "Rogue"
+  ],
+  "Disarm Traps": [
+    "Rogue"
+  ],
+  "Frenzy": [
+    "Berserker"
+  ],
+  "Cleave": [
+    "Warrior"
+  ],
+  "Flying Kick": [
+    "Monk"
+  ],
+  "Tiger Claw": [
+    "Monk"
+  ],
+  "Dragon Punch": [
+    "Monk"
+  ],
+  "Eagle Strike": [
+    "Monk"
+  ],
+  "Round Kick": [
+    "Monk"
+  ],
+  "Tail Rake": [
+    "Monk"
+  ],
+  "Mend": [
+    "Monk"
+  ],
+  "Feign Death": [
+    "Monk"
+  ],
+  "Harm Touch": [
+    "Shadow Knight"
+  ],
+  "Reave": [
+    "Shadow Knight"
+  ],
+  "Lay on Hands": [
+    "Paladin"
+  ],
+  "Lay Hands": [
+    "Paladin"
+  ],
+  "Smite": [
+    "Paladin"
+  ],
+  "Singing": [
+    "Bard"
+  ],
+  "Brass Instruments": [
+    "Bard"
+  ],
+  "Stringed Instruments": [
+    "Bard"
+  ],
+  "Wind Instruments": [
+    "Bard"
+  ],
+  "Percussion Instruments": [
+    "Bard"
+  ]
 }

@@ -33,9 +33,17 @@ Code: `crates/session/src/classdetect.rs` (your classes),
 
 ## Your own classes (classdetect)
 
-- C1. Evidence is a cast, song, stance, invocation, or AA line by You. Each
-  maps to the set of classes that can use it (packs: spell_classes,
-  stance_classes, invocation_classes, aa.json category).
+- C1. Evidence is a cast, song, stance, invocation, AA line, or skill-up
+  line ("You have become better at X!") by You. Each maps to the set of
+  classes that can use it (packs: spell_classes, stance_classes,
+  invocation_classes, aa.json category, skill_classes).
+- C1b. skill_classes holds only single-class skills verified on the wiki's
+  class pages (2026-09-03: Rogue, Monk, Warrior, Berserker, Paladin, SK,
+  Bard, Druid entries) plus Tracking. Multi-class pools (Kick, Bash, Slam,
+  Taunt, Sneak, Hide, Dual Wield, Double Attack, Triple Attack) are left
+  out: 11 class pages have no skill section, and an incomplete pool would
+  falsely eliminate a class. Forage stays out: Iksar and Wood Elf get it
+  from race regardless of class.
 - C2. Evidence is grouped per zone visit. Nothing is evicted or decayed.
 - C3. A single-class ("unambiguous") sighting confirms that class once seen
   on 2 distinct visits (`MIN_UNAMBIGUOUS_CASTS`), retroactively on both.
