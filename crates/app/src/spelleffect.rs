@@ -747,9 +747,17 @@ mod tests {
             .filter(|s| s.slots.is_empty())
             .collect();
         let names: Vec<&str> = slotless.iter().map(|s| s.name.as_str()).collect();
+        // why: the 2026-09-03 re-scrape added the two Improved Vampirism
+        // foci from Category:Focus Effects -- their wiki pages carry no
+        // slot data at all, so they are slotless too (and not damage-shaped)
         assert_eq!(
             names,
-            vec!["Instill", "Resurrection Effects"],
+            vec![
+                "Improved Vampirism II",
+                "Improved Vampirism III",
+                "Instill",
+                "Resurrection Effects"
+            ],
             "the real slotless-spell population changed -- see this test's own doc"
         );
         for s in &slotless {

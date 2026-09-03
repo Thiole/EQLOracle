@@ -87,9 +87,26 @@ static SPELLS_BY_NAME: OnceLock<std::collections::HashMap<&'static str, &'static
 pub fn spell_by_name(name: &str) -> Option<&'static Spell> {
     SPELLS_BY_NAME
         .get_or_init(|| {
-            let mut m = std::collections::HashMap::new();
+            // why: a display name can belong to two wiki pages (real, 2026-09-03
+            // re-scrape: the `Full_Heal` page is titled "Healing" alongside the
+            // `Healing` page itself) -- the page whose own slug IS the name is
+            // the canonical one and wins; otherwise first in catalog order
+            let mut m: std::collections::HashMap<&'static str, &'static Spell> =
+                std::collections::HashMap::new();
             for s in spells() {
-                m.entry(s.name.as_str()).or_insert(s);
+                let slug = s.name.replace(' ', "_");
+                let canonical = s.id.eq_ignore_ascii_case(&slug)
+                    || s.url.as_deref().is_some_and(|u| {
+                        u.rsplit('/')
+                            .next()
+                            .is_some_and(|t| t.eq_ignore_ascii_case(&slug))
+                    });
+                match m.get(s.name.as_str()) {
+                    Some(_) if !canonical => {}
+                    _ => {
+                        m.insert(s.name.as_str(), s);
+                    }
+                }
             }
             m
         })
@@ -103,10 +120,20 @@ mod tests {
 
     #[test]
     fn loads_the_real_catalog() {
-        assert_eq!(spells().len(), 1928);
+        assert_eq!(spells().len(), 2010);
         let s = spell_by_name("Fire Bolt").expect("Fire Bolt should be in the catalog");
         assert_eq!(s.mana, Some(28.0));
         assert_eq!(s.casting_time, Some(2.0));
+    }
+
+    /// why: real collision -- two pages titled "Healing"; the Healing
+    /// page (2.5s cast, "You feel much better.") is the spell, Full_Heal
+    /// is a renamed page that must not shadow it
+    #[test]
+    fn a_display_name_shared_by_two_pages_resolves_to_the_canonical_page() {
+        let s = spell_by_name("Healing").expect("in catalog");
+        assert_eq!(s.id, "Healing");
+        assert_eq!(s.casting_time, Some(2.5));
     }
 
     #[test]

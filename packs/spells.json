@@ -1,7 +1,7 @@
 {
  "source": "https://eqlwiki.com",
- "scraped": "2026-08-28 09:14",
- "count": 1928,
+ "scraped": "2026-09-03 16:28",
+ "count": 2010,
  "spells": [
   {
    "id": "Aanya's_Animation",
@@ -1081,7 +1081,7 @@
      "level": 31
     }
    ],
-   "skill": "[[Skill Wind | Wind]] \u2020",
+   "skill": "[[Skill Wind | Wind]] †",
    "mana": 0,
    "range": 80,
    "casting_time": 3.0,
@@ -1202,7 +1202,7 @@
      "level": 22
     }
    ],
-   "skill": "[[Skill Stringed | Stringed]] \u2020",
+   "skill": "[[Skill Stringed | Stringed]] †",
    "mana": 0,
    "range": 0,
    "casting_time": 3.0,
@@ -2681,8 +2681,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Atone",
@@ -4326,9 +4325,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 72.png"
@@ -4366,9 +4366,10 @@
    "items_with_effect": [
     "Dark Oak Shillelagh"
    ],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 72.png"
@@ -4495,6 +4496,230 @@
     "Velious Era"
    ],
    "icon": "Spellicon M.png"
+  },
+  {
+   "id": "Benefit_Awareness_I_(Spell)",
+   "name": "Benefit Awareness I",
+   "url": "https://eqlwiki.com/Benefit_Awareness_I_(Spell)",
+   "description": "Reduces the mana cost of beneficial spells by up to 5 percent. This bonus will decay on spells over level 20.",
+   "classes": [
+    {
+     "class": "Benefit Awareness I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of beneficial awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 20 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Type: Beneficial"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Benefit Awareness I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Benefit_Awareness_II_(Spell)",
+   "name": "Benefit Awareness II",
+   "url": "https://eqlwiki.com/Benefit_Awareness_II_(Spell)",
+   "description": "Reduces the mana cost of beneficial spells by up to 5 percent. This bonus will decay on spells over level 44.",
+   "classes": [
+    {
+     "class": "Benefit Awareness II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of beneficial awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 44 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Type: Beneficial"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Benefit Awareness II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Benefit_Awareness_III_(Spell)",
+   "name": "Benefit Awareness III",
+   "url": "https://eqlwiki.com/Benefit_Awareness_III_(Spell)",
+   "description": "Reduces the mana cost of beneficial spells by up to 5 percent. This bonus will decay on spells over level 60.",
+   "classes": [
+    {
+     "class": "Benefit Awareness III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of beneficial awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 60 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Type: Beneficial"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Benefit Awareness III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Benefit_Awareness_IV_(Spell)",
+   "name": "Benefit Awareness IV",
+   "url": "https://eqlwiki.com/Benefit_Awareness_IV_(Spell)",
+   "description": "Reduces the mana cost of beneficial spells by up to 5 percent. This bonus will decay on spells over level 65.",
+   "classes": [
+    {
+     "class": "Benefit Awareness IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of beneficial awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 65 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Type: Beneficial"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Benefit Awareness IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
   },
   {
    "id": "Benevolence",
@@ -6230,7 +6455,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -6273,7 +6498,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -6837,8 +7062,7 @@
     "Chardok Revamp Era",
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Boon_of_Immolation",
@@ -7100,6 +7324,42 @@
    ],
    "items_with_effect": [
     "McVaxius' Horn of War"
+   ],
+   "where_to_obtain": null,
+   "era": null,
+   "categories": [
+    "Focus Effects",
+    "Spells"
+   ],
+   "icon": "Spellicon C.png"
+  },
+  {
+   "id": "Brass_Resonance_15",
+   "name": "Brass Resonance 14",
+   "url": "https://eqlwiki.com/Brass_Resonance_15",
+   "description": "Increases the power of brass instrument based bard songs by up to 140%.",
+   "classes": [],
+   "skill": null,
+   "mana": null,
+   "range": 100,
+   "casting_time": null,
+   "fizzle_time": null,
+   "recast_time": null,
+   "duration": "2:27:00",
+   "target_type": "Self",
+   "spell_type": null,
+   "resist": null,
+   "msg_cast_on_you": null,
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increases the power of brass instrument based bard songs by up to 150%"
+    }
+   ],
+   "items_with_effect": [
+    "Denon's Horn of Disaster"
    ],
    "where_to_obtain": null,
    "era": null,
@@ -7503,8 +7763,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Brittle_Haste_I",
@@ -7818,7 +8077,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -9147,8 +9406,7 @@
    "era": null,
    "categories": [
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Call_of_Flame",
@@ -9741,7 +9999,8 @@
     "Tolan's Darkwood Greaves",
     "Summoned: Staff of Runes",
     "Staff_of_Null",
-    "Vindication"
+    "Vindication",
+    "Potion of Copal's Demise"
    ],
    "where_to_obtain": "<ul><li>[[Beastlord#Spell Vendors|Beastlord Spell Vendors]]</li> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Enchanter#Spell Vendors|Enchanter Spell Vendors]]</li> <li>[[Magician#Spell Vendors|Magician Spell Vendors]]</li> <li>[[Necromancer#Spell Vendors|Necromancer Spell Vendors]]</li> <li>[[Paladin#Spell Vendors|Paladin Spell Vendors]]</li> <li>[[Ranger#Spell Vendors|Ranger Spell Vendors]]</li> <li>[[Shadow Knight#Spell Vendors|Shadow Knight Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> <li>[[Wizard#Spell Vendors|Wizard Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
@@ -9970,8 +10229,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Cantata_of_Soothing",
@@ -9984,7 +10242,7 @@
      "level": 34
     }
    ],
-   "skill": "[[Skill Stringed | Stringed]] \u2020",
+   "skill": "[[Skill Stringed | Stringed]] †",
    "mana": 0,
    "range": 0,
    "casting_time": 3.0,
@@ -10017,8 +10275,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Captain_Nalot's_Quickening",
@@ -10054,8 +10311,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Careless_Lightning",
@@ -10108,7 +10364,7 @@
    "id": "Cascade_of_Hail",
    "name": "Cascade of Hail",
    "url": "https://eqlwiki.com/Cascade_of_Hail",
-   "description": "Calls down a hailstorm from the sky, causing three waves of 27 damage, up to a maximum of 4 targets hit. (0.435DPM per hit) *Note: Rain nukes are limited to 4 hits total. Either you can hit the same mobs 3 times, you can hit 2 mobs twice each, or you can hit 4 mobs once each.",
+   "description": "Calls down a hailstorm from the sky, causing three waves of 27 damage, up to a maximum of 4 targets hit.",
    "classes": [
     {
      "class": "Druid",
@@ -10135,9 +10391,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon S.png"
@@ -12228,9 +12485,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 129.png"
@@ -12385,12 +12643,12 @@
    "items_with_effect": [
     "Circle of Stones"
    ],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Circle_of_Lavastorm",
@@ -12423,9 +12681,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 129.png"
@@ -12504,9 +12763,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 129.png"
@@ -12580,9 +12840,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 129.png"
@@ -12618,9 +12879,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 129.png"
@@ -12656,9 +12918,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 129.png"
@@ -12733,9 +12996,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 129.png"
@@ -12771,9 +13035,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 129.png"
@@ -12848,9 +13113,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 129.png"
@@ -13660,6 +13926,230 @@
    "icon": "Spellicon R.png"
   },
   {
+   "id": "Cold_Awareness_I_(Spell)",
+   "name": "Cold Awareness I",
+   "url": "https://eqlwiki.com/Cold_Awareness_I_(Spell)",
+   "description": "Reduces the mana cost of cold-based spells by up to 5 percent. This bonus will decay on spells over level 20.",
+   "classes": [
+    {
+     "class": "Cold Awareness I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of cold awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 20 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Cold"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Cold Awareness I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Cold_Awareness_II_(Spell)",
+   "name": "Cold Awareness II",
+   "url": "https://eqlwiki.com/Cold_Awareness_II_(Spell)",
+   "description": "Reduces the mana cost of cold-based spells by up to 5 percent. This bonus will decay on spells over level 44.",
+   "classes": [
+    {
+     "class": "Cold Awareness II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of cold awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 44 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Cold"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Cold Awareness II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Cold_Awareness_III_(Spell)",
+   "name": "Cold Awareness III",
+   "url": "https://eqlwiki.com/Cold_Awareness_III_(Spell)",
+   "description": "Reduces the mana cost of cold-based spells by up to 5 percent. This bonus will decay on spells over level 60.",
+   "classes": [
+    {
+     "class": "Cold Awareness III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of cold awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 60 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Cold"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Cold Awareness III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Cold_Awareness_IV_(Spell)",
+   "name": "Cold Awareness IV",
+   "url": "https://eqlwiki.com/Cold_Awareness_IV_(Spell)",
+   "description": "Reduces the mana cost of cold-based spells by up to 5 percent. This bonus will decay on spells over level 65.",
+   "classes": [
+    {
+     "class": "Cold Awareness IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of cold awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 65 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Cold"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Cold Awareness IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
    "id": "Coldlight",
    "name": "Coldlight",
    "url": "https://eqlwiki.com/Coldlight",
@@ -14131,9 +14621,10 @@
     "Espri",
     "Massive Heartwood Thorn"
    ],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon O.png"
@@ -15148,7 +15639,8 @@
     "Ethira's Poison Antidote",
     "10 Dose Ethira's Poison Antidote",
     "Earring of Cleansing",
-    "Potion of Poison Warding"
+    "Potion of Poison Warding",
+    "Potion of Prince's Root"
    ],
    "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Paladin#Spell Vendors|Paladin Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
@@ -15278,9 +15770,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon T.png"
@@ -15629,7 +16122,8 @@
     }
    ],
    "items_with_effect": [
-    "Silver Bracelet"
+    "Silver Bracelet",
+    "Potion of Gorging Toxin"
    ],
    "where_to_obtain": "<ul><li>[[Beastlord#Spell Vendors|Beastlord Spell Vendors]]</li> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Paladin#Spell Vendors|Paladin Spell Vendors]]</li> <li>[[Ranger#Spell Vendors|Ranger Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
@@ -16815,8 +17309,9 @@
    ],
    "items_with_effect": [],
    "where_to_obtain": "}}",
-   "era": null,
+   "era": "Kunark Era",
    "categories": [
+    "Kunark Era",
     "Spells"
    ],
    "icon": "Spellicon A.png"
@@ -17621,6 +18116,230 @@
    "icon": "Spellicon E.png"
   },
   {
+   "id": "Disease_Awareness_I_(Spell)",
+   "name": "Disease Awareness I",
+   "url": "https://eqlwiki.com/Disease_Awareness_I_(Spell)",
+   "description": "Reduces the mana cost of disease-based spells by up to 5 percent. This bonus will decay on spells over level 20.",
+   "classes": [
+    {
+     "class": "Disease Awareness I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of disease awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 20 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Disease"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Disease Awareness I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Disease_Awareness_II_(Spell)",
+   "name": "Disease Awareness II",
+   "url": "https://eqlwiki.com/Disease_Awareness_II_(Spell)",
+   "description": "Reduces the mana cost of disease-based spells by up to 5 percent. This bonus will decay on spells over level 44.",
+   "classes": [
+    {
+     "class": "Disease Awareness II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of disease awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 44 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Disease"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Disease Awareness II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Disease_Awareness_III_(Spell)",
+   "name": "Disease Awareness III",
+   "url": "https://eqlwiki.com/Disease_Awareness_III_(Spell)",
+   "description": "Reduces the mana cost of disease-based spells by up to 5 percent. This bonus will decay on spells over level 60.",
+   "classes": [
+    {
+     "class": "Disease Awareness III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of disease awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 60 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Disease"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Disease Awareness III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Disease_Awareness_IV_(Spell)",
+   "name": "Disease Awareness IV",
+   "url": "https://eqlwiki.com/Disease_Awareness_IV_(Spell)",
+   "description": "Reduces the mana cost of disease-based spells by up to 5 percent. This bonus will decay on spells over level 65.",
+   "classes": [
+    {
+     "class": "Disease Awareness IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of disease awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 65 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Disease"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Disease Awareness IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
    "id": "Disease_Cloud",
    "name": "Disease Cloud",
    "url": "https://eqlwiki.com/Disease_Cloud",
@@ -18088,6 +18807,46 @@
     "Spells"
    ],
    "icon": "Spellicon K.png"
+  },
+  {
+   "id": "Divine_Endurance",
+   "name": "Divine Endurance",
+   "url": "https://eqlwiki.com/Divine_Endurance",
+   "description": "Causes you to become more resistant, increasing all resists for up to 20 minutes.",
+   "classes": [
+    {
+     "class": "Elixir of Divine Endurance",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "20 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You feel resistant.",
+   "msg_cast_on_other": "Someone is resistant.",
+   "msg_wears_off": "Your resistance fades.",
+   "slots": [
+    {
+     "slot": 3,
+     "effect": "Increase All Resists by 10"
+    }
+   ],
+   "items_with_effect": [
+    "Elixir of Divine Endurance"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
   },
   {
    "id": "Divine_Favor",
@@ -18723,9 +19482,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon M.png"
@@ -18804,6 +19564,50 @@
     "Spells"
    ],
    "icon": "Spellicon D.png"
+  },
+  {
+   "id": "Donlo's_Dementia",
+   "name": "Donlo's Dementia",
+   "url": "https://eqlwiki.com/Donlo's_Dementia",
+   "description": "Shrinks your group, allowing them greater mobility in tight quarters.",
+   "classes": [
+    {
+     "class": "Army Ant Potion",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 50,
+   "range": 200,
+   "casting_time": 4.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "Instant",
+   "target_type": "Group",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You feel almost as short as a halfling.",
+   "msg_cast_on_other": "Someone shrinks.",
+   "msg_wears_off": "You return to normal height.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Player Size by 34%"
+    },
+    {
+     "slot": 2,
+     "effect": "Decrease Pet Size by 34%"
+    }
+   ],
+   "items_with_effect": [
+    "Army Ant Potion"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
   },
   {
    "id": "Dooming_Darkness",
@@ -19206,9 +20010,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon T.png"
@@ -19256,7 +20061,7 @@
     "Wristguard of Harmony",
     "Staff of the Earthcrafter"
    ],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -19514,8 +20319,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Earth_Elemental_Attack",
@@ -19664,9 +20468,10 @@
     "Earthshaker",
     "Hierophant`s Crook"
    ],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 161.png"
@@ -20656,6 +21461,1242 @@
    "icon": "Spellicon 38.png"
   },
   {
+   "id": "Elixir_of_Clarity_I",
+   "name": "Elixir of Clarity I",
+   "url": "https://eqlwiki.com/Elixir_of_Clarity_I",
+   "description": "Restores 1 mana every 6 seconds for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Clarity I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 200,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your mind begins to clear.",
+   "msg_cast_on_other": "Someone drinks an elixir of clarity.",
+   "msg_wears_off": "The clarity of mind fades.",
+   "slots": [
+    {
+     "slot": 2,
+     "effect": "Increase Current Mana by 1 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Clarity I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Clarity_II",
+   "name": "Elixir of Clarity II",
+   "url": "https://eqlwiki.com/Elixir_of_Clarity_II",
+   "description": "Restores 2 mana every 6 seconds for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Clarity II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 200,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your mind begins to clear.",
+   "msg_cast_on_other": "Someone drinks an elixir of clarity.",
+   "msg_wears_off": "The clarity of mind fades.",
+   "slots": [
+    {
+     "slot": 2,
+     "effect": "Increase Current Mana by 2 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Clarity II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Clarity_III",
+   "name": "Elixir of Clarity III",
+   "url": "https://eqlwiki.com/Elixir_of_Clarity_III",
+   "description": "Restores 3 mana every 6 seconds for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Clarity III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 200,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your mind begins to clear.",
+   "msg_cast_on_other": "Someone drinks an elixir of clarity.",
+   "msg_wears_off": "The clarity of mind fades.",
+   "slots": [
+    {
+     "slot": 2,
+     "effect": "Increase Current Mana by 3 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Clarity III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Clarity_IV",
+   "name": "Elixir of Clarity IV",
+   "url": "https://eqlwiki.com/Elixir_of_Clarity_IV",
+   "description": "Calms your thoughts, allowing you to regenerate mana more quickly for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Clarity IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 200,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your mind begins to clear.",
+   "msg_cast_on_other": "Someone drinks an elixir of clarity.",
+   "msg_wears_off": "The clarity of mind fades.",
+   "slots": [
+    {
+     "slot": 2,
+     "effect": "Increase Mana by 4 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Clarity IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Clarity_IX",
+   "name": "Elixir of Clarity IX",
+   "url": "https://eqlwiki.com/Elixir_of_Clarity_IX",
+   "description": "Restores 12 mana every 6 seconds for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Clarity IX",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 200,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your mind begins to clear.",
+   "msg_cast_on_other": "Someone drinks an elixir of clarity.",
+   "msg_wears_off": "The clarity of mind fades.",
+   "slots": [
+    {
+     "slot": 2,
+     "effect": "Increase Current Mana by 12 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Clarity IX"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Clarity_VI",
+   "name": "Elixir of Clarity VI",
+   "url": "https://eqlwiki.com/Elixir_of_Clarity_VI",
+   "description": "Calms your thoughts, allowing you to regenerate mana more quickly for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Clarity VI",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 200,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your mind begins to clear.",
+   "msg_cast_on_other": "Someone drinks an elixir of clarity.",
+   "msg_wears_off": "The clarity of mind fades.",
+   "slots": [
+    {
+     "slot": 2,
+     "effect": "Increase Mana by 6 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Clarity VI"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Healing_I",
+   "name": "Elixir of Healing I",
+   "url": "https://eqlwiki.com/Elixir_of_Healing_I",
+   "description": "Heals between 5 and 6 hit points every 6 seconds for up to 30 seconds.",
+   "classes": [
+    {
+     "class": "Distillate of Celestial Healing I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 seconds",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds begin to heal.",
+   "msg_cast_on_other": "Someone drinks an elixir of healing.",
+   "msg_wears_off": "The elixir's effect fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 5 per tick (Random: 5 to 6)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Celestial Healing I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Healing_II",
+   "name": "Elixir of Healing II",
+   "url": "https://eqlwiki.com/Elixir_of_Healing_II",
+   "description": "Heals between 11 and 14 hit points every 6 seconds for up to 30 seconds.",
+   "classes": [
+    {
+     "class": "Distillate of Celestial Healing II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 seconds",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds begin to heal.",
+   "msg_cast_on_other": "Someone drinks an elixir of healing.",
+   "msg_wears_off": "The elixir's effect fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 12 per tick (Random: 11 to 14)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Celestial Healing II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Healing_III",
+   "name": "Elixir of Healing III",
+   "url": "https://eqlwiki.com/Elixir_of_Healing_III",
+   "description": "Heals between 26 and 34 hit points every 6 seconds for up to 30 seconds.",
+   "classes": [
+    {
+     "class": "Distillate of Celestial Healing III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 seconds",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds begin to heal.",
+   "msg_cast_on_other": "Someone drinks an elixir of healing.",
+   "msg_wears_off": "The elixir's effect fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 30 per tick (Random: 26 to 34)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Celestial Healing III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Healing_IV",
+   "name": "Elixir of Healing IV",
+   "url": "https://eqlwiki.com/Elixir_of_Healing_IV",
+   "description": "Heals between 49 and 62 hit points every 6 seconds for up to 30 seconds.",
+   "classes": [
+    {
+     "class": "Distillate of Celestial Healing IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 seconds",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds begin to heal.",
+   "msg_cast_on_other": "Someone drinks an elixir of healing.",
+   "msg_wears_off": "The elixir's effect fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 55 per tick (Random: 49 to 62)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Celestial Healing IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Healing_IX",
+   "name": "Elixir of Healing IX",
+   "url": "https://eqlwiki.com/Elixir_of_Healing_IX",
+   "description": "Heals between 270 and 328 hit points every 6 seconds for up to 30 seconds.",
+   "classes": [
+    {
+     "class": "Distillate of Celestial Healing IX",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 seconds",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds begin to heal.",
+   "msg_cast_on_other": "Someone drinks an elixir of healing.",
+   "msg_wears_off": "The elixir's effect fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 299 per tick (Random: 270 to 328)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Celestial Healing IX"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Healing_VI",
+   "name": "Elixir of Healing VI",
+   "url": "https://eqlwiki.com/Elixir_of_Healing_VI",
+   "description": "Heals between 106 and 132 hit points every 6 seconds for up to 30 seconds.",
+   "classes": [
+    {
+     "class": "Distillate of Celestial Healing VI",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 seconds",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds begin to heal.",
+   "msg_cast_on_other": "Someone drinks an elixir of healing.",
+   "msg_wears_off": "The elixir's effect fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 119 per tick (Random: 106 to 132)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Celestial Healing VI"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Replenishment_I",
+   "name": "Elixir of Replenishment I",
+   "url": "https://eqlwiki.com/Elixir_of_Replenishment_I",
+   "description": "Hastens your natural healing, allowing you to recover hit points faster.",
+   "classes": [
+    {
+     "class": "Distillate of Replenishment I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 100,
+   "range": 100,
+   "casting_time": 6.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You begin to regenerate.",
+   "msg_cast_on_other": "Someone begins to regenerate.",
+   "msg_wears_off": "You have stopped regenerating.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 1 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Replenishment I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Replenishment_II",
+   "name": "Elixir of Replenishment II",
+   "url": "https://eqlwiki.com/Elixir_of_Replenishment_II",
+   "description": "Hastens your natural healing, allowing you to recover hit points faster.",
+   "classes": [
+    {
+     "class": "Distillate of Replenishment II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 100,
+   "range": 100,
+   "casting_time": 6.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You begin to regenerate.",
+   "msg_cast_on_other": "Someone begins to regenerate.",
+   "msg_wears_off": "You have stopped regenerating.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 2 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Replenishment II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Replenishment_III",
+   "name": "Elixir of Replenishment III",
+   "url": "https://eqlwiki.com/Elixir_of_Replenishment_III",
+   "description": "Hastens your natural healing, allowing you to recover hit points faster.",
+   "classes": [
+    {
+     "class": "Distillate of Replenishment III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 100,
+   "range": 100,
+   "casting_time": 6.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You begin to regenerate.",
+   "msg_cast_on_other": "Someone begins to regenerate.",
+   "msg_wears_off": "You have stopped regenerating.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 3 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Replenishment III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Replenishment_IV",
+   "name": "Elixir of Replenishment IV",
+   "url": "https://eqlwiki.com/Elixir_of_Replenishment_IV",
+   "description": "Hastens your natural healing, allowing you to recover hit points faster.",
+   "classes": [
+    {
+     "class": "Distillate of Replenishment IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 100,
+   "range": 100,
+   "casting_time": 6.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You begin to regenerate.",
+   "msg_cast_on_other": "Someone begins to regenerate.",
+   "msg_wears_off": "You have stopped regenerating.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 4 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Replenishment IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Replenishment_IX",
+   "name": "Elixir of Replenishment IX",
+   "url": "https://eqlwiki.com/Elixir_of_Replenishment_IX",
+   "description": "Hastens your natural healing, allowing you to recover hit points faster.",
+   "classes": [
+    {
+     "class": "Distillate of Replenishment IX",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 100,
+   "range": 100,
+   "casting_time": 6.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You begin to regenerate.",
+   "msg_cast_on_other": "Someone begins to regenerate.",
+   "msg_wears_off": "You have stopped regenerating.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 30 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Replenishment IX"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Replenishment_VI",
+   "name": "Elixir of Replenishment VI",
+   "url": "https://eqlwiki.com/Elixir_of_Replenishment_VI",
+   "description": "Hastens your natural healing, allowing you to recover hit points faster.",
+   "classes": [
+    {
+     "class": "Distillate of Replenishment VI",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 100,
+   "range": 100,
+   "casting_time": 6.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You begin to regenerate.",
+   "msg_cast_on_other": "Someone begins to regenerate.",
+   "msg_wears_off": "You have stopped regenerating.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 8 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Replenishment VI"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Speed_I",
+   "name": "Elixir of Speed I",
+   "url": "https://eqlwiki.com/Elixir_of_Speed_I",
+   "description": "Increases your attack speed by 5 percent for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Alacrity I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You feel very fast.",
+   "msg_cast_on_other": "Someone drinks an elixir of speed.",
+   "msg_wears_off": "The speed fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Attack Speed by 5%"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Alacrity I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Speed_II",
+   "name": "Elixir of Speed II",
+   "url": "https://eqlwiki.com/Elixir_of_Speed_II",
+   "description": "Increases your attack speed by 10 percent for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Alacrity II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You feel very fast.",
+   "msg_cast_on_other": "Someone drinks an elixir of speed.",
+   "msg_wears_off": "The speed fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Attack Speed by 10%"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Alacrity II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Speed_III",
+   "name": "Elixir of Speed III",
+   "url": "https://eqlwiki.com/Elixir_of_Speed_III",
+   "description": "Increases your attack speed by 15 percent for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Alacrity III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You feel very fast.",
+   "msg_cast_on_other": "Someone drinks an elixir of speed.",
+   "msg_wears_off": "The speed fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Attack Speed by 15%"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Alacrity III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Speed_IV",
+   "name": "Elixir of Speed IV",
+   "url": "https://eqlwiki.com/Elixir_of_Speed_IV",
+   "description": "Fills your body with energy, increasing your attack speed for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Alacrity IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You feel very fast.",
+   "msg_cast_on_other": "Someone drinks an elixir of speed.",
+   "msg_wears_off": "The speed fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Attack Speed by 20%"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Alacrity IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Speed_IX",
+   "name": "Elixir of Speed IX",
+   "url": "https://eqlwiki.com/Elixir_of_Speed_IX",
+   "description": "Increases your attack speed by 45 percent for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Alacrity IX",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You feel very fast.",
+   "msg_cast_on_other": "Someone drinks an elixir of speed.",
+   "msg_wears_off": "The speed fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Attack Speed by 45%"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Alacrity IX"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Speed_VI",
+   "name": "Elixir of Speed VI",
+   "url": "https://eqlwiki.com/Elixir_of_Speed_VI",
+   "description": "Fills your body with energy, increasing your attack speed for up to 30 minutes.",
+   "classes": [
+    {
+     "class": "Distillate of Alacrity VI",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You feel very fast.",
+   "msg_cast_on_other": "Someone drinks an elixir of speed.",
+   "msg_wears_off": "The speed fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Attack Speed by 30%"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Alacrity VI"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Spiritualism_I",
+   "name": "Elixir of Spiritualism I",
+   "url": "https://eqlwiki.com/Elixir_of_Spiritualism_I",
+   "description": "Envelops you in an aura of spiritual light, increasing your mana and hit point regeneration.",
+   "classes": [
+    {
+     "class": "Distillate of Spirituality I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 200,
+   "range": 0,
+   "casting_time": 5.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of spiritualism envelops you.",
+   "msg_cast_on_other": "Someone is enveloped by an aura of spiritualism.",
+   "msg_wears_off": "The aura of spiritualism fades.",
+   "slots": [
+    {
+     "slot": 5,
+     "effect": "Increase Current Mana by 0 per tick"
+    },
+    {
+     "slot": 8,
+     "effect": "Increase Current HP by 1 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Spirituality I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Spiritualism_II",
+   "name": "Elixir of Spiritualism II",
+   "url": "https://eqlwiki.com/Elixir_of_Spiritualism_II",
+   "description": "Envelops you in an aura of spiritual light, increasing your mana and hit point regeneration.",
+   "classes": [
+    {
+     "class": "Distillate of Spirituality II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 200,
+   "range": 0,
+   "casting_time": 5.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of spiritualism envelops you.",
+   "msg_cast_on_other": "Someone is enveloped by an aura of spiritualism.",
+   "msg_wears_off": "The aura of spiritualism fades.",
+   "slots": [
+    {
+     "slot": 5,
+     "effect": "Increase Current Mana by 1 per tick"
+    },
+    {
+     "slot": 8,
+     "effect": "Increase Current HP by 1 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Spirituality II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Spiritualism_III",
+   "name": "Elixir of Spiritualism III",
+   "url": "https://eqlwiki.com/Elixir_of_Spiritualism_III",
+   "description": "Envelops you in an aura of spiritual light, increasing your mana and hit point regeneration.",
+   "classes": [
+    {
+     "class": "Distillate of Spirituality III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 200,
+   "range": 0,
+   "casting_time": 5.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of spiritualism envelops you.",
+   "msg_cast_on_other": "Someone is enveloped by an aura of spiritualism.",
+   "msg_wears_off": "The aura of spiritualism fades.",
+   "slots": [
+    {
+     "slot": 5,
+     "effect": "Increase Current Mana by 1 per tick"
+    },
+    {
+     "slot": 8,
+     "effect": "Increase Current HP by 2 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Spirituality III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Spiritualism_IV",
+   "name": "Elixir of Spiritualism IV",
+   "url": "https://eqlwiki.com/Elixir_of_Spiritualism_IV",
+   "description": "Envelops you in an aura of spiritual light, increasing your mana and hit point regeneration.",
+   "classes": [
+    {
+     "class": "Distillate of Spirituality IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 200,
+   "range": 0,
+   "casting_time": 5.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of spiritualism envelops you.",
+   "msg_cast_on_other": "Someone is enveloped by an aura of spiritualism.",
+   "msg_wears_off": "The aura of spiritualism fades.",
+   "slots": [
+    {
+     "slot": 5,
+     "effect": "Increase Current Mana by 2 per tick"
+    },
+    {
+     "slot": 8,
+     "effect": "Increase Current HP by 2 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Spirituality IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Spiritualism_IX",
+   "name": "Elixir of Spiritualism IX",
+   "url": "https://eqlwiki.com/Elixir_of_Spiritualism_IX",
+   "description": "Envelops you in an aura of spiritual light, increasing your mana and hit point regeneration.",
+   "classes": [
+    {
+     "class": "Distillate of Spirituality IX",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 200,
+   "range": 0,
+   "casting_time": 5.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of spiritualism envelops you.",
+   "msg_cast_on_other": "Someone is enveloped by an aura of spiritualism.",
+   "msg_wears_off": "The aura of spiritualism fades.",
+   "slots": [
+    {
+     "slot": 5,
+     "effect": "Increase Current Mana by 6 per tick"
+    },
+    {
+     "slot": 8,
+     "effect": "Increase Current HP by 6 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Spirituality IX"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Elixir_of_Spiritualism_VI",
+   "name": "Elixir of Spiritualism VI",
+   "url": "https://eqlwiki.com/Elixir_of_Spiritualism_VI",
+   "description": "Envelops you in an aura of spiritual light, increasing your mana and hit point regeneration.",
+   "classes": [
+    {
+     "class": "Distillate of Spirituality VI",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 200,
+   "range": 0,
+   "casting_time": 5.0,
+   "fizzle_time": 0.0,
+   "recast_time": 1.5,
+   "duration": "30 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of spiritualism envelops you.",
+   "msg_cast_on_other": "Someone is enveloped by an aura of spiritualism.",
+   "msg_wears_off": "The aura of spiritualism fades.",
+   "slots": [
+    {
+     "slot": 5,
+     "effect": "Increase Current Mana by 3 per tick"
+    },
+    {
+     "slot": 8,
+     "effect": "Increase Current HP by 3 per tick"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Spirituality VI"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Pages with broken file links",
+    "Spells"
+   ]
+  },
+  {
    "id": "Elnerick's_Entombment_of_Ice",
    "name": "Elnerick's Entombment of Ice",
    "url": "https://eqlwiki.com/Elnerick's_Entombment_of_Ice",
@@ -21117,8 +23158,7 @@
    "era": null,
    "categories": [
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Enchant_Velium",
@@ -21156,8 +23196,7 @@
    "categories": [
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Endure_Cold",
@@ -21213,7 +23252,9 @@
      "effect": "Increase Cold Resist by 11 (L1) to 20 (L10)"
     }
    ],
-   "items_with_effect": [],
+   "items_with_effect": [
+    "Potion of Frosty Insurgency"
+   ],
    "where_to_obtain": "<ul><li>[[Beastlord#Spell Vendors|Beastlord Spell Vendors]]</li> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Necromancer#Spell Vendors|Necromancer Spell Vendors]]</li> <li>[[Ranger#Spell Vendors|Ranger Spell Vendors]]</li> <li>[[Shadow Knight#Spell Vendors|Shadow Knight Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
@@ -21331,7 +23372,9 @@
      "effect": "Increase Fire Resist by 11 (L1) to 20 (L10)"
     }
    ],
-   "items_with_effect": [],
+   "items_with_effect": [
+    "Potion Skin of Ro"
+   ],
    "where_to_obtain": "<ul><li>[[Beastlord#Spell Vendors|Beastlord Spell Vendors]]</li> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Ranger#Spell Vendors|Ranger Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
@@ -21392,7 +23435,8 @@
    ],
    "items_with_effect": [
     "White Dragon Helm",
-    "Deepwater Boots"
+    "Deepwater Boots",
+    "Potion of Shumar's Breath"
    ],
    "where_to_obtain": "<ul><li>[[Beastlord#Spell Vendors|Beastlord Spell Vendors]]</li> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Enchanter#Spell Vendors|Enchanter Spell Vendors]]</li> <li>[[Paladin#Spell Vendors|Paladin Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
@@ -21527,7 +23571,8 @@
     "Singing Steel Gauntlets",
     "Sleeves of the Kelpmaidens",
     "Staff of the Waterwalker",
-    "Summoned: Waterstone"
+    "Summoned: Waterstone",
+    "Potion of Vox's Vitality"
    ],
    "where_to_obtain": "<ul><li>[[Beastlord#Spell Vendors|Beastlord Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Enchanter#Spell Vendors|Enchanter Spell Vendors]]</li> <li>[[Ranger#Spell Vendors|Ranger Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
@@ -22423,9 +24468,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 117.png"
@@ -22898,8 +24944,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Evacuate:_Nek",
@@ -23252,9 +25297,10 @@
     "Runed Shell Necklace",
     "Enchanted Velium Mask"
    ],
-   "where_to_obtain": null,
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon F.png"
@@ -24881,8 +26927,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Feral_Spirit",
@@ -24923,9 +26968,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon T.png"
@@ -25656,12 +27702,49 @@
     "Rain Caller",
     "Blade of Shadowed Flame"
    ],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon O.png"
+  },
+  {
+   "id": "Firestrike_(Effect)",
+   "name": "Firestrike (Effect)",
+   "url": "https://eqlwiki.com/Firestrike_(Effect)",
+   "description": "Ignites your target's skin, doing 302 damage.",
+   "classes": [],
+   "skill": "[[Skill Evocation | Evocation]]",
+   "mana": 0,
+   "range": 200,
+   "casting_time": 0.0,
+   "fizzle_time": 1.5,
+   "recast_time": 1.5,
+   "duration": "Instant",
+   "target_type": "Single",
+   "spell_type": "Detrimental",
+   "resist": "Fire (0)",
+   "msg_cast_on_you": "You feel your skin ignite.",
+   "msg_cast_on_other": "Someone 's skin ignites.",
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Hitpoints by 302"
+    }
+   ],
+   "items_with_effect": [
+    "Rain Caller",
+    "Blade of Shadowed Flame"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
   },
   {
    "id": "Fist_of_Air",
@@ -25843,8 +27926,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Fist_of_Sentience",
@@ -26395,8 +28477,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Flaming_Arrow",
@@ -26810,7 +28891,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -27684,9 +29765,10 @@
    "items_with_effect": [
     "Lycanthropic Staff"
    ],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Illusions",
     "Spells"
    ],
@@ -28585,8 +30667,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Frostreaver's_Blessing",
@@ -28832,8 +30913,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Furious_Strength",
@@ -28993,7 +31073,7 @@
    "duration": "Instant",
    "target_type": "Single",
    "spell_type": "Detrimental",
-   "resist": "Magic (+15)",
+   "resist": "Magic (0?)",
    "msg_cast_on_you": "Lightning surges through your body.",
    "msg_cast_on_other": "Someone has been struck by lightning.",
    "msg_wears_off": null,
@@ -29008,9 +31088,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon M.png"
@@ -29640,13 +31721,13 @@
    ],
    "items_with_effect": [
     "Vial of Swirling Smoke",
-    "Glimmer Ring"
+    "Glimmer Ring",
+    "Gate Potion"
    ],
    "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Enchanter#Spell Vendors|Enchanter Spell Vendors]]</li> <li>[[Magician#Spell Vendors|Magician Spell Vendors]]</li> <li>[[Necromancer#Spell Vendors|Necromancer Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> <li>[[Wizard#Spell Vendors|Wizard Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
-    "Pages using duplicate arguments in template calls",
     "Spells"
    ],
    "icon": "Spellicon 31.png"
@@ -29776,8 +31857,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Ghoul_Root",
@@ -30818,44 +32898,6 @@
    "icon": "Spellicon 129.png"
   },
   {
-   "id": "Healing_Water",
-   "name": "Greater Healing",
-   "url": "https://eqlwiki.com/Healing_Water",
-   "description": "Conjures healing water from the ground, healing 425 damage to your target.",
-   "classes": [
-    {
-     "class": "Druid",
-     "level": 34
-    }
-   ],
-   "skill": "[[Skill Alteration | Alteration]]",
-   "mana": 150,
-   "range": 100,
-   "casting_time": 0.75,
-   "fizzle_time": 2.5,
-   "recast_time": 6.0,
-   "duration": "Instant",
-   "target_type": "Single Friendly (or Self)",
-   "spell_type": "Beneficial",
-   "resist": "Unresistable",
-   "msg_cast_on_you": "Healing water flows over you.",
-   "msg_cast_on_other": null,
-   "msg_wears_off": null,
-   "slots": [
-    {
-     "slot": 1,
-     "effect": "Increase Hitpoints by 345 (L34) to 425 (L50)"
-    }
-   ],
-   "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
-   "categories": [
-    "Spells"
-   ],
-   "icon": "Spellicon 99.png"
-  },
-  {
    "id": "Greater_Healing",
    "name": "Greater Healing",
    "url": "https://eqlwiki.com/Greater_Healing",
@@ -30957,6 +32999,46 @@
     "Spells"
    ],
    "icon": "Spellicon 83.png"
+  },
+  {
+   "id": "Greater_Mystical_Infusion_(Spell)",
+   "name": "Greater Mystical Infusion",
+   "url": "https://eqlwiki.com/Greater_Mystical_Infusion_(Spell)",
+   "description": "Expands your target's mind, granting them an increased mana pool for up to 20 minutes.",
+   "classes": [
+    {
+     "class": "Greater Mystical Infusion",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "20 minutes",
+   "target_type": "Single",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your mind expands.",
+   "msg_cast_on_other": "Someone's mind expands.",
+   "msg_wears_off": "Your mind returns to normal.",
+   "slots": [
+    {
+     "slot": 4,
+     "effect": "Increase Max Mana by 100"
+    }
+   ],
+   "items_with_effect": [
+    "Greater Mystical Infusion"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
   },
   {
    "id": "Greater_Shielding",
@@ -31409,9 +33491,10 @@
    "items_with_effect": [
     "Lupine Dagger"
    ],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Illusions",
     "Spells"
    ],
@@ -31459,8 +33542,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Grim_Aura",
@@ -31692,7 +33774,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "<ul> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
+   "where_to_obtain": "<ul> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> <li> </li></ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -31992,7 +34074,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Paladin#Spell Vendors|Paladin Spell Vendors]]</li> <li>[[Wizard#Spell Vendors|Wizard Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -32607,6 +34689,46 @@
    "icon": "Spellicon 127.png"
   },
   {
+   "id": "Hawk's_Eye_Tonic",
+   "name": "Hawk's Eye Tonic",
+   "url": "https://eqlwiki.com/Hawk's_Eye_Tonic",
+   "description": "Improves your aim, allowing you to become more skillful at archery for up to 20 minutes.",
+   "classes": [
+    {
+     "class": "Hawks Eye Tonic",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 0,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "20 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your aim improves.",
+   "msg_cast_on_other": "Someone's eyes sharpen.",
+   "msg_wears_off": "Your aim returns to normal.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Chance to Hit by 10% with Archery"
+    }
+   ],
+   "items_with_effect": [
+    "Hawks Eye Tonic"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
    "id": "Haze",
    "name": "Haze",
    "url": "https://eqlwiki.com/Haze",
@@ -32644,6 +34766,40 @@
     "Spells"
    ],
    "icon": "Spellicon K.png"
+  },
+  {
+   "id": "Full_Heal",
+   "name": "Healing",
+   "url": "https://eqlwiki.com/Full_Heal",
+   "description": "This spell is used by the [[Test Dummy]] in the Arena to heal you while sparring.",
+   "classes": [],
+   "skill": null,
+   "mana": 0,
+   "range": 120,
+   "casting_time": 0.0,
+   "fizzle_time": 1.0,
+   "recast_time": 0.0,
+   "duration": "Instant",
+   "target_type": "Single Friendly (or Self)",
+   "spell_type": "Heal",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds are gone.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Hitpoints by 100%"
+    }
+   ],
+   "items_with_effect": [],
+   "where_to_obtain": "<ul><li>NPC Only</li> </ul>",
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ],
+   "icon": "Spellicon 99.png"
   },
   {
    "id": "Healing",
@@ -32751,6 +34907,284 @@
    "icon": "Spellicon 99.png"
   },
   {
+   "id": "Healing_Potion_I",
+   "name": "Healing Potion I",
+   "url": "https://eqlwiki.com/Healing_Potion_I",
+   "description": "Heals you for between 9 and 12 hit points.",
+   "classes": [
+    {
+     "class": "Distillate of Divine Healing I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "Instant",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds heal.",
+   "msg_cast_on_other": "Someone drinks a healing potion.",
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 10 (Random: 9 to 12)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Divine Healing I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Healing_Potion_II",
+   "name": "Healing Potion II",
+   "url": "https://eqlwiki.com/Healing_Potion_II",
+   "description": "Heals you for between 31 and 36 hit points.",
+   "classes": [
+    {
+     "class": "Distillate of Divine Healing II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "Instant",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds heal.",
+   "msg_cast_on_other": "Someone drinks a healing potion.",
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 33 (Random: 31 to 36)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Divine Healing II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Healing_Potion_III",
+   "name": "Healing Potion III",
+   "url": "https://eqlwiki.com/Healing_Potion_III",
+   "description": "Heals you for between 83 and 95 hit points.",
+   "classes": [
+    {
+     "class": "Distillate of Divine Healing III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "Instant",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds heal.",
+   "msg_cast_on_other": "Someone drinks a healing potion.",
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 89 (Random: 83 to 95)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Divine Healing III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Healing_Potion_IV",
+   "name": "Healing Potion IV",
+   "url": "https://eqlwiki.com/Healing_Potion_IV",
+   "description": "Heals you for between 164 and 190 hit points.",
+   "classes": [
+    {
+     "class": "Distillate of Divine Healing IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "Instant",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds heal.",
+   "msg_cast_on_other": "Someone drinks a healing potion.",
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 177 (Random: 164 to 190)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Divine Healing IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Healing_Potion_IX",
+   "name": "Healing Potion IX",
+   "url": "https://eqlwiki.com/Healing_Potion_IX",
+   "description": "Heals you for between 1294 and 1471 hit points.",
+   "classes": [
+    {
+     "class": "Distillate of Divine Healing IX",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "Instant",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds heal.",
+   "msg_cast_on_other": "Someone drinks a healing potion.",
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 1382 (Random: 1294 to 1471)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Divine Healing IX"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Healing_Potion_VI",
+   "name": "Healing Potion VI",
+   "url": "https://eqlwiki.com/Healing_Potion_VI",
+   "description": "Heals you for between 423 and 484 hit points.",
+   "classes": [
+    {
+     "class": "Distillate of Divine Healing VI",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "Instant",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your wounds heal.",
+   "msg_cast_on_other": "Someone drinks a healing potion.",
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 453 (Random: 423 to 484)"
+    }
+   ],
+   "items_with_effect": [
+    "Distillate of Divine Healing VI"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Healing_Water",
+   "name": "Healing Water",
+   "url": "https://eqlwiki.com/Healing_Water",
+   "description": "Conjures healing water from the ground, healing 425 damage to your target.",
+   "classes": [
+    {
+     "class": "Druid",
+     "level": 34
+    }
+   ],
+   "skill": "[[Skill Alteration | Alteration]]",
+   "mana": 150,
+   "range": 100,
+   "casting_time": 0.75,
+   "fizzle_time": 2.5,
+   "recast_time": 6.0,
+   "duration": "Instant",
+   "target_type": "Single Friendly (or Self)",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Healing water flows over you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Hitpoints by 345 (L34) to 425 (L50)"
+    }
+   ],
+   "items_with_effect": [],
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
    "id": "Health",
    "name": "Health",
    "url": "https://eqlwiki.com/Health",
@@ -32840,6 +35274,230 @@
     "Spells"
    ],
    "icon": "Spellicon E.png"
+  },
+  {
+   "id": "Heat_Awareness_I_(Spell)",
+   "name": "Heat Awareness I",
+   "url": "https://eqlwiki.com/Heat_Awareness_I_(Spell)",
+   "description": "Reduces the mana cost of fire-based spells by up to 5 percent. This bonus will decay on spells over level 20.",
+   "classes": [
+    {
+     "class": "Heat Awareness I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of heat awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 20 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Fire"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Heat Awareness I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Heat_Awareness_II_(Spell)",
+   "name": "Heat Awareness II",
+   "url": "https://eqlwiki.com/Heat_Awareness_II_(Spell)",
+   "description": "Reduces the mana cost of fire-based spells by up to 5 percent. This bonus will decay on spells over level 44.",
+   "classes": [
+    {
+     "class": "Heat Awareness II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of heat awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 44 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Fire"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Heat Awareness II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Heat_Awareness_III_(Spell)",
+   "name": "Heat Awareness III",
+   "url": "https://eqlwiki.com/Heat_Awareness_III_(Spell)",
+   "description": "Reduces the mana cost of fire-based spells by up to 5 percent. This bonus will decay on spells over level 60.",
+   "classes": [
+    {
+     "class": "Heat Awareness III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of heat awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 60 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Fire"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Heat Awareness III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Heat_Awareness_IV_(Spell)",
+   "name": "Heat Awareness IV",
+   "url": "https://eqlwiki.com/Heat_Awareness_IV_(Spell)",
+   "description": "Reduces the mana cost of fire-based spells by up to 5 percent. This bonus will decay on spells over level 65.",
+   "classes": [
+    {
+     "class": "Heat Awareness IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of heat awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 65 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Fire"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Heat Awareness IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
   },
   {
    "id": "Heat_Blood",
@@ -32977,6 +35635,52 @@
     "Spells"
    ],
    "icon": "Spellicon 99.png"
+  },
+  {
+   "id": "Heritage_of_Mistmoore",
+   "name": "Heritage of Mistmoore",
+   "url": "https://eqlwiki.com/Heritage_of_Mistmoore",
+   "description": "Increases your health and mana regeneration while also decreasing your resistances to magic and fire.",
+   "classes": [],
+   "skill": "[[Skill Abjuration|Abjuration]]",
+   "mana": null,
+   "range": null,
+   "casting_time": null,
+   "fizzle_time": null,
+   "recast_time": null,
+   "duration": "10:00",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": null,
+   "msg_cast_on_you": null,
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase HP regen by 1"
+    },
+    {
+     "slot": 2,
+     "effect": "Increase MP regen by 1"
+    },
+    {
+     "slot": 3,
+     "effect": "Decrease Magic resist by 10"
+    },
+    {
+     "slot": 4,
+     "effect": "Decrease Fire resist by 15"
+    }
+   ],
+   "items_with_effect": [],
+   "where_to_obtain": null,
+   "era": null,
+   "categories": [
+    "Focus Effects",
+    "Negative MR",
+    "Spells"
+   ]
   },
   {
    "id": "Heroic_Bond",
@@ -33275,6 +35979,50 @@
     "Spells"
    ],
    "icon": "Spellicon C.png"
+  },
+  {
+   "id": "Hp_to_Mana",
+   "name": "Hp to Mana",
+   "url": "https://eqlwiki.com/Hp_to_Mana",
+   "description": "Converts the power of your body into mental energy.",
+   "classes": [
+    {
+     "class": "Potion of Vampiric Spirit",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 0,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "Instant",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your body aches as your mind clears.",
+   "msg_cast_on_other": "Someone winces.",
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Current HP by 180"
+    },
+    {
+     "slot": 2,
+     "effect": "Increase Current Mana by 60"
+    }
+   ],
+   "items_with_effect": [
+    "Potion of Vampiric Spirit"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
   },
   {
    "id": "Hsagra's_Wrath",
@@ -34225,7 +36973,8 @@
    ],
    "items_with_effect": [
     "Flayed Barbarian Hide Mask",
-    "Kilt of the Northmen"
+    "Kilt of the Northmen",
+    "Essence of Barbarian (Wormwood)"
    ],
    "where_to_obtain": "}}",
    "era": "Classic Era",
@@ -34269,7 +37018,8 @@
    ],
    "items_with_effect": [
     "Mask of Deception",
-    "Guise of the Deceiver"
+    "Guise of the Deceiver",
+    "Essence of Dark Elf (Wormwood)"
    ],
    "where_to_obtain": "}}",
    "era": "Classic Era",
@@ -34354,7 +37104,9 @@
      "effect": "Illusion: 8"
     }
    ],
-   "items_with_effect": [],
+   "items_with_effect": [
+    "Essence of Dwarf (Wormwood)"
+   ],
    "where_to_obtain": "}}",
    "era": "Classic Era",
    "categories": [
@@ -34441,6 +37193,7 @@
     }
    ],
    "items_with_effect": [
+    "Essence of Erudite (Wormwood)",
     "Mask of Obtenebration"
    ],
    "where_to_obtain": "}}",
@@ -34497,6 +37250,46 @@
    "icon": "Spellicon U.png"
   },
   {
+   "id": "Illusion:_Froglok",
+   "name": "Illusion: Froglok",
+   "url": "https://eqlwiki.com/Illusion:_Froglok",
+   "description": "Cloaks you in a shimmering illusion that makes you appear to be a Froglok.",
+   "classes": [
+    {
+     "class": "Essence of Froglok",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 10,
+   "range": 0,
+   "casting_time": 3.0,
+   "fizzle_time": 0.0,
+   "recast_time": 6.0,
+   "duration": "36 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You have a sudden desire to Froak.",
+   "msg_cast_on_other": "Someone's image shimmers.",
+   "msg_wears_off": "Your illusion fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Illusion: Froglok Ghoul"
+    }
+   ],
+   "items_with_effect": [
+    "Essence of Froglok"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
    "id": "Illusion:_Gnome",
    "name": "Illusion: Gnome",
    "url": "https://eqlwiki.com/Illusion:_Gnome",
@@ -34527,7 +37320,8 @@
     }
    ],
    "items_with_effect": [
-    "Mask of Tinkering"
+    "Mask of Tinkering",
+    "Essence of Gnome (Wormwood)"
    ],
    "where_to_obtain": "}}",
    "era": "Classic Era",
@@ -34537,6 +37331,46 @@
     "Spells"
    ],
    "icon": "Spellicon U.png"
+  },
+  {
+   "id": "Illusion:_Guktan",
+   "name": "Illusion: Guktan",
+   "url": "https://eqlwiki.com/Illusion:_Guktan",
+   "description": "Cloaks you in a shimmering illusion that makes you appear to be a Guktan Froglok.",
+   "classes": [
+    {
+     "class": "Essence of Gukta (Wormwood)",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 10,
+   "range": 0,
+   "casting_time": 3.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "36 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "You feel very amphibious.",
+   "msg_cast_on_other": "Someone turns into a Froglok.",
+   "msg_wears_off": "You no longer feel amphibious.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Illusion: Froglok"
+    }
+   ],
+   "items_with_effect": [
+    "Essence of Gukta (Wormwood)"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
   },
   {
    "id": "Illusion:_Half-Elf",
@@ -34568,14 +37402,15 @@
      "effect": "Illusion: 7"
     }
    ],
-   "items_with_effect": [],
+   "items_with_effect": [
+    "Essence of Half Elf (Wormwood)"
+   ],
    "where_to_obtain": "}}",
    "era": null,
    "categories": [
     "Illusions",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Illusion:_Halfling",
@@ -34609,7 +37444,8 @@
    ],
    "items_with_effect": [
     "Desiccated Halfling Mask",
-    "Skinned Halfling Face Mask"
+    "Skinned Halfling Face Mask",
+    "Essence of Halfling (Wormwood)"
    ],
    "where_to_obtain": "}}",
    "era": "Classic Era",
@@ -34652,6 +37488,7 @@
    ],
    "items_with_effect": [
     "Inlaid Jade Hoop",
+    "Essence of High Elf (Wormwood)",
     "Guise of the Coercer"
    ],
    "where_to_obtain": "}}",
@@ -34693,7 +37530,9 @@
      "effect": "Illusion: 1"
     }
    ],
-   "items_with_effect": [],
+   "items_with_effect": [
+    "Essence of Human (Wormwood)"
+   ],
    "where_to_obtain": "}}",
    "era": null,
    "categories": [
@@ -34774,7 +37613,9 @@
      "effect": "Illusion: 10"
     }
    ],
-   "items_with_effect": [],
+   "items_with_effect": [
+    "Essence of Ogre (Wormwood)"
+   ],
    "where_to_obtain": "}}",
    "era": "Classic Era",
    "categories": [
@@ -34994,7 +37835,9 @@
      "effect": "Increase Hitpoints by 1 per tick"
     }
    ],
-   "items_with_effect": [],
+   "items_with_effect": [
+    "Essence of Troll (Wormwood)"
+   ],
    "where_to_obtain": "}}",
    "era": "Classic Era",
    "categories": [
@@ -35122,7 +37965,9 @@
      "effect": "Illusion: 4"
     }
    ],
-   "items_with_effect": [],
+   "items_with_effect": [
+    "Essence of Wood Elf (Wormwood)"
+   ],
    "where_to_obtain": "}}",
    "era": "Classic Era",
    "categories": [
@@ -35297,49 +38142,6 @@
    "icon": "Spellicon U.png"
   },
   {
-   "id": "Mass_Imbue_Emerald",
-   "name": "Imbue Emerald",
-   "url": "https://eqlwiki.com/Mass_Imbue_Emerald",
-   "description": "Focuses the power of Tunare into five emeralds. Consumes five emeralds when cast.",
-   "classes": [
-    {
-     "class": "Cleric",
-     "level": 29
-    },
-    {
-     "class": "Druid",
-     "level": 29
-    }
-   ],
-   "skill": "[[Skill Alteration | Alteration]]",
-   "mana": 600,
-   "range": null,
-   "casting_time": 10.0,
-   "fizzle_time": 1.5,
-   "recast_time": 1.5,
-   "duration": "Instant",
-   "target_type": "Self",
-   "spell_type": "Beneficial",
-   "resist": "Unresistable",
-   "msg_cast_on_you": null,
-   "msg_cast_on_other": null,
-   "msg_wears_off": null,
-   "slots": [
-    {
-     "slot": 1,
-     "effect": "Summon Item:"
-    }
-   ],
-   "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": "Classic Era",
-   "categories": [
-    "Classic Era",
-    "Spells"
-   ],
-   "icon": "Spellicon U.png"
-  },
-  {
    "id": "Imbue_Emerald",
    "name": "Imbue Emerald",
    "url": "https://eqlwiki.com/Imbue_Emerald",
@@ -35374,7 +38176,50 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ],
+   "icon": "Spellicon U.png"
+  },
+  {
+   "id": "Mass_Imbue_Emerald",
+   "name": "Imbue Emerald",
+   "url": "https://eqlwiki.com/Mass_Imbue_Emerald",
+   "description": "Focuses the power of Tunare into five emeralds. Consumes five emeralds when cast.",
+   "classes": [
+    {
+     "class": "Cleric",
+     "level": 29
+    },
+    {
+     "class": "Druid",
+     "level": 29
+    }
+   ],
+   "skill": "[[Skill Alteration | Alteration]]",
+   "mana": 600,
+   "range": null,
+   "casting_time": 10.0,
+   "fizzle_time": 1.5,
+   "recast_time": 1.5,
+   "duration": "Instant",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": null,
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Summon Item:"
+    }
+   ],
+   "items_with_effect": [],
+   "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -35612,7 +38457,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -36482,8 +39327,7 @@
    "era": null,
    "categories": [
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Improved_Invisibility",
@@ -36617,8 +39461,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Spell:_Improved_Superior_Camo",
@@ -36655,8 +39498,67 @@
    "era": null,
    "categories": [
     "Spells"
+   ]
+  },
+  {
+   "id": "Improved_Vampirism_II",
+   "name": "Improved Vampirism II",
+   "url": "https://eqlwiki.com/Improved_Vampirism_II",
+   "description": "Increases the damage of lifetaps by up to 25%. This bonus will decay on spells over level 44.",
+   "classes": [],
+   "skill": null,
+   "mana": null,
+   "range": 100,
+   "casting_time": null,
+   "fizzle_time": null,
+   "recast_time": null,
+   "duration": "1:33:00",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": null,
+   "msg_cast_on_you": null,
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [],
+   "items_with_effect": [],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Focus Effects",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Improved_Vampirism_III",
+   "name": "Improved Vampirism III",
+   "url": "https://eqlwiki.com/Improved_Vampirism_III",
+   "description": "Increases the damage of lifetaps by up to 25%. This bonus will decay on spells over level 55.",
+   "classes": [],
+   "skill": null,
+   "mana": null,
+   "range": 100,
+   "casting_time": null,
+   "fizzle_time": null,
+   "recast_time": null,
+   "duration": "1:33:00",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": null,
+   "msg_cast_on_you": null,
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [],
+   "items_with_effect": [
+    "Bloodmoon"
    ],
-   "icon": null
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Focus Effects",
+    "Spells"
+   ]
   },
   {
    "id": "Incapacitate",
@@ -36974,8 +39876,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Infusion",
@@ -38350,7 +41251,7 @@
   },
   {
    "id": "Invisibility_versus_Undead",
-   "name": "Invisibility versus Undead",
+   "name": "Invisibility vs. Undead",
    "url": "https://eqlwiki.com/Invisibility_versus_Undead",
    "description": "Cloaks your target in a light aura, rendering them invisible to most undead creatures for up to 27 min.",
    "classes": [
@@ -38410,8 +41311,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": "Spellicon 33.png"
+   ]
   },
   {
    "id": "Invoke_Death",
@@ -39160,7 +42060,7 @@
    "slots": [
     {
      "slot": 1,
-     "effect": "Increase Melee Haste by 3%"
+     "effect": "Increase Attack Speed by 48% (L45) to 50% (L47)"
     },
     {
      "slot": 2,
@@ -39423,8 +42323,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Jyll's_Zephyr_of_Ice",
@@ -39462,8 +42361,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Kazumi's_Note_of_Preservation",
@@ -39944,15 +42842,14 @@
     }
    ],
    "items_with_effect": [
-    "Sharp Claws"
+    "Sharp Claws",
+    "Gladius"
    ],
    "where_to_obtain": null,
    "era": null,
    "categories": [
-    "Pages with broken file links",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Languid_Pace",
@@ -40040,8 +42937,7 @@
    "era": null,
    "categories": [
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Largo's_Absonant_Binding",
@@ -40091,8 +42987,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Largo's_Melodic_Binding",
@@ -40841,9 +43736,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -41199,14 +44095,53 @@
     "Summoned: Ring of Levitation",
     "Ravener Tail Whip"
    ],
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Wizard#Spell Vendors|Wizard Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ],
+   "icon": "Spellicon M.png"
+  },
+  {
+   "id": "Levity",
+   "name": "Levity",
+   "url": "https://eqlwiki.com/Levity",
+   "description": "Your feet leave the ground, allowing you to levitate for 20 minutes 30 seconds.",
+   "classes": [
+    {
+     "class": "Potion of Gulon's Impunity",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 60,
+   "range": 100,
+   "casting_time": 3.0,
+   "fizzle_time": 0.0,
+   "recast_time": 5.0,
+   "duration": "20 minutes 30 seconds",
+   "target_type": "Single",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your feet leave the ground.",
+   "msg_cast_on_other": "Someone floats into the air.",
+   "msg_wears_off": "You can no longer levitate.",
+   "slots": [
+    {
+     "slot": 3,
+     "effect": "Levitate"
+    }
+   ],
+   "items_with_effect": [
+    "Potion of Gulon's Impunity"
+   ],
    "where_to_obtain": null,
    "era": "Classic Era",
    "categories": [
     "Classic Era",
-    "NPC Only Spells",
     "Spells"
-   ],
-   "icon": "Spellicon M.png"
+   ]
   },
   {
    "id": "Lich",
@@ -41296,6 +44231,55 @@
     "Spells"
    ],
    "icon": "Spellicon 47.png"
+  },
+  {
+   "id": "Lifebite",
+   "name": "Lifebite",
+   "url": "https://eqlwiki.com/Lifebite",
+   "description": "Drains your target of life energy, siphoning between 42 and 42 hit points.",
+   "classes": [
+    {
+     "class": "Necromancer",
+     "level": 8
+    },
+    {
+     "class": "Shadow Knight",
+     "level": 10
+    }
+   ],
+   "skill": "[[Skill Alteration|Alteration]]",
+   "mana": 35,
+   "range": 200,
+   "casting_time": null,
+   "fizzle_time": null,
+   "recast_time": null,
+   "duration": "Instant",
+   "target_type": "Lifetap",
+   "spell_type": "Detrimental",
+   "resist": "Magic: (-200)",
+   "msg_cast_on_you": "You feel your life force drain away.",
+   "msg_cast_on_other": "Someone staggers.",
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Hitpoints by 42 to 42"
+    },
+    {
+     "slot": 2,
+     "effect": "Increase Hitpoints by 42 to 42 (Self)"
+    }
+   ],
+   "items_with_effect": [
+    "Cherista's Fangs"
+   ],
+   "where_to_obtain": "<ul><li>[[Shadow Knight#Spell Vendors|Shadow Knight Spell Vendors]] </li><li>[[Necromancer#Spell Vendors|Necromancer Spell Vendors]] </li></ul>",
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Focus Effects",
+    "Spells"
+   ]
   },
   {
    "id": "Lifedraw",
@@ -41740,7 +44724,7 @@
    "id": "Lightning_Strike",
    "name": "Lightning Strike",
    "url": "https://eqlwiki.com/Lightning_Strike",
-   "description": "Calls down lightning from the sky, causing between 163 and 184 damage and up to 3 others nearby. (1.23 DPM) This spell can hit at most 4 targets. Only castable outdoors.",
+   "description": "Calls down lightning from the sky over your target, causing 184 damage to up to 4 creatures in the area.",
    "classes": [
     {
      "class": "Druid",
@@ -41770,7 +44754,7 @@
     "Luminescent Staff",
     "Skydarkener"
    ],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -42776,6 +45760,230 @@
    "icon": "Spellicon M.png"
   },
   {
+   "id": "Magic_Awareness_I_(Spell)",
+   "name": "Magic Awareness I",
+   "url": "https://eqlwiki.com/Magic_Awareness_I_(Spell)",
+   "description": "Reduces the mana cost of magic-based spells by up to 5 percent. This bonus will decay on spells over level 20.",
+   "classes": [
+    {
+     "class": "Magic Awareness I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of magical awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 20 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Magic"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Magic Awareness I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Magic_Awareness_II_(Spell)",
+   "name": "Magic Awareness II",
+   "url": "https://eqlwiki.com/Magic_Awareness_II_(Spell)",
+   "description": "Reduces the mana cost of magic-based spells by up to 5 percent. This bonus will decay on spells over level 44.",
+   "classes": [
+    {
+     "class": "Magic Awareness II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of magical awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 44 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Magic"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Magic Awareness II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Magic_Awareness_III_(Spell)",
+   "name": "Magic Awareness III",
+   "url": "https://eqlwiki.com/Magic_Awareness_III_(Spell)",
+   "description": "Reduces the mana cost of magic-based spells by up to 5 percent. This bonus will decay on spells over level 60.",
+   "classes": [
+    {
+     "class": "Magic Awareness III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of magical awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 60 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Magic"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Magic Awareness III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Magic_Awareness_IV_(Spell)",
+   "name": "Magic Awareness IV",
+   "url": "https://eqlwiki.com/Magic_Awareness_IV_(Spell)",
+   "description": "Reduces the mana cost of magic-based spells by up to 5 percent. This bonus will decay on spells over level 65.",
+   "classes": [
+    {
+     "class": "Magic Awareness IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of magical awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 65 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Magic"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Magic Awareness IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
    "id": "Magical_Monologue",
    "name": "Magical Monologue",
    "url": "https://eqlwiki.com/Magical_Monologue",
@@ -43205,8 +46413,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Malo",
@@ -43262,7 +46469,7 @@
    "id": "Malosi",
    "name": "Malosi",
    "url": "https://eqlwiki.com/Malosi",
-   "description": "Decreases your target's resistance to cold, fire, magic, and poison.",
+   "description": "Decreases your target's resistance to cold, fire, magic, and poison. Note: This spell is unresistable. This was an undocumented change prior to the August 25, 2026 patch, which corrected the tooltip.",
    "classes": [
     {
      "class": "Shaman",
@@ -43282,7 +46489,7 @@
    "duration": "11 Min",
    "target_type": "Single",
    "spell_type": "Detrimental",
-   "resist": "Magic (0)",
+   "resist": "Unresistable",
    "msg_cast_on_you": "You feel very vulnerable.",
    "msg_cast_on_other": "Someone looks very uncomfortable.",
    "msg_wears_off": "Your vulnerability fades.",
@@ -43442,8 +46649,7 @@
    "era": null,
    "categories": [
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Mana_Detonation",
@@ -43760,6 +46966,50 @@
    "icon": "Spellicon C.png"
   },
   {
+   "id": "Mana_to_Hp",
+   "name": "Mana to Hp",
+   "url": "https://eqlwiki.com/Mana_to_Hp",
+   "description": "Converts the power of your mind into physical health.",
+   "classes": [
+    {
+     "class": "Potion of Wrackbane",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 0,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "Instant",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your mind aches as your body heals.",
+   "msg_cast_on_other": "Someone winces.",
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increase Current HP by 69"
+    },
+    {
+     "slot": 2,
+     "effect": "Decrease Current Mana by 180"
+    }
+   ],
+   "items_with_effect": [
+    "Potion of Wrackbane"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
    "id": "Manasink",
    "name": "Manasink",
    "url": "https://eqlwiki.com/Manasink",
@@ -43927,8 +47177,7 @@
    "era": null,
    "categories": [
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Manifest_Elements",
@@ -44132,8 +47381,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Markar's_Discord",
@@ -44175,8 +47423,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Mask_of_the_Hunter",
@@ -44943,7 +48190,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -45069,8 +48316,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Mass_Imbue_Topaz",
@@ -45231,8 +48477,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "McVaxius'_Berserker_Crescendo",
@@ -45261,7 +48506,7 @@
    "slots": [
     {
      "slot": 1,
-     "effect": "Increase Melee Haste by 8%"
+     "effect": "Increase Melee Haste by 18%"
     },
     {
      "slot": 2,
@@ -47075,6 +50320,46 @@
    "icon": "Spellicon M.png"
   },
   {
+   "id": "Mystical_Infusion_(Spell)",
+   "name": "Mystical Infusion",
+   "url": "https://eqlwiki.com/Mystical_Infusion_(Spell)",
+   "description": "Expands your target's mind, granting them an increased mana pool for up to 20 minutes.",
+   "classes": [
+    {
+     "class": "Mystical Infusion",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "20 minutes",
+   "target_type": "Single",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "Your mind expands.",
+   "msg_cast_on_other": "Someone's mind expands.",
+   "msg_wears_off": "Your mind returns to normal.",
+   "slots": [
+    {
+     "slot": 4,
+     "effect": "Increase Max Mana by 50"
+    }
+   ],
+   "items_with_effect": [
+    "Mystical Infusion"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
    "id": "Naki's_Charm_of_Pernicity",
    "name": "Naki's Charm of Pernicity",
    "url": "https://eqlwiki.com/Naki's_Charm_of_Pernicity",
@@ -47454,8 +50739,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Nature's_Precision",
@@ -47527,9 +50811,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon J.png"
@@ -47607,8 +50892,7 @@
     "Kunark Era",
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Natureskin",
@@ -48526,7 +51810,8 @@
     "Shamanistic Shenanigan Gauntlets",
     "Sly Summoners Gloves",
     "Twisted Nature Gloves",
-    "Wily Warlock Gloves"
+    "Wily Warlock Gloves",
+    "Potion of Hathcoat's Spirit"
    ],
    "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Enchanter#Spell Vendors|Enchanter Spell Vendors]]</li> <li>[[Magician#Spell Vendors|Magician Spell Vendors]]</li> <li>[[Necromancer#Spell Vendors|Necromancer Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> <li>[[Wizard#Spell Vendors|Wizard Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
@@ -48903,8 +52188,7 @@
    "categories": [
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Oathbreaker's_Curse",
@@ -49301,9 +52585,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon J.png"
@@ -49394,9 +52679,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon A.png"
@@ -50468,7 +53754,7 @@
    "id": "Pogonip",
    "name": "Pogonip",
    "url": "https://eqlwiki.com/Pogonip",
-   "description": "Calls down a hailstorm from the sky, causing three waves of 62 damage, up to a maximum of 4 targets hit. (0.496DPM per hit) *Note: Rain nukes are limited to 4 hits total. Either you can hit the same mobs 3 times, you can hit 2 mobs twice each, or you can hit 4 mobs once each. WARNING: This spell WILL NOT deal the final killing blow to any mob. Instead, it will just resist to infinity.",
+   "description": "Calls down a hailstorm from the sky, causing three waves of 62 damage, up to a maximum of 4 targets hit.",
    "classes": [
     {
      "class": "Druid",
@@ -50495,9 +53781,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon S.png"
@@ -50712,6 +53999,230 @@
     "Spells"
    ],
    "icon": "Spellicon C.png"
+  },
+  {
+   "id": "Poison_Awareness_I_(Spell)",
+   "name": "Poison Awareness I",
+   "url": "https://eqlwiki.com/Poison_Awareness_I_(Spell)",
+   "description": "Reduces the mana cost of poison-based spells by up to 5 percent. This bonus will decay on spells over level 20.",
+   "classes": [
+    {
+     "class": "Poison Awareness I",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of poison awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 20 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Poison"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Poison Awareness I"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Poison_Awareness_II_(Spell)",
+   "name": "Poison Awareness II",
+   "url": "https://eqlwiki.com/Poison_Awareness_II_(Spell)",
+   "description": "Reduces the mana cost of poison-based spells by up to 5 percent. This bonus will decay on spells over level 44.",
+   "classes": [
+    {
+     "class": "Poison Awareness II",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of poison awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 44 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Poison"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Poison Awareness II"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Poison_Awareness_III_(Spell)",
+   "name": "Poison Awareness III",
+   "url": "https://eqlwiki.com/Poison_Awareness_III_(Spell)",
+   "description": "Reduces the mana cost of poison-based spells by up to 5 percent. This bonus will decay on spells over level 60.",
+   "classes": [
+    {
+     "class": "Poison Awareness III",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of poison awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 60 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Poison"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Poison Awareness III"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Poison_Awareness_IV_(Spell)",
+   "name": "Poison Awareness IV",
+   "url": "https://eqlwiki.com/Poison_Awareness_IV_(Spell)",
+   "description": "Reduces the mana cost of poison-based spells by up to 5 percent. This bonus will decay on spells over level 65.",
+   "classes": [
+    {
+     "class": "Poison Awareness IV",
+     "level": null
+    }
+   ],
+   "skill": null,
+   "mana": 0,
+   "range": 100,
+   "casting_time": 0.0,
+   "fizzle_time": 0.0,
+   "recast_time": 0.0,
+   "duration": "3 hours 15 minutes",
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": "Unresistable",
+   "msg_cast_on_you": "An aura of poison awareness surrounds you.",
+   "msg_cast_on_other": null,
+   "msg_wears_off": "The awareness fades.",
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Decrease Spell Mana Cost by 1% to 5%"
+    },
+    {
+     "slot": 2,
+     "effect": "Limit Max Level: 65 (lose 5% per level)"
+    },
+    {
+     "slot": 3,
+     "effect": "Limit Spell: Exclude"
+    },
+    {
+     "slot": 4,
+     "effect": "Limit Resist: Poison"
+    },
+    {
+     "slot": 5,
+     "effect": "Limit Type: Exclude Combat Skills"
+    }
+   ],
+   "items_with_effect": [
+    "Poison Awareness IV"
+   ],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
   },
   {
    "id": "Poison_Bolt",
@@ -51309,8 +54820,9 @@
     "Hammer of the Dragonborn"
    ],
    "where_to_obtain": null,
-   "era": null,
+   "era": "Kunark Era",
    "categories": [
+    "Kunark Era",
     "Spells"
    ],
    "icon": "Spellicon R.png"
@@ -51594,9 +55106,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon K.png"
@@ -51690,9 +55203,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon K.png"
@@ -51736,9 +55250,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon K.png"
@@ -51778,7 +55293,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -52985,8 +56500,7 @@
    "era": null,
    "categories": [
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Wave_of_Heat",
@@ -53018,8 +56532,7 @@
    "era": null,
    "categories": [
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Rain_of_Spikes",
@@ -53961,7 +57474,7 @@
   },
   {
    "id": "Reconstitution",
-   "name": "Reconstitute",
+   "name": "Reconstitution",
    "url": "https://eqlwiki.com/Reconstitution",
    "description": "Revives a slain ally, restoring 10% of their lost experience. It takes some time for the recently revived to fully recover.",
    "classes": [
@@ -53999,8 +57512,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Refresh_Summoning",
@@ -54192,7 +57704,7 @@
    "id": "Rejuvenation",
    "name": "Rejuvenation",
    "url": "https://eqlwiki.com/Rejuvenation",
-   "description": "Slows your attack speed and lowers your intelligence while increasing your regeneration rate.<br> NOTE: This may not decrease attack speed at all, Lucy data shows it decreasing INT/STR until 2007.[http://lucy.allakhazam.com/spellhistory.html?id=1252&source=Live]",
+   "description": "Slows your attack speed and lowers your intelligence while increasing your regeneration rate.<br>",
    "classes": [],
    "skill": null,
    "mana": 0,
@@ -54214,7 +57726,7 @@
     },
     {
      "slot": 2,
-     "effect": "Decrease Attack Speed by 20% / (Decrease STR by 2 (L1) to 61 (L60)??)"
+     "effect": "Decrease Attack Speed by 20%"
     },
     {
      "slot": 4,
@@ -54316,7 +57828,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Paladin#Spell Vendors|Paladin Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
+   "where_to_obtain": "Currently not sold at Druid Vendors, but is sold at Cleric Vendors. <ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Paladin#Spell Vendors|Paladin Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -54973,7 +58485,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Ranger#Spell Vendors|Ranger Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -55595,8 +59107,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Revive",
@@ -55755,12 +59266,12 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Ring_of_Cobalt_Scar",
@@ -55908,7 +59419,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -56025,12 +59536,12 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Ring_of_Lavastorm",
@@ -56063,9 +59574,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -56148,9 +59660,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -56224,9 +59737,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -56262,9 +59776,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -56300,9 +59815,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -56338,9 +59854,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -56376,7 +59893,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -56415,9 +59932,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -56492,9 +60010,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -56756,7 +60275,7 @@
    "id": "Ro's_Fiery_Sundering",
    "name": "Ro's Fiery Sundering",
    "url": "https://eqlwiki.com/Ro's_Fiery_Sundering",
-   "description": "Surrounds your target in dancing flames, lowering their fire resistance and armor class. This spell generates a large amount of hate. Note: Didn't have a Fire (-200) resist modifier until 2002 because the \"Resistadj\" value wasn't created until then,[https://lucy.allakhazam.com/spellhistory.html?id=1437&source=Live] although the same patch that added Fire (-200) to Ro's Fiery Sundering also removed the pre-existing line \"Slot 1: Lure(6)\", implying that the spell was already abnormally hard to resist before the update that introduced the \"Resistadj\" value to the spell system. Prior to 2002, spells didn't have an entry for \"Resistadj\", with more difficult spells simply being given a \"Lure\" designation with some numerical value indicating how lure-y they were. In Lucy, the line reporting that the Resistadj value was changed from 0 to -200 was simply an indicator that the value was first created in the system. For context, [[Lure of Flame]] was marked as \"Slot 1: Lure(5)\" before the same patch on 2002-9-04 that updated Ro's Fiery Sundering to Fire (-200). The same patch in 2002 that removed \"Slot 1: Lure(5)\" from Lure of Flame also changed the Resistadj value from 0 to -300 for Lure of Flame, as well. Clearly, Lure of Flame did not actually have a Resistadj value of 0 before this patch; rather, the Resistadj value did not exist at all, and instead, stating that it was changed from 0 to -300 was Lucy's way of indicating that this new, unified Resistadj system had been added to replace the prior \"Lure\" designation that certain spells had. This was one part of several reworkings of the spell resist system that the old EQ devs had implemented over time. [https://lucy.allakhazam.com/spellhistory.html?id=1638&source=Live]",
+   "description": "Surrounds your target in dancing flames, lowering their fire resistance and armor class. This spell generates a large amount of hate.",
    "classes": [
     {
      "class": "Druid",
@@ -56787,11 +60306,11 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "* [[a Sifaye Thane]] * [[A Golem Usher]] * [[Eugie]] * [[Ry`Gorr elite guard]] * [[An Ancient Mummy]] Drop from various 30+ Velious mobs.",
-   "era": "Velious Era",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
-    "Spells",
-    "Velious Era"
+    "Classic Era",
+    "Spells"
    ],
    "icon": "Spellicon O.png"
   },
@@ -57294,8 +60813,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Sagar's_Animation",
@@ -58320,8 +61838,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Screaming_Terror",
@@ -58835,8 +62352,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Selo's_Chords_of_Cessation",
@@ -59247,7 +62763,8 @@
     "Helot Skull Helm",
     "Pearlescent Mask",
     "Razing Sword of Skarlon",
-    "Silvery Two Handed Axe"
+    "Silvery Two Handed Axe",
+    "Potion of Wolves Blood"
    ],
    "where_to_obtain": "<ul><li>[[Beastlord#Spell Vendors|Beastlord Spell Vendors]]</li> <li>[[Enchanter#Spell Vendors|Enchanter Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
@@ -59314,7 +62831,7 @@
    "recast_time": 5.0,
    "duration": "2 Min 30 Sec",
    "target_type": "Single",
-   "spell_type": "Slow",
+   "spell_type": "Detrimental",
    "resist": "Magic",
    "msg_cast_on_you": "You feel lethargic.",
    "msg_cast_on_other": "feels lethargic.",
@@ -59927,9 +63444,10 @@
    "items_with_effect": [
     "Elder Spiritist's Bracer"
    ],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Illusions",
     "Spells"
    ],
@@ -59997,7 +63515,7 @@
      "level": 19
     }
    ],
-   "skill": "[[Skill Wind | Wind]] \u2020",
+   "skill": "[[Skill Wind | Wind]] †",
    "mana": 0,
    "range": 45,
    "casting_time": 3.0,
@@ -60059,9 +63577,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon P.png"
@@ -60413,9 +63932,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon P.png"
@@ -62330,9 +65850,10 @@
    "items_with_effect": [
     "Elder Spiritist's Greaves"
    ],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon K.png"
@@ -63619,7 +67140,7 @@
      "level": 60
     }
    ],
-   "skill": "[[Skill Brass | Brass]] \u2020",
+   "skill": "[[Skill Brass | Brass]] †",
    "mana": 0,
    "range": 0,
    "casting_time": 3.0,
@@ -63662,7 +67183,7 @@
      "level": 60
     }
    ],
-   "skill": "[[Skill Brass | Brass]] \u2020",
+   "skill": "[[Skill Brass | Brass]] †",
    "mana": 0,
    "range": 0,
    "casting_time": 3.0,
@@ -63705,7 +67226,7 @@
      "level": 50
     }
    ],
-   "skill": "[[Skill Brass | Brass]] \u2020",
+   "skill": "[[Skill Brass | Brass]] †",
    "mana": 0,
    "range": 0,
    "casting_time": 3.0,
@@ -63748,7 +67269,7 @@
      "level": 50
     }
    ],
-   "skill": "[[Skill Brass | Brass]] \u2020",
+   "skill": "[[Skill Brass | Brass]] †",
    "mana": 0,
    "range": 0,
    "casting_time": 3.0,
@@ -63791,7 +67312,7 @@
      "level": 55
     }
    ],
-   "skill": "[[Skill Percussion | Percussion]] \u2020",
+   "skill": "[[Skill Percussion | Percussion]] †",
    "mana": 0,
    "range": 200,
    "casting_time": 3.0,
@@ -63842,7 +67363,7 @@
      "level": 55
     }
    ],
-   "skill": "[[Skill Percussion | Percussion]] \u2020",
+   "skill": "[[Skill Percussion | Percussion]] †",
    "mana": 0,
    "range": 200,
    "casting_time": 3.0,
@@ -64296,22 +67817,23 @@
    "duration": "Instant",
    "target_type": "Lifetap",
    "spell_type": "Detrimental",
-   "resist": "Magic",
+   "resist": "Magic (-200)",
    "msg_cast_on_you": "You feel your life force drain away.",
    "msg_cast_on_other": "Someone staggers.",
    "msg_wears_off": null,
    "slots": [
     {
      "slot": 1,
-     "effect": "Decrease Hitpoints by 2 (L1) to 40 (L60)"
+     "effect": "Decrease Hit Points by 2 (L1) to 51 (L50)"
     }
    ],
    "items_with_effect": [
     "Tserrina's Staff"
    ],
    "where_to_obtain": null,
-   "era": null,
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon G.png"
@@ -64347,8 +67869,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Speed_of_the_Shissar",
@@ -64391,8 +67912,9 @@
     "Staff of the Serpent"
    ],
    "where_to_obtain": null,
-   "era": null,
+   "era": "Kunark Era",
    "categories": [
+    "Kunark Era",
     "NPC Only Spells",
     "Spells"
    ],
@@ -65884,7 +69406,9 @@
      "effect": "Increase CHA by 13 (L14) to 15 (L18)"
     }
    ],
-   "items_with_effect": [],
+   "items_with_effect": [
+    "Potion of Charming Deceit"
+   ],
    "where_to_obtain": "<ul> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
@@ -66514,7 +70038,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -66759,8 +70283,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Stalwart_Regeneration",
@@ -66910,7 +70433,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -67655,9 +71178,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon R.png"
@@ -67902,7 +71426,7 @@
    "items_with_effect": [
     "Gharn's Rock of Smashing",
     "Jaelen's Katana",
-    "Palladius' Axe of Slaughter\u200e"
+    "Palladius' Axe of Slaughter‎"
    ],
    "where_to_obtain": null,
    "era": "Velious Era",
@@ -67948,6 +71472,76 @@
     "Spells"
    ],
    "icon": "Spellicon C.png"
+  },
+  {
+   "id": "String_Resonance_14",
+   "name": "String Resonance 14",
+   "url": "https://eqlwiki.com/String_Resonance_14",
+   "description": "Increases the power of stringed instrument based bard songs by up to 140%.",
+   "classes": [],
+   "skill": null,
+   "mana": null,
+   "range": 100,
+   "casting_time": null,
+   "fizzle_time": null,
+   "recast_time": null,
+   "duration": "2:30:00",
+   "target_type": "Self",
+   "spell_type": null,
+   "resist": null,
+   "msg_cast_on_you": null,
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increases the power of stringed instrument based bard songs by up to 140%"
+    }
+   ],
+   "items_with_effect": [
+    "Kelin`s Seven Stringed Lute"
+   ],
+   "where_to_obtain": null,
+   "era": null,
+   "categories": [
+    "Focus Effects",
+    "Spells"
+   ]
+  },
+  {
+   "id": "Wind_Resonance_14",
+   "name": "String Resonance 14",
+   "url": "https://eqlwiki.com/Wind_Resonance_14",
+   "description": "Increases the power of wind instrument based bard songs by up to 140%.",
+   "classes": [],
+   "skill": null,
+   "mana": null,
+   "range": 100,
+   "casting_time": null,
+   "fizzle_time": null,
+   "recast_time": null,
+   "duration": "2:30:00",
+   "target_type": "Self",
+   "spell_type": null,
+   "resist": null,
+   "msg_cast_on_you": null,
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increases the power of wind instrument based bard songs by up to 140%"
+    }
+   ],
+   "items_with_effect": [
+    "Lyssa`s Darkwood Piccolo"
+   ],
+   "where_to_obtain": null,
+   "era": null,
+   "categories": [
+    "Focus Effects",
+    "Spells"
+   ]
   },
   {
    "id": "Strip_Enchantment",
@@ -68394,9 +71988,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -68470,9 +72065,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -68660,9 +72256,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -69178,6 +72775,39 @@
    "icon": "Spellicon 37.png"
   },
   {
+   "id": "Summon_Drogmor",
+   "name": "Summon Drogmor",
+   "url": "https://eqlwiki.com/Summon_Drogmor",
+   "description": "Summons a drogmor mount",
+   "classes": [],
+   "skill": null,
+   "mana": null,
+   "range": null,
+   "casting_time": null,
+   "fizzle_time": null,
+   "recast_time": null,
+   "duration": null,
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": null,
+   "msg_cast_on_you": null,
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Summons a drogmor mount"
+    }
+   ],
+   "items_with_effect": [],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
+  },
+  {
    "id": "Summon_Elemental_Blanket",
    "name": "Summon Elemental Blanket",
    "url": "https://eqlwiki.com/Summon_Elemental_Blanket",
@@ -69501,6 +73131,39 @@
     "Spells"
    ],
    "icon": "Spellicon L.png"
+  },
+  {
+   "id": "Summon_Horse",
+   "name": "Summon Horse",
+   "url": "https://eqlwiki.com/Summon_Horse",
+   "description": "Summons a horse mount",
+   "classes": [],
+   "skill": null,
+   "mana": null,
+   "range": null,
+   "casting_time": null,
+   "fizzle_time": null,
+   "recast_time": null,
+   "duration": null,
+   "target_type": "Self",
+   "spell_type": "Beneficial",
+   "resist": null,
+   "msg_cast_on_you": null,
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Summons a horse mount"
+    }
+   ],
+   "items_with_effect": [],
+   "where_to_obtain": null,
+   "era": "Classic Era",
+   "categories": [
+    "Classic Era",
+    "Spells"
+   ]
   },
   {
    "id": "Summon_Jade_Bracelet",
@@ -70531,8 +74194,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Summon:_Orb_of_Exploration",
@@ -71042,9 +74704,10 @@
    "items_with_effect": [
     "Blazing Breastplate of Fennin Ro"
    ],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon B.png"
@@ -71735,7 +75398,7 @@
    "target_type": "Single Friendly (or Self)",
    "spell_type": "Beneficial",
    "resist": "Unresistable",
-   "msg_cast_on_you": "A mystic symbol flashes before your eyes.",
+   "msg_cast_on_you": "The symbol of Pinzarn flashes before your eyes.",
    "msg_cast_on_other": "Someone is cloaked in a shimmer of glowing symbols.",
    "msg_wears_off": "The mystic symbol fades.",
    "slots": [
@@ -73426,8 +77089,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Tears_of_Solusek",
@@ -73713,9 +77375,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon G.png"
@@ -74378,8 +78041,7 @@
    "era": null,
    "categories": [
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Tiny_Companion",
@@ -74654,8 +78316,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Torbas'_Poison_Blast",
@@ -74693,8 +78354,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Torment",
@@ -76231,8 +79891,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Treeform",
@@ -76279,7 +79938,7 @@
    "items_with_effect": [
     "Maple Leaf Mask"
    ],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
    "categories": [
     "Classic Era",
@@ -76325,9 +79984,10 @@
    "items_with_effect": [
     "Donal's Boots of Mourning"
    ],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon 161.png"
@@ -76640,8 +80300,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Turgur`s_Insects",
@@ -76801,7 +80460,8 @@
     }
    ],
    "items_with_effect": [
-    "Lodizal Shell Boots"
+    "Lodizal Shell Boots",
+    "Turtle's Drink"
    ],
    "where_to_obtain": "<ul><li>[[Beastlord#Spell Vendors|Beastlord Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
@@ -77075,7 +80735,9 @@
     "Summoned: Coldstone",
     "Twisted Nature Crown",
     "Wily Warlock Crown",
-    "Wolf Caller's Bracer"
+    "Wolf Caller's Bracer",
+    "Potion of Fleeting Languor",
+    "Potion of Gnomish Boils"
    ],
    "where_to_obtain": "<ul> <li>[[Enchanter#Spell Vendors|Enchanter Spell Vendors]]</li> <li>[[Shaman#Spell Vendors|Shaman Spell Vendors]]</li> </ul>",
    "era": "Classic Era",
@@ -77640,8 +81302,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Vengeance_of_the_Glades",
@@ -77712,7 +81373,7 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
    "era": null,
    "categories": [
     "Spells"
@@ -78931,8 +82592,9 @@
    ],
    "items_with_effect": [],
    "where_to_obtain": "<ul> <li>[[Cleric#Spell Vendors|Cleric Spell Vendors]]</li> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> <li>[[Magician#Spell Vendors|Magician Spell Vendors]]</li> <li>[[Ranger#Spell Vendors|Ranger Spell Vendors]]</li> </ul>",
-   "era": null,
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon C.png"
@@ -80292,9 +83954,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon M.png"
@@ -80449,6 +84112,42 @@
    ],
    "items_with_effect": [
     "Minotaur Horn"
+   ],
+   "where_to_obtain": null,
+   "era": null,
+   "categories": [
+    "Focus Effects",
+    "Spells"
+   ],
+   "icon": "Spellicon C.png"
+  },
+  {
+   "id": "Wind_Resonance_11",
+   "name": "Wind Resonance 10",
+   "url": "https://eqlwiki.com/Wind_Resonance_11",
+   "description": "Increases the power of wind instrument based bard songs by up to 110%.",
+   "classes": [],
+   "skill": null,
+   "mana": null,
+   "range": 100,
+   "casting_time": null,
+   "fizzle_time": null,
+   "recast_time": null,
+   "duration": "1:54:00",
+   "target_type": "Self",
+   "spell_type": null,
+   "resist": null,
+   "msg_cast_on_you": null,
+   "msg_cast_on_other": null,
+   "msg_wears_off": null,
+   "slots": [
+    {
+     "slot": 1,
+     "effect": "Increases the power of wind instrument based bard songs by up to 110%"
+    }
+   ],
+   "items_with_effect": [
+    "Brahhms Horn"
    ],
    "where_to_obtain": null,
    "era": null,
@@ -81382,8 +85081,7 @@
    "categories": [
     "Classic Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Wrath_of_Nature",
@@ -81985,9 +85683,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -82023,9 +85722,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -82137,9 +85837,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -82175,9 +85876,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -82213,9 +85915,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -82251,9 +85954,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -82289,9 +85993,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -82327,9 +86032,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -82365,9 +86071,10 @@
     }
    ],
    "items_with_effect": [],
-   "where_to_obtain": "}}",
-   "era": null,
+   "where_to_obtain": "<ul> <li>[[Druid#Spell Vendors|Druid Spell Vendors]]</li> </ul>",
+   "era": "Classic Era",
    "categories": [
+    "Classic Era",
     "Spells"
    ],
    "icon": "Spellicon V.png"
@@ -82453,8 +86160,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Ancient_Breath",
@@ -82500,8 +86206,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Blessing_of_the_Grove",
@@ -82541,8 +86246,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Essence_Drain",
@@ -82578,8 +86282,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Feast_of_Blood",
@@ -82615,8 +86318,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Ice_Breath",
@@ -82654,8 +86356,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Mana_Shroud",
@@ -82689,8 +86390,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Mind_Cloud",
@@ -82728,8 +86428,7 @@
     "NPC Only Spells",
     "Spells",
     "Velious Era"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "PlagueRatDisease",
@@ -82770,8 +86469,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Purge",
@@ -82812,8 +86510,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Shroud_of_Hate_Recourse",
@@ -82850,8 +86547,7 @@
    "era": null,
    "categories": [
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Skunkspray",
@@ -82884,8 +86580,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Smolder_(spell)",
@@ -82920,8 +86615,7 @@
    "categories": [
     "NPC Only Spells",
     "Spells"
-   ],
-   "icon": null
+   ]
   },
   {
    "id": "Soul_Well",
@@ -82957,8 +86651,7 @@
    "categories": [
     "Kunark Era",
     "Spells"
-   ],
-   "icon": null
+   ]
   }
  ]
 }

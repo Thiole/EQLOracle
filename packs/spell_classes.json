@@ -1868,6 +1868,9 @@
  "Healing Light": [
   "Cleric"
  ],
+ "Healing Water": [
+  "Druid"
+ ],
  "Health": [
   "Shaman"
  ],
@@ -2215,7 +2218,7 @@
   "Druid",
   "Shaman"
  ],
- "Invisibility versus Undead": [
+ "Invisibility vs. Undead": [
   "Cleric",
   "Enchanter",
   "Necromancer",
@@ -2386,6 +2389,10 @@
   "Necromancer"
  ],
  "Life Leech": [
+  "Shadow Knight"
+ ],
+ "Lifebite": [
+  "Necromancer",
   "Shadow Knight"
  ],
  "Lifedraw": [
@@ -3054,7 +3061,7 @@
   "Magician",
   "Necromancer"
  ],
- "Reconstitute": [
+ "Reconstitution": [
   "Cleric",
   "Paladin"
  ],
