@@ -33,6 +33,25 @@ fn main() {
     let bytes = std::fs::read(&a[0]).expect("log readable");
     let lines = framed_lines(&bytes);
     let engine = build_engine().expect("pack builds");
+    // why: the packs parse lazily on first use -- measure each one
+    let mut mark = LIVE.load(Ordering::Relaxed);
+    let mut pack = |name: &str| {
+        let now = LIVE.load(Ordering::Relaxed);
+        println!("pack {:<14} {:>8.1} MB", name, mb(now.saturating_sub(mark)));
+        mark = now;
+    };
+    let _ = eqlp_app::spelldata::spells().len();
+    pack("spells");
+    let _ = eqlp_app::itemdata::items().len();
+    pack("items");
+    let _ = eqlp_app::npcdata::npcs().len();
+    pack("npcs");
+    let _ = eqlp_app::zonedata::zones().len();
+    pack("zones");
+    let _ = eqlp_app::aadata::aas().len();
+    pack("aas");
+    let _ = eqlp_app::tradeskilldata::skills().len();
+    pack("tradeskills");
     let base = LIVE.load(Ordering::Relaxed);
     let mut ing = Ingest::default();
     backfill_lines(&mut ing, &engine, &lines, 8);

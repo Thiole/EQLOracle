@@ -1765,6 +1765,16 @@ impl Ingest {
         // why: the seam is the one moment backfill's doubling slack is
         // known to be dead weight -- see Store::shrink_to_fit
         self.store.shrink_to_fit();
+        // why: backfill's per-line churn leaves ~200 MB of freed heap
+        // that glibc keeps (measured: 486 MB heap for 250 MB live on a
+        // real log; mimalloc held it just the same). Once live, the
+        // churn is over -- hand the free pages back.
+        #[cfg(target_os = "linux")]
+        // SAFETY: malloc_trim only releases free heap pages; no live
+        // allocation is touched
+        unsafe {
+            libc::malloc_trim(0);
+        }
         self.last_wall_ms = None; // why: next tick sets the baseline, not a jump
                                   // why: measured on the full-app walk 2026-08-29 -- after
                                   // backfill, accounted live data was ~110MB but RSS sat near
