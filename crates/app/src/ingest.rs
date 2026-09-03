@@ -1134,6 +1134,20 @@ pub struct Ingest {
     /// why: raw zone -> base items (lowercased) seen dropping there, so
     /// the zone-wide pool can leave those to their droppers
     pub observed_zone_drops: HashMap<String, std::collections::HashSet<String>>,
+    /// why: /who rows -- player (lowercased) -> (level, class trio, when).
+    /// Ground truth beside the prediction the class detector makes from
+    /// what an ally casts and swings ("does class detection work for
+    /// those in your party?")
+    pub who_seen: HashMap<String, (u8, Vec<String>, Millis)>,
+    /// why: ally class inference THROUGH COMBAT -- per ally (lowercased),
+    /// per class, a score: every landed or begun spell splits one vote
+    /// across the classes that can cast it, a class-only melee verb or a
+    /// class pet gives a whole vote. The classes that keep collecting
+    /// votes are the trio; a one-off shared spell barely moves them.
+    /// Separate from the detector, whose subset elimination needs your
+    /// own dense evidence and read "Bard, Enchanter, Magician, Wizard"
+    /// off two sparse ally visits. /who rows are a hint, not truth.
+    pub ally_votes: HashMap<String, (HashMap<String, f32>, u32)>,
     /// why: unresolved summon sightings waiting to match a new actor, pruned to PET_MATCH_WINDOW_MS
     pending_summons: Vec<(Millis, String)>,
     /// why: names ever seen acting, so pending_summons is only checked on an entity's first action
@@ -1275,6 +1289,8 @@ impl Default for Ingest {
             entities_by_enc: HashMap::new(),
             observed_drops: HashMap::new(),
             observed_zone_drops: HashMap::new(),
+            who_seen: HashMap::new(),
+            ally_votes: HashMap::new(),
             closed_seen: 0,
             pending_summons: Vec::new(),
             seen_actors: HashSet::new(),
@@ -1365,6 +1381,41 @@ impl Ingest {
         if start.is_some() {
             self.session_reset_ms = None;
         }
+    }
+
+    /// why: one vote split across every class that could have done it --
+    /// see ally_votes. An unknown spell (empty set) votes for nothing.
+    fn vote_ally_classes(&mut self, who: &str, classes: &[String]) {
+        if classes.is_empty() {
+            return;
+        }
+        let share = 1.0 / classes.len() as f32;
+        let e = self.ally_votes.entry(who.to_lowercase()).or_default();
+        for c in classes {
+            *e.0.entry(c.clone()).or_insert(0.0) += share;
+        }
+        e.1 += 1;
+    }
+
+    /// why: the ally's inferred classes -- the top scorers, at most three,
+    /// each within a third of the leader (a class that only ever shared
+    /// votes with the real ones drops out), plus the evidence count
+    pub fn ally_classes(&self, who: &str) -> (Vec<String>, u32) {
+        let Some((scores, n)) = self.ally_votes.get(&who.to_lowercase()) else {
+            return (Vec::new(), 0);
+        };
+        let mut v: Vec<(&String, f32)> = scores.iter().map(|(c, s)| (c, *s)).collect();
+        v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let Some(&(_, top)) = v.first() else {
+            return (Vec::new(), 0);
+        };
+        let classes = v
+            .iter()
+            .take(3)
+            .filter(|(_, s)| *s >= top / 3.0)
+            .map(|(c, _)| (*c).clone())
+            .collect();
+        (classes, *n)
     }
 
     /// why: feeds the 30-minute gap rule -- every action by you or a
@@ -1859,6 +1910,10 @@ impl Ingest {
             }
             Action::AbilityActivated { who, ability } => {
                 let sym = self.sym(&who);
+                if !who.eq_ignore_ascii_case("You") && !self.is_pet(&who) {
+                    let classes = crate::classdata::classes_for(base_spell_name(&ability));
+                    self.vote_ally_classes(&who, classes);
+                }
                 if !self.is_pet(&who) {
                     self.classes.observe_cast(
                         sym.0,
@@ -1956,6 +2011,14 @@ impl Ingest {
                 // why: a mezzed mob is a paused fight, not an over one --
                 // see Builder::touch_entity's own doc
                 self.encounters.touch_entity(&who, ts);
+            }
+            Action::WhoPlayer {
+                name,
+                level,
+                classes,
+            } => {
+                self.who_seen
+                    .insert(name.to_lowercase(), (level, classes, ts));
             }
             Action::EnemiesForgot => {
                 // why: an end-of-combat flag on your own fight -- see
@@ -2282,6 +2345,21 @@ impl Ingest {
         // store, and timeline all see one name
         let src = canonical_you(src);
         let dst = canonical_you(dst);
+        // why: an ally's class evidence from what they LAND -- a named
+        // spell maps to the classes that can cast it (the same table your
+        // own detection uses), a class-only melee verb to its class.
+        // Not for "You" (your own detection stays on casts/stances/AAs)
+        // and not for pets.
+        if !src.eq_ignore_ascii_case("You") && !self.is_pet(src) {
+            if tags & tag::SPELL != 0 {
+                let classes = crate::classdata::classes_for(base_spell_name(ability));
+                self.vote_ally_classes(src, classes);
+            } else if tags & tag::MELEE != 0 {
+                if let Some(class) = class_only_melee(ability) {
+                    self.vote_ally_classes(src, &[class.to_string()]);
+                }
+            }
+        }
         // why: the damage-path pet match -- see note_actor's own doc.
         // Actor side only: a brand-new name TAKING its first hit is a
         // mob being pulled, not a pet spawning
@@ -4025,6 +4103,12 @@ enum Action {
     },
     /// why: "Your enemies have forgotten you!" -- a mem blur landed
     EnemiesForgot,
+    /// why: a /who row -- level and class trio for a player, ground truth
+    WhoPlayer {
+        name: String,
+        level: u8,
+        classes: Vec<String>,
+    },
     /// why: charm wearing off, or the player's own mez ending
     Recovered {
         who: String,
@@ -4460,6 +4544,14 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             who: str_field("who")?,
         }),
         "combat.enemies_forgot" => Some(Action::EnemiesForgot),
+        "who.player" => Some(Action::WhoPlayer {
+            name: str_field("name")?,
+            level: str_field("level")?.parse().ok()?,
+            classes: str_field("classes")?
+                .split('/')
+                .filter_map(expand_class_abbrev)
+                .collect(),
+        }),
         "state.charm_broken" | "state.you_mesmerized" => Some(Action::Recovered {
             who: str_field("who").unwrap_or_else(|| "You".to_string()),
             spell: str_field("spell"),
@@ -4686,6 +4778,41 @@ fn plausible_player_name(name: &str) -> bool {
 
 /// why: strips a trailing rank numeral so a ranked cast name compares
 /// against an unranked damage/heal line; checks PROTECTED_SPELL_NAMES first
+/// why: /who prints class trios as three-letter codes
+fn expand_class_abbrev(code: &str) -> Option<String> {
+    let full = match code.trim() {
+        "WAR" => "Warrior",
+        "CLR" => "Cleric",
+        "PAL" => "Paladin",
+        "RNG" => "Ranger",
+        "SHD" => "Shadow Knight",
+        "DRU" => "Druid",
+        "MNK" => "Monk",
+        "BRD" => "Bard",
+        "ROG" => "Rogue",
+        "SHM" => "Shaman",
+        "NEC" => "Necromancer",
+        "WIZ" => "Wizard",
+        "MAG" => "Magician",
+        "ENC" => "Enchanter",
+        "BST" => "Beastlord",
+        "BER" => "Berserker",
+        _ => return None,
+    };
+    Some(full.to_string())
+}
+
+/// why: the few melee abilities only one class has -- evidence as firm
+/// as a spell; the shared verbs (slash, kick, bash) say nothing
+fn class_only_melee(canonical: &str) -> Option<&'static str> {
+    match canonical {
+        "Backstab" => Some("Rogue"),
+        "Frenzy" => Some("Berserker"),
+        "Shoot" => Some("Ranger"),
+        _ => None,
+    }
+}
+
 fn base_spell_name(name: &str) -> &str {
     if PROTECTED_SPELL_NAMES.contains(&name) {
         return name;

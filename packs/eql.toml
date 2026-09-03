@@ -2202,6 +2202,24 @@ pattern = '''^Your enemies have forgotten you!$'''
 examples = ["[Tue Jul 28 15:02:15 2026] Your enemies have forgotten you!"]
 
 [[rule]]
+id = "who.player"
+kind = "state"
+priority = 60
+anchors = ["ZONE: "]
+# why: a /who row -- level, the class trio and race, ground truth for
+# an ally's class; the app's own prediction covers everyone else
+pattern = '''^\[(?P<level>\d+) (?P<classes>[A-Z]{3}(?:/[A-Z]{3}){0,2})\] (?P<name>[A-Za-z]+) \((?P<race>[^)]+)\)(?: <(?P<guild>[^>]*)>)?\s+ZONE: (?P<zone>.+?)\s*$'''
+examples = [
+  "[Tue Sep 01 11:54:45 2026] [34 BRD/WIZ/ENC] Gnombre (Gnome)  ZONE: The City of Guk (guktop)  ",
+  "[Wed Sep 02 00:49:13 2026] [50 SHD/BRD/SHM] Magitek (Wood Elf) <Severely Artistic> ZONE: The Plane of Hate 3244 (hateplane)  ",
+]
+[rule.fields]
+level = { from = "level", as = "str" }
+classes = { from = "classes", as = "str" }
+name = { from = "name", as = "str" }
+race = { from = "race", as = "str" }
+
+[[rule]]
 id = "state.misc"
 kind = "state"
 priority = 50

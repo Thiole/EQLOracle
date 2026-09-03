@@ -3,6 +3,13 @@
   import { allies, expandedAlly, allySummary, toggleAlly } from '$lib/stores/combat';
   import { trackedSkills, toggleTrackedSkill } from '$lib/stores/settings';
   import TargetIcon from '@lucide/svelte/icons/target';
+  // why: the game's own three-letter codes, as /who prints them
+  const ABBR: Record<string, string> = {
+    Warrior: 'WAR', Cleric: 'CLR', Paladin: 'PAL', Ranger: 'RNG', 'Shadow Knight': 'SHD', Druid: 'DRU',
+    Monk: 'MNK', Bard: 'BRD', Rogue: 'ROG', Shaman: 'SHM', Necromancer: 'NEC', Wizard: 'WIZ',
+    Magician: 'MAG', Enchanter: 'ENC', Beastlord: 'BST', Berserker: 'BER',
+  };
+  const abbr = (c: string) => ABBR[c] ?? c.slice(0, 3).toUpperCase();
 </script>
 
 {#if $allies.length === 0}
@@ -12,6 +19,7 @@
     <Table.Header>
       <Table.Row>
         <Table.Head>name</Table.Head>
+        <Table.Head title="classes inferred from what they cast and swing; a /who row, if one was seen, is shown as a hint">class</Table.Head>
         <Table.Head class="text-right">total</Table.Head>
         <Table.Head class="text-right">%</Table.Head>
         <Table.Head class="text-right">dps</Table.Head>
@@ -39,6 +47,13 @@
                 title="Damage contributed by this ally's pet">(pet {a.pet_total.toLocaleString()})</span
               >{/if}
           </Table.Cell>
+          <!-- why: inferred through combat -- firm (green) once a dozen
+               votes back it, tentative (yellow) before; a /who row is a
+               hover hint only, it isn't ground truth -->
+          <Table.Cell class="font-mono text-[11px] tabular-nums {a.class_evidence >= 12 ? 'text-good' : 'text-caution'}"
+            title={(a.classes.length ? `inferred from ${a.class_evidence} cast${a.class_evidence === 1 ? '' : 's'}/swing${a.class_evidence === 1 ? '' : 's'}` : 'no class evidence yet') + (a.who_classes.length ? ` · /who said ${a.who_classes.map(abbr).join('/')}${a.who_level != null ? ` at ${a.who_level}` : ''}` : '')}>
+            {a.classes.map(abbr).join('/')}{a.classes.length && a.class_evidence < 12 ? '?' : ''}
+          </Table.Cell>
           <Table.Cell class="text-right tabular-nums">{a.total.toLocaleString()}</Table.Cell>
           <Table.Cell class="text-right tabular-nums">{a.pct.toFixed(1)}%</Table.Cell>
           <Table.Cell class="text-right tabular-nums">{a.dps.toFixed(1)}</Table.Cell>
@@ -47,7 +62,7 @@
         </Table.Row>
         {#if $expandedAlly === a.name && $allySummary}
           <Table.Row>
-            <Table.Cell colspan={6} class="bg-muted/40 p-0">
+            <Table.Cell colspan={7} class="bg-muted/40 p-0">
               <div class="grid grid-cols-2 gap-3 p-3">
                 <div>
                   <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">abilities</h4>

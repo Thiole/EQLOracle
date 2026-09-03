@@ -744,6 +744,15 @@ pub struct AllyDto {
     /// why: None when this ally never cast a resistable spell, same
     /// reasoning as hit_pct
     pub resist_pct: Option<f64>,
+    /// why: the classes inferred THROUGH COMBAT -- what this ally cast
+    /// and swung (Ingest::ally_classes); empty when there's no evidence
+    pub classes: Vec<String>,
+    /// why: how many votes (landed or begun spells, class-only swings) back it
+    pub class_evidence: u32,
+    /// why: a /who row, when one was seen -- shown as a hint beside the
+    /// inference, never in its place: "they aren't ground truth"
+    pub who_classes: Vec<String>,
+    pub who_level: Option<u8>,
     /// why: how much of `total` arrived via this ally's own pet(s),
     /// folded in by possessive-name ownership ("X's pet" -> X) -- 0 for
     /// an ally with no attributed pet damage. Summon-matched pets were
@@ -899,7 +908,13 @@ pub fn list_allies(
             // suggestion, not a fact. "You" needs no proving.
             let suggested = !name.eq_ignore_ascii_case("you")
                 && ing.encounters.entities.kind(&name) == Kind::Unproven;
+            let who = ing.who_seen.get(&name.to_lowercase());
+            let (classes, class_evidence) = ing.ally_classes(&name);
             AllyDto {
+                classes,
+                class_evidence,
+                who_classes: who.map(|(_, trio, _)| trio.clone()).unwrap_or_default(),
+                who_level: who.map(|(l, _, _)| *l),
                 is_player: kind == Kind::Player,
                 is_pet: kind == Kind::Pet || m.pet_only,
                 total: m.total,
