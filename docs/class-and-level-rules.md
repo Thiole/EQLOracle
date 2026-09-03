@@ -126,13 +126,17 @@ no static zone lists anywhere.
 - P1. The unit of evidence is the encounter (one You are in, from the
   first line that proves your involvement to its close). Casts between
   encounters attach to the next one; a zone line outside any encounter
-  also ends the pending unit. Evidence is a rolling weight per class:
-  a supporting unit adds 1 (cap 3), a fought unit with no sign of the
-  class subtracts 0.5, a conflicting unit subtracts 1, a zone line halves
-  every weight. Confirmed at 2 (unambiguous) or 3 (elimination).
-  Numbers approved 2026-09-03 "for now".
-- P2. Unambiguous evidence confirms a class after 2 consecutive encounters
-  carrying it; elimination after 3. Nothing is ever forced.
+  also ends the pending unit. Evidence is attributed all at once
+  (Spencer, 2026-09-03): every unit is scored against every possible
+  trio (560). A trio the unit fits gains 1, one it contradicts loses 1,
+  uncapped, so the trios that fit the whole chain lead. The best guess
+  is the intersection of the leading trios; what they disagree on is
+  the open slot's candidates. A zone line halves every score (P4).
+  The earlier per-fight decay (unsupported -0.5) is gone: a confirmed
+  class stays confirmed through fights that show nothing of it.
+- P2. A class inside the leading intersection counts as confirmed once it
+  has 2 encounters of class-only evidence, or 3 encounters of pool
+  evidence, and the leading score is at least 2. Nothing is ever forced.
 - P3. Sources: casts, songs, stances, invocations, AA lines, skill-up
   lines (C1b), ability activations (poisons per G7), Bard song landing
   lines on you ("Your voice booms." and every other Bard-only song text),

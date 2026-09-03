@@ -33,8 +33,6 @@ pub type ConfiguredVisits = Vec<(Vec<String>, Vec<Unit>)>;
 /// why: the numbers Spencer approved 2026-09-03 ("for now, will adjust
 /// later if necessary") -- see docs Q33
 const SUPPORT_GAIN: f32 = 1.0;
-const WEIGHT_CAP: f32 = 3.0;
-const UNSUPPORTED_LOSS: f32 = 0.5;
 const CONTRADICT_LOSS: f32 = 1.0;
 const ZONE_FACTOR: f32 = 0.5;
 const UNAMBIGUOUS_BAR: f32 = 2.0;
@@ -70,9 +68,6 @@ impl UnitEvidence {
     fn is_empty(&self) -> bool {
         self.unambiguous.is_empty() && self.pools.is_empty()
     }
-    fn supports(&self, class: &str) -> bool {
-        self.unambiguous.contains(class) || self.pools.iter().any(|p| p.contains(class))
-    }
 }
 
 /// Why a chain ended.
@@ -84,50 +79,119 @@ pub enum ChainEnd {
     Swap,
 }
 
+/// why: every class the game has -- trios are enumerated over these.
+/// "Shadowknight" (one real pack spelling) folds onto "Shadow Knight".
+pub const CLASSES: [&str; 16] = [
+    "Bard",
+    "Beastlord",
+    "Berserker",
+    "Cleric",
+    "Druid",
+    "Enchanter",
+    "Magician",
+    "Monk",
+    "Necromancer",
+    "Paladin",
+    "Ranger",
+    "Rogue",
+    "Shadow Knight",
+    "Shaman",
+    "Warrior",
+    "Wizard",
+];
+
+fn class_ix(name: &str) -> Option<usize> {
+    let name = if name.eq_ignore_ascii_case("shadowknight") {
+        "Shadow Knight"
+    } else {
+        name
+    };
+    CLASSES.iter().position(|c| *c == name)
+}
+
+/// why: all C(16,3) = 560 trios, built once; scores index into this
+fn trios() -> &'static [[usize; 3]] {
+    static T: std::sync::OnceLock<Vec<[usize; 3]>> = std::sync::OnceLock::new();
+    T.get_or_init(|| {
+        let n = CLASSES.len();
+        let mut v = Vec::with_capacity(560);
+        for a in 0..n {
+            for b in a + 1..n {
+                for c in b + 1..n {
+                    v.push([a, b, c]);
+                }
+            }
+        }
+        v
+    })
+}
+
+/// why: a trio is the best guess once its rolling score clears this
+const TRIO_BAR: f32 = 2.0;
+
 /// The derived state of a chain after its committed units.
-#[derive(Debug, Clone, Default)]
+///
+/// why: Spencer's "attribute all data at once" -- every unit is scored
+/// against every possible trio, and the row shows the intersection of
+/// the trios that lead. Classes still carry their own rolling weights,
+/// which are the P2 bars (2 units class-only, 3 units of pools) a class
+/// must clear before it counts as confirmed inside that intersection.
+#[derive(Debug, Clone)]
 struct Derived {
+    /// why: rolling score per trio, `trios()` order
+    scores: Vec<f32>,
     unamb: HashMap<String, f32>,
-    elim: HashMap<String, f32>,
-    /// why: every class that ever cleared a bar in this chain -- a prior
-    /// once it decays, until re-cleared or displaced
+    pooled: HashMap<String, f32>,
+    /// why: every class that ever counted as confirmed in this chain --
+    /// a prior once it drops out, until re-cleared or the chain closes
     ever_confirmed: BTreeSet<String>,
-    narrowing: Option<BTreeSet<String>>,
-    /// why: every unit's pools, so the elimination replay can reach the
-    /// units that came before the second class confirmed
-    pool_history: Vec<(usize, Vec<BTreeSet<String>>)>,
-    /// why: the pair elimination is currently narrowing against
-    elim_pair: Option<BTreeSet<String>>,
+    confirmed_now: BTreeSet<String>,
+    /// why: what the leading trios disagree on -- the open slot's candidates
+    candidates: BTreeSet<String>,
     floors: HashMap<String, u8>,
     max_ding: Option<u8>,
     conflict_run: Vec<usize>,
     units_seen: usize,
 }
 
+impl Default for Derived {
+    fn default() -> Self {
+        Derived {
+            scores: vec![0.0; trios().len()],
+            unamb: HashMap::new(),
+            pooled: HashMap::new(),
+            ever_confirmed: BTreeSet::new(),
+            confirmed_now: BTreeSet::new(),
+            candidates: BTreeSet::new(),
+            floors: HashMap::new(),
+            max_ding: None,
+            conflict_run: Vec::new(),
+            units_seen: 0,
+        }
+    }
+}
+
 impl Derived {
     fn weight(&self, class: &str) -> f32 {
-        self.unamb.get(class).copied().unwrap_or(0.0) + self.elim.get(class).copied().unwrap_or(0.0)
+        self.unamb.get(class).copied().unwrap_or(0.0)
+            + self.pooled.get(class).copied().unwrap_or(0.0)
     }
+    /// why: P2's bars -- 2 units of class-only evidence, or 3 of pools
     fn clears_bar(&self, class: &str) -> bool {
         self.unamb.get(class).copied().unwrap_or(0.0) >= UNAMBIGUOUS_BAR
-            || self.elim.get(class).copied().unwrap_or(0.0) >= ELIMINATION_BAR
+            || self.pooled.get(class).copied().unwrap_or(0.0) >= ELIMINATION_BAR
     }
     /// why: confirmed first (heaviest first), then priors by weight, at
-    /// most CLASS_COUNT -- a prior at zero weight is what a newly
-    /// confirmed class displaces
+    /// most CLASS_COUNT
     fn trio(&self) -> (Vec<String>, Vec<String>) {
-        let mut confirmed: Vec<String> = self
-            .ever_confirmed
-            .iter()
-            .filter(|c| self.clears_bar(c))
-            .cloned()
-            .collect();
-        confirmed.sort_by(|a, b| {
+        let by_weight = |a: &String, b: &String| {
             self.weight(b)
                 .partial_cmp(&self.weight(a))
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then_with(|| a.cmp(b))
-        });
+        };
+        let mut confirmed: Vec<String> = self.confirmed_now.iter().cloned().collect();
+        confirmed.sort_by(by_weight);
         confirmed.truncate(CLASS_COUNT);
         let mut prior: Vec<String> = self
             .ever_confirmed
@@ -135,12 +199,7 @@ impl Derived {
             .filter(|c| !confirmed.contains(c))
             .cloned()
             .collect();
-        prior.sort_by(|a, b| {
-            self.weight(b)
-                .partial_cmp(&self.weight(a))
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.cmp(b))
-        });
+        prior.sort_by(by_weight);
         prior.truncate(CLASS_COUNT - confirmed.len());
         (confirmed, prior)
     }
@@ -148,46 +207,35 @@ impl Derived {
         let (c, p) = self.trio();
         c.into_iter().chain(p).collect()
     }
-
-    /// why: intersects one unit's unexplained pools into the running
-    /// narrowing; a single survivor earns that class one elimination
-    /// unit. Returns Some(conflicted) when there were pools, None when not.
-    fn narrow_unit(&mut self, unexplained: &[&BTreeSet<String>]) -> Option<bool> {
-        if unexplained.is_empty() {
-            return None;
+    /// why: "all data at once" -- the trios that fit the whole chain
+    /// best share the top score; their intersection is the best guess,
+    /// what they disagree on is the open slot's candidates
+    fn leading(&self) -> Vec<usize> {
+        let max = self.scores.iter().cloned().fold(f32::MIN, f32::max);
+        if max <= 0.0 {
+            return Vec::new();
         }
-        let mut narrowed = self.narrowing.clone();
-        for p in unexplained {
-            narrowed = Some(match narrowed {
-                Some(n) => n.intersection(p).cloned().collect(),
-                None => (*p).clone(),
-            });
-        }
-        match narrowed {
-            Some(n) if n.is_empty() => {
-                self.narrowing = None;
-                Some(true)
-            }
-            Some(n) => {
-                if n.len() == 1 {
-                    let c = n.iter().next().cloned().unwrap_or_default();
-                    let w = self.elim.entry(c).or_insert(0.0);
-                    *w = (*w + SUPPORT_GAIN).min(WEIGHT_CAP);
-                }
-                self.narrowing = Some(n);
-                Some(false)
-            }
-            None => None,
-        }
+        (0..self.scores.len())
+            .filter(|&i| (self.scores[i] - max).abs() < 1e-6)
+            .collect()
+    }
+    fn at_bar(&self) -> bool {
+        self.scores.iter().cloned().fold(f32::MIN, f32::max) >= TRIO_BAR
+    }
+    fn consistent(t: &[usize; 3], unamb: &[usize], pools: &[Vec<usize>]) -> bool {
+        unamb.iter().all(|c| t.contains(c)) && pools.iter().all(|p| p.iter().any(|c| t.contains(c)))
     }
 
     /// why: one unit's evidence folded in, in rule order (P1, P2, P4-P6);
-    /// returns whether the unit conflicted with the trio (P5)
+    /// returns whether the unit conflicted with the leading trios (P5)
     fn apply(&mut self, k: usize, ev: &UnitEvidence) -> bool {
         self.units_seen += 1;
         // P4: a zone line weakens everything before this unit's own evidence
         for _ in 0..ev.zone_lines {
-            for w in self.unamb.values_mut().chain(self.elim.values_mut()) {
+            for w in self.scores.iter_mut() {
+                *w *= ZONE_FACTOR;
+            }
+            for w in self.unamb.values_mut().chain(self.pooled.values_mut()) {
                 *w *= ZONE_FACTOR;
             }
         }
@@ -195,95 +243,118 @@ impl Derived {
         let full = before.len() == CLASS_COUNT;
         let mut conflict = false;
 
-        // P2: unambiguous support
-        for c in &ev.unambiguous {
-            let w = self.unamb.entry(c.clone()).or_insert(0.0);
-            *w = (*w + SUPPORT_GAIN).min(WEIGHT_CAP);
-            if full && !before.contains(c) {
-                conflict = true;
-            }
-        }
-        // P2: elimination -- pools no trio class explains
-        if !ev.pools.is_empty() {
-            self.pool_history.push((k, ev.pools.clone()));
-        }
-        let unexplained: Vec<&BTreeSet<String>> = ev
-            .pools
-            .iter()
-            .filter(|p| !p.iter().any(|c| before.contains(c)))
-            .collect();
-        if full && !unexplained.is_empty() {
-            conflict = true;
-        } else if before.len() == CLASS_COUNT - 1 {
-            // why: the pair just formed (or changed) -- every earlier
-            // unit's pools count against it too, the elimination is not
-            // three fights after the pair but three fights, whenever
-            if self.elim_pair.as_ref() != Some(&before) {
-                self.elim_pair = Some(before.clone());
-                self.narrowing = None;
-                self.elim.clear();
-                let history = self.pool_history.clone();
-                for (_, pools) in history.iter().filter(|(hk, _)| *hk < k) {
-                    let past: Vec<&BTreeSet<String>> = pools
-                        .iter()
-                        .filter(|p| !p.iter().any(|c| before.contains(c)))
-                        .collect();
-                    // why: a past unit's conflict is history, not this unit's
-                    self.narrow_unit(&past);
-                }
-            }
-            if let Some(unit_conflict) = self.narrow_unit(&unexplained) {
-                conflict |= unit_conflict;
-            }
-        }
-        // P1: unsupported in a unit the entity acted in shrinks; a
-        // conflicting unit shrinks harder (only classes with any weight)
         if !ev.is_empty() {
-            let loss = if conflict {
-                CONTRADICT_LOSS
-            } else {
-                UNSUPPORTED_LOSS
-            };
-            let classes: Vec<String> = self
-                .unamb
-                .keys()
-                .chain(self.elim.keys())
-                .cloned()
-                .collect::<BTreeSet<_>>()
-                .into_iter()
+            let unamb: Vec<usize> = ev.unambiguous.iter().filter_map(|c| class_ix(c)).collect();
+            let pools: Vec<Vec<usize>> = ev
+                .pools
+                .iter()
+                .map(|p| p.iter().filter_map(|c| class_ix(c)).collect::<Vec<_>>())
+                .filter(|p: &Vec<usize>| !p.is_empty())
                 .collect();
-            for c in classes {
-                if ev.supports(&c) {
-                    continue;
+            // P5: a full trio in effect (confirmed plus priors) conflicts
+            // with any unit it cannot hold; short of one, the unit
+            // conflicts when no trio at the bar can hold it
+            if full {
+                let held: Vec<usize> = before.iter().filter_map(|c| class_ix(c)).collect();
+                if held.len() == CLASS_COUNT {
+                    let t = [held[0], held[1], held[2]];
+                    if !Self::consistent(&t, &unamb, &pools) {
+                        conflict = true;
+                    }
                 }
-                if let Some(w) = self.unamb.get_mut(&c) {
-                    *w = (*w - loss).max(0.0);
-                }
-                if let Some(w) = self.elim.get_mut(&c) {
-                    *w = (*w - loss).max(0.0);
+            } else {
+                let leading = self.leading();
+                if self.at_bar()
+                    && !leading
+                        .iter()
+                        .any(|&i| Self::consistent(&trios()[i], &unamb, &pools))
+                {
+                    conflict = true;
                 }
             }
+            // P1 as "all at once": every trio scored against this unit --
+            // a fit adds one, a miss costs one, nothing is capped, so the
+            // trios that fit the whole chain stay ahead of any that missed
+            // even once; only a zone line (P4) scales everything down
+            for (i, t) in trios().iter().enumerate() {
+                let w = &mut self.scores[i];
+                if Self::consistent(t, &unamb, &pools) {
+                    *w += SUPPORT_GAIN;
+                } else {
+                    *w -= CONTRADICT_LOSS;
+                }
+            }
+            // P2 bars per class: units of class-only evidence, units of pools
+            for c in &ev.unambiguous {
+                *self.unamb.entry(c.clone()).or_insert(0.0) += SUPPORT_GAIN;
+            }
+            let in_pools: BTreeSet<&String> = ev.pools.iter().flatten().collect();
+            for c in &in_pools {
+                *self.pooled.entry((*c).clone()).or_insert(0.0) += SUPPORT_GAIN;
+            }
         }
-        // newly cleared bars join ever_confirmed and pick up the chain's
-        // ding (P6) -- unless the trio was already full: a full trio only
-        // changes through P5's close, never by quietly displacing a
-        // decayed prior (that would rewrite the chain's whole history)
-        let newly: Vec<String> = self
-            .unamb
-            .keys()
-            .chain(self.elim.keys())
-            .filter(|c| !full && self.clears_bar(c) && !self.ever_confirmed.contains(*c))
-            .cloned()
-            .collect::<BTreeSet<_>>()
-            .into_iter()
+
+        // the best guess: intersection of the leading trios, gated by the
+        // per-class bars; a full trio only changes through P5's close
+        let leading = if self.at_bar() {
+            self.leading()
+        } else {
+            Vec::new()
+        };
+        let mut inter: Option<BTreeSet<usize>> = None;
+        let mut union: BTreeSet<usize> = BTreeSet::new();
+        for &i in &leading {
+            let t: BTreeSet<usize> = trios()[i].iter().copied().collect();
+            union.extend(t.iter().copied());
+            inter = Some(match inter {
+                Some(x) => x.intersection(&t).copied().collect(),
+                None => t,
+            });
+        }
+        let inter = inter.unwrap_or_default();
+        let mut confirmed_now: BTreeSet<String> = BTreeSet::new();
+        for &ix in &inter {
+            let c = CLASSES[ix].to_string();
+            if !self.clears_bar(&c) {
+                continue;
+            }
+            if full && !before.contains(&c) {
+                continue;
+            }
+            confirmed_now.insert(c);
+        }
+        for c in &confirmed_now {
+            if !self.ever_confirmed.contains(c) {
+                if let Some(d) = self.max_ding {
+                    let f = self.floors.entry(c.clone()).or_insert(0);
+                    *f = (*f).max(d);
+                }
+                self.ever_confirmed.insert(c.clone());
+            }
+        }
+        self.confirmed_now = confirmed_now;
+        let (cand_union, cand_inter) = if leading.is_empty() {
+            // why: below the bar the top trios still say what is forming
+            let mut u: BTreeSet<usize> = BTreeSet::new();
+            let mut i: Option<BTreeSet<usize>> = None;
+            for &ix in &self.leading() {
+                let t: BTreeSet<usize> = trios()[ix].iter().copied().collect();
+                u.extend(t.iter().copied());
+                i = Some(match i {
+                    Some(x) => x.intersection(&t).copied().collect(),
+                    None => t,
+                });
+            }
+            (u, i.unwrap_or_default())
+        } else {
+            (union, inter)
+        };
+        self.candidates = cand_union
+            .iter()
+            .filter(|ix| !cand_inter.contains(ix))
+            .map(|&ix| CLASSES[ix].to_string())
             .collect();
-        for c in newly {
-            if let Some(d) = self.max_ding {
-                let f = self.floors.entry(c.clone()).or_insert(0);
-                *f = (*f).max(d);
-            }
-            self.ever_confirmed.insert(c);
-        }
+
         // P6: dings raise every trio class below them
         let trio_now = self.trio_set();
         for &d in &ev.dings {
@@ -553,30 +624,18 @@ impl Detector {
         let (confirmed, prior) = d.trio();
         let trio: BTreeSet<&String> = confirmed.iter().chain(prior.iter()).collect();
         let candidates: Vec<String> = if trio.len() < CLASS_COUNT {
-            match &d.narrowing {
-                Some(n) if !n.is_empty() => n.iter().cloned().collect(),
-                _ => {
-                    let mut v: Vec<(String, f32)> = d
-                        .unamb
-                        .keys()
-                        .chain(d.elim.keys())
-                        .filter(|c| !trio.contains(c))
-                        .map(|c| (c.clone(), d.weight(c)))
-                        .filter(|(_, w)| *w > 0.0)
-                        .collect::<BTreeMap<_, _>>()
-                        .into_iter()
-                        .collect();
-                    v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-                    v.into_iter().map(|(c, _)| c).collect()
-                }
-            }
+            d.candidates
+                .iter()
+                .filter(|c| !trio.contains(c))
+                .cloned()
+                .collect()
         } else {
             Vec::new()
         };
         let mut weights: Vec<(String, f32)> = d
             .unamb
             .keys()
-            .chain(d.elim.keys())
+            .chain(d.pooled.keys())
             .collect::<BTreeSet<_>>()
             .into_iter()
             .map(|c| (c.clone(), d.weight(c)))

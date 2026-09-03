@@ -87,10 +87,11 @@ fn an_open_slot_reports_its_candidates() {
     assert_eq!(view.candidates, strs(&["Beastlord", "Cleric", "Druid"]));
 }
 
-/// P1: a fought unit that shows nothing of a class shrinks it; six such
-/// units drop a capped class under the bar, into the priors
+/// P1 as "all at once": a confirmed class stays confirmed through fights
+/// that show nothing of it -- every trio holding it still fits the
+/// whole chain; only a zone line (P4) or a contradiction (P5) moves it
 #[test]
-fn unsupported_units_decay_a_class_into_a_prior() {
+fn quiet_units_do_not_decay_a_confirmed_class() {
     let mut d = Detector::default();
     for u in 0..3 {
         cast(&mut d, u, &["Wizard"]);
@@ -100,9 +101,10 @@ fn unsupported_units_decay_a_class_into_a_prior() {
         cast(&mut d, u, &["Wizard"]);
     }
     let view = d.chain_at(1, Some(8)).expect("chain");
-    assert_eq!(view.confirmed, strs(&["Wizard"]));
-    assert_eq!(view.prior, strs(&["Enchanter"]), "still shown, as a prior");
-    assert_eq!(trio(&d, 8), strs(&["Enchanter", "Wizard"]));
+    let mut confirmed = view.confirmed.clone();
+    confirmed.sort();
+    assert_eq!(confirmed, strs(&["Enchanter", "Wizard"]), "{view:?}");
+    assert!(view.prior.is_empty());
 }
 
 /// P4: a zone line halves every weight -- the trio carries as a prior
