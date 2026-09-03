@@ -2282,6 +2282,8 @@ pub struct NpcMarkerDto {
     pub z: Option<f32>,
     /// why: "survey" (the in-game /loc pack, 3D) or "wiki" (XY only)
     pub source: &'static str,
+    /// why: the wiki's level string, for the map's con coloring
+    pub level: Option<String>,
 }
 
 /// why: real spawn points for an exact `Npc::zone` value, not a name to fuzzy-match again
@@ -2290,12 +2292,13 @@ pub struct NpcMarkerDto {
 pub fn get_npc_markers_for_zone(zone: String) -> Vec<NpcMarkerDto> {
     npcdata::markers_for_zone_sourced(&zone)
         .into_iter()
-        .map(|(name, x, y, z, source)| NpcMarkerDto {
-            name,
-            x,
-            y,
-            z,
-            source,
+        .map(|m| NpcMarkerDto {
+            name: m.name,
+            x: m.x,
+            y: m.y,
+            z: m.z,
+            source: m.source,
+            level: m.level,
         })
         .collect()
 }

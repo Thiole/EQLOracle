@@ -681,6 +681,7 @@
             zone={$selectedZone}
             npcMarkers={$npcMarkers}
             navMesh={$navMesh}
+            playerLevel={playerLevel}
             highlightName={selectedNpc}
             zoneContext={$zoneContext}
             path={displayedPath}

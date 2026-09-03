@@ -1132,6 +1132,8 @@ export interface NpcMarkerDto {
   z: number | null;
   /** why: 'survey' = the in-game /loc pack (3D, confirmed), 'wiki' = XY only */
   source: 'survey' | 'wiki';
+  /** why: the wiki's level string, for con coloring */
+  level: string | null;
 }
 
 /** why: one spawn point for "navigate to this NPC" -- zone is the raw wiki

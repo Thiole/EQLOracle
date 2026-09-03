@@ -342,27 +342,47 @@ const SURVEY_COVERS_UNITS: f32 = 15.0;
 pub fn markers_for_zone(zone: &str) -> Vec<(String, f32, f32, Option<f32>)> {
     markers_for_zone_sourced(zone)
         .into_iter()
-        .map(|(name, x, y, z, _)| (name, x, y, z))
+        .map(|m| (m.name, m.x, m.y, m.z))
         .collect()
+}
+
+/// why: one plotted spot with everything the map colors and labels by
+#[derive(Debug, Clone)]
+pub struct SourcedMarker {
+    pub name: String,
+    /// why: /loc coordinates (wiki spots and the survey alike); the
+    /// viewer maps them into map-file space
+    pub x: f32,
+    pub y: f32,
+    pub z: Option<f32>,
+    /// why: "survey" (the in-game /loc pack, 3D) or "wiki" (XY only)
+    pub source: &'static str,
+    /// why: the wiki's level string ("37-39"), for con coloring
+    pub level: Option<String>,
 }
 
 /// why: markers with their source -- "survey" (the in-game /loc pack,
 /// has a z) or "wiki" (XY only) -- so the map can color them apart.
 /// Survey points come first and cover any wiki spot within
 /// SURVEY_COVERS_UNITS of them.
-pub fn markers_for_zone_sourced(zone: &str) -> Vec<(String, f32, f32, Option<f32>, &'static str)> {
-    let mut out: Vec<(String, f32, f32, Option<f32>, &'static str)> = Vec::new();
+pub fn markers_for_zone_sourced(zone: &str) -> Vec<SourcedMarker> {
+    let mut out: Vec<SourcedMarker> = Vec::new();
     for s in crate::spawndata::spawns_in_wiki_zone(zone) {
-        // why: the wiki's own name for the mob when it has one, so the
-        // marker label and the NPC list agree ("an orc legionnaire")
-        let name = npcs()
-            .iter()
-            .find(|n| {
-                n.zone.as_deref() == Some(zone) && crate::spawndata::same_mob(&n.name, &s.name)
-            })
-            .map(|n| n.name.clone())
-            .unwrap_or_else(|| s.name.clone());
-        out.push((name, s.x, s.y, Some(s.z), "survey"));
+        // why: the wiki's own name and level for the mob when it has a
+        // page, so the marker, its con color and the NPC list agree
+        let page = npcs().iter().find(|n| {
+            n.zone.as_deref() == Some(zone) && crate::spawndata::same_mob(&n.name, &s.name)
+        });
+        out.push(SourcedMarker {
+            name: page
+                .map(|n| n.name.clone())
+                .unwrap_or_else(|| s.name.clone()),
+            x: s.x,
+            y: s.y,
+            z: Some(s.z),
+            source: "survey",
+            level: page.and_then(|n| n.level.clone()),
+        });
     }
     for n in npcs() {
         if n.zone.as_deref() != Some(zone) {
@@ -370,13 +390,20 @@ pub fn markers_for_zone_sourced(zone: &str) -> Vec<(String, f32, f32, Option<f32
         }
         let Some(loc) = &n.location else { continue };
         for (x, y, z) in parse_locations(loc) {
-            if out.iter().any(|(_, ox, oy, _, src)| {
-                *src == "survey"
-                    && ((ox - x).powi(2) + (oy - y).powi(2)).sqrt() <= SURVEY_COVERS_UNITS
+            if out.iter().any(|m| {
+                m.source == "survey"
+                    && ((m.x - x).powi(2) + (m.y - y).powi(2)).sqrt() <= SURVEY_COVERS_UNITS
             }) {
                 continue;
             }
-            out.push((n.name.clone(), x, y, z, "wiki"));
+            out.push(SourcedMarker {
+                name: n.name.clone(),
+                x,
+                y,
+                z,
+                source: "wiki",
+                level: n.level.clone(),
+            });
         }
     }
     out

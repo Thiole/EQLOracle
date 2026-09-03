@@ -30,6 +30,7 @@
     zone,
     npcMarkers = [],
     navMesh = null,
+    playerLevel = null,
     highlightName = null,
     zoneContext = null,
     path = null,
@@ -42,6 +43,8 @@
      * a translucent floor plus a faint wireframe under the map lines, so
      * a tunnel reads as walkable space with the path lit through it */
     navMesh?: [number, number, number][][] | null;
+    /** why: your level, for the con color of each spawn dot */
+    playerLevel?: number | null;
     /** why: the NPC picked in the list -- its spots light up, the rest dim */
     highlightName?: string | null;
     zoneContext?: ZoneContextDto | null;
@@ -85,7 +88,9 @@
   // why: the navmesh overlay's own meshes, swapped whenever `navMesh`
   // changes -- kept apart from the scene-build effect so a late mesh
   // download never rebuilds walls/camera
-  let navSceneRef: THREE.Scene | null = null;
+  // why: $state -- the scene is rebuilt when the map changes, and the
+  // overlay must move to the new one (two zones' meshes shared one space)
+  let navSceneRef = $state<THREE.Scene | null>(null);
   let navFillMesh: THREE.Mesh | null = null;
   let navWireMesh: THREE.LineSegments | null = null;
   $effect(() => {
@@ -437,7 +442,9 @@
     // the format's other common wall color) and the app's own marker
     // colors (red/bright-yellow "here", cyan NPC dots) all still read
     // clearly against this.
-    localScene.background = new THREE.Color(0xb3c7d6);
+    // why: a dark ground -- the con-colored dots and the green path read
+    // against it; the map files' black wall lines are lifted below
+    localScene.background = new THREE.Color(0x141a22);
     scene = localScene;
 
     const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100_000);
@@ -473,7 +480,12 @@
       positions[o + 3] = l.b[0];
       positions[o + 4] = l.b[2];
       positions[o + 5] = l.b[1];
-      const [r, g, b] = l.color;
+      // why: map files are drawn for a light page (black walls); on the
+      // dark ground a near-black line is lifted to light gray, colored
+      // lines keep their hue
+      const [r0, g0, b0] = l.color;
+      const dark = r0 + g0 + b0 < 120;
+      const [r, g, b] = dark ? [200, 205, 212] : [r0, g0, b0];
       colors[o] = colors[o + 3] = r / 255;
       colors[o + 1] = colors[o + 4] = g / 255;
       colors[o + 2] = colors[o + 5] = b / 255;
@@ -520,13 +532,13 @@
     liveNpcMarkers = initialNpcMarkers;
     const npcGeo = new THREE.BufferGeometry();
     npcGeo.setAttribute('position', new THREE.BufferAttribute(npcPositionsOf(initialNpcMarkers), 3));
-    npcGeo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(initialNpcMarkers, untrack(() => highlightName)), 3));
+    npcGeo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(initialNpcMarkers, untrack(() => highlightName), untrack(() => playerLevel)), 3));
     const localNpcPoints = new THREE.Points(
       npcGeo,
       // why: vertexColors -- a surveyed spawn (the in-game /loc pack) is
       // green, a wiki XY-only spot stays cyan, same confirmed/assumed
       // split the drop list uses
-      new THREE.PointsMaterial({ vertexColors: true, size: 7, sizeAttenuation: false }),
+      new THREE.PointsMaterial({ vertexColors: true, size: 9, sizeAttenuation: false }),
     );
     localScene.add(localNpcPoints);
     npcPointsMesh = localNpcPoints;
@@ -561,7 +573,8 @@
     ro.observe(container);
 
     const raycaster = new THREE.Raycaster();
-    raycaster.params.Points = { threshold: 8 };
+    // why: 24, not 8 -- "the mouse over should be more forgiving"
+    raycaster.params.Points = { threshold: 24 };
     const pointer = new THREE.Vector2();
     function onPointerMove(e: PointerEvent) {
       const rect = canvas.getBoundingClientRect();
@@ -584,7 +597,7 @@
         // -- a toggle after this effect last ran must not hover stale
         // entries or index past the end of a shrunk array.
         const m = liveNpcMarkers[npcHit.index ?? -1];
-        hovered = m ? { label: m.name, source: 'npc', survey: m.source === 'survey' } : null;
+        hovered = m ? { label: m.level ? `${m.name} (${m.level})` : m.name, source: 'npc', survey: m.source === 'survey' } : null;
       } else {
         hovered = null;
       }
@@ -664,14 +677,26 @@
     return l;
   }
 
-  function npcColorsOf(markers: NpcMarkerDto[], highlight: string | null): Float32Array {
+  // why: classic con colors off the HIGHEST number in the wiki's level
+  // string -- the dangerous read of "37-39". Unknown level, or no player
+  // level yet, reads gray. Same thresholds Maps.svelte's list uses.
+  function conRgb(level: string | null, me: number | null): [number, number, number] {
+    if (!level || me == null) return [0.6, 0.6, 0.6];
+    const nums = level.match(/\d+/g)?.map(Number) ?? [];
+    if (!nums.length) return [0.6, 0.6, 0.6];
+    const diff = Math.max(...nums) - me;
+    if (diff >= 3) return [0.93, 0.27, 0.27]; // red
+    if (diff >= 1) return [0.98, 0.8, 0.2]; // yellow
+    if (diff === 0) return [0.95, 0.95, 0.95]; // white
+    if (diff >= -8) return [0.35, 0.6, 1.0]; // blue
+    return [0.3, 0.8, 0.35]; // green
+  }
+
+  function npcColorsOf(markers: NpcMarkerDto[], highlight: string | null, me: number | null): Float32Array {
     const out = new Float32Array(markers.length * 3);
     const key = highlight ? foldMob(highlight) : null;
     for (let i = 0; i < markers.length; i++) {
-      const survey = markers[i].source === 'survey';
-      let r = survey ? 0.13 : 0.18;
-      let g = survey ? 0.77 : 0.83;
-      let b = survey ? 0.37 : 1.0;
+      let [r, g, b] = conRgb(markers[i].level, me);
       if (key) {
         // why: the picked mob's spots light up yellow, everything else dims
         if (foldMob(markers[i].name) === key) {
@@ -694,9 +719,12 @@
     const out = new Float32Array(markers.length * 3);
     for (let i = 0; i < markers.length; i++) {
       const m = markers[i];
-      out[i * 3] = m.x;
+      // why: markers are /loc coordinates (wiki spots and the survey
+      // alike); the scene is map-file space, map = (-locY, -locX) --
+      // verified against Brewall's own Emperor_Crush label
+      out[i * 3] = -m.y;
       out[i * 3 + 1] = m.z ?? 0;
-      out[i * 3 + 2] = m.y;
+      out[i * 3 + 2] = -m.x;
     }
     return out;
   }
@@ -707,12 +735,13 @@
   $effect(() => {
     const markers = npcMarkers; // tracked read -- this effect's whole point
     const highlight = highlightName; // tracked too -- a list pick recolors
+    const me = playerLevel; // tracked -- a ding recolors the cons
     liveNpcMarkers = markers;
     if (!npcPointsMesh) return;
     const oldGeo = npcPointsMesh.geometry;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(npcPositionsOf(markers), 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(markers, highlight), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(npcColorsOf(markers, highlight, me), 3));
     npcPointsMesh.geometry = geo;
     oldGeo.dispose();
   });

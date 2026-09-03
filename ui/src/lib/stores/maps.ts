@@ -304,6 +304,21 @@ export async function selectZone(zone: string) {
     ]);
     currentMap.set(map);
     npcZoneCandidates.set(candidates ?? []);
+    // why: the dots show by default -- "I don't see little orbs on the
+    // map"; every candidate wiki zone's markers are plotted on open, the
+    // chips still turn one off
+    const fetched = await Promise.all(
+      (candidates ?? []).map(async (z) => [z, (await api.getNpcMarkersForZone(z).catch(() => null)) ?? []] as const),
+    );
+    if (get(selectedZone) !== zone) return;
+    npcMarkersByZone.clear();
+    const enabled = new Set<string>();
+    for (const [z, markers] of fetched) {
+      enabled.add(z);
+      npcMarkersByZone.set(z, markers);
+    }
+    enabledNpcZones.set(enabled);
+    recomputeNpcMarkers();
   } catch (e) {
     mapError.set(String(e));
     currentMap.set(null);
