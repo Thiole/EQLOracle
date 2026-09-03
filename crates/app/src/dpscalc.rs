@@ -935,7 +935,7 @@ mod tests {
                 "Fury of Magic",
                 &FURY_OF_MAGIC_CHANCE,
                 "Destructive Fury",
-                &DESTRUCTIVE_FURY_BONUS
+                &DESTRUCTIVE_FURY_BONUS,
                 0.0,
             ),
             1.0
