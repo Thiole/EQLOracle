@@ -1526,6 +1526,12 @@ export interface PreferencesDto {
   /** why: see overlay_dps_meter_overall_opacity's own doc -- same
    * "everything" fade, this widget's own */
   overlay_session_overall_opacity: number;
+  /** why: same pattern as overlay_dps_meter_opacity -- the Group Buff
+   * Tracker widget's own */
+  overlay_group_buffs_opacity: number;
+  /** why: see overlay_dps_meter_overall_opacity's own doc -- same
+   * "everything" fade, this widget's own */
+  overlay_group_buffs_overall_opacity: number;
   /** why: 'small' | 'medium' | 'large' -- see ccSize.ts's own doc. A
    * plain string, not a union, same "unrecognized value just falls back"
    * contract as `theme` above -- ccSize.ts's asCcSize() is what actually
