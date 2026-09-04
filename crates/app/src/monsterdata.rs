@@ -32,14 +32,14 @@ use eqlp_session::fold_key;
 
 /// why: whether the wiki's drop data ever named `name` as a source
 pub fn is_known_monster(name: &str) -> bool {
-    monster_data().contains_key(&fold_key(name))
+    monster_data().contains_key(&*fold_key(name))
 }
 
 /// why: empty is ambiguous (unknown mob vs known, no drops); check
 /// `is_known_monster` first if that distinction matters
 pub fn known_drops(name: &str) -> &'static [String] {
     monster_data()
-        .get(&fold_key(name))
+        .get(&*fold_key(name))
         .map(|v| v.as_slice())
         .unwrap_or(&[])
 }

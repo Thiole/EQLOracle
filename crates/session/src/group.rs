@@ -180,13 +180,15 @@ pub struct GroupTracker {
 
 impl GroupTracker {
     fn entry(&mut self, name: &str, ts: Millis) -> &mut Evidence {
-        self.entries.entry(fold_key(name)).or_insert(Evidence {
-            last_ms: ts,
-            sessions: 0,
-            strong_last_ms: None,
-            joined_ms: None,
-            evicted_ms: None,
-        })
+        self.entries
+            .entry(fold_key(name).into_owned())
+            .or_insert(Evidence {
+                last_ms: ts,
+                sessions: 0,
+                strong_last_ms: None,
+                joined_ms: None,
+                evicted_ms: None,
+            })
     }
 
     pub fn reinforce_weak(&mut self, name: &str, ts: Millis) {
@@ -238,7 +240,7 @@ impl GroupTracker {
     /// UI -- currently_grouped is the real answer, this is "why"
     pub fn evidence_for(&self, name: &str) -> Option<(Millis, u32, Option<Millis>)> {
         self.entries
-            .get(&fold_key(name))
+            .get(&*fold_key(name))
             .map(|e| (e.last_ms, e.sessions, e.strong_last_ms))
     }
 
@@ -248,7 +250,7 @@ impl GroupTracker {
     /// module doc for why each channel earns that differently
     pub fn currently_grouped(&self, name: &str, ts: Millis) -> bool {
         self.entries
-            .get(&fold_key(name))
+            .get(&*fold_key(name))
             .is_some_and(|e| e.channel(ts, self.reset_ms).is_some())
     }
 
@@ -459,7 +461,7 @@ mod tests {
         let via = |name: &str| {
             members
                 .iter()
-                .find(|(n, ..)| n == &fold_key(name))
+                .find(|(n, ..)| crate::fold_eq(n, name))
                 .map(|&(_, _, via, _)| via)
         };
         assert_eq!(via("Dippinsauce"), Some(Channel::Joined));

@@ -100,7 +100,7 @@ impl HpModel {
         let v = self
             .kills
             .get(target)
-            .or_else(|| self.kills.get(&key(target)))?;
+            .or_else(|| self.kills.get(&*key(target)))?;
         if v.len() < 3 {
             return None;
         }
@@ -110,7 +110,7 @@ impl HpModel {
     }
 
     pub fn samples(&self, target: &str) -> usize {
-        self.kills.get(&key(target)).map_or(0, |v| v.len())
+        self.kills.get(&*key(target)).map_or(0, |v| v.len())
     }
 }
 
@@ -158,7 +158,7 @@ impl Tracker {
         let k = key(target);
         let e = self
             .open
-            .entry(k)
+            .entry(k.into_owned())
             .or_insert_with(|| Encounter::new(target.to_string(), ts));
         e.last_ms = ts;
         e.total += amount;
@@ -170,7 +170,7 @@ impl Tracker {
 
     /// A death line naming `target`.
     pub fn death(&mut self, ts: Millis, target: &str) {
-        if let Some(mut e) = self.open.remove(&key(target)) {
+        if let Some(mut e) = self.open.remove(&*key(target)) {
             e.end_ms = Some(ts);
             e.end_reason = Some(EndReason::Slain);
             if e.total > 0 {
@@ -210,7 +210,7 @@ impl Tracker {
     }
 
     pub fn get(&mut self, target: &str) -> Option<&mut Encounter> {
-        self.open.get_mut(&key(target))
+        self.open.get_mut(&*key(target))
     }
 
     /// Time to kill, from observed kill damage and current DPS.
@@ -219,7 +219,7 @@ impl Tracker {
             Some(v) => v,
             None => return Ttk::NoBaseline,
         };
-        let e = match self.open.get_mut(&key(target)) {
+        let e = match self.open.get_mut(&*key(target)) {
             Some(e) => e,
             None => return Ttk::NoBaseline,
         };

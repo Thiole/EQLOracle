@@ -2,7 +2,7 @@
 //!
 //! Design notes: `docs/design/encounters.md`
 
-use crate::fold_key;
+use crate::{fold_eq, fold_key};
 use std::collections::HashMap;
 
 pub type Millis = i64;
@@ -138,42 +138,43 @@ impl Entities {
     fn promote_to_player(&mut self, name: &str) {
         let key = fold_key(name);
         self.note_seen(&key, name);
-        self.kind.insert(key, Kind::Player);
+        self.kind.insert(key.into_owned(), Kind::Player);
     }
 
     /// why: possessive "X's pet" is a player's; bare "X pet" is a mob's own
     pub fn observe(&mut self, name: &str) -> Kind {
         let key = fold_key(name);
         self.note_seen(&key, name);
-        if let Some(&k) = self.kind.get(&key) {
+        if let Some(&k) = self.kind.get(&*key) {
             return k;
         }
         let k = match pet_owner(name) {
             Some(owner) => {
-                self.owner.insert(key.clone(), owner.to_string());
+                self.owner
+                    .insert(key.clone().into_owned(), owner.to_string());
                 Kind::Pet
             }
             None => Kind::Unproven,
         };
-        self.kind.insert(key, k);
+        self.kind.insert(key.into_owned(), k);
         k
     }
 
     pub fn kind(&self, name: &str) -> Kind {
         self.kind
-            .get(&fold_key(name))
+            .get(&*fold_key(name))
             .copied()
             .unwrap_or(Kind::Unproven)
     }
 
     pub fn owner_of(&self, name: &str) -> Option<&str> {
-        self.owner.get(&fold_key(name)).map(|s| s.as_str())
+        self.owner.get(&*fold_key(name)).map(|s| s.as_str())
     }
 
     /// why: first-seen casing, so callers intern to one identity elsewhere too
     pub fn display_name<'a>(&'a self, name: &'a str) -> &'a str {
         self.display
-            .get(&fold_key(name))
+            .get(&*fold_key(name))
             .map(|s| s.as_str())
             .unwrap_or(name)
     }
@@ -307,8 +308,8 @@ impl Builder {
         self.entities.observe(actor);
         self.entities.observe(target);
 
-        let a = self.of.get(&fold_key(actor)).copied();
-        let b = self.of.get(&fold_key(target)).copied();
+        let a = self.of.get(&*fold_key(actor)).copied();
+        let b = self.of.get(&*fold_key(target)).copied();
 
         // why: the encounter is the whole stretch of combat -- a new mob
         // engaged after a kill JOINS it ("i just want it to be for the
@@ -363,7 +364,7 @@ impl Builder {
             if !e.dupe
                 && e.slain
                     .iter()
-                    .any(|n| fold_key(n) == fold_key(target) || fold_key(n) == fold_key(actor))
+                    .any(|n| fold_eq(n, target) || fold_eq(n, actor))
             {
                 e.dupe = true;
             }
@@ -378,7 +379,7 @@ impl Builder {
         if !(actor_ally || target_ally) {
             return None;
         }
-        if let Some(&id) = self.of.get(&fold_key("You")) {
+        if let Some(&id) = self.of.get(&*fold_key("You")) {
             if self.live.contains_key(&id) {
                 return Some(id);
             }
@@ -419,18 +420,18 @@ impl Builder {
                 has_ally: false,
             },
         );
-        self.of.insert(fold_key(a), id);
-        self.of.insert(fold_key(b), id);
+        self.of.insert(fold_key(a).into_owned(), id);
+        self.of.insert(fold_key(b).into_owned(), id);
         id
     }
 
     fn attach(&mut self, id: EncId, name: &str, _ts: Millis) {
         if let Some(e) = self.live.get_mut(&id) {
-            if !e.entities.iter().any(|n| fold_key(n) == fold_key(name)) {
+            if !e.entities.iter().any(|n| fold_eq(n, name)) {
                 e.entities.push(name.to_string());
             }
         }
-        self.of.insert(fold_key(name), id);
+        self.of.insert(fold_key(name).into_owned(), id);
     }
 
     fn merge(&mut self, x: EncId, y: EncId) -> EncId {
@@ -438,7 +439,7 @@ impl Builder {
         if let Some(src) = self.live.remove(&gone) {
             if let Some(dst) = self.live.get_mut(&keep) {
                 for n in &src.entities {
-                    if !dst.entities.iter().any(|m| fold_key(m) == fold_key(n)) {
+                    if !dst.entities.iter().any(|m| fold_eq(m, n)) {
                         dst.entities.push(n.clone());
                     }
                 }
@@ -451,7 +452,7 @@ impl Builder {
                 dst.has_ally |= src.has_ally;
             }
             for n in &src.entities {
-                self.of.insert(fold_key(n), keep);
+                self.of.insert(fold_key(n).into_owned(), keep);
             }
             // why: `gone` never reaches close(); its Closed is a merge
             // corpse, marked absorbed_into so consumers reparent it
@@ -472,10 +473,10 @@ impl Builder {
 
     /// why: target leaves combat, fight continues if anything else is up
     pub fn death(&mut self, ts: Millis, target: &str) {
-        if let Some(id) = self.of.remove(&fold_key(target)) {
+        if let Some(id) = self.of.remove(&*fold_key(target)) {
             if let Some(e) = self.live.get_mut(&id) {
                 e.last_ms = ts;
-                if !e.slain.iter().any(|n| fold_key(n) == fold_key(target)) {
+                if !e.slain.iter().any(|n| fold_eq(n, target)) {
                     e.slain.push(target.to_string());
                 }
             }
@@ -490,10 +491,10 @@ impl Builder {
     /// next pull ("timer shouldn't reset when target changes"). A CC
     /// line IS the pull: the add is part of this encounter.
     pub fn engage(&mut self, name: &str, with: &str, ts: Millis) {
-        if self.of.contains_key(&fold_key(name)) {
+        if self.of.contains_key(&*fold_key(name)) {
             return;
         }
-        if let Some(&id) = self.of.get(&fold_key(with)) {
+        if let Some(&id) = self.of.get(&*fold_key(with)) {
             self.entities.observe(name);
             self.attach(id, name, ts);
             if let Some(e) = self.live.get_mut(&id) {
@@ -509,7 +510,7 @@ impl Builder {
     /// mem blur landed). Arms the 10s window on that entity's fight; any
     /// further action still extends it, so a fight that goes on goes on.
     pub fn flag_end(&mut self, name: &str, ts: Millis) {
-        if let Some(&id) = self.of.get(&fold_key(name)) {
+        if let Some(&id) = self.of.get(&*fold_key(name)) {
             if let Some(e) = self.live.get_mut(&id) {
                 e.flagged = true;
                 if ts > e.last_ms {
@@ -526,7 +527,7 @@ impl Builder {
     /// the close -- reset_check.rs). Refreshing last_ms buys the fight
     /// another idle window from the CC line itself.
     pub fn touch_entity(&mut self, name: &str, ts: Millis) {
-        if let Some(&id) = self.of.get(&fold_key(name)) {
+        if let Some(&id) = self.of.get(&*fold_key(name)) {
             if let Some(e) = self.live.get_mut(&id) {
                 if ts > e.last_ms {
                     e.last_ms = ts;
@@ -574,8 +575,8 @@ impl Builder {
             None => return,
         };
         for n in &e.entities {
-            if self.of.get(&fold_key(n)) == Some(&id) {
-                self.of.remove(&fold_key(n));
+            if self.of.get(&*fold_key(n)) == Some(&id) {
+                self.of.remove(&*fold_key(n));
             }
         }
 
@@ -586,7 +587,7 @@ impl Builder {
 
         let mut links_to = None;
         for n in e.entities.iter().filter(|n| !is_player(n)) {
-            if let Some(&(prev, _)) = self.recent.get(&fold_key(n)) {
+            if let Some(&(prev, _)) = self.recent.get(&*fold_key(n)) {
                 links_to = Some(prev);
                 break;
             }
@@ -595,11 +596,12 @@ impl Builder {
         let carry: Vec<String> = e
             .entities
             .iter()
-            .filter(|n| !is_player(n) && !e.slain.iter().any(|s| fold_key(s) == fold_key(n)))
+            .filter(|n| !is_player(n) && !e.slain.iter().any(|s| fold_eq(s, n)))
             .cloned()
             .collect();
         for n in carry {
-            self.recent.insert(fold_key(&n), (id, e.last_ms));
+            self.recent
+                .insert(fold_key(&n).into_owned(), (id, e.last_ms));
         }
 
         self.closed.push(Closed {
@@ -636,6 +638,6 @@ impl Builder {
     }
 
     pub fn encounter_of(&self, entity: &str) -> Option<EncId> {
-        self.of.get(&fold_key(entity)).copied()
+        self.of.get(&*fold_key(entity)).copied()
     }
 }

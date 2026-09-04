@@ -221,6 +221,12 @@ impl<'e> Matcher<'e> {
         self.eng
     }
 
+    /// why: how many rules survived anchor selection for the last line --
+    /// the number that says whether the anchor index is doing its job
+    pub fn last_candidate_count(&self) -> usize {
+        self.cands.len()
+    }
+
     /// Classify one framed line. Never panics, never allocates, always returns.
     pub fn classify(&mut self, line: &[u8]) -> Outcome {
         if line.iter().all(|b| b.is_ascii_whitespace()) {
