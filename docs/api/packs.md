@@ -58,6 +58,11 @@ tools/scrapers/ script that produces it. The standard envelope is
 - consumer: skyquests.rs
 - producer: scrape_eqlwiki_sky_quests.py
 
+## spawns.json
+- shape: (bare) top-level list[361]
+- consumer: spawndata.rs
+- producer: build_spawns.py
+
 ## spell_classes.json
 - shape: (bare) top-level map, no envelope
 - consumer: classdata.rs
@@ -75,7 +80,7 @@ tools/scrapers/ script that produces it. The standard envelope is
 
 ## spells.json
 - shape: envelope [count, scraped, source], payload key(s): spells
-- consumer: spellbookfiles.rs, spelldata.rs, spelltext.rs, targeteffects.rs, ingest.rs
+- consumer: spellbookfiles.rs, spelltext.rs, targeteffects.rs, focus.rs, spelldata.rs, ingest.rs
 - producer: build_spell_classes.py
 
 ## stance_classes.json

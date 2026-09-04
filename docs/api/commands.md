@@ -11,7 +11,13 @@ and need the service layer described in README.md before external
 exposure. Parameters shown are the real API surface -- Tauri plumbing
 (`State`, `AppHandle`, `Window`) is elided.
 
-114 commands: 24 pure, 90 stateful.
+123 commands: 26 pure, 97 stateful.
+
+## `get_changelog` (pure)
+why: the Info panel's own "what's new" -- every section, newest first
+
+- args: none
+- returns: `Vec<whatsnew::ChangelogSection>`
 
 ## `get_character_estimate` (pure)
 why: Character Planner's one call -- full attribute sheet + mana estimate; `gear` summed by the frontend, this side never touches an item. Stateless on purpose -- nothing persisted, fresh launch starts blank.
@@ -54,6 +60,11 @@ why: top candidates per slot, scored against classes/race; `level` lets INT/WIS 
 
 - args: `id: String`; `tier: u8`; `exalts: std::collections::HashMap<String, String>`
 - returns: `Option<ItemDto>`
+
+## `get_launch_hints` (pure)
+
+- args: none
+- returns: `LaunchHintsDto`
 
 ## `get_mob_aliases` (pure)
 
@@ -139,6 +150,12 @@ why: NPC-overlay candidate list, toggle-able not auto-applied -- can't reliably 
 - args: none
 - returns: `Vec<zonedata::Zone>`
 
+## `ack_whats_new` (stateful)
+why: "got it" -- the running version is now the last one seen
+
+- args: none
+- returns: `Result<(), String>`
+
 ## `clear_notification_sound` (stateful)
 why: picks and copies a sound file in, saves as `kind`'s custom sound; Ok(None) on cancel, not an error, same stance as `pick_log_directory`
 
@@ -156,7 +173,13 @@ why: picks and copies a sound file in, saves as `kind`'s custom sound; Ok(None) 
 - returns: `Option<ExistingInventoryDumpDto>`
 
 ## `find_zone_route` (stateful)
-why: missing route is a real retryable outcome, not folded into an empty result  why: async -- first load of a swim zone bridges its mesh (line-of- sight work); a sync command would freeze the main thread meanwhile
+why: the navmesh itself, drawn under the map lines -- "fill in the map with the wireframe navmesh at 60-70% opacity, so if it's a tunnel you can still see the illuminated path through it". Poly outlines in map-file coordinates; swim nodes (single-vertex polys) are skipped. None until the zone's mesh is cached (ensure_emu_zone fetches it).
+
+- args: `from_zone: String`; `to_zone: String`
+- returns: `Result<ZoneRouteDto, String>`
+
+## `find_zone_route` (stateful)
+why: async -- first load of a swim zone bridges its mesh (line-of- sight work); a sync command would freeze the main thread meanwhile
 
 - args: `from_zone: String`; `to_zone: String`
 - returns: `Result<ZoneRouteDto, String>`
@@ -191,6 +214,12 @@ why: Info page's own version display -- same source check_for_update's current_v
 
 - args: `name: String`
 - returns: `ClassConfigurationsDto`
+
+## `get_class_levels` (stateful)
+why: L9 -- the rolling per-class level record, which the Character Planner fills its levels from. Configuration ranges froze a class at the last level it could still be PROVEN at (a Necromancer read 25 while its arc really ran past 28); the record is the class's own.
+
+- args: `name: String`
+- returns: `Vec<(String, u8)>`
 
 ## `get_combat_summary` (stateful)
 
@@ -247,6 +276,11 @@ why: Endgame's Epic Quests farm list -- see epicquests.rs's own doc
 - args: none
 - returns: `Vec<crate::epicquests::EpicClassDto>`
 
+## `get_equipped_focus` (stateful)
+
+- args: none
+- returns: `Vec<crate::focus::FocusEffect>`
+
 ## `get_fight_state_at` (stateful)
 What clicking a point on the scrub bar shows: every entity's state and a snapshot DPS reading as of that instant.
 
@@ -263,6 +297,12 @@ Per-entity damage-over-time bars for one fight's scrub bar.
 
 - args: none
 - returns: `GameStateDto`
+
+## `get_group_buffs` (stateful)
+why: the Group Buff Tracker overlay's whole data source -- see groupbuffs.rs
+
+- args: none
+- returns: `crate::groupbuffs::GroupBuffsDto`
 
 ## `get_guild_chat` (stateful)
 
@@ -445,6 +485,12 @@ why: current tradeskill levels off skill-up lines -- see craftlog's own doc
 - args: `top: Option<usize>`
 - returns: `UnmatchedCoverageDto`
 
+## `get_whats_new` (stateful)
+why: the "what's new" page -- the changelog sections between the version the user last acknowledged and the running one. A fresh install (no last_seen) acknowledges the current version silently.
+
+- args: none
+- returns: `whatsnew::WhatsNewDto`
+
 ## `get_zone_context` (stateful)
 why: Maps module's zone-identity + entrance-guess input; `current_map_zones` confirms the open map is really current, `previous`/`teleport_landing` decide the guess
 
@@ -625,3 +671,9 @@ why: whole-state write -- the frontend owns the merge (it knows which edit happe
 
 - args: `mut prefs: Preferences`
 - returns: `Result<Preferences, String>`
+
+## `set_session_window` (stateful)
+why: the Session card's "set timeframe" -- start and optional end (epoch ms); both None returns to the automatic 30-minute-gap rule
+
+- args: `start_ms: Option<i64>`; `end_ms: Option<i64>`
+- returns: `SessionDto`
