@@ -102,7 +102,9 @@
   <!-- why: identical bell affordance to the Sky tabs -- same feature,
        same glyph, same on/off colors; every epic material is a real
        drop (or forage/pickpocket target), so every chip gets one -->
-  <span class="relative inline-flex">
+  <!-- why: max-w-full + flex-wrap -- a chip wider than the card had no
+       way to break, so it overflowed the card edge instead of wrapping -->
+  <span class="relative inline-flex max-w-full">
     <button
       type="button"
       class="absolute -top-2 -left-2 z-10 flex size-4 items-center justify-center rounded-full border {tracked
@@ -114,7 +116,7 @@
       <BellIcon class="size-3" />
     </button>
     <span
-      class="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] {status.classes} {it.in_era ? '' : 'opacity-55'}"
+      class="inline-flex max-w-full flex-wrap items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] {status.classes} {it.in_era ? '' : 'opacity-55'}"
       title="{it.item}{it.qty > 1 ? ` ×${it.qty}` : ''} -- {farmHint(it)} -- {status.label}{eraNote(it)}"
     >
       <GdLink kind="item" name={it.item} bell={false} />
