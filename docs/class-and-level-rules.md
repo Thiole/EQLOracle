@@ -24,9 +24,14 @@ Code: `crates/session/src/classdetect.rs` (your classes),
   Only a Bard has it. Its Self-target songs still land: "Your voice
   booms." on the singer, "<Name>'s voice booms." in everyone else's log
   (Amplification), every 6 seconds.
-- G6. Wiki spell levels are not always this server's levels (Improved
-  Invisibility is listed Wizard 55 on a level-50 cap). Any wiki level
-  above the cap is discarded for that class (Q1 pending).
+- G6. Spell level requirements are per CLASS, and the install's own
+  `spells_us.txt` states them (columns 37-52, one per class, 255 = that
+  class cannot cast it). Game data, this server -- same footing as the
+  col-55 reuse timers, not a wiki scrape. A level listed above the cap
+  is not bad data, it means no one here casts it as that class:
+  Improved Invisibility is WIZ 55 and ENC 50, and an ENC/WIZ character
+  at the cap casts it as the Enchanter. Reading the wizard entry off it
+  and calling the file wrong was the "WIZ 55" bug (see L8).
 - G7. Poisons are Rogue-only. They are ability activations whose name ends
   in " Venom" or " Poison"; the follow-up is "<Name> coats their blades in
   ...". Backstab is Rogue-only.
@@ -98,12 +103,75 @@ rules below are ally-specific, and they only decide where a chain breaks.
 
 ## Your level
 
-- L1. The latest ding is the effective level and the floor of the answer.
-- L2. Each class keeps its own floor: the highest ding on any visit whose
-  resolved full trio contained it. Floors never go down.
-- L3. The row's level is the current trio's lowest class floor, never
-  below L1. A trio class with no floor yet makes L1 the answer.
-- L4. Spell levels are never a floor (G6).
+Level is a rolling record per class (P6), not something an encounter
+re-derives. These rules say what writes it, what it constrains, and how
+readily a written value is revised.
+
+- L1. Two quantities, never mixed. A class's own RECORD persists once
+  reached and never falls. The EFFECTIVE level while a trio is slotted
+  is the minimum of the three records -- a 50 class beside a 26 class
+  plays at 26, temporarily de-levelled, its own record untouched. Dings,
+  spell access and the row's displayed level are all effective level;
+  elimination (L5) runs on records.
+- L2. A ding to N sets the effective level to N, so every class in the
+  trio is at least N: raise all three records to N (max, never lower).
+  A /who row does the same at the level it states, for every class it
+  names, for that player or for you.
+- L3. Each record entry carries its source, and the source decides how
+  readily it is revised -- how quickly the algorithm self-corrects, not
+  whether it can:
+  - CEMENTED: a /who row, or a ding under a trio confirmed at the P2
+    bar. Revised only by another cemented source.
+  - FIRM: a spell floor (L8) under a confirmed trio. Revised by a
+    cemented source, or by corroborated contradiction.
+  - SOFT: anything absorbed under a prior or an unconfirmed trio.
+    Revised freely by the next better evidence.
+- L4. One strand per class, rewritten in place. When later evidence
+  re-attributes an arc (an ally's 26-28 turning out to be the
+  Necromancer), the strand is corrected from that date forward; no
+  competing guesses are kept alongside it. Reads are as-of-time: a
+  record raised at T never constrains anything before T.
+- L5. A ding is a constraint on the trio, not just an output of it.
+  A ding to N at time T means the trio held a class whose record was
+  exactly N-1 as of T, so:
+  - a trio whose three records were all above N-1 takes a heavy miss
+    (weight by L3 tier: cemented -3, firm -2, soft -1, provisional
+    until replay calibrates them). Never a hard reject -- a wrong
+    record must not permanently rule out the truth.
+  - a trio holding a class whose record was exactly N-1 scores +1.
+  Real case: the Aug 10 dings 26/27/28 were filed under ENC/SHD/WIZ,
+  a trio sitting at 34 the night before. It cannot ding 26. The arc
+  was the Necromancer's, whose record stood at exactly 25.
+- L6. A backwards ding is a swap signal (S5) only when it contradicts
+  the trio the chain currently assumes -- when believing otherwise
+  needs a trio to ding below its own minimum. If the chain already
+  holds a different trio there, the ding confirms it instead.
+  No de-level line exists in any real log (395MB checked), so a
+  backwards step is always a swap, never a loss.
+- L7. Configurations split on ARC, not wall clock. A ding sequence
+  stepping backwards is two arcs by definition (L6); the 24h
+  SESSION_GAP_MS bucket welded an ENC/SHD/WIZ 33-34 run to a
+  Necromancer 26-28 run and reported the range as (26,34).
+- L8. A cast proves the effective level, hence a floor under every
+  class in the trio. The requirement is the MINIMUM `spells_us.txt`
+  level among the trio's classes that can cast it (G6) -- Conflagration
+  is WIZ 43, so casting it in a WIZ/ENC/BRD trio floors all three at 43.
+  Only a cast that is provably from the spellbook counts:
+  - a rank suffix (I-X) is spellbook-only (G4) -- 75,280 of 94,212 real
+    casts carry one, including all 9,544 Conflagration casts;
+  - else the measured begin->resolve interval matches col-8 base cast
+    time under the modeled focus/AA cut (an instant resolve on a 5s
+    spell is an item click, a 15s one is the Vermilion Robe);
+  - else the spell has no known click source at all (not in the 324).
+  A cast clearing none of the three sets no floor. A cast at a known
+  effective level BELOW the file's number ratchets that spell's
+  requirement down and flags it -- the log corrects the file, never the
+  other way.
+- L9. The Character Planner reads the rolling record, not configuration
+  level ranges. The old estimator took the highest ding inside the
+  sessions of configurations a class was confirmed in, so a class that
+  stopped producing distinguishable evidence froze at its last provable
+  level (NEC read 25 while its arc really ran to 28 and beyond).
 
 ## Loadout swap signals (clear the buff ledger, reset B2 and the class set)
 
@@ -113,6 +181,8 @@ rules below are ally-specific, and they only decide where a chain breaks.
   no ding in the previous 15s (a class pick in town). 1 grant is a scribe.
 - S3. Your own death clears every buff.
 - S4. A swap to a slot with the same three classes is undetectable.
+- S5. A ding below the assumed trio's own minimum (L6). The only swap
+  signal that fires with no cast, grant or death behind it.
 
 ## Group Buff Tracker ledger
 
@@ -126,7 +196,7 @@ rules below are ally-specific, and they only decide where a chain breaks.
 
 ## Chain model (confirmed by Spencer 2026-09-03, being built)
 
-Replaces C2-C8 and L2-L3. One rolling evidence chain per character;
+Replaces C2-C8. One rolling evidence chain per character;
 no static zone lists anywhere.
 
 - P1. The unit of evidence is the encounter (one You are in, from the
@@ -164,8 +234,9 @@ no static zone lists anywhere.
   names to the level it states (the game shows the trio's lowest, so all
   three are at least that); nothing ever lowers one. The row shows the
   lowest record among the trio AS SHOWN, never below the latest ding, and
-  a class with no record yet falls back to the latest ding. Wiki spell
-  levels are not used (G6). Without the rolling record a class swapped in
+  a class with no record yet falls back to the latest ding. What writes
+  the record, what it constrains and how readily it is revised are L1-L9.
+  Without the rolling record a class swapped in
   after you reach the cap never dings again, and the row reads the
   previous trio's level -- real report: "ENC/SHD/WIZ 41" sitting beside
   its own /who row saying 50.
@@ -193,6 +264,10 @@ no static zone lists anywhere.
 - Q5. The app tails the newest-modified eqlog in the install's Logs
   folder. Two boxes logging to one folder would make it flip. Character
   picker wanted?
+- Q41. May a SOFT record (L3) eliminate a trio at all, or only observe
+  until it firms up? Currently it can, at weight -1.
+- Q42. L5's tier weights (-3/-2/-1) are provisional -- calibrate against
+  a real replay before they are treated as settled.
 - Q9. Wiki class-list errors (Leech listed Necromancer-only, SK casts it
   here): curated exceptions pack, automatic distrust on contradiction
   with a confirmed trio, or both?
