@@ -96,42 +96,82 @@ pub fn is_known_npc_name(name: &str) -> bool {
 /// different pages and neither subsumes the other.
 pub fn known_loot_for(name: &str) -> &'static [String] {
     static MAP: OnceLock<std::collections::HashMap<String, Vec<String>>> = OnceLock::new();
-    MAP.get_or_init(|| {
+    let map = MAP.get_or_init(|| {
         let mut m: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
         for n in npcs() {
             if n.known_loot.is_empty() {
                 continue;
             }
-            let e = m.entry(n.name.to_lowercase()).or_default();
-            for l in &n.known_loot {
-                if !e.iter().any(|x| x.eq_ignore_ascii_case(&l.item)) {
-                    e.push(l.item.clone());
+            // why: keyed under both spellings so a caller that found the
+            // mob through `npc_for`'s tolerant key gets its pool too --
+            // era and drop pool disagreeing made a real dropper read as
+            // "its page doesn't list it"
+            for key in [n.name.to_lowercase(), fold_npc_name(&n.name)] {
+                let e = m.entry(key).or_default();
+                for l in &n.known_loot {
+                    if !e.iter().any(|x| x.eq_ignore_ascii_case(&l.item)) {
+                        e.push(l.item.clone());
+                    }
                 }
             }
         }
         m
-    })
-    .get(&name.to_lowercase())
-    .map(Vec::as_slice)
-    .unwrap_or(&[])
+    });
+    map.get(&name.to_lowercase())
+        .or_else(|| map.get(&fold_npc_name(name)))
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
 }
 
-/// why: the mob's OWN page states which era it belongs to, and that is
-/// the honest answer for whether its drops are reachable -- an epic
-/// quest material has no era on its own item page (all 124 of them read
-/// as unknown), while the mobs that drop them do. Same lowercased-name
-/// key as `is_known_npc_name`.
+/// why: the mob's own page, found through a tolerant key -- the epic
+/// quest pages name droppers with a trailing disambiguator the NPC pages
+/// don't carry ("Najena (NPC)", "Cazic-Thule"), and an unfound dropper
+/// is indistinguishable from an out-of-era one. Exact match first so two
+/// genuinely different mobs never collapse into each other.
+pub fn npc_for(name: &str) -> Option<&'static Npc> {
+    static MAP: OnceLock<std::collections::HashMap<String, usize>> = OnceLock::new();
+    let map = MAP.get_or_init(|| {
+        let mut m = std::collections::HashMap::new();
+        for (i, n) in npcs().iter().enumerate() {
+            m.entry(n.name.to_lowercase()).or_insert(i);
+        }
+        for (i, n) in npcs().iter().enumerate() {
+            m.entry(fold_npc_name(&n.name)).or_insert(i);
+        }
+        m
+    });
+    map.get(&name.to_lowercase())
+        .or_else(|| map.get(&fold_npc_name(name)))
+        .map(|i| &npcs()[*i])
+}
+
+/// why: drops the page's trailing disambiguator and folds punctuation --
+/// "Cazic-Thule" and "Cazic Thule (God)" are one mob
+fn fold_npc_name(name: &str) -> String {
+    let base = name.replace('`', "'");
+    let base = base.split(" (").next().unwrap_or(&base);
+    let mut out = String::new();
+    for c in base.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+        } else if !out.ends_with(' ') {
+            out.push(' ');
+        }
+    }
+    out.trim().to_string()
+}
+
+/// why: the era a mob is reachable in -- its own page first, then the
+/// era of the zone it lives in. 1650 of 6532 NPC pages state no era
+/// while their zone's page does, and an unknown era reads as "not
+/// verified", which now means out of era.
 pub fn era_of(name: &str) -> Option<&'static str> {
-    static MAP: OnceLock<std::collections::HashMap<String, String>> = OnceLock::new();
-    MAP.get_or_init(|| {
-        npcs()
-            .iter()
-            .filter_map(|n| n.era.as_ref().map(|e| (n.name.to_lowercase(), e.clone())))
-            .collect()
-    })
-    .get(&name.to_lowercase())
-    .map(String::as_str)
+    let n = npc_for(name)?;
+    match n.era.as_deref() {
+        Some(e) => Some(e),
+        None => crate::zonedata::era_of_zone(n.zone.as_deref()?),
+    }
 }
 
 /// why: an item counts as a ZONE drop only when this many distinct NPCs

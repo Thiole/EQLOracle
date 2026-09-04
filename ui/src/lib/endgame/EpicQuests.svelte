@@ -64,13 +64,14 @@
     return `${how}${it.zone ? ` -- ${it.zone}` : ''}${it.optional ? ' (optional route)' : ''}`;
   }
 
-  // why: Spencer -- some of these materials are out of era, and the item
-  // page never says so; the mob that drops it does. The backend reads the
-  // dropper's own page, so a material whose every dropper is past the
-  // live era is unfarmable no matter what its item page claims.
-  let hideOutOfEra = $state(false);
+  // why: Spencer -- "in era means it has a means of being acquired,
+  // otherwise it is out of era". Out of era is the default and the
+  // backend has to prove acquisition through the chain, so the farm list
+  // opens showing only what is actually farmable now.
+  let hideOutOfEra = $state(true);
   function eraNote(it: EpicItemDto): string {
     if (it.in_era) return '';
+    if (it.unverified) return ` -- not verified acquirable: ${it.unverified}`;
     const who = it.out_of_era_mobs.length ? it.out_of_era_mobs.join(' / ') : 'its droppers';
     return ` -- out of era: ${who}${it.era ? ` (${it.era})` : ''}`;
   }
@@ -120,7 +121,7 @@
       {#if it.qty > 1}<span class="opacity-80">×{it.qty}</span>{/if}
       {#if it.gather}<span class="opacity-70 italic">{it.gather}</span>{/if}
       {#if it.optional}<span class="opacity-70">opt</span>{/if}
-      {#if !it.in_era}<span class="rounded-sm bg-muted px-1 text-[9px] text-muted-foreground">{it.era ?? 'out of era'}</span>{/if}
+      {#if !it.in_era}<span class="rounded-sm bg-muted px-1 text-[9px] text-muted-foreground">{it.unverified ? 'unverified' : (it.era ?? 'out of era')}</span>{/if}
       <span class="opacity-80">· <ItemLocateLabel item={it.item} label={status.label} owned={status.satisfied} /></span>
     </span>
   </span>
@@ -207,7 +208,7 @@
               </div>
             {:else if c.items.length}
               <p class="text-[10px] text-muted-foreground italic">
-                Every material for this epic drops from a mob that is out of era.
+                Nothing for this epic is verifiably acquirable in the live era.
               </p>
             {:else}
               <!-- why: honest empty state -- Berserker's epic is trial

@@ -69,12 +69,18 @@ pub struct EpicItemDto {
     /// off the MOB's own page (npcdata) -- an epic material's item page
     /// carries no era at all, so the item side cannot answer this
     pub era: Option<String>,
-    /// why: false when every dropper is past the era the server is in --
-    /// the material is real but unfarmable until that era ships
+    /// why: true only when the acquisition chain proved it -- a
+    /// reachable dropper whose own page lists it, or a gathered material
+    /// in a reachable zone. Out of era is the default, not the exception.
     pub in_era: bool,
     /// why: the droppers that are themselves past the live era, so the
     /// row can say WHICH mob is the reason
     pub out_of_era_mobs: Vec<String>,
+    /// why: WHY it isn't farmable, when no dropper can be named -- an
+    /// unverifiable material and a provably gated one both read "out of
+    /// era", and only this separates a real gate from a data gap. None
+    /// when the acquisition chain checked out.
+    pub unverified: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -89,33 +95,98 @@ pub struct EpicClassDto {
     pub items: Vec<EpicItemDto>,
 }
 
-/// why: an epic material's era comes from the mobs that drop it, never
-/// from its own item page -- every one of the 124 materials reads as
-/// era-unknown on the item side, while their droppers carry a real era
-/// (Spencer: "verify on the mob who drops it's page, that the drop
-/// itself is out of era, and not just on the item page itself").
-/// Earliest era wins: one reachable dropper makes the material farmable.
-fn drop_era(mobs: &[String]) -> (Option<String>, Vec<String>) {
+/// why: out of era is the DEFAULT, and in-era has to be earned through
+/// the acquisition chain (Spencer: "in era means it has a means of being
+/// acquired, otherwise it is out of era ... verify through the
+/// acquisition chain that it can drop"). ALL of a dropper's conditions
+/// have to hold, not any one: the mob has to exist, be reachable in the
+/// live era, AND its own drop pool has to list the item. One such
+/// dropper is enough -- you only need one place to farm it.
+///
+/// Every input is scraped data, so the answer moves on its own as pages
+/// fill in; nothing here names a specific item or mob.
+fn verify(item: &str, mobs: &[String], zone: Option<&str>, source: Option<&str>) -> Verdict {
     let live = crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA);
-    let mut best: Option<(usize, String)> = None;
+    let mut earliest: Option<(usize, String)> = None;
     let mut beyond: Vec<String> = Vec::new();
+    let mut unknown = 0usize;
+    let mut no_pool = 0usize;
     for m in mobs {
         let Some(era) = crate::npcdata::era_of(m) else {
+            unknown += 1;
             continue;
         };
         let Some(ix) = crate::gearplanner::era_ix(era) else {
+            unknown += 1;
             continue;
         };
+        if earliest.as_ref().is_none_or(|(b, _)| ix < *b) {
+            earliest = Some((ix, era.to_string()));
+        }
         if live.is_some_and(|l| ix > l) {
             beyond.push(m.clone());
+            continue;
         }
-        if best.as_ref().is_none_or(|(b, _)| ix < *b) {
-            best = Some((ix, era.to_string()));
+        // why: reachable is only half of it -- the mob's own page has to
+        // say it drops this, or nothing has verified the acquisition
+        if crate::npcdata::known_loot_for(m)
+            .iter()
+            .any(|d| d.eq_ignore_ascii_case(item))
+        {
+            return Verdict {
+                era: earliest.map(|(_, e)| e),
+                in_era: true,
+                beyond,
+                unverified: None,
+            };
         }
+        no_pool += 1;
     }
-    // why: a dropper with no era on its page proves nothing either way,
-    // so it never lands in the out-of-era list
-    (best.map(|(_, e)| e), beyond)
+    // why: forage and pickpocket are real acquisition means with no mob
+    // to check -- the zone being reachable is the whole verification
+    if source.is_some()
+        && zone
+            .and_then(crate::zonedata::era_of_zone)
+            .and_then(crate::gearplanner::era_ix)
+            .is_some_and(|ix| live.is_none_or(|l| ix <= l))
+    {
+        return Verdict {
+            era: earliest.map(|(_, e)| e),
+            in_era: true,
+            beyond,
+            unverified: None,
+        };
+    }
+    let unverified = if !beyond.is_empty() {
+        None
+    } else if mobs.is_empty() {
+        Some(match source {
+            Some(s) => format!(
+                "{s} source, and no era on record for {}",
+                zone.unwrap_or("its zone")
+            ),
+            None => "no dropper, forage or pickpocket source on record".to_string(),
+        })
+    } else if no_pool > 0 {
+        Some("its dropper's page doesn't list it as a drop".to_string())
+    } else if unknown > 0 {
+        Some("no era on record for any of its droppers".to_string())
+    } else {
+        None
+    };
+    Verdict {
+        era: earliest.map(|(_, e)| e),
+        in_era: false,
+        beyond,
+        unverified,
+    }
+}
+
+struct Verdict {
+    era: Option<String>,
+    in_era: bool,
+    beyond: Vec<String>,
+    unverified: Option<String>,
 }
 
 /// why: the Epic Quests tab's source -- every farmable material with live
@@ -136,12 +207,7 @@ pub fn list_epics(ing: &Ingest, base_dir: Option<&Path>) -> Vec<EpicClassDto> {
                 .items
                 .iter()
                 .map(|it| {
-                    let (era, out_of_era_mobs) = drop_era(&it.mobs);
-                    let live = crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA);
-                    let in_era = match era.as_deref().and_then(crate::gearplanner::era_ix) {
-                        Some(ix) => live.is_none_or(|l| ix <= l),
-                        None => true,
-                    };
+                    let v = verify(&it.item, &it.mobs, it.zone.as_deref(), it.source.as_deref());
                     EpicItemDto {
                         status: resolve_item(
                             ing,
@@ -155,9 +221,10 @@ pub fn list_epics(ing: &Ingest, base_dir: Option<&Path>) -> Vec<EpicClassDto> {
                         qty: it.qty,
                         optional: it.optional,
                         gather: it.source.clone(),
-                        era,
-                        in_era,
-                        out_of_era_mobs,
+                        era: v.era,
+                        in_era: v.in_era,
+                        out_of_era_mobs: v.beyond,
+                        unverified: v.unverified,
                     }
                 })
                 .collect(),
@@ -169,27 +236,55 @@ pub fn list_epics(ing: &Ingest, base_dir: Option<&Path>) -> Vec<EpicClassDto> {
 mod tests {
     use super::*;
 
-    /// why: the whole point of reading the MOB's page -- an epic material
-    /// with an Epic-Quests-Era dropper is not farmable on a Sky-Era
-    /// server, and its own item page says nothing about that
+    /// why: out of era is the default and in-era is earned -- a
+    /// reachable dropper only counts when its OWN page lists the item,
+    /// and a dropper with no page at all proves nothing
     #[test]
-    fn a_droppers_own_era_decides_whether_the_material_is_farmable() {
-        let mobs = vec!["Maligar's Enraged Doppleganger".to_string()];
-        let (era, beyond) = drop_era(&mobs);
-        assert_eq!(era.as_deref(), Some("Epic Quests Era"));
-        assert_eq!(beyond, mobs, "the dropper itself is past the live era");
-        // one reachable dropper is enough -- earliest era wins
-        let mixed = vec![
-            "Maligar's Enraged Doppleganger".to_string(),
-            "Lord Nagafen".to_string(),
-        ];
-        let (era, beyond) = drop_era(&mixed);
-        assert_eq!(era.as_deref(), Some("Classic Era"));
-        assert_eq!(beyond, vec!["Maligar's Enraged Doppleganger".to_string()]);
-        // a name with no page proves nothing either way
-        let (era, beyond) = drop_era(&["Not A Real Mob".to_string()]);
-        assert_eq!(era, None);
-        assert!(beyond.is_empty());
+    fn in_era_is_earned_through_the_acquisition_chain() {
+        // an Epic-Quests-Era dropper is not farmable on a Sky-Era server
+        let gated = vec!["Maligar's Enraged Doppleganger".to_string()];
+        let v = verify("Blade of Strategy", &gated, None, None);
+        assert!(!v.in_era);
+        assert_eq!(v.era.as_deref(), Some("Epic Quests Era"));
+        assert_eq!(v.beyond, gated, "the dropper itself is past the live era");
+
+        // a name with no page can never prove acquisition
+        let v = verify("Anything", &["Not A Real Mob".to_string()], None, None);
+        assert!(!v.in_era);
+        assert!(v.beyond.is_empty());
+        assert!(v.unverified.is_some(), "a data gap has to say so");
+
+        // a reachable dropper whose own page does not list the item is
+        // not verification either
+        let v = verify("Not Its Drop", &["Lord Nagafen".to_string()], None, None);
+        assert!(!v.in_era);
+        assert!(v.unverified.is_some());
+
+        // reachable AND its page lists it -- the only way in
+        let drop = crate::npcdata::known_loot_for("Lord Nagafen")
+            .first()
+            .expect("Lord Nagafen has a drop pool")
+            .clone();
+        let v = verify(&drop, &["Lord Nagafen".to_string()], None, None);
+        assert!(v.in_era, "reachable dropper that really drops it");
+        assert!(v.unverified.is_none());
+    }
+
+    /// why: forage and pickpocket have no mob to check, so the zone
+    /// being reachable is the whole verification
+    #[test]
+    fn a_gathered_material_is_verified_by_its_zone() {
+        let v = verify(
+            "Sweetened Mudroot",
+            &[],
+            Some("Greater Faydark"),
+            Some("forage"),
+        );
+        assert!(v.in_era, "Greater Faydark is Classic Era");
+        let v = verify("Whatever", &[], Some("Firiona Vie"), Some("forage"));
+        assert!(!v.in_era, "Firiona Vie is Kunark Era");
+        let v = verify("Whatever", &[], Some("Greater Faydark"), None);
+        assert!(!v.in_era, "no stated acquisition means is not a means");
     }
 
     /// why: all 15 classes parse; Berserker genuinely has zero farmable

@@ -653,6 +653,10 @@ export interface EpicItemDto extends TurnInItemDto {
   in_era: boolean;
   /** why: which droppers are the reason, so the row can say so */
   out_of_era_mobs: string[];
+  /** why: WHY it isn't farmable when no dropper can be named -- a real
+   * era gate and a data gap both read "out of era" without it. Null when
+   * the acquisition chain checked out. */
+  unverified: string | null;
 }
 
 /** why: Epic Quests farm list -- pre-era item tracking, no completion state. */

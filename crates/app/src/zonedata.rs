@@ -108,6 +108,21 @@ pub fn map_shortnames_tagged(who_name: &str) -> Vec<(String, Option<String>)> {
     out
 }
 
+/// why: a zone's own page states its era, and that is the fallback when
+/// an NPC page states none -- the raw text can list several zones
+/// ("Kaladim, Butcherblock"), so the first that resolves wins.
+pub fn era_of_zone(raw: &str) -> Option<&'static str> {
+    raw.split([',', '/'])
+        .map(str::trim)
+        .filter(|z| !z.is_empty())
+        .find_map(|z| {
+            zones()
+                .iter()
+                .find(|e| crate::zone::zone_matches(z, &e.name))
+                .and_then(|e| e.era.as_deref())
+        })
+}
+
 /// why: where Lesser Evacuate (or a tier change) drops you; `label` is raw wiki text
 #[derive(Debug, Clone, PartialEq)]
 pub struct SuccorPoint {

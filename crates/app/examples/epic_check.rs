@@ -21,6 +21,25 @@ fn main() {
         backfill_lines(&mut ing, &engine, chunk, 8);
     }
     let epics = epicquests::list_epics(&ing, base.as_deref().map(Path::new));
+
+    // why: out of era is the default now -- this is the whole ledger of
+    // what survived the acquisition chain, and why the rest didn't
+    let all: Vec<_> = epics.iter().flat_map(|c| c.items.iter()).collect();
+    let farmable = all.iter().filter(|i| i.in_era).count();
+    println!(
+        "\nera: {} materials, {farmable} farmable now, {} out of era",
+        all.len(),
+        all.len() - farmable
+    );
+    for c in &epics {
+        for i in c.items.iter().filter(|i| !i.in_era) {
+            let why = i
+                .unverified
+                .clone()
+                .unwrap_or_else(|| format!("gated behind {}", i.era.as_deref().unwrap_or("?")));
+            println!("  {:<13} {:<36} {why}", c.class, i.status.item);
+        }
+    }
     for c in &epics {
         let owned = c
             .items
