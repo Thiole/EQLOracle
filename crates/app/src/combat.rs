@@ -296,11 +296,17 @@ fn drop_chance(mob: &str, item: &str) -> Option<f64> {
 }
 
 fn sort_drops_rarer_first(drops: &mut [EncounterDropDto]) {
-    drops.sort_by(|a, b| match (a.chance, b.chance) {
-        (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal),
-        (Some(_), None) => std::cmp::Ordering::Less,
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        (None, None) => a.item.cmp(&b.item),
+    // why: the name breaks EVERY tie, not just the None/None one -- two
+    // drops of equal chance were left in the order a HashMap happened to
+    // yield them, so the list reordered between runs
+    drops.sort_by(|a, b| {
+        match (a.chance, b.chance) {
+            (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        }
+        .then_with(|| a.item.cmp(&b.item))
     });
 }
 
@@ -677,7 +683,9 @@ pub fn summarize(
             r.min = 0;
         }
     }
-    rows.sort_by_key(|b| std::cmp::Reverse(b.total));
+    // why: the ability id breaks ties -- equal totals were left in the
+    // order the merge HashMap yielded them, which differs per process
+    rows.sort_by_key(|b| (std::cmp::Reverse(b.total), b.ability.0));
 
     let total_damage: u64 = rows.iter().map(|r| r.total).sum();
 

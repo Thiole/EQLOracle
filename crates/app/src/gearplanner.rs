@@ -526,7 +526,12 @@ const SCORED_EFFECTS: &[&str] = &["focus", "click", "worn"];
 /// `tier` scales before scoring, so an owned +8 item scores as +8, not fresh.
 fn score_item(item: &Item, weights: &HashMap<String, f64>, tier: u8) -> f64 {
     let mut s = 0.0;
-    for (stat, val) in &item.stats {
+    // why: sorted, because float addition is not associative -- walking
+    // `stats` in HashMap order made the same item score
+    // 32.33333333333333 one run and 32.333333333333336 the next
+    let mut stats: Vec<_> = item.stats.iter().collect();
+    stats.sort_by(|a, b| a.0.cmp(b.0));
+    for (stat, val) in stats {
         if let Some(w) = weights.get(stat.as_str()) {
             s += w * scale_stat(*val, tier);
         }

@@ -180,8 +180,12 @@ pub struct SkillStatusDto {
 /// display -- see this module's own doc for why filtering which ones
 /// actually show is the frontend's job, not this query's.
 pub fn skill_status(ing: &Ingest) -> Vec<SkillStatusDto> {
-    ing.skills
-        .iter()
+    // why: `skills` is a HashMap, so an unsorted walk handed the UI a
+    // different order every launch -- the skill list visibly reshuffled
+    let mut by_name: Vec<_> = ing.skills.iter().collect();
+    by_name.sort_by(|a, b| a.0.cmp(b.0));
+    by_name
+        .into_iter()
         .map(|(skill, t)| SkillStatusDto {
             skill: skill.clone(),
             last_outcome: if t.last_landed { "landed" } else { "avoided" },
