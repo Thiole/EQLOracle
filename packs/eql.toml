@@ -2230,6 +2230,10 @@ level = { from = "level", as = "str" }
 classes = { from = "classes", as = "str" }
 name = { from = "name", as = "str" }
 race = { from = "race", as = "str" }
+# why: "Label (shortname)" -- the game's own map-file name for the zone,
+# which the wiki's who_name disagrees with (Oasis of Marr is "marr"
+# there, "oasis" in the game and in the map folder)
+zone = { from = "zone", as = "str" }
 
 [[rule]]
 id = "state.misc"

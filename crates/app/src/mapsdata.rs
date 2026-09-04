@@ -245,7 +245,9 @@ fn fold_label(label: &str) -> String {
 }
 
 /// why: strips a numbered sibling suffix, e.g. "befallen_1" -> "befallen"
-fn zone_stem(file_stem: &str) -> &str {
+/// why: also the /who row's own shortname, which carries the same
+/// instance suffix ("crushbone_3473") -- see ingest::note_zone_shortname
+pub fn zone_stem(file_stem: &str) -> &str {
     match file_stem.rsplit_once('_') {
         Some((base, suffix))
             if !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit()) =>

@@ -16,6 +16,7 @@ use crate::dpscalc::{self, DamageSpellDto};
 use crate::emumaps;
 use crate::gearplanner::{self, InventoryDumpDto, ItemDto, SlotRecommendationDto};
 use crate::history::{self, ParseRecord};
+use crate::ingest::Ingest;
 use crate::ingest::LineCounts;
 use crate::inventory;
 use crate::itemdata;
@@ -2165,7 +2166,7 @@ pub fn get_last_location(app: AppHandle, state: State<AppState>) -> Option<LastL
     let ing = state.ingest.lock_recover();
     let (ts_ms, x, y, z) = ing.last_loc?;
     let zone = ing.zone.at(ts_ms).map(str::to_string);
-    let map_zones = map_zones_for_raw_label(zone.as_deref());
+    let map_zones = map_zones_for_raw_label(&ing, zone.as_deref());
     drop(ing);
     // why: best-Z snap -- /loc's own z is the character's origin (often
     // mid-model, mid-jump, or on a mount) and the map view picks its
@@ -2215,14 +2216,28 @@ pub struct ZoneContextDto {
 /// why: fresh linear scan, not `Ingest`'s cache -- that cache is only
 /// primed by combat, which a freshly-walked-into zone may never trigger.
 /// Cheap enough at per-tick query rate. Empty is a real "don't know", not a guess.
-fn map_zones_for_raw_label(raw: Option<&str>) -> Vec<String> {
+/// why: the game's own /who shortname first, the wiki's `who_name` after.
+/// The wiki calls Oasis of Marr "marr" and the map file is "oasis", so
+/// live-follow loaded nothing and every location feature read "not your
+/// current zone" -- while the log had already stated the real pairing.
+pub fn map_zones_for_raw_label(ing: &Ingest, raw: Option<&str>) -> Vec<String> {
     let Some(raw) = raw else { return Vec::new() };
-    zonedata::zones()
+    let mut out: Vec<String> = ing
+        .zone_shortnames
         .iter()
-        .find(|z| crate::zone::zone_matches(raw, &z.name))
-        .and_then(|z| z.who_name.as_deref())
-        .map(zonedata::map_shortnames)
-        .unwrap_or_default()
+        .filter(|(label, _)| crate::zone::zone_matches(raw, label))
+        .map(|(_, stem)| stem.clone())
+        .collect();
+    out.extend(
+        zonedata::zones()
+            .iter()
+            .find(|z| crate::zone::zone_matches(raw, &z.name))
+            .and_then(|z| z.who_name.as_deref())
+            .map(zonedata::map_shortnames)
+            .unwrap_or_default(),
+    );
+    out.dedup();
+    out
 }
 
 /// why: Maps module's zone-identity + entrance-guess input; `current_map_zones`
@@ -2232,7 +2247,7 @@ pub fn get_zone_context(state: State<AppState>) -> ZoneContextDto {
     let ing = state.ingest.lock_recover();
     let ts = ing.now_ms();
     let current = ing.zone.at(ts).map(str::to_string);
-    let current_map_zones = map_zones_for_raw_label(current.as_deref());
+    let current_map_zones = map_zones_for_raw_label(&ing, current.as_deref());
     // why: two independent confirmation sources compete on timestamp, same
     // "freshest wins" rule applies for routing. No base_dir yet is a
     // real "can't compute" for the Origin side specifically, falls through.

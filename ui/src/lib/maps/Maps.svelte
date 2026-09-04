@@ -334,7 +334,12 @@
   // picked yet) go straight to the current zone's map, the same way a
   // later zone change would
   $effect(() => {
-    if ($liveFollow && $zoneContext?.current && !$selectedZone) setLiveFollow(true);
+    // why: resolveMapZone needs the zone LIST too -- on open, the tick
+    // has usually already set zoneContext (so its own early-return skips
+    // the auto-select), and loadMapModule is still fetching mapZones, so
+    // this fired against an empty list and never ran again. Depending on
+    // it re-runs the moment the list lands.
+    if ($liveFollow && $zoneContext?.current && $mapZones.length && !$selectedZone) setLiveFollow(true);
   });
 
   let poiWalkPath = $state<PathDto | null>(null);

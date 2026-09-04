@@ -1272,6 +1272,11 @@ pub struct Ingest {
     /// off in the app (see the zone cull), on for probes that analyse the
     /// whole log after the fact
     pub keep_full_history: bool,
+    /// why: zone label -> the game's own map-file shortname, learned from
+    /// /who rows (101 distinct pairs in a real log). The wiki's `who_name`
+    /// disagrees for real zones, and a wrong shortname means no map loads
+    /// and every location feature reads "not your current zone".
+    pub zone_shortnames: HashMap<String, String>,
     /// why: whose log this is, from the file name -- lets your own /who
     /// row apply to "You" instead of a stranger by the same name. The
     /// self model is the same model, just fed more (Spencer).
@@ -1440,6 +1445,7 @@ impl Default for Ingest {
             units: UnitTrack::default(),
             character: None,
             keep_full_history: false,
+            zone_shortnames: HashMap::new(),
             spell_file: None,
             implied_level: HashMap::new(),
             stance_pool: None,
@@ -1725,6 +1731,24 @@ impl Ingest {
             return false;
         }
         self.encounters.entities.kind(who) == Kind::Player || self.groups.currently_grouped(who, ts)
+    }
+
+    /// why: "The Oasis of Marr (oasis)" from a /who row -- the game's own
+    /// map-file name for the zone, which beats the wiki's `who_name`
+    /// (that says "marr"). Instance suffixes are stripped the same way
+    /// the map folder's own file names are.
+    fn note_zone_shortname(&mut self, field: &str) {
+        let Some((label, rest)) = field.rsplit_once(" (") else {
+            return;
+        };
+        let Some(short) = rest.strip_suffix(')') else {
+            return;
+        };
+        let stem = crate::mapsdata::zone_stem(short);
+        if !label.is_empty() && !stem.is_empty() {
+            self.zone_shortnames
+                .insert(label.to_string(), stem.to_string());
+        }
     }
 
     /// why: the class-evidence unit covering `at` -- see UnitTrack::at
@@ -2435,8 +2459,12 @@ impl Ingest {
                 name,
                 level,
                 classes,
+                zone,
             } => {
                 self.note_ally_who(ts, &name, level, classes);
+                if let Some(z) = zone {
+                    self.note_zone_shortname(&z);
+                }
             }
             Action::EnemiesForgot => {
                 // why: an end-of-combat flag on your own fight -- see
@@ -4727,6 +4755,10 @@ enum Action {
         name: String,
         level: u8,
         classes: Vec<String>,
+        /// why: the row states "Label (shortname)" -- the game's own name
+        /// for the zone's map file, which the wiki's `who_name` gets
+        /// wrong (Oasis of Marr is "marr" there, "oasis" in the game)
+        zone: Option<String>,
     },
     /// why: charm wearing off, or the player's own mez ending
     Recovered {
@@ -5179,6 +5211,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
                 .split('/')
                 .filter_map(expand_class_abbrev)
                 .collect(),
+            zone: str_field("zone"),
         }),
         "state.charm_broken" | "state.you_mesmerized" => Some(Action::Recovered {
             who: str_field("who").unwrap_or_else(|| "You".to_string()),
@@ -9585,6 +9618,38 @@ mod spell_perf_tests {
             (row.baseline - 1000.0).abs() < 1.0,
             "baseline {}",
             row.baseline
+        );
+    }
+}
+
+#[cfg(test)]
+mod zone_shortname_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    /// why: the wiki calls Oasis of Marr "marr" and the map file is
+    /// "oasis" -- the game's own /who row states the real pairing, and an
+    /// instance suffix is stripped the way the map folder names are
+    #[test]
+    fn a_who_row_teaches_the_games_own_map_shortname() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Fri Sep 04 13:49:41 2026] [50 SHD/WIZ/ENC] Manipulator (Iksar) ZONE: The Oasis of Marr (oasis)",
+            b"[Fri Sep 04 13:50:41 2026] [12 BRD/WIZ/ENC] Gnombre (Gnome) ZONE: Clan Crushbone 3473 (crushbone_3473)",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        assert_eq!(
+            ing.zone_shortnames
+                .get("The Oasis of Marr")
+                .map(String::as_str),
+            Some("oasis")
+        );
+        assert_eq!(
+            ing.zone_shortnames
+                .get("Clan Crushbone 3473")
+                .map(String::as_str),
+            Some("crushbone")
         );
     }
 }
