@@ -143,6 +143,11 @@ pub struct Store {
     /// why: rows a compaction folded into this one (1 for a raw row) --
     /// every reader that counts rows weighs by it, see `compact_before`
     pub count: Vec<u32>,
+    /// why: rows below this are settled -- already folded, or skipped for
+    /// good. Compaction only ever scans what arrived since. Without it
+    /// every zone line rescanned the whole store, which is quadratic in
+    /// a session's zone lines: a real 14s -> 100s backfill regression.
+    compacted_upto: usize,
     /// why: opaque per-row difficulty byte, app layer fills/filters it
     pub tier: Vec<u8>,
 
@@ -185,28 +190,43 @@ impl Store {
     /// Returns rows removed.
     pub fn compact_before(&mut self, cut_ts: Millis) -> usize {
         let n = self.len();
-        if n == 0 {
+        let from = self.compacted_upto.min(n);
+        if n == 0 || from >= n {
             return 0;
         }
         let closed: Vec<bool> = self.encounters.iter().map(|e| !e.is_open()).collect();
-        let foldable: Vec<bool> = (0..n)
-            .map(|i| {
-                self.ts[i] < cut_ts
-                    && matches!(
-                        self.kind[i],
-                        EventKind::Damage | EventKind::Heal | EventKind::Miss | EventKind::Cast
-                    )
-                    && (self.enc[i] == NO_ENCOUNTER
-                        || closed.get(self.enc[i] as usize).copied().unwrap_or(true))
-            })
+        // why: indexed from `from`, not 0 -- see compacted_upto. Two
+        // different questions: can this row fold NOW, and is its fate
+        // decided FOREVER. A loot row never folds but is settled the
+        // moment it lands; a row in an open fight is neither. Only an
+        // undecided row may hold the watermark back -- a loot row doing
+        // that pinned it at the session's first drop and left every pass
+        // rescanning the whole store.
+        let is_combat = |i: usize| {
+            matches!(
+                self.kind[i],
+                EventKind::Damage | EventKind::Heal | EventKind::Miss | EventKind::Cast
+            )
+        };
+        let fight_closed = |i: usize| {
+            self.enc[i] == NO_ENCOUNTER
+                || closed.get(self.enc[i] as usize).copied().unwrap_or(true)
+        };
+        let foldable: Vec<bool> = (from..n)
+            .map(|i| self.ts[i] < cut_ts && is_combat(i) && fight_closed(i))
+            .collect();
+        let settled: Vec<bool> = (from..n)
+            .map(|i| !is_combat(i) || (self.ts[i] < cut_ts && fight_closed(i)))
             .collect();
         type Key = (u32, Sym, Sym, AbilityId, EventKind, Flags, u8);
         let mut first_of: std::collections::HashMap<Key, usize> = std::collections::HashMap::new();
         // why: pass 1 -- every foldable row joins the first row of its
-        // key (kept, in place, which keeps time order); the rest drop
+        // key (kept, in place, which keeps time order); the rest drop.
+        // A fight straddling `from` folds into two rows rather than one,
+        // which the count column makes harmless.
         let mut keep = vec![true; n];
-        for i in 0..n {
-            if !foldable[i] {
+        for i in from..n {
+            if !foldable[i - from] {
                 continue;
             }
             let key: Key = (
@@ -236,16 +256,28 @@ impl Store {
         // why: pass 2 -- old index -> new index for the encounter ranges
         let mut new_index = vec![u32::MAX; n];
         let mut w = 0u32;
-        for i in 0..n {
+        // why: the settled prefix never moves
+        for (i, slot) in new_index.iter_mut().enumerate().take(from) {
+            *slot = i as u32;
+            w += 1;
+        }
+        for i in from..n {
             if keep[i] {
                 new_index[i] = w;
                 w += 1;
             }
         }
+        // why: the watermark stops at the first row this pass could not
+        // settle (an open fight, or one at/after the cut) -- everything
+        // before it is done for good, that row gets another look next time
+        let next_upto = (from..n)
+            .find(|&i| !settled[i - from])
+            .map(|i| new_index[i] as usize)
+            .unwrap_or(w as usize);
         macro_rules! compact {
             ($col:expr) => {{
-                let mut w = 0;
-                for i in 0..n {
+                let mut w = from;
+                for i in from..n {
                     if keep[i] {
                         $col.swap(w, i);
                         w += 1;
@@ -269,6 +301,10 @@ impl Store {
         // keeps an empty range (first > last is what `range()` yields)
         for e in &mut self.encounters {
             let (f, l) = (e.first as usize, e.last as usize);
+            // why: the settled prefix kept its indices
+            if l < from {
+                continue;
+            }
             let mut nf = f;
             while nf <= l && nf < n && !keep[nf] {
                 nf += 1;
@@ -285,6 +321,7 @@ impl Store {
             e.first = new_index[nf];
             e.last = new_index[nl.min(n - 1)];
         }
+        self.compacted_upto = next_upto;
         removed
     }
 
@@ -478,6 +515,7 @@ impl Store {
         self.flags.drain(..cut);
         self.enc.drain(..cut);
         self.count.drain(..cut);
+        self.compacted_upto = self.compacted_upto.saturating_sub(cut);
         self.tier.drain(..cut);
         self.encounters.drain(..n);
         self.evicted += n as u32;

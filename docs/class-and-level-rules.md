@@ -156,7 +156,8 @@ no static zone lists anywhere.
   consecutive conflicting encounters the chain closes retroactively at the
   encounter where the conflict began, shown "??" from there; a new chain
   starts there and confirms on its own. Until then the row shows the old
-  trio with "?".
+  trio with "?". The close lands when the third
+  conflicting encounter ends, since a unit's evidence isn't final until then.
 - P6. Level floors per class, never lowered. A ding raises every class
   confirmed in the chain that is below it; a class already above keeps
   its floor. A class confirming later in the same chain gets the chain's

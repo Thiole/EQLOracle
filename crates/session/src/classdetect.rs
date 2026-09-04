@@ -679,15 +679,16 @@ impl Detector {
         if last.closed.is_some() {
             return;
         }
-        // why: the current unit counts too -- the third conflicting unit
-        // closes the chain as soon as it conflicts, not one unit later
-        let run = last.derived().conflict_run;
+        // why: the COMMITTED run only -- deriving here re-applied the open
+        // unit (a 560-trio pass and a full clone of the score table) on
+        // every single observation, and with allies feeding the same
+        // detector that ran millions of times: a real 14s -> 100s backfill
+        // regression. A unit's evidence isn't final until it ends anyway,
+        // so the split lands when the third conflicting unit commits.
+        let run = &last.committed.conflict_run;
         if run.len() >= CONTRADICTION_RUN {
-            if let Some((ck, ev)) = last.current.take() {
-                last.committed.apply(ck, &ev);
-                last.units.insert(ck, ev);
-            }
-            state.split_last(run[0], ChainEnd::Contradiction);
+            let at = run[0];
+            state.split_last(at, ChainEnd::Contradiction);
         }
     }
 

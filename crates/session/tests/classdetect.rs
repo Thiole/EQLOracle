@@ -143,12 +143,18 @@ fn three_conflicting_units_close_the_chain_retroactively() {
         cast(&mut d, u, &["Enchanter"]);
         cast(&mut d, u, &["Druid"]);
     }
+    // why: a unit's evidence isn't final until it ends, so the split
+    // lands when the third conflicting encounter commits -- the next
+    // encounter is what commits it (and checking any earlier meant
+    // re-deriving the whole score table on every single observation)
+    assert_eq!(d.chains(1).len(), 1, "not yet -- unit 5 is still open");
+    cast(&mut d, 6, &["Druid"]);
     let chains = d.chains(1);
     assert_eq!(chains.len(), 2, "{chains:?}");
     assert_eq!(chains[0].closed, Some(ChainEnd::Contradiction));
     assert_eq!(chains[0].last, Some(2), "closed where the conflict began");
     assert_eq!(chains[1].first, Some(3));
-    assert_eq!(trio(&d, 5), strs(&["Druid", "Enchanter", "Wizard"]));
+    assert_eq!(trio(&d, 6), strs(&["Druid", "Enchanter", "Wizard"]));
     assert_eq!(trio(&d, 2), strs(&["Enchanter", "Magician", "Wizard"]));
 }
 
