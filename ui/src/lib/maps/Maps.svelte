@@ -65,7 +65,9 @@
     if (hintsApplied) return;
     hintsApplied = true;
     void api.getLaunchHints().then(async (h) => {
-      if (!h.maps_zone) return;
+      // why: an environment-derived command has no log fixture, so the
+      // mock answers null -- same shape a failed invoke has
+      if (!h?.maps_zone) return;
       setLiveFollow(false);
       await selectZone(h.maps_zone);
       const npc = h.maps_npc;

@@ -211,6 +211,18 @@ fn main() {
         "get_class_configurations".to_string(),
         json!({ "name=You": cfgs }),
     );
+    // why: the UI reads this at load and feeds it straight to
+    // Object.fromEntries -- a missing table here is a crash, not a gap
+    let class_levels: Vec<(String, u8)> = ing
+        .store
+        .names
+        .get("You")
+        .map(|sym| ing.classes.class_levels(sym.0))
+        .unwrap_or_default();
+    out.insert(
+        "get_class_levels".to_string(),
+        json!({ "name=You": class_levels }),
+    );
     out.insert(
         "get_current_level".to_string(),
         json!({ "": ing.levels.latest() }),

@@ -178,7 +178,8 @@ export async function loadCharacterModule() {
     }
   }
   classConfigurations.set(cfgs);
-  classLevels.set(Object.fromEntries(recorded));
+  // why: a command with no mock table (or a failed invoke) answers null
+  classLevels.set(Object.fromEntries(recorded ?? []));
   defaultClasses.set(defaults);
   currentLevel.set(lvl);
   aaLog.set(aa);
@@ -283,7 +284,8 @@ function applyEstimatedLevels() {
  * re-reads it before filling rather than using the launch-time copy */
 export async function refreshClassLevels() {
   const recorded = await api.getClassLevels().catch(() => [] as [string, number][]);
-  classLevels.set(Object.fromEntries(recorded));
+  // why: a command with no mock table (or a failed invoke) answers null
+  classLevels.set(Object.fromEntries(recorded ?? []));
 }
 
 /** why: fills levels from confirmed log evidence; a guess, not fact --
