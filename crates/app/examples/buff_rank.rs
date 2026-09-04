@@ -21,7 +21,7 @@ fn main() {
     .map(|k| (eqlp_app::groupbuffs::relevance(k, &mine), k.label()))
     .filter(|(r, _)| *r > 0)
     .collect();
-    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    rows.sort_by_key(|r| std::cmp::Reverse(r.0));
     println!("{mine:?}");
     for (r, l) in rows {
         println!("  {r:>4}  {l}");
