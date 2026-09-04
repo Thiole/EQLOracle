@@ -483,19 +483,40 @@ impl Chain {
 #[derive(Debug, Default)]
 struct EntityState {
     chains: Vec<Chain>,
+    /// why: level is a ROLLING record per class, not something a chain
+    /// re-derives (Spencer: "the level should be a rolling process
+    /// separate from encounter"). A class seen at 50 is 50 from then on:
+    /// a ding raises every class in the trio at that moment, a /who row
+    /// raises every class it names, and nothing ever lowers one. Without
+    /// this a class swapped in AFTER you hit the cap never dings again
+    /// and reads at whatever the trio's last ding was.
+    class_levels: HashMap<String, u8>,
 }
 
 impl EntityState {
     /// why: L2 -- a class's floor is the character's, never lowered, so a
     /// trio swapped back in still reads what its classes reached before
     fn floor_of(&self, class: &str) -> Option<u8> {
-        self.chains
-            .iter()
-            .filter_map(|c| match &c.frozen {
-                Some((v, _)) => v.floors.iter().find(|(n, _)| n == class).map(|(_, l)| *l),
-                None => c.derived().floors.get(class).copied(),
-            })
-            .max()
+        self.class_levels.get(class).copied()
+    }
+
+    /// why: a chain's own dings and /who row, promoted into the rolling
+    /// record -- called after every observation, so the record only ever
+    /// grows and never depends on which chain is being read
+    fn absorb_levels(&mut self) {
+        let learned: Vec<(String, u8)> = match self.chains.last() {
+            Some(c) => c
+                .derived()
+                .floors
+                .iter()
+                .map(|(k, v)| (k.clone(), *v))
+                .collect(),
+            None => Vec::new(),
+        };
+        for (class, level) in learned {
+            let e = self.class_levels.entry(class).or_insert(0);
+            *e = (*e).max(level);
+        }
     }
 }
 
@@ -609,6 +630,7 @@ impl Detector {
             }
         }
         Self::settle(state);
+        state.absorb_levels();
     }
 
     /// why: a cast's (class, level) pairs -- P6's spell floor
@@ -634,7 +656,13 @@ impl Detector {
         }
         let k = key(unit);
         let state = self.by_entity.entry(entity).or_default();
-        state.open_chain(k).evidence_mut(k).who = Some((level, trio));
+        state.open_chain(k).evidence_mut(k).who = Some((level, trio.clone()));
+        // why: a /who row states the character's level, and the game shows
+        // the LOWEST of the three -- so every class in it is at least that
+        for class in trio {
+            let e = state.class_levels.entry(class).or_insert(0);
+            *e = (*e).max(level);
+        }
     }
 
     /// why: P4 -- a zone line weakens, never breaks
@@ -649,6 +677,7 @@ impl Detector {
         let k = key(unit);
         let state = self.by_entity.entry(entity).or_default();
         state.open_chain(k).evidence_mut(k).dings.push(level);
+        state.absorb_levels();
     }
 
     /// why: P8 -- a swap signal closes the chain now; evidence from
@@ -722,9 +751,16 @@ impl Detector {
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then_with(|| a.0.cmp(&b.0))
         });
-        let mut floors: Vec<(String, u8)> = trio
+        // why: the floors of the trio AS SHOWN -- a /who row's trio wins
+        // over the inference, and reading floors off the inference left a
+        // row saying 41 while its own /who row said 50
+        let shown: Vec<String> = match &d.who {
+            Some((_, t)) => t.clone(),
+            None => confirmed.iter().chain(prior.iter()).cloned().collect(),
+        };
+        let mut floors: Vec<(String, u8)> = shown
             .iter()
-            .filter_map(|c| state.floor_of(c).map(|l| ((*c).clone(), l)))
+            .filter_map(|c| state.floor_of(c).map(|l| (c.clone(), l)))
             .collect();
         floors.sort();
         ChainView {

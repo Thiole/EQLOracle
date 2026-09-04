@@ -158,12 +158,17 @@ no static zone lists anywhere.
   starts there and confirms on its own. Until then the row shows the old
   trio with "?". The close lands when the third
   conflicting encounter ends, since a unit's evidence isn't final until then.
-- P6. Level floors per class, never lowered. A ding raises every class
-  confirmed in the chain that is below it; a class already above keeps
-  its floor. A class confirming later in the same chain gets the chain's
-  highest ding, retroactively within the chain only. The row shows the
-  trio's lowest floor. A spell only one trio class could cast raises that
-  class to its level, capped at 50 (G6); a multi-class spell proves nothing.
+- P6. Level is a ROLLING record per class, kept for the character and
+  never re-derived per encounter or per chain. A ding raises every class
+  confirmed in the chain at that moment; a /who row raises every class it
+  names to the level it states (the game shows the trio's lowest, so all
+  three are at least that); nothing ever lowers one. The row shows the
+  lowest record among the trio AS SHOWN, never below the latest ding, and
+  a class with no record yet falls back to the latest ding. Wiki spell
+  levels are not used (G6). Without the rolling record a class swapped in
+  after you reach the cap never dings again, and the row reads the
+  previous trio's level -- real report: "ENC/SHD/WIZ 41" sitting beside
+  its own /who row saying 50.
 - P7. Pets: a pet's own casts are never evidence; the summon that produced
   it is. Charm pets prove nothing.
 - P8. Loadout swap signals (S1-S3) close the chain as P5 does, without the

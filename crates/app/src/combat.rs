@@ -1679,6 +1679,10 @@ pub fn you_level_at(ing: &Ingest, you: u32, cfg: &[String], at: Millis) -> Optio
     if cfg.is_empty() {
         return effective;
     }
+    // why: the rolling per-class record, not this chain's own dings --
+    // a class swapped in after you hit the cap never dings again, and
+    // reading the chain left the row at the last trio's level (a real
+    // report: "it knows my classes are 50" while the row said 41)
     let chain = ing.classes.chain_at(you, ing.unit_at(at));
     let floors: HashMap<&str, u8> = chain
         .as_ref()

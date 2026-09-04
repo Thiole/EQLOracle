@@ -302,3 +302,55 @@ fn a_frozen_closed_chain_reads_the_same_as_before() {
     cast(&mut d, 4, &["Druid"]);
     assert_eq!(trio(&d, 4), strs(&["Druid"]));
 }
+
+/// why: real report -- the row read "ENC/SHD/WIZ 41" while its own /who
+/// row said 50. Level is a rolling record per class, not something a
+/// chain re-derives: a /who row raises every class it names, a ding
+/// raises the trio it happened under, and nothing ever lowers one. A
+/// class swapped in after you hit the cap never dings again, so reading
+/// levels off the current chain left it at the last trio's level.
+#[test]
+fn a_class_level_is_a_rolling_record_and_a_who_row_raises_every_class_in_it() {
+    let mut d = Detector::default();
+    // the 50s: two classes dinged to 50 under an earlier trio
+    for u in 0..3 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+        cast(&mut d, u, &["Magician"]);
+    }
+    d.observe_ding(1, Some(2), 50);
+    // a swap, then a trio whose third class never dings again
+    d.close_chain(1, Some(3));
+    for u in 3..6 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+    }
+    d.observe_ding(1, Some(5), 41);
+    let before = d.chain_at(1, Some(5)).expect("chain");
+    let floor = |v: &eqlp_session::classdetect::ChainView, c: &str| {
+        v.floors.iter().find(|(n, _)| n == c).map(|(_, l)| *l)
+    };
+    assert_eq!(
+        floor(&before, "Wizard"),
+        Some(50),
+        "a ding never lowers one"
+    );
+
+    // a /who row states the character's level, which is the LOWEST of the
+    // three -- so every class in it is at least that
+    d.observe_who(
+        1,
+        Some(6),
+        50,
+        strs(&["Shadow Knight", "Wizard", "Enchanter"]),
+    );
+    cast(&mut d, 6, &["Wizard"]);
+    let after = d.chain_at(1, Some(6)).expect("chain");
+    assert_eq!(
+        after.trio(),
+        strs(&["Shadow Knight", "Wizard", "Enchanter"])
+    );
+    for c in ["Shadow Knight", "Wizard", "Enchanter"] {
+        assert_eq!(floor(&after, c), Some(50), "{c} should read 50: {after:?}");
+    }
+}
