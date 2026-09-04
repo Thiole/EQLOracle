@@ -64,12 +64,28 @@
     return `${how}${it.zone ? ` -- ${it.zone}` : ''}${it.optional ? ' (optional route)' : ''}`;
   }
 
+  // why: Spencer -- some of these materials are out of era, and the item
+  // page never says so; the mob that drops it does. The backend reads the
+  // dropper's own page, so a material whose every dropper is past the
+  // live era is unfarmable no matter what its item page claims.
+  let hideOutOfEra = $state(false);
+  function eraNote(it: EpicItemDto): string {
+    if (it.in_era) return '';
+    const who = it.out_of_era_mobs.length ? it.out_of_era_mobs.join(' / ') : 'its droppers';
+    return ` -- out of era: ${who}${it.era ? ` (${it.era})` : ''}`;
+  }
+  const outOfEraCount = $derived.by(
+    () => classes?.reduce((n, c) => n + c.items.filter((it) => !it.in_era).length, 0) ?? 0,
+  );
+
   // why: still-needed and not-yet-tracked, for one class -- feeds both
   // the per-class "+ all" bell and (unioned) the page-wide bulk bell.
   // De-duplicated by Set; an item two classes share is one entry.
+  // why: an out-of-era material is not "still needed" for a bell -- the
+  // Drop Watch cannot fire on a mob that does not exist yet
   function untrackedNeededOf(c: EpicClassDto): string[] {
     return c.items
-      .filter((it) => !itemStatus(it).satisfied && !$trackedDropItems.includes(it.item))
+      .filter((it) => it.in_era && !itemStatus(it).satisfied && !$trackedDropItems.includes(it.item))
       .map((it) => it.item);
   }
 
@@ -97,13 +113,14 @@
       <BellIcon class="size-3" />
     </button>
     <span
-      class="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] {status.classes}"
-      title="{it.item}{it.qty > 1 ? ` ×${it.qty}` : ''} -- {farmHint(it)} -- {status.label}"
+      class="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-[10px] {status.classes} {it.in_era ? '' : 'opacity-55'}"
+      title="{it.item}{it.qty > 1 ? ` ×${it.qty}` : ''} -- {farmHint(it)} -- {status.label}{eraNote(it)}"
     >
       <GdLink kind="item" name={it.item} bell={false} />
       {#if it.qty > 1}<span class="opacity-80">×{it.qty}</span>{/if}
       {#if it.gather}<span class="opacity-70 italic">{it.gather}</span>{/if}
       {#if it.optional}<span class="opacity-70">opt</span>{/if}
+      {#if !it.in_era}<span class="rounded-sm bg-muted px-1 text-[9px] text-muted-foreground">{it.era ?? 'out of era'}</span>{/if}
       <span class="opacity-80">· <ItemLocateLabel item={it.item} label={status.label} owned={status.satisfied} /></span>
     </span>
   </span>
@@ -125,6 +142,13 @@
         they need the era's own quest NPCs. Status comes from your loot history and latest
         <code class="rounded bg-muted px-1 py-0.5">/outputfile inventory</code> dump; there's no completion state until the era ships.
       </p>
+      <div class="flex shrink-0 items-center gap-2">
+      {#if outOfEraCount}
+        <label class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <input type="checkbox" class="size-3" bind:checked={hideOutOfEra} />
+          hide {outOfEraCount} out of era
+        </label>
+      {/if}
       <button
         type="button"
         class="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[11px] transition-colors {untrackedNeededAll.length
@@ -139,6 +163,7 @@
         <BellIcon class="size-3.5" />
         notify for all epic items{untrackedNeededAll.length ? ` (${untrackedNeededAll.length})` : ''}
       </button>
+      </div>
     </div>
     <div class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(340px,1fr))]">
       {#each classes as c (c.class)}
@@ -173,12 +198,17 @@
               {#if c.start_zone}&nbsp;· {c.start_zone}{/if}
               {#if c.recommended_level}&nbsp;· lvl {c.recommended_level}{/if}
             </div>
-            {#if c.items.length}
+            {@const shown = hideOutOfEra ? c.items.filter((it) => it.in_era) : c.items}
+            {#if shown.length}
               <div class="flex flex-wrap gap-1.5 pt-2 pl-2">
-                {#each c.items as it (it.item)}
+                {#each shown as it (it.item)}
                   {@render itemChip(it)}
                 {/each}
               </div>
+            {:else if c.items.length}
+              <p class="text-[10px] text-muted-foreground italic">
+                Every material for this epic drops from a mob that is out of era.
+              </p>
             {:else}
               <!-- why: honest empty state -- Berserker's epic is trial
                    spawns end to end, nothing exists to pre-farm -->

@@ -65,6 +65,16 @@ pub struct EpicItemDto {
     pub qty: u32,
     pub optional: bool,
     pub gather: Option<String>,
+    /// why: the earliest era any of its listed droppers belongs to, read
+    /// off the MOB's own page (npcdata) -- an epic material's item page
+    /// carries no era at all, so the item side cannot answer this
+    pub era: Option<String>,
+    /// why: false when every dropper is past the era the server is in --
+    /// the material is real but unfarmable until that era ships
+    pub in_era: bool,
+    /// why: the droppers that are themselves past the live era, so the
+    /// row can say WHICH mob is the reason
+    pub out_of_era_mobs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -77,6 +87,35 @@ pub struct EpicClassDto {
     pub recommended_level: Option<String>,
     pub final_reward: Option<String>,
     pub items: Vec<EpicItemDto>,
+}
+
+/// why: an epic material's era comes from the mobs that drop it, never
+/// from its own item page -- every one of the 124 materials reads as
+/// era-unknown on the item side, while their droppers carry a real era
+/// (Spencer: "verify on the mob who drops it's page, that the drop
+/// itself is out of era, and not just on the item page itself").
+/// Earliest era wins: one reachable dropper makes the material farmable.
+fn drop_era(mobs: &[String]) -> (Option<String>, Vec<String>) {
+    let live = crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA);
+    let mut best: Option<(usize, String)> = None;
+    let mut beyond: Vec<String> = Vec::new();
+    for m in mobs {
+        let Some(era) = crate::npcdata::era_of(m) else {
+            continue;
+        };
+        let Some(ix) = crate::gearplanner::era_ix(era) else {
+            continue;
+        };
+        if live.is_some_and(|l| ix > l) {
+            beyond.push(m.clone());
+        }
+        if best.as_ref().is_none_or(|(b, _)| ix < *b) {
+            best = Some((ix, era.to_string()));
+        }
+    }
+    // why: a dropper with no era on its page proves nothing either way,
+    // so it never lands in the out-of-era list
+    (best.map(|(_, e)| e), beyond)
 }
 
 /// why: the Epic Quests tab's source -- every farmable material with live
@@ -96,13 +135,30 @@ pub fn list_epics(ing: &Ingest, base_dir: Option<&Path>) -> Vec<EpicClassDto> {
             items: c
                 .items
                 .iter()
-                .map(|it| EpicItemDto {
-                    status: resolve_item(ing, &it.item, None, &ctx.looted, ctx.owned_ci.as_ref()),
-                    mobs: it.mobs.clone(),
-                    zone: it.zone.clone(),
-                    qty: it.qty,
-                    optional: it.optional,
-                    gather: it.source.clone(),
+                .map(|it| {
+                    let (era, out_of_era_mobs) = drop_era(&it.mobs);
+                    let live = crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA);
+                    let in_era = match era.as_deref().and_then(crate::gearplanner::era_ix) {
+                        Some(ix) => live.is_none_or(|l| ix <= l),
+                        None => true,
+                    };
+                    EpicItemDto {
+                        status: resolve_item(
+                            ing,
+                            &it.item,
+                            None,
+                            &ctx.looted,
+                            ctx.owned_ci.as_ref(),
+                        ),
+                        mobs: it.mobs.clone(),
+                        zone: it.zone.clone(),
+                        qty: it.qty,
+                        optional: it.optional,
+                        gather: it.source.clone(),
+                        era,
+                        in_era,
+                        out_of_era_mobs,
+                    }
                 })
                 .collect(),
         })
@@ -112,6 +168,29 @@ pub fn list_epics(ing: &Ingest, base_dir: Option<&Path>) -> Vec<EpicClassDto> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// why: the whole point of reading the MOB's page -- an epic material
+    /// with an Epic-Quests-Era dropper is not farmable on a Sky-Era
+    /// server, and its own item page says nothing about that
+    #[test]
+    fn a_droppers_own_era_decides_whether_the_material_is_farmable() {
+        let mobs = vec!["Maligar's Enraged Doppleganger".to_string()];
+        let (era, beyond) = drop_era(&mobs);
+        assert_eq!(era.as_deref(), Some("Epic Quests Era"));
+        assert_eq!(beyond, mobs, "the dropper itself is past the live era");
+        // one reachable dropper is enough -- earliest era wins
+        let mixed = vec![
+            "Maligar's Enraged Doppleganger".to_string(),
+            "Lord Nagafen".to_string(),
+        ];
+        let (era, beyond) = drop_era(&mixed);
+        assert_eq!(era.as_deref(), Some("Classic Era"));
+        assert_eq!(beyond, vec!["Maligar's Enraged Doppleganger".to_string()]);
+        // a name with no page proves nothing either way
+        let (era, beyond) = drop_era(&["Not A Real Mob".to_string()]);
+        assert_eq!(era, None);
+        assert!(beyond.is_empty());
+    }
 
     /// why: all 15 classes parse; Berserker genuinely has zero farmable
     /// drops (trial spawns) but still carries its final reward

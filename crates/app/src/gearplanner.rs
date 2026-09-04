@@ -213,7 +213,9 @@ pub const ERA_ORDER: &[&str] = &[
 /// why: where the live server actually is, a stated fact not derived from the scrape
 pub const CURRENT_ERA: &str = "Sky Era";
 
-fn era_ix(era: &str) -> Option<usize> {
+/// why: pub so other tabs can rank an era the same way -- Epic Quests
+/// asks it about the MOB an item drops from, not the item
+pub fn era_ix(era: &str) -> Option<usize> {
     ERA_ORDER.iter().position(|e| *e == era)
 }
 

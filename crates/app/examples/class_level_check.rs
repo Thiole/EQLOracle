@@ -73,10 +73,16 @@ fn main() {
             let unit = ing.unit_at(at);
             println!("\nchain at {at} (unit {unit:?}):");
             if let Some(v) = ing.classes.chain_at(sym.0, unit) {
-                println!("  first={:?} last={:?} closed={:?}", v.first, v.last, v.closed);
+                println!(
+                    "  first={:?} last={:?} closed={:?}",
+                    v.first, v.last, v.closed
+                );
                 println!("  confirmed={:?} prior={:?}", v.confirmed, v.prior);
                 println!("  candidates={:?} leading={:?}", v.candidates, v.leading);
-                println!("  who={:?} units={} conflicts={}", v.who, v.units, v.conflicts);
+                println!(
+                    "  who={:?} units={} conflicts={}",
+                    v.who, v.units, v.conflicts
+                );
                 println!("  floors={:?} max_ding={:?}", v.floors, v.max_ding);
                 println!("  weights={:?}", v.weights);
             }

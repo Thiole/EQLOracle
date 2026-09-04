@@ -117,6 +117,23 @@ pub fn known_loot_for(name: &str) -> &'static [String] {
     .unwrap_or(&[])
 }
 
+/// why: the mob's OWN page states which era it belongs to, and that is
+/// the honest answer for whether its drops are reachable -- an epic
+/// quest material has no era on its own item page (all 124 of them read
+/// as unknown), while the mobs that drop them do. Same lowercased-name
+/// key as `is_known_npc_name`.
+pub fn era_of(name: &str) -> Option<&'static str> {
+    static MAP: OnceLock<std::collections::HashMap<String, String>> = OnceLock::new();
+    MAP.get_or_init(|| {
+        npcs()
+            .iter()
+            .filter_map(|n| n.era.as_ref().map(|e| (n.name.to_lowercase(), e.clone())))
+            .collect()
+    })
+    .get(&name.to_lowercase())
+    .map(String::as_str)
+}
+
 /// why: an item counts as a ZONE drop only when this many distinct NPCs
 /// in the zone are attributed with it -- the first cut unioned every
 /// NPC's whole table, which smeared 167 single-mob drops onto every

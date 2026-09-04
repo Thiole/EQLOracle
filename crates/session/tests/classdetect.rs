@@ -400,3 +400,33 @@ fn a_class_level_is_a_rolling_record_and_a_who_row_raises_every_class_in_it() {
         assert_eq!(floor(&after, c), Some(50), "{c} should read 50: {after:?}");
     }
 }
+
+/// P2 + the real report: two classes the evidence cannot separate are not
+/// an answer. A chain held Paladin at exactly Shadow Knight's weight
+/// (3.5820313 both) and the slot went to Paladin because the sort fell
+/// back to the class NAME. A tie leaves the slot open instead.
+#[test]
+fn a_weight_tie_leaves_the_slot_open_rather_than_picking_by_name() {
+    let mut d = Detector::default();
+    // Wizard alone is unambiguous; the other two only ever appear as one
+    // pool, so they end the chain tied against each other
+    for u in 0..4 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Paladin", "Shadow Knight"]);
+    }
+    let view = d.chain_at(1, Some(3)).expect("chain");
+    let trio = view.trio();
+    assert!(trio.contains(&"Wizard".to_string()), "{trio:?}");
+    assert!(
+        !trio.contains(&"Paladin".to_string()) && !trio.contains(&"Shadow Knight".to_string()),
+        "neither may take the slot on a tie: {trio:?}"
+    );
+    for c in ["Paladin", "Shadow Knight"] {
+        assert!(
+            view.candidates.contains(&c.to_string()) || view.leading.contains(&c.to_string()),
+            "{c} should show as what the slot is stuck between: {:?} / {:?}",
+            view.candidates,
+            view.leading
+        );
+    }
+}

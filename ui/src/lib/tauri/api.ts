@@ -647,6 +647,12 @@ export interface EpicItemDto extends TurnInItemDto {
   optional: boolean;
   /** "forage" / "pickpocket" -- not a kill */
   gather: string | null;
+  /** why: earliest era among its droppers, read off the MOB's page -- an epic material's own item page carries no era */
+  era: string | null;
+  /** why: false when every dropper is past the live era: real item, unfarmable until that era ships */
+  in_era: boolean;
+  /** why: which droppers are the reason, so the row can say so */
+  out_of_era_mobs: string[];
 }
 
 /** why: Epic Quests farm list -- pre-era item tracking, no completion state. */

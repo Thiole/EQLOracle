@@ -336,7 +336,7 @@ impl Derived {
         };
         let mut confirmed: Vec<String> = self.confirmed_now.iter().cloned().collect();
         confirmed.sort_by(by_weight);
-        confirmed.truncate(CLASS_COUNT);
+        self.cut_at_ties(&mut confirmed, CLASS_COUNT);
         let mut prior: Vec<String> = self
             .ever_confirmed
             .iter()
@@ -344,8 +344,29 @@ impl Derived {
             .cloned()
             .collect();
         prior.sort_by(by_weight);
-        prior.truncate(CLASS_COUNT - confirmed.len());
+        self.cut_at_ties(&mut prior, CLASS_COUNT - confirmed.len());
         (confirmed, prior)
+    }
+
+    /// why: real report -- a chain showed Paladin at exactly the weight
+    /// Shadow Knight had (3.5820313 both), and the slot went to Paladin
+    /// because the sort fell back to the class NAME. Two classes the
+    /// evidence cannot tell apart are not an answer: the slot stays open
+    /// and both show as candidates. Nothing is ever forced (P2).
+    fn cut_at_ties(&self, v: &mut Vec<String>, limit: usize) {
+        if v.len() <= limit {
+            return;
+        }
+        if limit == 0 {
+            v.clear();
+            return;
+        }
+        let cutoff = self.weight(&v[limit - 1]);
+        if (self.weight(&v[limit]) - cutoff).abs() < 1e-6 {
+            v.retain(|c| self.weight(c) > cutoff + 1e-6);
+            return;
+        }
+        v.truncate(limit);
     }
     fn trio_set(&self) -> BTreeSet<String> {
         let (c, p) = self.trio();
