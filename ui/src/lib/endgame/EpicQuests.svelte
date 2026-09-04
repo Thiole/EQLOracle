@@ -203,7 +203,9 @@
             </div>
             {@const shown = hideOutOfEra ? c.items.filter((it) => it.in_era) : c.items}
             {#if shown.length}
-              <div class="flex flex-wrap gap-1.5 pt-2 pl-2">
+              <!-- why: one material per row -- packing two short chips
+                   onto a shared row made the list read unevenly -->
+              <div class="flex flex-col items-start gap-1.5 pt-2 pl-2">
                 {#each shown as it (it.item)}
                   {@render itemChip(it)}
                 {/each}
