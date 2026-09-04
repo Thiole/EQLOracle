@@ -1744,6 +1744,13 @@ impl Ingest {
         let Some(short) = rest.strip_suffix(')') else {
             return;
         };
+        // why: a /who label carries the instance number the zone-change
+        // line never does ("West Freeport 29"), same suffix the map file
+        // name carries -- stripped on both sides or neither matches
+        let label = match label.rsplit_once(' ') {
+            Some((base, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => base,
+            _ => label,
+        };
         let stem = crate::mapsdata::zone_stem(short);
         if !label.is_empty() && !stem.is_empty() {
             self.zone_shortnames
@@ -9647,9 +9654,26 @@ mod zone_shortname_tests {
         );
         assert_eq!(
             ing.zone_shortnames
-                .get("Clan Crushbone 3473")
+                .get("Clan Crushbone")
                 .map(String::as_str),
             Some("crushbone")
         );
+    }
+
+    /// why: the game reuses "You have entered" for sub-areas inside a
+    /// zone -- taking one as a zone change blanked the map until the
+    /// next real zone line
+    #[test]
+    fn a_sub_area_inside_a_zone_is_not_a_zone_change() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Fri Sep 04 13:49:41 2026] You have entered The Oasis of Marr.",
+            b"[Fri Sep 04 13:50:41 2026] You have entered an Arena (PvP) area.",
+            b"[Fri Sep 04 13:51:41 2026] You have entered an area where levitation effects do not function.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let ts = ing.now_ms();
+        assert_eq!(ing.zone.at(ts), Some("The Oasis of Marr"));
     }
 }

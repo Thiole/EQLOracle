@@ -54,6 +54,34 @@ fn main() {
         println!("last /loc: {ts_ms} ({x:.1}, {y:.1}, {z:.1})");
     }
 
+    // why: every zone label the player has actually entered, resolved
+    // through the real command path -- a zone with no map here is a zone
+    // the map view goes blank in
+    let verbose = std::env::var("EQLP_ZONE_VERBOSE").is_ok();
+    if let Some(labels) = std::env::args().nth(2) {
+        let text = std::fs::read_to_string(&labels).expect("labels file");
+        let mut blank: Vec<&str> = Vec::new();
+        let mut n = 0;
+        for label in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            n += 1;
+            let zs = map_zones_for_raw_label(&ing, Some(label));
+            let picked = zs.iter().find(|z| have.contains(*z));
+            if picked.is_none() {
+                blank.push(label);
+            }
+            if verbose {
+                println!("  {label} -> {zs:?} picks {picked:?}");
+            }
+        }
+        println!(
+            "zones entered: {n}, resolving to a map: {}",
+            n - blank.len()
+        );
+        for b in &blank {
+            println!("  BLANK: {b}");
+        }
+    }
+
     // why: every zone the log ever states, so a second broken pairing
     // shows up here instead of in the next bug report
     let mut misses: Vec<String> = ing

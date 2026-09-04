@@ -66,6 +66,7 @@ const ZONE_ALIASES: &[(&str, &str)] = &[
     ("North Qeynos", "Qeynos"),
     ("South Qeynos", "Qeynos"),
     ("Northern Felwithe", "Felwithe"),
+    ("Southern Felwithe", "Felwithe"),
     ("Permafrost Keep", "Permafrost"),
     ("Permafrost Caverns", "Permafrost"),
     // why: "Hole" not "The Hole" -- RHS is compared pre-stripped, like every entry here

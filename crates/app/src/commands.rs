@@ -2213,30 +2213,48 @@ pub struct ZoneContextDto {
     pub current_map_zones: Vec<String>,
 }
 
-/// why: fresh linear scan, not `Ingest`'s cache -- that cache is only
-/// primed by combat, which a freshly-walked-into zone may never trigger.
-/// Cheap enough at per-tick query rate. Empty is a real "don't know", not a guess.
-/// why: the game's own /who shortname first, the wiki's `who_name` after.
-/// The wiki calls Oasis of Marr "marr" and the map file is "oasis", so
+/// why: the game's own /who pairing first, the wiki's `who_name` after.
+/// The wiki calls Oasis of Marr "marr" while the map file is "oasis", so
 /// live-follow loaded nothing and every location feature read "not your
-/// current zone" -- while the log had already stated the real pairing.
+/// current zone". Empty is a real "don't know", not a guess.
 pub fn map_zones_for_raw_label(ing: &Ingest, raw: Option<&str>) -> Vec<String> {
     let Some(raw) = raw else { return Vec::new() };
+    let key = crate::zone::zone_key(raw);
+    // why: matched label-to-label, NOT through `zone_matches` -- the
+    // alias table bridges log naming to WIKI naming, and running the raw
+    // side through it threw the learned pair away for every aliased zone
+    // ("Neriak - Commons" aliases to "Neriak", which no /who label equals)
     let mut out: Vec<String> = ing
         .zone_shortnames
         .iter()
-        .filter(|(label, _)| crate::zone::zone_matches(raw, label))
+        .filter(|(label, _)| crate::zone::zone_key(label).eq_ignore_ascii_case(key))
         .map(|(_, stem)| stem.clone())
         .collect();
-    out.extend(
-        zonedata::zones()
-            .iter()
-            .find(|z| crate::zone::zone_matches(raw, &z.name))
-            .and_then(|z| z.who_name.as_deref())
-            .map(zonedata::map_shortnames)
-            .unwrap_or_default(),
-    );
+    out.sort();
     out.dedup();
+    if let Some(z) = zonedata::zones()
+        .iter()
+        .find(|z| crate::zone::zone_matches(raw, &z.name))
+    {
+        let mut tagged = zonedata::map_shortnames_tagged(z.who_name.as_deref().unwrap_or_default());
+        // why: a split city's who_name says which half each shortname
+        // covers and the label says which half you're in; a tag that just
+        // repeats the zone's own name ("erudnext (Erudin)") says nothing.
+        // Stable, so an untagged list keeps the wiki's own order.
+        let label = raw.to_ascii_lowercase();
+        let name = z.name.to_ascii_lowercase();
+        tagged.sort_by_key(|(_, tag)| {
+            !tag.as_deref().is_some_and(|t| {
+                let t = t.to_ascii_lowercase();
+                t != name && label.contains(&t)
+            })
+        });
+        out.extend(tagged.into_iter().map(|(n, _)| n));
+    }
+    // why: not `dedup` -- a learned stem repeats further down the wiki's
+    // own list, and only adjacent duplicates would go
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|z| seen.insert(z.clone()));
     out
 }
 
@@ -2705,6 +2723,40 @@ mod live_start_position_tests {
             pos,
             Some((-200.0, -100.0, 5.0)),
             "the fresher /loc reading should win, not the earlier teleport landing"
+        );
+    }
+}
+
+#[cfg(test)]
+mod map_zone_tests {
+    use super::*;
+
+    /// why: the wiki lists a split city's halves in its own order, so
+    /// North Qeynos loaded the South map; the tag beside each shortname
+    /// says which half it is, and the zone label says which you're in
+    #[test]
+    fn a_split_city_resolves_to_the_half_you_are_standing_in() {
+        let ing = Ingest::default();
+        let first = |raw| map_zones_for_raw_label(&ing, Some(raw)).first().cloned();
+        assert_eq!(first("North Qeynos"), Some("qeynos2".to_string()));
+        assert_eq!(first("South Qeynos"), Some("qeynos".to_string()));
+        assert_eq!(first("Southern Felwithe"), Some("felwitheb".to_string()));
+        assert_eq!(first("Neriak - Third Gate"), Some("neriakc".to_string()));
+        // why: "Erudin" tags one half and names the zone -- only "Palace" decides
+        assert_eq!(first("Erudin"), Some("erudnext".to_string()));
+        assert_eq!(first("Erudin Palace"), Some("erudnint".to_string()));
+    }
+
+    /// why: the alias table bridges log naming to WIKI naming; running
+    /// the raw label through it discarded the game's own /who pairing
+    #[test]
+    fn the_games_own_pairing_beats_the_wiki_for_an_aliased_zone() {
+        let mut ing = Ingest::default();
+        ing.zone_shortnames
+            .insert("Neriak - Commons".to_string(), "neriakb".to_string());
+        assert_eq!(
+            map_zones_for_raw_label(&ing, Some("Neriak - Commons")).first(),
+            Some(&"neriakb".to_string())
         );
     }
 }

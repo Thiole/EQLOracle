@@ -68,6 +68,18 @@ pub fn zones() -> &'static [Zone] {
 /// Strips tags before splitting on "/" -- verified 110/112 zones resolve
 /// to a real map file, the other 2 checked individually and confirmed gaps.
 pub fn map_shortnames(who_name: &str) -> Vec<String> {
+    map_shortnames_tagged(who_name)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect()
+}
+
+/// why: the same split, keeping who_name's own parenthetical tag --
+/// "qeynos (South), qeynos2 (North)" says which half of a split city
+/// each shortname is for, and the game's zone label says which half the
+/// player is standing in. Without it a Qeynos citizen gets whichever
+/// half the wiki listed first.
+pub fn map_shortnames_tagged(who_name: &str) -> Vec<(String, Option<String>)> {
     let mut out = Vec::new();
     for part in who_name.split(',') {
         let mut cleaned = String::new();
@@ -81,9 +93,15 @@ pub fn map_shortnames(who_name: &str) -> Vec<String> {
             }
         }
         for sub in cleaned.split('/') {
-            let name = sub.split('(').next().unwrap_or(sub).trim();
+            let (name, tag) = match sub.split_once('(') {
+                Some((n, t)) => (n.trim(), Some(t.trim_end_matches(')').trim())),
+                None => (sub.trim(), None),
+            };
             if !name.is_empty() {
-                out.push(name.to_string());
+                out.push((
+                    name.to_string(),
+                    tag.filter(|t| !t.is_empty()).map(str::to_string),
+                ));
             }
         }
     }

@@ -1317,7 +1317,10 @@ kind = "zone"
 priority = 40
 anchors = ["You have entered"]
 excludes = ["an area where"]
-pattern = '''^You have entered (?P<zone>.+?)\.$'''
+# why: a zone label is a proper noun -- the game reuses this phrasing for
+# sub-areas inside a zone ("an Arena (PvP) area"), and taking one as a
+# zone change blanks the map until the next real zone line
+pattern = '''^You have entered (?P<zone>[A-Z].+?)\.$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] You have entered The Northern Desert of Ro.",
   "[Tue Jul 28 15:02:15 2026] You have entered New Sebilis Expedition.",
