@@ -1484,6 +1484,52 @@ impl Default for Ingest {
     }
 }
 
+/// why: a damage line's names, canonicalised once. Carries no symbol:
+/// the phases that run first mutate the state interning reads.
+#[derive(Clone, Copy)]
+struct Identified<'a> {
+    ts: Millis,
+    src: &'a str,
+    dst: &'a str,
+    src_is_you: bool,
+}
+
+impl<'a> Identified<'a> {
+    fn new(ts: Millis, src: &'a str, dst: &'a str) -> Self {
+        // why: see canonical_you's own doc -- "YOU" must not intern as a
+        // second player identity; normalized here so the graph (link),
+        // store, and timeline all see one name
+        let src = canonical_you(src);
+        Identified {
+            ts,
+            src,
+            dst: canonical_you(dst),
+            src_is_you: src.eq_ignore_ascii_case("You"),
+        }
+    }
+}
+
+/// why: proof `link` ran -- holds the EncounterId nothing else can invent
+#[derive(Clone, Copy)]
+struct Linked<'a> {
+    id: Identified<'a>,
+    enc: EncounterId,
+}
+
+/// why: proof `note_involvement` ran, so the fight's unit is open. Class
+/// evidence takes this, which is how "AFTER note_involvement" stopped
+/// being a comment.
+#[derive(Clone, Copy)]
+struct Involved<'a>(Linked<'a>);
+
+/// why: identity resolved -- an observer holding this cannot re-derive a
+/// name, because it never receives one
+struct ResolvedDamage<'a> {
+    ev: Involved<'a>,
+    src_sym: Sym,
+    dst_sym: Sym,
+}
+
 impl Ingest {
     /// why: log's own clock, ms, no timezone, same basis as every LocalTs in eqlp-core
     pub fn now_ms(&self) -> Millis {
@@ -2783,6 +2829,10 @@ impl Ingest {
 
     /// why: damage is what defines the encounter graph, the only event kind that opens a new fight
     #[allow(clippy::too_many_arguments)] // why: each param is a distinct field off a real damage log line
+    /// why: one damage line's identity, resolved once. Everything after
+    /// this takes a stage struct instead of a name, so no phase can
+    /// re-derive what is already known -- the old body resolved `src`
+    /// six times over, each one a map lookup and a fold.
     fn record_damage(
         &mut self,
         ts: Millis,
@@ -2793,11 +2843,23 @@ impl Ingest {
         amount: u64,
         flags: Flags,
     ) {
-        // why: see canonical_you's own doc -- "YOU" must not intern as a
-        // second player identity; normalized here so the graph (link),
-        // store, and timeline all see one name
-        let src = canonical_you(src);
-        let dst = canonical_you(dst);
+        let id = Identified::new(ts, src, dst);
+        self.observe_actors(&id);
+        let linked = self.link_damage(&id);
+        let involved = self.note_damage_involvement(linked);
+        self.note_damage_class_evidence(&involved, ability, tags);
+        let resolved = self.resolve_damage(involved);
+        self.observe_damage(&resolved, ability, tags, amount);
+        self.commit_damage(&resolved, ability, tags, amount, flags);
+    }
+
+    /// why: these four mutate the very state identity is read from --
+    /// `note_actor` sets an entity's Kind, which `link`'s ally test reads,
+    /// and pet evidence sets the ownership `sym` interns through. They run
+    /// before anything resolves, which is why `Identified` carries names
+    /// and not symbols.
+    fn observe_actors(&mut self, id: &Identified<'_>) {
+        let (ts, src, dst) = (id.ts, id.src, id.dst);
         // why: the damage-path pet match -- see note_actor's own doc.
         // Actor side only: a brand-new name TAKING its first hit is a
         // mob being pulled, not a pet spawning
@@ -2820,30 +2882,66 @@ impl Ingest {
             }
         }
         self.note_party_action(ts, src);
-        let enc = self.link(ts, src, dst);
-        self.note_involvement(enc, src, dst, ts);
-        // why: an ally's class evidence from what they LAND -- a named
-        // spell maps to the classes that can cast it (the same table your
-        // own detection uses), a class-only melee verb to its class.
-        // Not for "You" (your own detection stays on casts/stances/AAs)
-        // and not for pets. AFTER note_involvement: the evidence belongs
-        // to the unit of the fight it happened in, and that call is what
-        // opens it.
-        if !src.eq_ignore_ascii_case("You") && !self.is_pet(src) {
-            if tags & tag::SPELL != 0 {
-                let classes = crate::classdata::classes_for(base_spell_name(ability));
-                self.note_class_evidence(ts, src, classes);
-                self.note_implied_level(ts, src, ability);
-            } else if tags & tag::MELEE != 0 {
-                if let Some(class) = class_only_melee(ability) {
-                    self.note_class_evidence(ts, src, &[class.to_string()]);
-                }
+    }
+
+    /// why: produces the `EncounterId` nothing downstream can invent --
+    /// a phase needing it takes `Linked`, so "after the fight is linked"
+    /// is a type fact rather than a line number
+    fn link_damage<'a>(&mut self, id: &Identified<'a>) -> Linked<'a> {
+        let enc = self.link(id.ts, id.src, id.dst);
+        Linked { id: *id, enc }
+    }
+
+    /// why: opens the fight's unit. Class evidence belongs to the unit of
+    /// the fight it happened in, and this is the call that opens it --
+    /// returning `Involved` is what makes running evidence early
+    /// impossible instead of merely wrong.
+    fn note_damage_involvement<'a>(&mut self, linked: Linked<'a>) -> Involved<'a> {
+        self.note_involvement(linked.enc, linked.id.src, linked.id.dst, linked.id.ts);
+        Involved(linked)
+    }
+
+    /// why: an ally's class evidence from what they LAND -- a named
+    /// spell maps to the classes that can cast it (the same table your
+    /// own detection uses), a class-only melee verb to its class.
+    /// Not for "You" (your own detection stays on casts/stances/AAs)
+    /// and not for pets.
+    fn note_damage_class_evidence(&mut self, ev: &Involved<'_>, ability: &str, tags: Tags) {
+        let (ts, src) = (ev.0.id.ts, ev.0.id.src);
+        if ev.0.id.src_is_you || self.is_pet(src) {
+            return;
+        }
+        if tags & tag::SPELL != 0 {
+            let classes = crate::classdata::classes_for(base_spell_name(ability));
+            self.note_class_evidence(ts, src, classes);
+            self.note_implied_level(ts, src, ability);
+        } else if tags & tag::MELEE != 0 {
+            if let Some(class) = class_only_melee(ability) {
+                self.note_class_evidence(ts, src, &[class.to_string()]);
             }
         }
-        let a = self.sym(src);
-        let t = self.sym(dst);
-        self.note_shared_target(ts, enc, src, t);
-        self.clear_dead_if_acting(ts, a);
+    }
+
+    /// why: interning happens HERE and not earlier -- `sym` reads the pet
+    /// ownership `observe_actors` writes and the display name `link` can
+    /// settle, so resolving sooner would be resolving from state that has
+    /// not finished moving
+    fn resolve_damage<'a>(&mut self, ev: Involved<'a>) -> ResolvedDamage<'a> {
+        let src_sym = self.sym(ev.0.id.src);
+        let dst_sym = self.sym(ev.0.id.dst);
+        ResolvedDamage {
+            ev,
+            src_sym,
+            dst_sym,
+        }
+    }
+
+    /// why: the observers -- each reads the resolved line and writes only
+    /// its own state. None of them resolves a name.
+    fn observe_damage(&mut self, r: &ResolvedDamage<'_>, ability: &str, tags: Tags, amount: u64) {
+        let (ts, src) = (r.ev.0.id.ts, r.ev.0.id.src);
+        self.note_shared_target(ts, r.ev.0.enc, src, r.dst_sym);
+        self.clear_dead_if_acting(ts, r.src_sym);
         // why: being a live damage TARGET is proof of life too -- the
         // game never logs damage onto a corpse. Real bug, reproduced
         // live: timeline state is per-NAME, so after killing one "Keeper
@@ -2852,29 +2950,50 @@ impl Ingest {
         // stayed blind to a re-engaged farm mob the player was actively
         // hitting. The death line for a kill arrives AFTER its killing
         // damage row, so this never un-marks the mob that just died.
-        self.clear_dead_if_acting(ts, t);
+        self.clear_dead_if_acting(ts, r.dst_sym);
         // why: melee only -- a spell's own use is observed off cast.begin
         // instead (see Action::Cast's own handling), never both, or a
         // damage spell's own cast and its landing would count as two
         // separate "uses" milliseconds apart and corrupt the reuse gap
-        if src.eq_ignore_ascii_case("you") && tags & tag::SPELL == 0 {
+        if r.ev.0.id.src_is_you && tags & tag::SPELL == 0 {
             crate::skilltracker::observe_skill_use(&mut self.skills, ts, ability, true);
         }
         // why: the rolling landing average -- spells only (melee has no
         // rank/resist story), keyed by the base name so ranks fold
-        if src.eq_ignore_ascii_case("you") && tags & tag::SPELL != 0 && amount > 0 {
+        if r.ev.0.id.src_is_you && tags & tag::SPELL != 0 && amount > 0 {
             let (base, _rank) = split_cast_rank(ability);
             let zidx = self.zone.index_at(ts).unwrap_or(usize::MAX);
             let base = base.to_string();
             let inv = self.current_invocation.clone().unwrap_or_default();
             self.spell_perf.observe(ts, &base, amount, zidx, &inv);
         }
+    }
+
+    /// why: the row itself, last -- every observer above has had its say
+    /// about a line before it becomes a fact in the store
+    fn commit_damage(
+        &mut self,
+        r: &ResolvedDamage<'_>,
+        ability: &str,
+        tags: Tags,
+        amount: u64,
+        flags: Flags,
+    ) {
+        let ts = r.ev.0.id.ts;
         let ab = self.store.ability_id(ability, tags);
         let tier = self.current_tier(ts);
-        let idx = self
-            .store
-            .push(ts, EventKind::Damage, a, t, ab, amount, flags, enc.0, tier);
-        self.store.extend_encounter(enc, idx);
+        let idx = self.store.push(
+            ts,
+            EventKind::Damage,
+            r.src_sym,
+            r.dst_sym,
+            ab,
+            amount,
+            flags,
+            r.ev.0.enc.0,
+            tier,
+        );
+        self.store.extend_encounter(r.ev.0.enc, idx);
         self.drain_closed();
     }
 
