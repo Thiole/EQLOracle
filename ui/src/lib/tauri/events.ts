@@ -10,6 +10,7 @@ import { onChatTick } from '../stores/chat';
 import { pollTrackedLoot } from '../stores/dropWatchLoot';
 import { pollDeaths } from '../stores/deathRecap';
 import { refreshSession } from '../stores/session';
+import { loadCharacterModule } from '../stores/character';
 
 interface RecentLine {
   kind: string;
@@ -24,6 +25,11 @@ interface ParseTick {
 }
 
 let initialized = false;
+// why: the Character card and the Overview's own queries load on mount and
+// never again, so a long backfill (or EQLP_REPLAY_UNTIL, which mounts the
+// window while replaying) left them showing a mid-replay moment. Refresh
+// them once, when the parse stops backfilling.
+let wasBackfilling = false;
 
 export async function initTauriEvents() {
   if (initialized) return;
@@ -39,6 +45,11 @@ export async function initTauriEvents() {
     void pollTrackedLoot();
     void pollDeaths();
     void refreshSession();
+    if (wasBackfilling && !e.payload.status.backfilling) {
+      void loadCharacterModule();
+      window.dispatchEvent(new CustomEvent('eqlp:parse-settled'));
+    }
+    wasBackfilling = e.payload.status.backfilling;
   });
 
   await listen<string>('parse-error', (e) => {

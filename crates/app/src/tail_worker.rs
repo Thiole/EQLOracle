@@ -269,6 +269,13 @@ fn run(
                     }
                 });
                 tail_status = tail_event_str(ev);
+                if frozen {
+                    // why: EQLP_REPLAY_UNTIL -- one last emit so the UI
+                    // shows the frozen moment; without it the window kept
+                    // whatever mid-replay state it last drew
+                    emit_tick(&app, &log_dir, &target, "frozen", false, &ingest, &status);
+                    return;
+                }
                 if aborted || stop.load(Ordering::Relaxed) {
                     return; // directory changed, or the app is closing, mid-replay
                 }

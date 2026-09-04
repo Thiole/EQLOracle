@@ -24,9 +24,18 @@
   let resetting = $state(false);
   let lootExpanded = $state(false);
 
-  $effect(() => {
+  // why: these load once -- a backfill still running (or a frozen replay)
+  // would otherwise leave the card on whatever moment it mounted at, so
+  // the same load runs again when the parse settles (see events.ts)
+  function loadOverviewData() {
     api.getZoneContext().then((z) => (zoneCtx = z));
     api.listMobs().then((list) => (mobs = list ?? []));
+  }
+  $effect(() => {
+    loadOverviewData();
+    const onSettled = () => loadOverviewData();
+    window.addEventListener('eqlp:parse-settled', onSettled);
+    return () => window.removeEventListener('eqlp:parse-settled', onSettled);
   });
 
   // why: "manual override button to set timeframe" -- a start and an

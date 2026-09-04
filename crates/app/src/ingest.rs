@@ -1263,6 +1263,10 @@ pub struct Ingest {
     last_level_up: Option<Millis>,
     /// why: evidence units for class detection -- see UnitTrack
     pub units: UnitTrack,
+    /// why: the lowest level someone must be to have cast what your log
+    /// saw them cast -- their own /who row beats it, but without one this
+    /// is the only level an ally has. Keyed like the roster (fold case).
+    pub implied_level: HashMap<String, u8>,
     /// why: whose log this is, from the file name -- lets your own /who
     /// row apply to "You" instead of a stranger by the same name. The
     /// self model is the same model, just fed more (Spencer).
@@ -1434,6 +1438,7 @@ impl Default for Ingest {
             symphonic_aura: false,
             units: UnitTrack::default(),
             character: None,
+            implied_level: HashMap::new(),
             stance_pool: None,
             invocation_pool: None,
             you_chain_count: 0,
@@ -1563,6 +1568,34 @@ impl Ingest {
         }
     }
 
+    /// why: a spell someone cast puts a floor under their level -- the
+    /// cheapest class that gets it, restricted to their own trio when the
+    /// detector knows it. "Est. level" for anyone with no /who row, and
+    /// what keeps the Group Buff Tracker from offering a rank they
+    /// cannot cast (Spencer: "should show best *usable* spell").
+    fn note_implied_level(&mut self, ts: Millis, who: &str, spell: &str) {
+        if who.eq_ignore_ascii_case("You") || self.is_pet(who) {
+            return;
+        }
+        let Some(sp) = crate::spelldata::spell_by_name(base_spell_name(spell)) else {
+            return;
+        };
+        let trio = self
+            .class_chain(who, ts)
+            .map(|v| v.trio())
+            .unwrap_or_default();
+        let lowest = sp
+            .classes
+            .iter()
+            .filter(|c| trio.is_empty() || trio.contains(&c.class))
+            .filter_map(|c| c.level)
+            .min();
+        let Some(level) = lowest else { return };
+        let level = level.min(u32::from(u8::MAX)) as u8;
+        let e = self.implied_level.entry(who.to_lowercase()).or_insert(0);
+        *e = (*e).max(level);
+    }
+
     /// why: one class-evidence line about someone who is not you -- their
     /// cast, a damage or heal line naming the spell, a class-only melee
     /// verb, a Quick Buff landing. Feeds the same detector your own
@@ -1653,6 +1686,15 @@ impl Ingest {
     /// why: the /who row for the chain covering `at`, if one printed in it
     pub fn ally_who(&self, who: &str, at: Millis) -> Option<(u8, Vec<String>)> {
         self.class_chain(who, at)?.who
+    }
+
+    /// why: their level as best we can say -- a /who row if one printed,
+    /// else the floor their own casts put under it (see note_implied_level)
+    pub fn ally_level(&self, who: &str, at: Millis) -> (Option<u8>, bool) {
+        match self.ally_who(who, at) {
+            Some((lvl, _)) => (Some(lvl), true),
+            None => (self.implied_level.get(&who.to_lowercase()).copied(), false),
+        }
     }
 
     /// why: their classes as of `at` -- confirmed first, then anything
@@ -2152,6 +2194,7 @@ impl Ingest {
                         self.units.current(),
                         class_evidence_for_cast(&spell),
                     );
+                    self.note_implied_level(ts, &who, &spell);
                 }
                 if who == "You" {
                     let evidence = class_evidence_for_cast(&spell);
@@ -2723,6 +2766,7 @@ impl Ingest {
             if tags & tag::SPELL != 0 {
                 let classes = crate::classdata::classes_for(base_spell_name(ability));
                 self.note_class_evidence(ts, src, classes);
+                self.note_implied_level(ts, src, ability);
             } else if tags & tag::MELEE != 0 {
                 if let Some(class) = class_only_melee(ability) {
                     self.note_class_evidence(ts, src, &[class.to_string()]);

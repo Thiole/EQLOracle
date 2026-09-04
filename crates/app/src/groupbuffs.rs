@@ -223,8 +223,13 @@ pub fn benefits(kind: BuffKind, my_classes: &[String]) -> bool {
 pub struct BuffLineDto {
     /// why: the line as named, rank numeral stripped
     pub line: String,
-    /// why: the highest-level rank of it the party can actually cast
+    /// why: the highest-level rank of it the party can actually cast --
+    /// "usable" means at or under the caster's own level, their /who
+    /// level if one printed, else the level their casts imply
     pub best_spell: String,
+    /// why: the level requirement of that rank, for comparing what is
+    /// actually on you against what the party could put there
+    pub best_level: u32,
     pub casters: Vec<String>,
 }
 
@@ -234,6 +239,12 @@ pub struct BuffRowDto {
     pub label: &'static str,
     /// why: on you right now -- the spell's name when it is
     pub active: Option<String>,
+    /// why: the level of the rank currently on you -- a low-tier buff
+    /// with a better rank available reads as an upgrade, not as covered
+    /// (Spencer: "you should not have breeze on when a 30ish one should
+    /// be available")
+    pub active_level: Option<u32>,
+    pub upgrade: bool,
     /// why: how much this kind is worth to your own classes -- rows are
     /// ordered by it, most relevant first (see `relevance`)
     pub relevance: u32,
@@ -257,8 +268,11 @@ pub struct PartyMemberDto {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GroupBuffsDto {
-    /// why: every expected kind covered -- the one word the widget leads with
+    /// why: every expected kind covered by the best rank the party can
+    /// cast -- the one word the widget leads with
     pub good: bool,
+    /// why: kinds that ARE up, but from a lower rank than the party could cast
+    pub upgrades: usize,
     pub my_classes: Vec<String>,
     pub party: Vec<PartyMemberDto>,
     pub rows: Vec<BuffRowDto>,
@@ -319,23 +333,20 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         // why: the roster keys by fold, not display casing -- resolve it
         // the way every other reader does, or the class chain and the
         // effect pings (both keyed by the interned name) come back empty
-        let name = ing
-            .encounters
-            .entities
-            .display_name(&key)
-            .to_string();
+        let name = ing.encounters.entities.display_name(&key).to_string();
         if name.eq_ignore_ascii_case("You") || ing.effective_kind(&name, now) == Kind::Pet {
             continue;
         }
         // why: one class model -- a /who row is ground truth (trio and
         // level), else the chain's own confirmed classes; a class still
         // short of the bar is a guess and does not decide a buff
-        let (classes, level, confirmed) = match ing.class_chain(&name, now) {
+        let (level, _from_who) = ing.ally_level(&name, now);
+        let (classes, confirmed) = match ing.class_chain(&name, now) {
             Some(view) => match view.who.clone() {
-                Some((lvl, trio)) => (trio, Some(lvl), true),
-                None => (view.confirmed.clone(), None, !view.confirmed.is_empty()),
+                Some((_, trio)) => (trio, true),
+                None => (view.confirmed.clone(), !view.confirmed.is_empty()),
             },
-            None => (Vec::new(), None, false),
+            None => (Vec::new(), false),
         };
         let buffs = buffs_on(ing, &name, now)
             .into_iter()
@@ -385,7 +396,7 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
     }
 
     // why: what's on you, by kind
-    let mut active_by_kind: HashMap<BuffKind, String> = HashMap::new();
+    let mut active_by_kind: HashMap<BuffKind, (String, u32)> = HashMap::new();
     let mut extra_active: Vec<String> = Vec::new();
     for (spell_name, (_, expires)) in &ing.self_buffs {
         if expires.is_some_and(|e| e < now) {
@@ -396,9 +407,20 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         };
         match kind_of(spell) {
             Some(k) => {
-                active_by_kind
+                // why: the rank ON you, by its own level requirement --
+                // the highest one up of that kind is what counts
+                let lvl = spell
+                    .classes
+                    .iter()
+                    .filter_map(|c| c.level)
+                    .min()
+                    .unwrap_or(0);
+                let e = active_by_kind
                     .entry(k)
-                    .or_insert_with(|| spell_name.clone());
+                    .or_insert_with(|| (spell_name.clone(), lvl));
+                if lvl > e.1 {
+                    *e = (spell_name.clone(), lvl);
+                }
             }
             None => extra_active.push(spell_name.clone()),
         }
@@ -417,16 +439,25 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
                         BuffLineDto {
                             line: base_name(&best_spell).to_string(),
                             best_spell,
+                            best_level: rank,
                             casters,
                         },
                     )
                 })
                 .collect();
             lines.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.line.cmp(&b.1.line)));
+            let best_level = lines.first().map(|(r, _)| *r).unwrap_or(0);
+            let on_you = active_by_kind.get(&kind).cloned();
+            let active_level = on_you.as_ref().map(|(_, l)| *l);
+            // why: covered means the BEST usable rank is up -- Breeze
+            // while the party's Enchanter can cast Clarity is an upgrade
+            let upgrade = active_level.is_some_and(|l| l < best_level);
             BuffRowDto {
                 kind,
                 label: kind.label(),
-                active: active_by_kind.get(&kind).cloned(),
+                active: on_you.map(|(n, _)| n),
+                active_level,
+                upgrade,
                 relevance: relevance(kind, &my_classes),
                 lines: lines.into_iter().map(|(_, l)| l).collect(),
             }
@@ -439,10 +470,12 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             .cmp(&a.relevance)
             .then_with(|| a.label.cmp(b.label))
     });
-    let good = rows.iter().all(|r| r.active.is_some());
+    let upgrades = rows.iter().filter(|r| r.upgrade).count();
+    let good = rows.iter().all(|r| r.active.is_some()) && upgrades == 0;
     extra_active.sort();
     GroupBuffsDto {
         good,
+        upgrades,
         my_classes,
         party,
         rows,

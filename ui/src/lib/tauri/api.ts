@@ -44,7 +44,9 @@ export interface FocusEffectDto {
 export interface BuffLineDto {
   /** why: the line, rank numeral stripped ("Clarity", not "Clarity II") */
   line: string;
+  /** why: the best rank the party can actually cast at their own level */
   best_spell: string;
+  best_level: number;
   casters: string[];
 }
 export interface BuffRowDto {
@@ -52,6 +54,9 @@ export interface BuffRowDto {
   label: string;
   /** why: the spell on you now, when one of this kind is */
   active: string | null;
+  /** why: its own rank level, against best_level -- a lower rank is an upgrade, not coverage */
+  active_level: number | null;
+  upgrade: boolean;
   /** why: how much this kind is worth to your own classes -- rows arrive ordered by it */
   relevance: number;
   /** why: every line of this kind the party could cast, best first -- what is assumed missing */
@@ -67,6 +72,8 @@ export interface PartyMemberDto {
 }
 export interface GroupBuffsDto {
   good: boolean;
+  /** why: kinds that are up, but from a lower rank than the party could cast */
+  upgrades: number;
   my_classes: string[];
   party: PartyMemberDto[];
   rows: BuffRowDto[];

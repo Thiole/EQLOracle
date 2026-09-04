@@ -12,6 +12,8 @@
   };
   const abbr = (c: string) => ABBR[c] ?? c.slice(0, 3).toUpperCase();
   const missing = $derived(data ? data.rows.filter((r) => !r.active).length : 0);
+  // why: a low-tier buff is not coverage -- see BuffRowDto.upgrade
+  const upgrades = $derived(data ? data.rows.filter((r) => r.upgrade).length : 0);
 </script>
 
 <div
@@ -26,8 +28,10 @@
     <p class="text-muted-foreground">group buffs: no party</p>
   {:else}
     <div class="flex items-baseline justify-between">
-      <span class="font-medium {missing === 0 ? 'text-good' : 'text-caution'}">
-        group buffs: {missing === 0 ? 'Good' : `missing ${missing}`}
+      <span class="font-medium {missing === 0 && upgrades === 0 ? 'text-good' : 'text-caution'}">
+        group buffs: {missing === 0 && upgrades === 0
+          ? 'Good'
+          : [missing ? `missing ${missing}` : '', upgrades ? `${upgrades} upgradeable` : ''].filter(Boolean).join(', ')}
       </span>
       <span class="truncate font-mono text-[10px] text-foreground/60" title="your classes">{data.my_classes.map(abbr).join('/')}</span>
     </div>
@@ -38,8 +42,14 @@
       {#each data.rows as r (r.kind)}
         <div class="flex items-baseline justify-between gap-2">
           <span class="text-foreground/80">{r.label}</span>
-          {#if r.active}
+          {#if r.active && !r.upgrade}
             <span class="truncate text-good" title="on you">{r.active}</span>
+          {:else if r.active}
+            <!-- why: up, but a better rank is castable -- name it -->
+            <span
+              class="truncate text-caution"
+              title={`${r.active} is on you; the party can cast ${r.lines[0]?.best_spell ?? 'better'} (${r.lines[0]?.casters.join(', ') ?? ''})`}
+            >{r.active} &rarr; {r.lines[0]?.line ?? ''}</span>
           {:else}
             <!-- why: name the lines assumed missing, not just the kind --
                  ranks of a line are one entry, best rank first -->
