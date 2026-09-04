@@ -134,8 +134,44 @@
     };
   }
 
+  // why: Spencer -- the rotation suggested Scythe of Darkness, which
+  // only lands on undead. A restricted-target spell is real DPS, but
+  // only against that kind of mob, so it is off by default and turned
+  // on per flag. Anything else ("Single", "Targeted AE", ...) hits
+  // whatever you are fighting and is never filtered.
+  const RESTRICTED_TARGETS = [
+    'Undead',
+    'Animal',
+    'Plant',
+    'Summoned',
+    'Construct/Elemental',
+    'Corpse',
+    'Uber Giants',
+    'Uber Dragons',
+  ];
+  let allowedTargets = $state<string[]>([]);
+  function toggleTarget(t: string) {
+    allowedTargets = allowedTargets.includes(t) ? allowedTargets.filter((x) => x !== t) : [...allowedTargets, t];
+  }
+  // why: only offer the flags this character's own spells actually carry
+  const offeredTargets = $derived.by(() => {
+    const seen = new Set(
+      (spells ?? [])
+        .filter((s) => usableClasses(s).length > 0)
+        .map((s) => s.target_type ?? '')
+        .filter((t) => RESTRICTED_TARGETS.includes(t)),
+    );
+    return RESTRICTED_TARGETS.filter((t) => seen.has(t));
+  });
+
   const candidates = $derived.by(() =>
-    (spells ?? []).filter((s) => usableClasses(s).length > 0).map(applyInvocation),
+    (spells ?? [])
+      .filter((s) => usableClasses(s).length > 0)
+      .filter((s) => {
+        const t = s.target_type ?? '';
+        return !RESTRICTED_TARGETS.includes(t) || allowedTargets.includes(t);
+      })
+      .map(applyInvocation),
   );
 
   // why: within a spell line, keep only the highest-level member the
@@ -263,6 +299,23 @@
       <div class="mb-3">
         <div class="mb-1 flex items-center justify-between gap-2">
           <h3 class="text-[10px] uppercase tracking-wide text-muted-foreground">Suggested rotation</h3>
+          {#if offeredTargets.length}
+            <div class="flex flex-wrap items-center gap-1 text-[10px]">
+              <span class="text-muted-foreground">target</span>
+              {#each offeredTargets as t (t)}
+                <button
+                  type="button"
+                  class="rounded-sm border px-1.5 py-0.5 {allowedTargets.includes(t)
+                    ? 'border-primary/50 bg-primary/15 text-primary'
+                    : 'border-border text-muted-foreground hover:bg-accent'}"
+                  title="{t}-only spells are left out until you turn them on"
+                  onclick={() => toggleTarget(t)}
+                >
+                  {t}
+                </button>
+              {/each}
+            </div>
+          {/if}
           <div class="flex overflow-hidden rounded-sm border border-border text-[10px]">
             {#each [15, 60] as w (w)}
               <button

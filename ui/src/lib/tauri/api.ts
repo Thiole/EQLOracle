@@ -889,6 +889,8 @@ export interface DamageSpellDto {
   focus_sources: string[];
   /** why: spells sharing one reuse timer -- "timer:<id>" from the install's spell file, see dpscalc.rs */
   reuse_group: string | null;
+  /** why: "Undead", "Animal", ... -- a spell that only lands on one kind of mob */
+  target_type: string | null;
 }
 
 export interface SpellbookEntryDto {

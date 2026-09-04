@@ -327,6 +327,10 @@ pub struct DamageSpellDto {
     /// -- "timer:<id>" from the install's own spell file (spelltimers),
     /// None when the spell has no shared timer or the file is absent
     pub reuse_group: Option<String>,
+    /// why: some spells only land on one kind of mob ("Undead",
+    /// "Animal", ...) -- the rotation must not suggest one against a
+    /// target it cannot hit, so the caller filters on this
+    pub target_type: Option<String>,
     /// why: full rank-adjusted damage from one application
     pub total_damage: f64,
     /// why: instant portion of total_damage -- all of it for a nuke,
@@ -527,6 +531,7 @@ fn build_dto(
         focus_duration_pct,
         focus_sources,
         reuse_group,
+        target_type: spell.target_type.clone(),
         rank,
         duration_secs,
         mana,
