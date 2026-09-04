@@ -189,8 +189,10 @@ fn a_swap_signal_closes_the_chain_immediately() {
     assert_eq!(chains[0].closed, Some(ChainEnd::Swap));
 }
 
-/// P6: a ding raises every trio class below it and never lowers one; a
-/// class confirming later in the chain picks up the chain's ding
+/// L2/L4/L6: a ding raises every trio class below it and never lowers
+/// one; a chain is one loadout, so a class confirming late in it picks up
+/// the chain's earlier dings. A ding BELOW what that trio can do is not a
+/// level at all -- it is a swap (S5), the real Aug 09/10 case.
 #[test]
 fn dings_raise_floors_and_never_lower_them() {
     let mut d = Detector::default();
@@ -204,46 +206,90 @@ fn dings_raise_floors_and_never_lower_them() {
         cast(&mut d, u, &["Enchanter"]);
         cast(&mut d, u, &["Bard"]);
     }
-    d.observe_ding(1, Some(3), 41);
-    let view = d.chain_at(1, Some(3)).expect("chain");
-    let floor = |c: &str| view.floors.iter().find(|(n, _)| n == c).map(|(_, l)| *l);
-    assert_eq!(floor("Wizard"), Some(50));
-    assert_eq!(floor("Enchanter"), Some(50));
+    let level = |d: &Detector, c: &str| {
+        d.class_levels(1)
+            .into_iter()
+            .find(|(n, _)| n == c)
+            .map(|(_, l)| l)
+    };
     assert_eq!(
-        floor("Bard"),
+        level(&d, "Bard"),
         Some(50),
-        "confirmed later, picks up the chain's ding"
+        "confirmed later in the same loadout, so it took the same ding"
+    );
+    d.observe_ding(1, Some(3), 41);
+    for c in ["Wizard", "Enchanter", "Bard"] {
+        assert_eq!(level(&d, c), Some(50), "{c}: a record never falls");
+    }
+    let chains = d.chains(1);
+    assert_eq!(
+        chains.first().and_then(|c| c.closed),
+        Some(ChainEnd::Swap),
+        "50/50/50 cannot ding 41 -- that is a different loadout"
     );
 }
 
-/// P6: a spell only one trio class could cast raises that class to its
-/// level; above the cap it proves nothing; a multi-class spell proves nothing
+/// L8: a spellbook cast proves the EFFECTIVE level -- the trio's lowest --
+/// so it floors all three classes at the lowest level among the trio's
+/// classes that can cast it. Improved Invisibility is WIZ 55 and ENC 50,
+/// and an ENC/WIZ character casts it as the Enchanter: 50, never 55.
 #[test]
-fn spell_levels_raise_only_an_unambiguous_trio_class_under_the_cap() {
+fn a_spellbook_cast_floors_every_class_in_the_trio_at_the_cheapest_class() {
     let mut d = Detector::default();
     for u in 0..2 {
         cast(&mut d, u, &["Wizard"]);
         cast(&mut d, u, &["Enchanter"]);
+        cast(&mut d, u, &["Bard"]);
     }
     d.observe_spell_levels(1, Some(2), &[("Wizard".to_string(), 43)]);
+    cast(&mut d, 2, &["Wizard"]);
+    let floor = |d: &Detector, c: &str| {
+        d.chain_at(1, Some(2))
+            .expect("chain")
+            .floors
+            .iter()
+            .find(|(n, _)| n == c)
+            .map(|(_, l)| *l)
+    };
+    for c in ["Wizard", "Enchanter", "Bard"] {
+        assert_eq!(floor(&d, c), Some(43), "{c} plays at the character's level");
+    }
     d.observe_spell_levels(
         1,
         Some(2),
         &[("Wizard".to_string(), 55), ("Enchanter".to_string(), 50)],
     );
-    d.observe_spell_levels(
-        1,
-        Some(2),
-        &[("Enchanter".to_string(), 46), ("Cleric".to_string(), 30)],
-    );
-    cast(&mut d, 2, &["Wizard"]);
-    let view = d.chain_at(1, Some(2)).expect("chain");
-    let floor = |c: &str| view.floors.iter().find(|(n, _)| n == c).map(|(_, l)| *l);
-    assert_eq!(floor("Wizard"), Some(43));
-    assert_eq!(
-        floor("Enchanter"),
-        Some(46),
-        "Cleric is not in the trio, so Enchanter alone fits"
+    for c in ["Wizard", "Enchanter", "Bard"] {
+        assert_eq!(floor(&d, c), Some(50), "{c}: cast as the Enchanter, not 55");
+    }
+}
+
+/// L5: a ding is a constraint. A trio whose three records are already past
+/// it cannot have produced it; a trio holding a class standing at exactly
+/// one below is what did.
+#[test]
+fn a_ding_rules_out_trios_that_are_already_past_it() {
+    let mut d = Detector::default();
+    for u in 0..3 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+        cast(&mut d, u, &["Magician"]);
+    }
+    d.observe_who(1, Some(3), 50, strs(&["Wizard", "Enchanter", "Magician"]));
+    // a fresh arc: the same two casters plus a class that never dinged
+    d.close_chain(1, Some(4));
+    for u in 4..7 {
+        cast(&mut d, u, &["Wizard"]);
+        cast(&mut d, u, &["Enchanter"]);
+        cast(&mut d, u, &["Necromancer"]);
+    }
+    d.observe_ding(1, Some(7), 26);
+    cast(&mut d, 7, &["Necromancer"]);
+    let view = d.chain_at(1, Some(7)).expect("chain");
+    assert!(
+        view.trio().contains(&"Necromancer".to_string()),
+        "WIZ/ENC/MAG are all 50 and cannot ding 26: {:?}",
+        view.trio()
     );
 }
 

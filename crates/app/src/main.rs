@@ -216,6 +216,7 @@ fn main() {
             commands::get_fight_timeline,
             commands::get_fight_state_at,
             commands::get_class_configurations,
+            commands::get_class_levels,
             commands::get_configuration_zone_visits,
             commands::get_raids,
             commands::get_sky_class_unlocks,

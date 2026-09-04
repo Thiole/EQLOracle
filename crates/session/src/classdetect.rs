@@ -40,6 +40,137 @@ const ELIMINATION_BAR: f32 = 3.0;
 /// why: consecutive conflicting units before the chain closes (P5)
 const CONTRADICTION_RUN: usize = 3;
 
+/// why: L5's miss weights by the tier of the record that contradicts --
+/// a heavy miss, never a hard reject, so a wrong record cannot rule the
+/// truth out for good (Spencer, Q42: provisional until replay calibrates)
+const CEMENTED_MISS: f32 = 3.0;
+const FIRM_MISS: f32 = 2.0;
+const SOFT_MISS: f32 = 1.0;
+
+/// why: L3 -- what wrote a level decides how readily it is revised,
+/// "how quick the algo is willing to self correct" (Spencer)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LevelSource {
+    /// why: absorbed under a prior or an unconfirmed trio -- revised freely
+    Soft,
+    /// why: a spell floor (L8) under a confirmed trio
+    Firm,
+    /// why: a /who row, or a ding under a trio confirmed at the P2 bar
+    Cemented,
+}
+
+impl LevelSource {
+    fn miss(self) -> f32 {
+        match self {
+            LevelSource::Cemented => CEMENTED_MISS,
+            LevelSource::Firm => FIRM_MISS,
+            LevelSource::Soft => SOFT_MISS,
+        }
+    }
+}
+
+/// why: one step of a class's strand -- the level it reached, the unit
+/// it was proven in, and what proved it
+#[derive(Debug, Clone, Copy)]
+struct LevelStamp {
+    at: usize,
+    level: u8,
+    tier: LevelSource,
+}
+
+/// The rolling per-class level record (L1-L4).
+///
+/// why: one strand per class, revised in place, read AS OF a unit -- a
+/// level proven at T never constrains anything before T. Records are the
+/// class's own persistent level; the EFFECTIVE level while a trio is
+/// slotted is the minimum of its three records (L1), which is what a
+/// ding states and what gates spell access.
+#[derive(Debug, Clone, Default)]
+pub struct LevelRecord {
+    by_class: HashMap<String, Vec<LevelStamp>>,
+}
+
+impl LevelRecord {
+    /// why: L2 -- raise, never lower. A raise applies from `at` forward,
+    /// so later stamps it supersedes are dropped rather than kept as
+    /// competing guesses (L4: one strand, rewritten in place).
+    fn raise(&mut self, class: &str, at: usize, level: u8, tier: LevelSource) {
+        if level == 0 || level > LEVEL_CAP {
+            return;
+        }
+        let v = self.by_class.entry(class.to_string()).or_default();
+        let cur = v
+            .iter()
+            .filter(|st| st.at <= at)
+            .map(|st| st.level)
+            .max()
+            .unwrap_or(0);
+        if level <= cur {
+            // why: L3 -- the same level proven again by a stronger source
+            // firms up rather than being dropped; a chain that only later
+            // confirms its third class re-attributes its own dings
+            if level == cur {
+                if let Some(st) = v
+                    .iter_mut()
+                    .filter(|st| st.at <= at && st.level == cur)
+                    .max_by_key(|st| st.tier)
+                {
+                    if tier > st.tier {
+                        st.tier = tier;
+                    }
+                }
+            }
+            return;
+        }
+        v.push(LevelStamp { at, level, tier });
+        v.sort_by_key(|st| (st.at, st.level));
+        v.retain(|st| st.at <= at || st.level > level);
+    }
+
+    /// why: L3's self-correction -- a cemented observation says the class
+    /// stood at exactly `level` in `at`, so any SOFT stamp claiming more
+    /// before then was written under the wrong trio and is dropped.
+    /// Firm and cemented stamps are left alone; they need contradicting
+    /// evidence of their own kind.
+    fn correct_soft(&mut self, class: &str, at: usize, level: u8) {
+        if let Some(v) = self.by_class.get_mut(class) {
+            v.retain(|st| st.at > at || st.level <= level || st.tier != LevelSource::Soft);
+        }
+    }
+
+    fn upto(&self, class: &str, at: usize, inclusive: bool) -> Option<(u8, LevelSource)> {
+        let v = self.by_class.get(class)?;
+        v.iter()
+            .filter(|st| if inclusive { st.at <= at } else { st.at < at })
+            .max_by_key(|st| (st.level, st.tier))
+            .map(|st| (st.level, st.tier))
+    }
+
+    /// why: the record as of a unit, the ding's own unit included
+    fn at(&self, class: &str, at: usize) -> Option<(u8, LevelSource)> {
+        self.upto(class, at, true)
+    }
+
+    /// why: strictly before a unit -- L5 scores a ding against what was
+    /// known BEFORE it, or the ding would justify itself
+    fn before(&self, class: &str, at: usize) -> Option<(u8, LevelSource)> {
+        self.upto(class, at, false)
+    }
+
+    /// why: the class's level today -- what the row and the planner show
+    pub fn now(&self, class: &str) -> Option<u8> {
+        self.by_class
+            .get(class)
+            .and_then(|v| v.iter().map(|st| st.level).max())
+    }
+
+    pub fn classes(&self) -> impl Iterator<Item = (&String, u8)> + '_ {
+        self.by_class
+            .iter()
+            .filter_map(|(c, v)| v.iter().map(|st| st.level).max().map(|l| (c, l)))
+    }
+}
+
 /// why: `None` maps to 0 so units order as plain integers internally
 fn key(u: Unit) -> usize {
     u.map_or(0, |i| i + 1)
@@ -239,9 +370,9 @@ impl Derived {
         unamb.iter().all(|c| t.contains(c)) && pools.iter().all(|p| p.iter().any(|c| t.contains(c)))
     }
 
-    /// why: one unit's evidence folded in, in rule order (P1, P2, P4-P6);
-    /// returns whether the unit conflicted with the leading trios (P5)
-    fn apply(&mut self, k: usize, ev: &UnitEvidence) -> bool {
+    /// why: one unit's evidence folded in, in rule order (P1, P2, P4-P6,
+    /// L5); returns whether the unit conflicted with the leading trios (P5)
+    fn apply(&mut self, k: usize, ev: &UnitEvidence, levels: &LevelRecord) -> bool {
         self.units_seen += 1;
         // why: ground truth -- a /who row's trio IS the answer for this
         // chain, and its level floors every class in it
@@ -313,6 +444,38 @@ impl Derived {
             let in_pools: BTreeSet<&String> = ev.pools.iter().flatten().collect();
             for c in &in_pools {
                 *self.pooled.entry((*c).clone()).or_insert(0.0) += SUPPORT_GAIN;
+            }
+        }
+
+        // L5: a ding is a CONSTRAINT, not just an output. The effective
+        // level is the trio's lowest record, so a ding to N proves the
+        // trio held a class standing at exactly N-1, and rules out any
+        // trio whose three records were already past it. Scored against
+        // what was known BEFORE this unit, and weighted by the tier of
+        // the record doing the ruling out (L3) -- heavy, never fatal.
+        for &d in &ev.dings {
+            if d == 0 {
+                continue;
+            }
+            for (i, t) in trios().iter().enumerate() {
+                let recs: Vec<Option<(u8, LevelSource)>> =
+                    t.iter().map(|&ix| levels.before(CLASSES[ix], k)).collect();
+                // why: Q41, answered by replaying the real log -- a SOFT
+                // record only observes. Letting one eliminate fed its own
+                // guess back in as proof and the chains fragmented.
+                let hard =
+                    |r: &Option<(u8, LevelSource)>| r.filter(|(_, s)| *s != LevelSource::Soft);
+                if recs.iter().all(|r| hard(r).is_some_and(|(l, _)| l >= d)) {
+                    let tier = recs
+                        .iter()
+                        .filter_map(hard)
+                        .map(|(_, s)| s)
+                        .max()
+                        .unwrap_or(LevelSource::Firm);
+                    self.scores[i] -= tier.miss();
+                } else if recs.iter().any(|r| r.is_some_and(|(l, _)| l + 1 == d)) {
+                    self.scores[i] += SUPPORT_GAIN;
+                }
             }
         }
 
@@ -392,16 +555,6 @@ impl Derived {
                 *f = (*f).max(d);
             }
         }
-        // P6: a spell only one trio class could cast raises that class
-        for pairs in &ev.level_pairs {
-            let mut fit = pairs.iter().filter(|(c, _)| trio_now.contains(c));
-            if let (Some((c, l)), None) = (fit.next(), fit.next()) {
-                if *l <= LEVEL_CAP {
-                    let f = self.floors.entry(c.clone()).or_insert(0);
-                    *f = (*f).max(*l);
-                }
-            }
-        }
         // P5: consecutive conflicts
         if conflict {
             self.conflict_run.push(k);
@@ -444,14 +597,14 @@ impl Chain {
             .or_else(|| self.units.keys().next_back().copied())
             .unwrap_or(self.first)
     }
-    fn derived(&self) -> Derived {
+    fn derived(&self, levels: &LevelRecord) -> Derived {
         let mut d = self.committed.clone();
         if let Some((k, ev)) = &self.current {
-            d.apply(*k, ev);
+            d.apply(*k, ev, levels);
         }
         d
     }
-    fn evidence_mut(&mut self, k: usize) -> &mut UnitEvidence {
+    fn evidence_mut(&mut self, k: usize, levels: &LevelRecord) -> &mut UnitEvidence {
         match &mut self.current {
             Some((ck, _)) if *ck == k => {}
             Some((ck, _)) if *ck > k => {
@@ -460,7 +613,7 @@ impl Chain {
             }
             _ => {
                 if let Some((ck, ev)) = self.current.take() {
-                    self.committed.apply(ck, &ev);
+                    self.committed.apply(ck, &ev, levels);
                     self.units.insert(ck, ev);
                 }
                 self.current = Some((k, UnitEvidence::default()));
@@ -469,12 +622,12 @@ impl Chain {
         &mut self.current.as_mut().expect("current set").1
     }
     /// why: rebuilds from its units -- used after a split
-    fn rebuild(&mut self) {
+    fn rebuild(&mut self, levels: &LevelRecord) {
         let units = std::mem::take(&mut self.units);
         self.committed = Derived::default();
         self.current = None;
         for (k, ev) in units {
-            self.committed.apply(k, &ev);
+            self.committed.apply(k, &ev, levels);
             self.units.insert(k, ev);
         }
     }
@@ -490,43 +643,77 @@ struct EntityState {
     /// raises every class it names, and nothing ever lowers one. Without
     /// this a class swapped in AFTER you hit the cap never dings again
     /// and reads at whatever the trio's last ding was.
-    class_levels: HashMap<String, u8>,
+    levels: LevelRecord,
 }
 
 impl EntityState {
-    /// why: L2 -- a class's floor is the character's, never lowered, so a
+    /// why: L2 -- a class's record is the character's, never lowered, so a
     /// trio swapped back in still reads what its classes reached before
     fn floor_of(&self, class: &str) -> Option<u8> {
-        self.class_levels.get(class).copied()
+        self.levels.now(class)
     }
 
-    /// why: a chain's own dings and /who row, promoted into the rolling
-    /// record -- called after every observation, so the record only ever
-    /// grows and never depends on which chain is being read
-    fn absorb_levels(&mut self) {
-        let learned: Vec<(String, u8)> = match self.chains.last() {
-            Some(c) => c
-                .derived()
+    /// why: a chain is one unbroken loadout, so every ding in it belongs
+    /// to all three of its classes -- a class that confirms late still
+    /// picks up the chain's earlier dings. The chain derives that
+    /// retroactively; this promotes it into the rolling record, tiered by
+    /// how solid the chain's trio is (L3).
+    fn sync_chain_levels(&mut self) {
+        let (learned, tier, at) = {
+            let Some(chain) = self.chains.last() else {
+                return;
+            };
+            let d = chain.derived(&self.levels);
+            let solid = d.who.is_some() || d.confirmed_now.len() == CLASS_COUNT;
+            let tier = if solid {
+                LevelSource::Cemented
+            } else {
+                LevelSource::Soft
+            };
+            let held: BTreeSet<String> = match &d.who {
+                Some((_, t)) => t.iter().cloned().collect(),
+                None => d.confirmed_now.clone(),
+            };
+            let learned: Vec<(String, u8)> = d
                 .floors
                 .iter()
-                .map(|(k, v)| (k.clone(), *v))
-                .collect(),
-            None => Vec::new(),
+                .filter(|(c, _)| held.contains(*c))
+                .map(|(c, l)| (c.clone(), *l))
+                .collect();
+            (learned, tier, chain.last())
         };
         for (class, level) in learned {
-            let e = self.class_levels.entry(class).or_insert(0);
-            *e = (*e).max(level);
+            self.levels.raise(&class, at, level, tier);
         }
+    }
+
+    /// why: L3 -- the trio a level written right now belongs to, and how
+    /// cemented that makes it. A /who row or a trio confirmed at the P2
+    /// bar cements; anything partial writes soft and is revised freely.
+    /// why: a level is only ever written for a class the chain actually
+    /// CONFIRMED. Writing priors and leading guesses too was measured on
+    /// the real 395MB log: every class drifted up to ~50 (Warrior 48,
+    /// Beastlord 47 on a character that plays neither), those records then
+    /// eliminated real trios through L5, and unresolved visits doubled.
+    fn assumed_trio(&self) -> (Vec<String>, LevelSource) {
+        let Some(chain) = self.chains.last() else {
+            return (Vec::new(), LevelSource::Soft);
+        };
+        let d = chain.derived(&self.levels);
+        if let Some((_, trio)) = &d.who {
+            return (trio.clone(), LevelSource::Cemented);
+        }
+        let (confirmed, _prior) = d.trio();
+        let tier = if confirmed.len() == CLASS_COUNT {
+            LevelSource::Cemented
+        } else {
+            LevelSource::Soft
+        };
+        (confirmed, tier)
     }
 }
 
 impl EntityState {
-    fn open_chain(&mut self, k: usize) -> &mut Chain {
-        if self.chains.last().is_none_or(|c| c.closed.is_some()) {
-            self.chains.push(Chain::new(k));
-        }
-        self.chains.last_mut().expect("just ensured")
-    }
     fn chain_covering(&self, k: usize) -> Option<&Chain> {
         // why: the open chain covers everything after its first unit
         self.chains
@@ -534,10 +721,24 @@ impl EntityState {
             .rev()
             .find(|c| c.first <= k && (c.closed.is_none() || c.last() >= k))
     }
+    /// why: one call site's worth of borrow juggling -- the open chain
+    /// needs the record to commit a unit, and both live on this struct
+    fn evidence_at(&mut self, k: usize) -> &mut UnitEvidence {
+        let EntityState { chains, levels } = self;
+        if chains.last().is_none_or(|c| c.closed.is_some()) {
+            chains.push(Chain::new(k));
+        }
+        chains
+            .last_mut()
+            .expect("just ensured")
+            .evidence_mut(k, levels)
+    }
+
     /// why: P5 -- close at the first conflicting unit, replay the rest
     /// into a fresh chain that confirms on its own
     fn split_last(&mut self, at: usize, end: ChainEnd) {
-        let Some(old) = self.chains.last_mut() else {
+        let EntityState { chains, levels } = self;
+        let Some(old) = chains.last_mut() else {
             return;
         };
         if let Some((ck, ev)) = old.current.take() {
@@ -545,11 +746,11 @@ impl EntityState {
         }
         let moved: BTreeMap<usize, UnitEvidence> = old.units.split_off(&at);
         old.closed = Some(end);
-        old.rebuild();
+        old.rebuild(levels);
         let mut fresh = Chain::new(at);
         fresh.units = moved;
-        fresh.rebuild();
-        self.chains.push(fresh);
+        fresh.rebuild(levels);
+        chains.push(fresh);
     }
 }
 
@@ -619,8 +820,7 @@ impl Detector {
         }
         let k = key(unit);
         let state = self.by_entity.entry(entity).or_default();
-        let chain = state.open_chain(k);
-        let ev = chain.evidence_mut(k);
+        let ev = state.evidence_at(k);
         if classes.len() == 1 {
             ev.unambiguous.insert(classes[0].clone());
         } else {
@@ -630,20 +830,65 @@ impl Detector {
             }
         }
         Self::settle(state);
-        state.absorb_levels();
+        state.sync_chain_levels();
     }
 
-    /// why: a cast's (class, level) pairs -- P6's spell floor
+    /// why: L8 -- a spellbook cast proves the EFFECTIVE level, which is
+    /// the trio's lowest record, so it floors all three classes. The
+    /// requirement is the lowest `spells_us.txt` level among the trio's
+    /// classes that can cast it: Improved Invisibility is WIZ 55 and ENC
+    /// 50, and an ENC/WIZ character at the cap casts it as the Enchanter.
+    /// Reading the wizard entry off that file was the old "WIZ 55" bug.
+    /// The caller decides whether the cast was really from the spellbook.
     pub fn observe_spell_levels(&mut self, entity: u32, unit: Unit, pairs: &[(String, u8)]) {
         if pairs.is_empty() {
             return;
         }
         let k = key(unit);
         let state = self.by_entity.entry(entity).or_default();
-        let ev = state.open_chain(k).evidence_mut(k);
-        let v = pairs.to_vec();
-        if !ev.level_pairs.contains(&v) {
-            ev.level_pairs.push(v);
+        {
+            let ev = state.evidence_at(k);
+            let v = pairs.to_vec();
+            if !ev.level_pairs.contains(&v) {
+                ev.level_pairs.push(v);
+            }
+        }
+        let (trio, tier) = state.assumed_trio();
+        if trio.is_empty() {
+            return;
+        }
+        // why: the requirement is the lowest level among the trio's own
+        // castable classes; with the trio still partial the caster may be
+        // the unknown slot, so the spell's own lowest is the safe floor
+        let fitting = pairs.iter().filter(|(c, _)| trio.contains(c));
+        let need = fitting
+            .map(|(_, l)| *l)
+            .min()
+            .or_else(|| pairs.iter().map(|(_, l)| *l).min());
+        let Some(need) = need else {
+            return;
+        };
+        // why: a ding states the effective level EXACTLY, and every ding is
+        // logged, so inside a chain the level between dings is known. A
+        // cast needing more than the chain's own highest ding did not
+        // happen in this loadout -- the trio assumption is stale, not the
+        // level. Writing it anyway put a Firm 49 on a Necromancer whose
+        // own dings had it at 32 (traced on the real log).
+        let ceiling = state
+            .chains
+            .last()
+            .and_then(|c| c.derived(&state.levels).max_ding);
+        if ceiling.is_some_and(|d| need > d) {
+            return;
+        }
+        // why: L3 -- firm only under a confirmed trio, soft otherwise
+        let tier = if tier == LevelSource::Cemented {
+            LevelSource::Firm
+        } else {
+            LevelSource::Soft
+        };
+        for c in &trio {
+            state.levels.raise(c, k, need, tier);
         }
     }
 
@@ -656,12 +901,14 @@ impl Detector {
         }
         let k = key(unit);
         let state = self.by_entity.entry(entity).or_default();
-        state.open_chain(k).evidence_mut(k).who = Some((level, trio.clone()));
-        // why: a /who row states the character's level, and the game shows
-        // the LOWEST of the three -- so every class in it is at least that
+        state.evidence_at(k).who = Some((level, trio.clone()));
+        // why: L2 -- a /who row states the character's level, and the game
+        // shows the LOWEST of the three, so every class in it is at least
+        // that. Ground truth: cemented, and it corrects soft guesses that
+        // claimed more for a class than this row allows (L3).
         for class in trio {
-            let e = state.class_levels.entry(class).or_insert(0);
-            *e = (*e).max(level);
+            state.levels.correct_soft(&class, k, level);
+            state.levels.raise(&class, k, level, LevelSource::Cemented);
         }
     }
 
@@ -669,15 +916,48 @@ impl Detector {
     pub fn observe_zone_line(&mut self, entity: u32, unit: Unit) {
         let k = key(unit);
         let state = self.by_entity.entry(entity).or_default();
-        state.open_chain(k).evidence_mut(k).zone_lines += 1;
+        state.evidence_at(k).zone_lines += 1;
     }
 
-    /// why: P6 -- a ding is the trio's lowest; it raises what's below it
+    /// why: L2/L6 -- a ding states the EFFECTIVE level, the trio's lowest,
+    /// so it raises every class in the trio. A ding below what the assumed
+    /// trio's own records allow cannot have come from that trio at all:
+    /// that is a swap (S5), the only swap signal with no cast, grant or
+    /// death behind it. No de-level line exists in any real log.
     pub fn observe_ding(&mut self, entity: u32, unit: Unit, level: u8) {
         let k = key(unit);
         let state = self.by_entity.entry(entity).or_default();
-        state.open_chain(k).evidence_mut(k).dings.push(level);
-        state.absorb_levels();
+        let (trio, tier) = state.assumed_trio();
+        // why: same as L5 -- a soft record never closes a chain, and a
+        // chain closes only against a trio it is actually sure of: the
+        // real Aug 10 case is ENC 50 / WIZ 50 / SHD 34 dinging 26
+        let assumed_min = if trio.len() == CLASS_COUNT && tier == LevelSource::Cemented {
+            trio.iter()
+                .map(|c| {
+                    state
+                        .levels
+                        .at(c, k)
+                        .filter(|(_, s)| *s != LevelSource::Soft)
+                        .map_or(0, |(l, _)| l)
+                })
+                .min()
+        } else {
+            None
+        };
+        if assumed_min.is_some_and(|m| m > level) {
+            // S5: the trio in effect was already past this level
+            let first = state.chains.last().map(|c| c.first);
+            if first.is_some_and(|f| f < k) {
+                state.split_last(k, ChainEnd::Swap);
+            }
+            state.evidence_at(k).dings.push(level);
+            return;
+        }
+        state.evidence_at(k).dings.push(level);
+        for c in &trio {
+            state.levels.raise(c, k, level, tier);
+        }
+        state.sync_chain_levels();
     }
 
     /// why: P8 -- a swap signal closes the chain now; evidence from
@@ -725,7 +1005,7 @@ impl Detector {
         if let Some((v, _)) = &chain.frozen {
             return v.clone();
         }
-        let d = chain.derived();
+        let d = chain.derived(&state.levels);
         let (confirmed, prior) = d.trio();
         let trio: BTreeSet<&String> = confirmed.iter().chain(prior.iter()).collect();
         let candidates: Vec<String> = if trio.len() < CLASS_COUNT {
@@ -879,6 +1159,39 @@ impl Detector {
     }
 
     /// Every entity with any evidence at all, ever.
+    /// why: L9 -- the rolling record itself, for the Character Planner and
+    /// any other reader that wants a class's level rather than a chain's
+    pub fn class_levels(&self, entity: u32) -> Vec<(String, u8)> {
+        let Some(state) = self.by_entity.get(&entity) else {
+            return Vec::new();
+        };
+        let mut v: Vec<(String, u8)> = state
+            .levels
+            .classes()
+            .map(|(c, l)| (c.clone(), l))
+            .collect();
+        v.sort();
+        v
+    }
+
+    /// why: the strand itself, for probes -- which unit wrote a level and
+    /// what tier it carries, the only way to trace a wrong one back
+    pub fn level_trail(&self, entity: u32, class: &str) -> Vec<(Unit, u8, LevelSource)> {
+        let Some(state) = self.by_entity.get(&entity) else {
+            return Vec::new();
+        };
+        state
+            .levels
+            .by_class
+            .get(class)
+            .map(|v| {
+                v.iter()
+                    .map(|st| (unit(st.at), st.level, st.tier))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn known_entities(&self) -> impl Iterator<Item = u32> + '_ {
         self.by_entity.keys().copied()
     }

@@ -34,6 +34,8 @@ function savePlannerState() {
 }
 
 export const classConfigurations = writable<ClassConfigurationsDto | null>(null);
+/** why: L9 -- the rolling per-class level record, the planner's own source */
+export const classLevels = writable<Record<string, number>>({});
 export const defaultClasses = writable<string[]>([]);
 export const currentLevel = writable<number | null>(null);
 export const estimate = writable<CharacterEstimateDto | null>(null);
@@ -155,8 +157,9 @@ async function checkForExistingInventoryDump() {
 
 /** why: loaded once on entering Character; input: none; output: void */
 export async function loadCharacterModule() {
-  const [cfgs, defaults, lvl, aa, catalog, book, ranks, dmg, planner] = await Promise.all([
+  const [cfgs, recorded, defaults, lvl, aa, catalog, book, ranks, dmg, planner] = await Promise.all([
     api.getClassConfigurations(),
+    api.getClassLevels().catch(() => [] as [string, number][]),
     api.getDefaultGearClasses(),
     api.getCurrentLevel(),
     api.getAaLog(),
@@ -175,6 +178,7 @@ export async function loadCharacterModule() {
     }
   }
   classConfigurations.set(cfgs);
+  classLevels.set(Object.fromEntries(recorded));
   defaultClasses.set(defaults);
   currentLevel.set(lvl);
   aaLog.set(aa);
@@ -262,9 +266,24 @@ function applyEstimatedLevels() {
       }
     }
   }
+  // why: L9 -- the rolling record wins over configuration ranges. A range
+  // only knows the highest ding inside visits the class could still be
+  // PROVEN in, so a class whose evidence goes ambiguous freezes there
+  // (a Necromancer read 25 while its arc really ran past 28). The record
+  // keeps the class's own level whether or not the trio is still provable.
+  for (const [c, l] of Object.entries(get(classLevels))) {
+    if (l > (next[c] ?? 0)) next[c] = l;
+  }
   // why: user-set levels win over the estimate, always -- the estimate
   // only fills classes the user never touched
   levels.set({ ...next, ...get(userLevels) });
+}
+
+/** why: L9 -- the record moves as the log is parsed, so the button
+ * re-reads it before filling rather than using the launch-time copy */
+export async function refreshClassLevels() {
+  const recorded = await api.getClassLevels().catch(() => [] as [string, number][]);
+  classLevels.set(Object.fromEntries(recorded));
 }
 
 /** why: fills levels from confirmed log evidence; a guess, not fact --
@@ -274,9 +293,11 @@ function applyEstimatedLevels() {
 export function estimateLevelsFromLog() {
   userLevels.set({});
   savePlannerState();
-  applyEstimatedLevels();
-  void refreshEstimate();
-  void refreshGear();
+  void refreshClassLevels().then(() => {
+    applyEstimatedLevels();
+    void refreshEstimate();
+    void refreshGear();
+  });
 }
 
 let estimateToken = 0;

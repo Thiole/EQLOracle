@@ -1610,16 +1610,35 @@ fn split_into_sessions(
 
     let mut sessions: Vec<Vec<ZoneVisit>> = Vec::new();
     let mut last_end: Option<Millis> = None;
+    let mut last_ding: Option<u8> = None;
     for (start, end, v) in timed {
-        let starts_new_session = match last_end {
-            Some(prev_end) => start - prev_end > gap_ms,
-            None => true,
+        let dings: Vec<u8> = ing
+            .levels
+            .between(start, Some(end).filter(|e| *e > start))
+            .collect();
+        // why: L7 -- two arcs of the same trio split on the ARC, not the
+        // clock. The effective level is the trio's lowest and never
+        // falls, so a ding sequence stepping BACKWARDS is a different
+        // loadout by definition. A 24h bucket welded an ENC/SHD/WIZ
+        // 33-34 run to a Necromancer 26-28 run the next day and reported
+        // the range as (26,34).
+        let backwards = match (last_ding, dings.first()) {
+            (Some(prev), Some(&first)) => first < prev,
+            _ => false,
         };
+        let starts_new_session = backwards
+            || match last_end {
+                Some(prev_end) => start - prev_end > gap_ms,
+                None => true,
+            };
         if starts_new_session {
             sessions.push(Vec::new());
         }
         sessions.last_mut().expect("just pushed if new").push(v);
         last_end = Some(end);
+        if let Some(&d) = dings.last() {
+            last_ding = Some(d);
+        }
     }
     if has_untimed {
         match sessions.first_mut() {
@@ -1683,14 +1702,10 @@ pub fn you_level_at(ing: &Ingest, you: u32, cfg: &[String], at: Millis) -> Optio
     // a class swapped in after you hit the cap never dings again, and
     // reading the chain left the row at the last trio's level (a real
     // report: "it knows my classes are 50" while the row said 41)
-    let chain = ing.classes.chain_at(you, ing.unit_at(at));
-    let floors: HashMap<&str, u8> = chain
-        .as_ref()
-        .map(|c| c.floors.iter().map(|(n, l)| (n.as_str(), *l)).collect())
-        .unwrap_or_default();
+    let floors: HashMap<String, u8> = ing.classes.class_levels(you).into_iter().collect();
     let lowest = cfg
         .iter()
-        .map(|c| floors.get(c.as_str()).copied().or(effective).unwrap_or(0))
+        .map(|c| floors.get(c).copied().or(effective).unwrap_or(0))
         .min()?;
     Some(lowest.max(effective.unwrap_or(0))).filter(|l| *l > 0)
 }

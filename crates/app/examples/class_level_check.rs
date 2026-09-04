@@ -21,6 +21,13 @@ fn main() {
         .unwrap_or(4);
 
     let mut ing = Ingest::default();
+    // why: L8 reads the install's own spells_us.txt -- <install>/Logs/<log>
+    if let Some(base) = std::path::Path::new(&path)
+        .parent()
+        .and_then(|p| p.parent())
+    {
+        ing.set_spell_file(base);
+    }
     for chunk in lines.chunks(100_000) {
         backfill_lines(&mut ing, &engine, chunk, threads);
     }
@@ -36,6 +43,39 @@ fn main() {
         );
     }
 
+    if let Some(sym) = ing.store.names.get(&name) {
+        let chains = ing.classes.chains(sym.0);
+        let mut swap = 0;
+        let mut contra = 0;
+        let mut open = 0;
+        for c in &chains {
+            match c.closed {
+                Some(eqlp_session::classdetect::ChainEnd::Swap) => swap += 1,
+                Some(eqlp_session::classdetect::ChainEnd::Contradiction) => contra += 1,
+                None => open += 1,
+            }
+        }
+        println!(
+            "\nchains: {} (swap-closed {swap}, contradiction-closed {contra}, open {open})",
+            chains.len()
+        );
+    }
+    if let Some(sym) = ing.store.names.get(&name) {
+        println!("\nrolling record (L1-L4):");
+        for (c, l) in ing.classes.class_levels(sym.0) {
+            println!("  {c:16} {l}");
+        }
+    }
+    if let Some(sym) = ing.store.names.get(&name) {
+        for c in ["Necromancer", "Shadow Knight", "Bard", "Ranger"] {
+            let trail = ing.classes.level_trail(sym.0, c);
+            println!("\n{c} trail ({} stamps):", trail.len());
+            for (u, l, t) in trail {
+                let ts = u.and_then(|i| ing.units.bounds(i)).map(|(s, _)| s);
+                println!("  unit={u:?} ts={ts:?} level={l} tier={t:?}");
+            }
+        }
+    }
     println!("\nlatest level: {:?}", ing.levels.latest());
     println!("latest level ts: {:?}", ing.levels.latest_ts());
 

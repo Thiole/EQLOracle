@@ -279,6 +279,19 @@ pub fn get_class_configurations(state: State<AppState>, name: String) -> ClassCo
     combat::class_configurations(&state.ingest.lock_recover(), &name)
 }
 
+/// why: L9 -- the rolling per-class level record, which the Character
+/// Planner fills its levels from. Configuration ranges froze a class at
+/// the last level it could still be PROVEN at (a Necromancer read 25
+/// while its arc really ran past 28); the record is the class's own.
+#[tauri::command]
+pub fn get_class_levels(state: State<AppState>, name: String) -> Vec<(String, u8)> {
+    let ing = state.ingest.lock_recover();
+    let Some(sym) = ing.store.names.get(&name) else {
+        return Vec::new();
+    };
+    ing.classes.class_levels(sym.0)
+}
+
 /// why: Endgame's Raiding tab, curated list with confirmed kills/tiers/loot
 
 #[tauri::command]

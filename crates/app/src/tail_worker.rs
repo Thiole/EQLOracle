@@ -154,7 +154,14 @@ fn run(
         .min(16);
 
     // why: fresh directory starts fresh -- old row/encounter ids mean nothing here
-    *ingest.lock_recover() = Ingest::default();
+    {
+        // why: L8 -- spells_us.txt sits beside the Logs folder
+        let mut fresh = Ingest::default();
+        if let Some(base) = log_dir.parent() {
+            fresh.set_spell_file(base);
+        }
+        *ingest.lock_recover() = fresh;
+    }
 
     let mut target: Option<PathBuf> = None;
     let mut tail: Option<Tail> = None;
@@ -211,6 +218,9 @@ fn run(
                     framer = Framer::default();
                     backfilling = true;
                     let mut fresh = Ingest::default();
+                    if let Some(base) = log_dir.parent() {
+                        fresh.set_spell_file(base);
+                    }
                     // why: whose log this is -- your own /who row then
                     // lands on "You" like every other self observation
                     fresh.character = character;

@@ -759,7 +759,8 @@ mod tests {
                 Some(crate::spelltimers::SpellFileEntry {
                     cast_ms: 5000,
                     recast_ms: 12000,
-                    timer: 3
+                    timer: 3,
+                    levels: [255; 16],
                 })
             )
             .map(|d| d.reuse_group),
@@ -810,7 +811,8 @@ mod tests {
                 Some(crate::spelltimers::SpellFileEntry {
                     cast_ms: 5000,
                     recast_ms: 1500,
-                    timer: 25
+                    timer: 25,
+                    levels: [255; 16],
                 })
             )
             .map(|d| d.reuse_group),
@@ -887,6 +889,7 @@ mod tests {
             cast_ms: 1750,
             recast_ms: 1500,
             timer: 0,
+            levels: [255; 16],
         };
         let d = build_dto(lifebite, 0, &AaMods::default(), &[], Some(game)).expect("modeled");
         assert!((d.casting_time - 1.75).abs() < 1e-9);

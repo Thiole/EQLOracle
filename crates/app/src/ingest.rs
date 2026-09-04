@@ -1124,6 +1124,10 @@ pub struct Ingest {
     pub timeline: Timeline,
     /// why: per-cast outcome, keyed on interned Syms reused from store.names
     casts: CastResolver,
+    /// why: L8's data source -- the install's own spells_us.txt per-class
+    /// level requirements, this server's numbers rather than a wiki
+    /// scrape. None until the log directory is known (probes, tests).
+    spell_file: Option<crate::spelltimers::SpellFile>,
     /// why: per-entity class evidence grouped by zone visit, never reset;
     /// pub so combat.rs reads it directly, not through a wrapper
     pub classes: ClassDetector,
@@ -1443,6 +1447,7 @@ impl Default for Ingest {
             units: UnitTrack::default(),
             character: None,
             keep_full_history: false,
+            spell_file: None,
             implied_level: HashMap::new(),
             stance_pool: None,
             invocation_pool: None,
@@ -1533,6 +1538,34 @@ impl Ingest {
     }
 
     /// why: "set timeframe" -- start and optional end; None clears back to auto
+    /// why: L8 -- the install folder holds spells_us.txt, whose per-class
+    /// level columns are this server's own requirements. Called with the
+    /// Logs folder's parent once the log directory is known.
+    /// why: L8/G6 -- the install's own per-class levels when the file is
+    /// there, the wiki pack only as a fallback. The file is the server's
+    /// truth; the pack is a scrape of a later era (358 of its 2091
+    /// class-level entries are above this cap).
+    fn spell_class_levels(&self, base: &str) -> Vec<(String, u8)> {
+        if let Some(file) = &self.spell_file {
+            let from_game = crate::spelltimers::class_levels(file, base);
+            if !from_game.is_empty() {
+                return from_game;
+            }
+        }
+        crate::spelldata::spell_by_name(base)
+            .map(|sp| {
+                sp.classes
+                    .iter()
+                    .filter_map(|c| c.level.map(|l| (c.class.clone(), l.min(255) as u8)))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn set_spell_file(&mut self, base_dir: &std::path::Path) {
+        self.spell_file = Some(crate::spelltimers::spell_file(base_dir));
+    }
+
     pub fn set_session_window(&mut self, start: Option<Millis>, end: Option<Millis>) {
         self.session_override = start.map(|s| (s, end.filter(|&e| e > s)));
         if start.is_some() {
@@ -2206,17 +2239,13 @@ impl Ingest {
                 if who == "You" {
                     let evidence = class_evidence_for_cast(&spell);
                     self.note_self_class(ts, evidence);
-                    // why: P6's spell floor -- same exclusions as class evidence
+                    // why: L8's spell floor. The empty-evidence check IS
+                    // the spellbook guard: class_evidence_for_cast drops a
+                    // bare cast of a spell an item can click, and keeps a
+                    // ranked one (a rank suffix is spellbook-only, G4).
                     if !evidence.is_empty() {
-                        if let Some(sp) = crate::spelldata::spell_by_name(base) {
-                            let pairs: Vec<(String, u8)> = sp
-                                .classes
-                                .iter()
-                                .filter_map(|c| {
-                                    c.level
-                                        .map(|l| (c.class.clone(), l.min(u8::MAX as u32) as u8))
-                                })
-                                .collect();
+                        let pairs = self.spell_class_levels(base);
+                        if !pairs.is_empty() {
                             self.classes.observe_spell_levels(
                                 caster.0,
                                 self.units.current(),

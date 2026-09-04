@@ -1676,6 +1676,8 @@ export const api = {
   // player's own actions land under that exact symbol in the store, not
   // their character's real name. See dump_fixtures.rs's own note.
   getClassConfigurations: () => invoke<ClassConfigurationsDto>('get_class_configurations', { name: 'You' }),
+  /** why: L9 -- per-class levels from the rolling record, what the planner fills from */
+  getClassLevels: () => invoke<[string, number][]>('get_class_levels', { name: 'You' }),
 
   // why: levelRange disambiguates which row -- more than one row can now
   // share the same classes (separate real sessions of the same trio,

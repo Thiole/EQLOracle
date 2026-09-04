@@ -126,12 +126,21 @@ readily a written value is revised.
     cemented source, or by corroborated contradiction.
   - SOFT: anything absorbed under a prior or an unconfirmed trio.
     Revised freely by the next better evidence.
+  A level is only ever written for a class the chain has CONFIRMED --
+  never a prior or a leading guess. Writing guesses too was measured on
+  the real log: every class drifted to ~50 (Warrior 48, Beastlord 47 on
+  a character that plays neither) and those records then eliminated real
+  trios through L5. The same level proven again by a stronger source
+  firms up in place rather than being ignored.
 - L4. One strand per class, rewritten in place. When later evidence
   re-attributes an arc (an ally's 26-28 turning out to be the
   Necromancer), the strand is corrected from that date forward; no
   competing guesses are kept alongside it. Reads are as-of-time: a
   record raised at T never constrains anything before T.
 - L5. A ding is a constraint on the trio, not just an output of it.
+  A SOFT record only ever observes: it never eliminates a trio and never
+  closes a chain (Q41, settled by replay -- letting one eliminate fed a
+  guess back in as its own proof and unresolved visits jumped 245 -> 489).
   A ding to N at time T means the trio held a class whose record was
   exactly N-1 as of T, so:
   - a trio whose three records were all above N-1 takes a heavy miss
@@ -166,7 +175,14 @@ readily a written value is revised.
   A cast clearing none of the three sets no floor. A cast at a known
   effective level BELOW the file's number ratchets that spell's
   requirement down and flags it -- the log corrects the file, never the
-  other way.
+  other way. A floor is never written above the chain's own highest
+  ding: every ding is logged, so inside one loadout the level between
+  dings is known exactly, and a cast needing more than that did not
+  happen in this trio -- the assumption is stale, not the level. Without
+  that cap a level-49 spell put a Firm 49 on a Necromancer whose own
+  dings had it at 32.
+  Not yet implemented: the cast-time branch. Rank suffix and
+  "no click source exists" cover 75,280 of 94,212 real casts today.
 - L9. The Character Planner reads the rolling record, not configuration
   level ranges. The old estimator took the highest ding inside the
   sessions of configurations a class was confirmed in, so a class that
@@ -264,8 +280,6 @@ no static zone lists anywhere.
 - Q5. The app tails the newest-modified eqlog in the install's Logs
   folder. Two boxes logging to one folder would make it flip. Character
   picker wanted?
-- Q41. May a SOFT record (L3) eliminate a trio at all, or only observe
-  until it firms up? Currently it can, at weight -1.
 - Q42. L5's tier weights (-3/-2/-1) are provisional -- calibrate against
   a real replay before they are treated as settled.
 - Q9. Wiki class-list errors (Leech listed Necromancer-only, SK casts it
