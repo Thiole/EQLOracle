@@ -161,10 +161,40 @@ fn run(
     let mut framer = Framer::default();
     let mut backfilling = false;
 
+    // why: EQLP_REPLAY_UNTIL="Wed Sep 02 11:30:00 2026" -- replay the log
+    // up to that instant and freeze there, mid-fight if that is where it
+    // lands. Every module then shows the real state of that moment: the
+    // party you were in, their detected classes, the buffs actually up,
+    // the meter mid-encounter. The clock never advances past it, so
+    // nothing decays or closes behind your back.
+    let replay_until: Option<i64> = std::env::var("EQLP_REPLAY_UNTIL")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .and_then(|s| {
+            let stamp = format!("[{}] ", s.trim());
+            eqlp_core::header::by_name("bracket-ctime")
+                .and_then(|h| h.parse(stamp.as_bytes()))
+                .map(|(ts, _)| ts.secs() * 1000)
+        });
+    let mut frozen = false;
+
     let mut last_rescan = clock.now_ms() - RESCAN_MS;
     let mut last_emit = clock.now_ms() - HEARTBEAT_MS;
 
-    while !stop.load(Ordering::Relaxed) {
+    // why: how much of a batch is at or before the freeze point
+    let keep_upto = |batch: &[Vec<u8>], until: i64| -> usize {
+        let h = eqlp_core::header::by_name("bracket-ctime");
+        batch
+            .iter()
+            .position(|l| {
+                h.as_ref()
+                    .and_then(|h| h.parse(l))
+                    .is_some_and(|(ts, _)| ts.secs() * 1000 > until)
+            })
+            .unwrap_or(batch.len())
+    };
+
+    while !stop.load(Ordering::Relaxed) && !frozen {
         let now = clock.now_ms();
         let mut switched = false;
 
@@ -219,12 +249,20 @@ fn run(
                             batch.clear();
                             return;
                         }
-                        let refs: Vec<&[u8]> = batch.iter().map(|v| v.as_slice()).collect();
+                        let cut = replay_until.map_or(batch.len(), |u| keep_upto(&batch, u));
+                        let refs: Vec<&[u8]> = batch[..cut].iter().map(|v| v.as_slice()).collect();
                         {
                             let mut ing = ingest.lock_recover();
                             backfill_guarded(&mut ing, &engine, &refs, backfill_threads);
                         }
+                        let hit_freeze = cut < batch.len();
                         batch.clear();
+                        if hit_freeze {
+                            // why: EQLP_REPLAY_UNTIL -- stop here, and stop reading
+                            aborted = true;
+                            frozen = true;
+                            return;
+                        }
                         // why: unconditional -- the counting-up progress the UI shows
                         last_emit = SystemClock.now_ms();
                         emit_tick(&app, &log_dir, &target, "grew", true, &ingest, &status);
@@ -236,7 +274,9 @@ fn run(
                 }
                 // why: whatever's left under one full batch
                 if !batch.is_empty() {
-                    let refs: Vec<&[u8]> = batch.iter().map(|v| v.as_slice()).collect();
+                    let cut = replay_until.map_or(batch.len(), |u| keep_upto(&batch, u));
+                    frozen |= cut < batch.len();
+                    let refs: Vec<&[u8]> = batch[..cut].iter().map(|v| v.as_slice()).collect();
                     let mut ing = ingest.lock_recover();
                     backfill_guarded(&mut ing, &engine, &refs, backfill_threads);
                     drop(ing);
@@ -244,6 +284,13 @@ fn run(
                     emit_tick(&app, &log_dir, &target, tail_status, true, &ingest, &status);
                 }
 
+                if frozen {
+                    // why: EQLP_REPLAY_UNTIL -- the snapshot IS the state;
+                    // going live would let the clock run past it and close
+                    // the very fight the freeze was aimed at
+                    emit_tick(&app, &log_dir, &target, "frozen", false, &ingest, &status);
+                    return;
+                }
                 {
                     let mut ing = ingest.lock_recover();
                     // why: same panic-isolation as the batch path -- a

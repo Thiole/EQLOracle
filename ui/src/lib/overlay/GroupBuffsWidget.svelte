@@ -32,7 +32,7 @@
       <span class="truncate font-mono text-[10px] text-foreground/60" title="your classes">{data.my_classes.map(abbr).join('/')}</span>
     </div>
     <div class="truncate font-mono text-[10px] text-foreground/60" title="party -- confirmed classes count; ? means not confirmed yet">
-      {#each data.party as m, i (m.name)}{i ? ' · ' : ''}{m.name} {m.classes.length ? m.classes.map(abbr).join('/') : '?'}{m.confirmed ? '' : '?'}{/each}
+      {#each data.party as m, i (m.name)}{i ? ' · ' : ''}<span title={m.buffs.length ? `on ${m.name}: ${m.buffs.join(', ')}` : `nothing seen landing on ${m.name}`}>{m.name} {m.classes.length ? m.classes.map(abbr).join('/') : '?'}{m.confirmed ? '' : '?'}{m.buffs.length ? ` +${m.buffs.length}` : ''}</span>{/each}
     </div>
     <div class="flex flex-col gap-0.5">
       {#each data.rows as r (r.kind)}

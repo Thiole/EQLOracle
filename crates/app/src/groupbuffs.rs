@@ -248,6 +248,11 @@ pub struct PartyMemberDto {
     pub classes: Vec<String>,
     pub level: Option<u8>,
     pub confirmed: bool,
+    /// why: what is on THEM right now, by kind label -- read from the
+    /// landings your log saw on them, each kept for its own duration.
+    /// Only what your log witnessed; a buff cast before you grouped is
+    /// invisible, so this under-reports rather than inventing coverage.
+    pub buffs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -310,7 +315,15 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         .unwrap_or_default();
 
     let mut party: Vec<PartyMemberDto> = Vec::new();
-    for (name, _, _, _) in ing.groups.current_members(now) {
+    for (key, _, _, _) in ing.groups.current_members(now) {
+        // why: the roster keys by fold, not display casing -- resolve it
+        // the way every other reader does, or the class chain and the
+        // effect pings (both keyed by the interned name) come back empty
+        let name = ing
+            .encounters
+            .entities
+            .display_name(&key)
+            .to_string();
         if name.eq_ignore_ascii_case("You") || ing.effective_kind(&name, now) == Kind::Pet {
             continue;
         }
@@ -324,11 +337,16 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             },
             None => (Vec::new(), None, false),
         };
+        let buffs = buffs_on(ing, &name, now)
+            .into_iter()
+            .map(|k| k.label().to_string())
+            .collect();
         party.push(PartyMemberDto {
             name,
             classes,
             level,
             confirmed,
+            buffs,
         });
     }
 
@@ -430,6 +448,33 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         rows,
         extra_active,
     }
+}
+
+/// why: how far back a landing on someone else can still be up -- the
+/// longest real buff durations are hours, and each ping is checked
+/// against its own spell's duration anyway
+const OTHERS_BUFF_WINDOW_MS: Millis = 6 * 3600 * 1000;
+
+/// why: the buff kinds currently on someone who is not you, from the
+/// landings your log saw on them (`self_buffs` is the same idea for you,
+/// fed by first-person text instead)
+fn buffs_on(ing: &Ingest, name: &str, now: Millis) -> Vec<BuffKind> {
+    let Some(sym) = ing.store.names.get(name) else {
+        return Vec::new();
+    };
+    let mut kinds: HashSet<BuffKind> = HashSet::new();
+    for ping in ing.effects.recent(sym.0, now, OTHERS_BUFF_WINDOW_MS) {
+        let Some(spell) = crate::spelldata::spell_by_name(&ping.text) else {
+            continue;
+        };
+        let Some(kind) = kind_of(spell) else { continue };
+        if expiry_for(spell, ping.ts).is_none_or(|e| e >= now) {
+            kinds.insert(kind);
+        }
+    }
+    let mut v: Vec<BuffKind> = kinds.into_iter().collect();
+    v.sort();
+    v
 }
 
 /// why: how long a landed buff stays counted -- the catalog's duration

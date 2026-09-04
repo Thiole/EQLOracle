@@ -62,6 +62,8 @@ export interface PartyMemberDto {
   classes: string[];
   level: number | null;
   confirmed: boolean;
+  /** why: buff kinds currently on THEM, from landings your log saw */
+  buffs: string[];
 }
 export interface GroupBuffsDto {
   good: boolean;
@@ -1620,7 +1622,15 @@ export const api = {
   ackWhatsNew: () => invoke<void>('ack_whats_new'),
   getChangelog: () => invoke<ChangelogSection[]>('get_changelog'),
   /** why: launch-time env hints for screenshot automation -- see commands::get_launch_hints */
-  getLaunchHints: () => invoke<{ start_module: string | null; skip_update_check: boolean; maps_zone: string | null; maps_npc: string | null }>('get_launch_hints'),
+  getLaunchHints: () =>
+    invoke<{
+      start_module: string | null;
+      skip_update_check: boolean;
+      maps_zone: string | null;
+      maps_npc: string | null;
+      /** why: EQLP_REPLAY_UNTIL -- replayed to this instant and frozen there */
+      replay_until: string | null;
+    }>('get_launch_hints'),
 
   pickLogDirectory: () => invoke<string | null>('pick_log_directory'),
 

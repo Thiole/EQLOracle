@@ -1688,6 +1688,9 @@ pub struct LaunchHintsDto {
     /// why: Maps opens on this zone (map stem) with a path to this NPC
     pub maps_zone: Option<String>,
     pub maps_npc: Option<String>,
+    /// why: EQLP_REPLAY_UNTIL -- the log was replayed to this instant and
+    /// frozen there; the UI says so rather than implying it is watching
+    pub replay_until: Option<String>,
 }
 
 #[tauri::command]
@@ -1698,6 +1701,7 @@ pub fn get_launch_hints() -> LaunchHintsDto {
         skip_update_check: std::env::var("EQLP_SKIP_UPDATE_CHECK").is_ok(),
         maps_zone: env("EQLP_MAPS_ZONE"),
         maps_npc: env("EQLP_MAPS_NPC"),
+        replay_until: env("EQLP_REPLAY_UNTIL"),
     }
 }
 

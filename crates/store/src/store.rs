@@ -209,8 +209,7 @@ impl Store {
             )
         };
         let fight_closed = |i: usize| {
-            self.enc[i] == NO_ENCOUNTER
-                || closed.get(self.enc[i] as usize).copied().unwrap_or(true)
+            self.enc[i] == NO_ENCOUNTER || closed.get(self.enc[i] as usize).copied().unwrap_or(true)
         };
         let foldable: Vec<bool> = (from..n)
             .map(|i| self.ts[i] < cut_ts && is_combat(i) && fight_closed(i))
