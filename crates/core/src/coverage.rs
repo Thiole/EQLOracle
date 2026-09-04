@@ -51,11 +51,6 @@ impl Coverage {
         }
     }
 
-    pub fn with_shape_cap(mut self, cap: usize) -> Self {
-        self.shape_cap = cap;
-        self
-    }
-
     pub fn record(&mut self, line: &[u8], out: &Outcome) {
         self.total += 1;
         match out {

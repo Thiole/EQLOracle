@@ -70,10 +70,6 @@ impl Policy {
         self.link_ms = (s * 1000.0) as Millis;
         self
     }
-    pub fn dupe_grace_secs(mut self, s: f64) -> Self {
-        self.dupe_grace_ms = (s * 1000.0) as Millis;
-        self
-    }
     pub fn no_transitive(mut self) -> Self {
         self.transitive = false;
         self

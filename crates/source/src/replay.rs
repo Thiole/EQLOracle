@@ -2,7 +2,7 @@
 //!
 //! Design notes: `docs/design/sources.md`
 
-use crate::clock::{Clock, Millis, VirtualClock};
+use crate::clock::{Millis, VirtualClock};
 use eqlp_core::header::{BracketCtime, HeaderParser};
 
 #[derive(Debug, Clone, Copy, PartialEq)]

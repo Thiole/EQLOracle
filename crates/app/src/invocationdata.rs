@@ -1,43 +1,27 @@
-//! why: invocation -> class lookup, same pattern as `stancedata.rs`
+//! why: invocation -> class lookup, one of the packs `classpool.rs` serves
 //!
-//! 9 real invocations confirmed against eqlwiki. Log spelling doesn't
-//! always match wiki casing ("overchannel", "empowering" for Empower) --
-//! `classes_for` normalizes both sides plus that one word-form alias.
-
-use std::collections::HashMap;
+//! The log prints its own spelling, so this pack folds whitespace away
+//! as well as case, and carries the one real alias: the client says
+//! "empowering" where the wiki page is "Empower".
+use crate::classpool::{self, ClassPool};
 use std::sync::OnceLock;
 
-const INVOCATION_DATA_JSON: &str = include_str!("../../../packs/invocation_classes.json");
+static POOL: OnceLock<ClassPool> = OnceLock::new();
 
-static INVOCATION_DATA: OnceLock<HashMap<String, Vec<String>>> = OnceLock::new();
-/// why: normalized name -> the JSON's own canonical key
-static NORMALIZED_INDEX: OnceLock<HashMap<String, String>> = OnceLock::new();
-
-fn normalize(s: &str) -> String {
-    s.chars()
-        .filter(|c| !c.is_whitespace())
-        .collect::<String>()
-        .to_lowercase()
+fn pool() -> &'static ClassPool {
+    POOL.get_or_init(|| {
+        ClassPool::load(
+            "invocation_classes.json",
+            include_str!("../../../packs/invocation_classes.json"),
+            classpool::tight,
+            &[("empowering", "Empower")],
+        )
+    })
 }
 
-/// why: `invocation` is the raw log-text spelling, not the wiki's
+/// why: empty means unknown name, not zero eligible classes
 pub fn classes_for(invocation: &str) -> &'static [String] {
-    let map = INVOCATION_DATA.get_or_init(|| {
-        serde_json::from_str(INVOCATION_DATA_JSON)
-            .unwrap_or_else(|e| panic!("packs/invocation_classes.json failed to parse: {e}"))
-    });
-    let index = NORMALIZED_INDEX.get_or_init(|| {
-        let mut idx: HashMap<String, String> =
-            map.keys().map(|k| (normalize(k), k.clone())).collect();
-        // why: client log prints "empowering", wiki page title is "Empower"
-        idx.insert(normalize("empowering"), "Empower".to_string());
-        idx
-    });
-    index
-        .get(&normalize(invocation))
-        .and_then(|canonical| map.get(canonical))
-        .map(|v| v.as_slice())
-        .unwrap_or(&[])
+    pool().classes_for(invocation)
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@ pub mod achievements;
 pub mod character;
 pub mod chat;
 pub mod classdata;
+pub mod classpool;
 pub mod combat;
 pub mod commands;
 pub mod config;

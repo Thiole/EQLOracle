@@ -117,23 +117,8 @@ impl HeaderParser for BracketCtime {
 }
 
 /// why: escape hatch for headerless sources -- whole line as body, ts=0
-#[derive(Default, Clone, Copy, Debug)]
-pub struct NoHeader;
-
-impl HeaderParser for NoHeader {
-    #[inline]
-    fn parse(&self, _line: &[u8]) -> Option<(LocalTs, usize)> {
-        Some((LocalTs(0), 0))
-    }
-    fn name(&self) -> &'static str {
-        "none"
-    }
-}
-
+/// why: one real header shape on this game's logs; the pack names it
+/// (`header = "bracket-ctime"`) and nothing else is selectable
 pub fn by_name(name: &str) -> Option<Box<dyn HeaderParser>> {
-    match name {
-        "bracket-ctime" => Some(Box::new(BracketCtime)),
-        "none" => Some(Box::new(NoHeader)),
-        _ => None,
-    }
+    (name == "bracket-ctime").then(|| Box::new(BracketCtime) as Box<dyn HeaderParser>)
 }

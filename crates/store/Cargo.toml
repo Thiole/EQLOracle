@@ -9,4 +9,3 @@ description = "In-memory columnar event store. Single source of truth; every agg
 eqlp-source = { path = "../source" }
 
 [dev-dependencies]
-eqlp-testkit = { path = "../testkit" }

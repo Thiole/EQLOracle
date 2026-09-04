@@ -191,8 +191,11 @@ readily a written value is revised.
 
 ## Loadout swap signals (clear the buff ledger, reset B2 and the class set)
 
-- S1. A 4th distinct single-class cast by You since the last mark
-  (G1: the set changed). Buffs landed before that cast are dropped.
+- S1. A 4th distinct class-only sighting by You since the last mark
+  (G1: the set changed) -- a cast, song, stance, skill-up, AA or ability
+  activation alike, since the rule rests on G1 and not on the kind of
+  evidence. Read off the detector's own open chain rather than a second
+  count kept beside it. Buffs landed before that sighting are dropped.
 - S2. 3+ "You have been granted the following spell" lines within 2s with
   no ding in the previous 15s (a class pick in town). 1 grant is a scribe.
 - S3. Your own death clears every buff.

@@ -25,7 +25,9 @@ pub use timeline::{series, Bucket, Cause, State, Timeline, Transition};
 
 /// why: first char case-folded only -- fixes "an armadillo"/"An armadillo"
 /// without merging distinct proper nouns like other mobs would need
-pub(crate) fn fold_key(name: &str) -> String {
+/// why: one folding rule for entity names, shared -- monsterdata.rs
+/// kept a byte-for-byte copy of this because it was crate-private
+pub fn fold_key(name: &str) -> String {
     let mut c = name.chars();
     match c.next() {
         Some(f) => f.to_lowercase().collect::<String>() + c.as_str(),

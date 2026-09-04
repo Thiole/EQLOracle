@@ -9,20 +9,18 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Milliseconds since the Unix epoch.
 pub type Millis = i64;
 
-pub trait Clock: Send + Sync {
-    fn now_ms(&self) -> Millis;
-
-    fn now_secs(&self) -> i64 {
-        self.now_ms().div_euclid(1000)
-    }
-}
-
-/// Wall clock. The only impl that touches the OS.
+/// Wall clock. The only one that touches the OS.
+///
+/// why: this was a `Clock` trait with two impls and blanket impls for
+/// `Arc<T>`/`&T`, and nothing ever took an `impl Clock` or `dyn Clock` --
+/// the tail worker names `SystemClock` and replay names `VirtualClock`,
+/// both concretely. Inherent methods say the same thing with no
+/// indirection to look through.
 #[derive(Default, Debug, Clone, Copy)]
 pub struct SystemClock;
 
-impl Clock for SystemClock {
-    fn now_ms(&self) -> Millis {
+impl SystemClock {
+    pub fn now_ms(&self) -> Millis {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as i64)
@@ -73,20 +71,12 @@ impl Default for VirtualClock {
     }
 }
 
-impl Clock for VirtualClock {
-    fn now_ms(&self) -> Millis {
+impl VirtualClock {
+    pub fn now_ms(&self) -> Millis {
         self.ms.load(Ordering::Relaxed)
     }
-}
 
-impl<T: Clock + ?Sized> Clock for std::sync::Arc<T> {
-    fn now_ms(&self) -> Millis {
-        (**self).now_ms()
-    }
-}
-
-impl<T: Clock + ?Sized> Clock for &T {
-    fn now_ms(&self) -> Millis {
-        (**self).now_ms()
+    pub fn now_secs(&self) -> i64 {
+        self.now_ms().div_euclid(1000)
     }
 }

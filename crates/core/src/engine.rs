@@ -29,8 +29,6 @@ pub struct Engine {
     /// rules with no anchors at all; always candidates
     unanchored: Vec<RuleIdx>,
     rules: Vec<CompiledRule>,
-    /// rule indices sorted by (priority desc, declaration order asc)
-    eval_rank: Vec<u32>,
     pub sources: Vec<String>,
 }
 
@@ -127,14 +125,6 @@ impl Engine {
             )
         };
 
-        let mut eval_rank: Vec<u32> = (0..rules.len() as u32).collect();
-        eval_rank.sort_by(|&a, &b| {
-            rules[b as usize]
-                .priority
-                .cmp(&rules[a as usize].priority)
-                .then(a.cmp(&b))
-        });
-
         Ok(Engine {
             header: hdr,
             ac,
@@ -142,7 +132,6 @@ impl Engine {
             exclude_rules,
             unanchored,
             rules,
-            eval_rank,
             sources: pack.sources.clone(),
         })
     }
@@ -353,20 +342,6 @@ impl<'e> Matcher<'e> {
         }
     }
 
-    /// why: runtime knob, not a pack setting -- mask tracks live consumers
-    pub fn capture_only(&mut self, rules: &[RuleIdx]) {
-        self.capture.iter_mut().for_each(|c| *c = false);
-        for &r in rules {
-            if let Some(c) = self.capture.get_mut(r as usize) {
-                *c = true;
-            }
-        }
-    }
-
-    pub fn capture_all(&mut self) {
-        self.capture.iter_mut().for_each(|c| *c = true);
-    }
-
     pub fn capture_none(&mut self) {
         self.capture.iter_mut().for_each(|c| *c = false);
     }
@@ -403,12 +378,5 @@ impl<'e> Matcher<'e> {
                 out.push(ri);
             }
         }
-    }
-}
-
-/// Convenience for `eval_rank` consumers and tests.
-impl Engine {
-    pub fn eval_order(&self) -> &[u32] {
-        &self.eval_rank
     }
 }

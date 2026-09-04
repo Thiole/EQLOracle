@@ -4,7 +4,44 @@
 //! A failing run prints its seed. Re-run with EQLP_SEED=<n> to reproduce.
 
 use eqlp_store::{by_ability, roll_up_by_tag, tag, total, EventKind, Filter, Store};
-use eqlp_testkit::Rng;
+// why: the whole `eqlp-testkit` crate existed for this one type, used by
+// this one file. Four methods, inlined, rather than a crate to import.
+struct Rng(u64);
+
+impl Rng {
+    fn new(seed: u64) -> Self {
+        Rng(seed.wrapping_mul(6364136223846793005).wrapping_add(1))
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let x = self.0;
+        (x >> 18) ^ x
+    }
+
+    fn below(&mut self, n: usize) -> usize {
+        if n == 0 {
+            0
+        } else {
+            (self.next_u64() % n as u64) as usize
+        }
+    }
+
+    fn range(&mut self, lo: u64, hi: u64) -> u64 {
+        if hi <= lo {
+            lo
+        } else {
+            lo + self.next_u64() % (hi - lo)
+        }
+    }
+
+    fn pick<'a, T>(&mut self, v: &'a [T]) -> &'a T {
+        &v[self.below(v.len())]
+    }
+}
 
 fn seed() -> u64 {
     std::env::var("EQLP_SEED")

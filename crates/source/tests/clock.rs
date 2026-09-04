@@ -1,7 +1,7 @@
 //! Tests for `clock`. Kept out of the production module by
 //! convention: src/ contains shipping code only.
 
-use eqlp_source::clock::{Clock, VirtualClock};
+use eqlp_source::clock::VirtualClock;
 
 #[test]
 fn virtual_clock_never_goes_backwards() {

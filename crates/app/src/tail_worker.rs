@@ -34,9 +34,7 @@ fn backfill_guarded(
 }
 use crate::inventory::{inventory_character, is_inventory_dump};
 use eqlp_core::frame::Framer;
-use eqlp_source::{
-    identity_from_filename, newest_log_in, Clock, SystemClock, Tail, TailEvent, POLL_MS,
-};
+use eqlp_source::{identity_from_filename, newest_log_in, SystemClock, Tail, TailEvent, POLL_MS};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};

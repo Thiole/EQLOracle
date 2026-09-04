@@ -1,7 +1,7 @@
 //! Tests for `replay`. Kept out of the production module by
 //! convention: src/ contains shipping code only.
 
-use eqlp_source::clock::{Clock, VirtualClock};
+use eqlp_source::clock::VirtualClock;
 use eqlp_source::replay::{Replay, Speed};
 
 const LOG: &[u8] = b"[Wed Aug 06 21:14:33 2025] one\r\n\

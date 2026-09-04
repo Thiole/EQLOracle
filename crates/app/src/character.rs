@@ -212,7 +212,19 @@ pub fn estimate(
         })
         .collect();
 
-    let character_level = levels.iter().copied().min().unwrap_or(0);
+    // why: the same trio rule the detector uses (L1) -- lowest of the
+    // three, never a per-caller re-derivation
+    let character_level = eqlp_session::classdetect::effective_level(
+        classes.iter().map(String::as_str),
+        |c| {
+            classes
+                .iter()
+                .position(|x| x == c)
+                .and_then(|i| levels.get(i).copied())
+        },
+        None,
+    )
+    .unwrap_or(0);
     let limiting_class = if classes.is_empty() {
         None
     } else {

@@ -28,13 +28,7 @@ fn monster_data() -> &'static HashMap<String, Vec<String>> {
 
 /// why: mirrors `eqlp_session::fold_key` (pub(crate) there, not importable);
 /// store names keep first-seen casing, this normalizes both sides to match
-fn fold_key(name: &str) -> String {
-    let mut c = name.chars();
-    match c.next() {
-        Some(f) => f.to_lowercase().collect::<String>() + c.as_str(),
-        None => String::new(),
-    }
-}
+use eqlp_session::fold_key;
 
 /// why: whether the wiki's drop data ever named `name` as a source
 pub fn is_known_monster(name: &str) -> bool {

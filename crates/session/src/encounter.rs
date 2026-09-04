@@ -204,10 +204,6 @@ impl Tracker {
         }
     }
 
-    pub fn open_encounters(&mut self) -> impl Iterator<Item = &mut Encounter> {
-        self.open.values_mut()
-    }
-
     /// Number of fights currently in progress.
     pub fn open_count(&self) -> usize {
         self.open.len()

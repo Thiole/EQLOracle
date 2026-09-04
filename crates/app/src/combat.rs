@@ -1703,11 +1703,11 @@ pub fn you_level_at(ing: &Ingest, you: u32, cfg: &[String], at: Millis) -> Optio
     // reading the chain left the row at the last trio's level (a real
     // report: "it knows my classes are 50" while the row said 41)
     let floors: HashMap<String, u8> = ing.classes.class_levels(you).into_iter().collect();
-    let lowest = cfg
-        .iter()
-        .map(|c| floors.get(c).copied().or(effective).unwrap_or(0))
-        .min()?;
-    Some(lowest.max(effective.unwrap_or(0))).filter(|l| *l > 0)
+    eqlp_session::classdetect::effective_level(
+        cfg.iter().map(String::as_str),
+        |c| floors.get(c).copied(),
+        effective,
+    )
 }
 
 /// why: real level.up lines fired inside the visit only, never a

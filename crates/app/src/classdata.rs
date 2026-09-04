@@ -9,23 +9,26 @@
 //! 4 hand-verified exceptions layered on top (Harm Touch, Leech,
 //! Malaisement, Blast of Cold -- real spells missing from the scrape).
 //! `Origin` deliberately excluded: an every-class AA, not real evidence.
-
-use std::collections::HashMap;
+//!
+//! Case-folded only: "Ice Strike" (Shaman) and "Icestrike" (Wizard) are
+//! two real spells, so nothing here may strip whitespace (classpool.rs).
+use crate::classpool::{self, ClassPool};
 use std::sync::OnceLock;
 
-const CLASS_DATA_JSON: &str = include_str!("../../../packs/spell_classes.json");
+static POOL: OnceLock<ClassPool> = OnceLock::new();
 
-static CLASS_DATA: OnceLock<HashMap<String, Vec<String>>> = OnceLock::new();
+fn pool() -> &'static ClassPool {
+    POOL.get_or_init(|| {
+        ClassPool::load(
+            "spell_classes.json",
+            include_str!("../../../packs/spell_classes.json"),
+            classpool::ci,
+            &[],
+        )
+    })
+}
 
-/// why: empty means unknown spell, not zero eligible classes
+/// why: empty means unknown name, not zero eligible classes
 pub fn classes_for(base_spell_name: &str) -> &'static [String] {
-    let map = CLASS_DATA.get_or_init(|| {
-        serde_json::from_str(CLASS_DATA_JSON).unwrap_or_else(|e| {
-            // why: malformed embedded data is a build bug, fail loud
-            panic!("packs/spell_classes.json failed to parse: {e}")
-        })
-    });
-    map.get(base_spell_name)
-        .map(|v| v.as_slice())
-        .unwrap_or(&[])
+    pool().classes_for(base_spell_name)
 }

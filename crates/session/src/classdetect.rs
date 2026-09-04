@@ -224,6 +224,22 @@ impl LevelRecord {
     }
 }
 
+/// why: L1's game rule, in one place -- the level you play at is the
+/// LOWEST of the three classes slotted, so a 50 beside a 26 plays at 26.
+/// `floor` is what a class with no record of its own falls back to
+/// (the latest ding); an empty trio has no answer at all.
+pub fn effective_level<'a>(
+    trio: impl IntoIterator<Item = &'a str>,
+    record: impl Fn(&str) -> Option<u8>,
+    floor: Option<u8>,
+) -> Option<u8> {
+    let lowest = trio
+        .into_iter()
+        .map(|c| record(c).or(floor).unwrap_or(0))
+        .min()?;
+    Some(lowest.max(floor.unwrap_or(0))).filter(|l| *l > 0)
+}
+
 /// why: `None` maps to 0 so units order as plain integers internally
 fn key(u: Unit) -> usize {
     u.map_or(0, |i| i + 1)
@@ -721,6 +737,16 @@ impl Chain {
         &mut self.current.as_mut().expect("current set").1
     }
     /// why: rebuilds from its units -- used after a split
+    /// why: distinct classes with class-only evidence in this chain,
+    /// committed and current alike -- see `Detector::own_classes_seen`
+    fn derived_unamb_count(&self) -> usize {
+        let mut seen: BTreeSet<&String> = self.committed.unamb.keys().collect();
+        if let Some((_, ev)) = &self.current {
+            seen.extend(ev.unambiguous.iter());
+        }
+        seen.len()
+    }
+
     fn rebuild(&mut self, levels: &LevelRecord) {
         let units = std::mem::take(&mut self.units);
         self.committed = Derived::default();
@@ -735,6 +761,10 @@ impl Chain {
 #[derive(Debug, Default)]
 struct EntityState {
     chains: Vec<Chain>,
+    /// why: a chain closing is an EVENT the detector knows first-hand --
+    /// the app used to poll `chain_count` every unit and diff it to
+    /// notice. Set here, taken by `take_chain_closed`.
+    closed_since_read: bool,
     /// why: level is a ROLLING record per class, not something a chain
     /// re-derives (Spencer: "the level should be a rolling process
     /// separate from encounter"). A class seen at 50 is 50 from then on:
@@ -872,7 +902,12 @@ impl EntityState {
     /// why: P5 -- close at the first conflicting unit, replay the rest
     /// into a fresh chain that confirms on its own
     fn split_last(&mut self, at: usize, end: ChainEnd) {
-        let EntityState { chains, levels, .. } = self;
+        let EntityState {
+            chains,
+            levels,
+            closed_since_read,
+            ..
+        } = self;
         let Some(old) = chains.last_mut() else {
             return;
         };
@@ -881,6 +916,7 @@ impl EntityState {
         }
         let moved: BTreeMap<usize, UnitEvidence> = old.units.split_off(&at);
         old.closed = Some(end);
+        *closed_since_read = true;
         old.rebuild(levels);
         let mut fresh = Chain::new(at);
         fresh.units = moved;
@@ -1073,15 +1109,17 @@ impl Detector {
         // chain closes only against a trio it is actually sure of: the
         // real Aug 10 case is ENC 50 / WIZ 50 / SHD 34 dinging 26
         let assumed_min = if trio.len() == CLASS_COUNT && tier == LevelSource::Cemented {
-            trio.iter()
-                .map(|c| {
+            effective_level(
+                trio.iter().map(String::as_str),
+                |c| {
                     state
                         .levels
                         .at(c, k)
                         .filter(|(_, s)| *s != LevelSource::Soft)
-                        .map_or(0, |(l, _)| l)
-                })
-                .min()
+                        .map(|(l, _)| l)
+                },
+                None,
+            )
         } else {
             None
         };
@@ -1350,6 +1388,27 @@ impl Detector {
     }
 
     /// Every entity with any evidence at all, ever.
+    /// why: a chain closed since the last call -- the app needs the EVENT
+    /// (a swap drops your stance, P10), not a count it has to diff. Reading
+    /// clears it.
+    pub fn take_chain_closed(&mut self, entity: u32) -> bool {
+        self.by_entity
+            .get_mut(&entity)
+            .is_some_and(|s| std::mem::take(&mut s.closed_since_read))
+    }
+
+    /// why: how many distinct classes this character's OWN class-only
+    /// evidence has named in the open chain. Exactly three run at once
+    /// (G1), so a fourth is a loadout swap -- the app kept a private set
+    /// to count this, which the detector already knew.
+    pub fn own_classes_seen(&self, entity: u32) -> usize {
+        self.by_entity
+            .get(&entity)
+            .and_then(|s| s.chains.last())
+            .map(|c| c.derived_unamb_count())
+            .unwrap_or(0)
+    }
+
     /// why: L9 -- the rolling record itself, for the Character Planner and
     /// any other reader that wants a class's level rather than a chain's
     pub fn class_levels(&self, entity: u32) -> Vec<(String, u8)> {

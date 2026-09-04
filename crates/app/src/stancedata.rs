@@ -1,25 +1,28 @@
-//! why: stance -> class lookup, same pattern `classdata.rs` uses for spells
+//! why: stance -> class lookup, one of the packs `classpool.rs` serves
 //!
 //! 9 real stances confirmed against eqlwiki, "Berserker" unambiguous
 //! (one class). Only ever evidence for "You" -- log reports no one else's.
-
-use std::collections::HashMap;
+//! Case-insensitive against the log's own spelling; this used to scan
+//! every key on every lookup instead of indexing once.
+use crate::classpool::{self, ClassPool};
 use std::sync::OnceLock;
 
-const STANCE_DATA_JSON: &str = include_str!("../../../packs/stance_classes.json");
+static POOL: OnceLock<ClassPool> = OnceLock::new();
 
-static STANCE_DATA: OnceLock<HashMap<String, Vec<String>>> = OnceLock::new();
+fn pool() -> &'static ClassPool {
+    POOL.get_or_init(|| {
+        ClassPool::load(
+            "stance_classes.json",
+            include_str!("../../../packs/stance_classes.json"),
+            classpool::ci,
+            &[],
+        )
+    })
+}
 
-/// why: empty means unknown, not zero eligible; case-insensitive vs log
+/// why: empty means unknown name, not zero eligible classes
 pub fn classes_for(stance: &str) -> &'static [String] {
-    let map = STANCE_DATA.get_or_init(|| {
-        serde_json::from_str(STANCE_DATA_JSON)
-            .unwrap_or_else(|e| panic!("packs/stance_classes.json failed to parse: {e}"))
-    });
-    map.iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case(stance))
-        .map(|(_, v)| v.as_slice())
-        .unwrap_or(&[])
+    pool().classes_for(stance)
 }
 
 #[cfg(test)]

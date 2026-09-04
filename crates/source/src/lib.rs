@@ -6,7 +6,7 @@ pub mod clock;
 pub mod replay;
 pub mod tail;
 
-pub use clock::{Clock, Millis, SystemClock, VirtualClock};
+pub use clock::{Millis, SystemClock, VirtualClock};
 pub use replay::{Replay, Speed};
 pub use tail::{identity_from_filename, newest_log_in, Tail, TailEvent};
 

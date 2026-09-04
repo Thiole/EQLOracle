@@ -16,7 +16,7 @@ use eqlp_session::{
     Allegiance, Builder, CastOutcome, CastResolver, ClassDetector, EncId, GroupTracker, Kind,
     Policy, Spans, State, Timeline,
 };
-use eqlp_source::{Clock, Millis, VirtualClock};
+use eqlp_source::{Millis, VirtualClock};
 use eqlp_store::{
     by_ability, by_actor, flag, score_parse, tag, EncounterId, EventKind, Filter, Flags,
     GearModifiers, Store, Sym, Tags, NO_ENCOUNTER,
@@ -1259,9 +1259,6 @@ pub struct Ingest {
     /// expires at; None = permanent). From the catalog's own landing
     /// text on you; a wear-off text ends one early (groupbuffs.rs)
     pub self_buffs: HashMap<String, (Millis, Option<Millis>)>,
-    /// why: distinct single-class evidence from your own casts since the
-    /// last loadout mark -- a 4th class is a swap, see `note_self_class`
-    self_class_evidence: std::collections::BTreeSet<String>,
     /// why: spell.granted timestamps within GRANT_CLUSTER_MS -- see `note_spell_granted`
     recent_grants: Vec<Millis>,
     last_level_up: Option<Millis>,
@@ -1284,9 +1281,6 @@ pub struct Ingest {
     /// (game rule), the invocation survives it
     stance_pool: Option<&'static [String]>,
     invocation_pool: Option<&'static [String]>,
-    /// why: a chain closing (P5) means a swap went undetected -- the
-    /// stance it carried is gone with it
-    you_chain_count: usize,
     /// why: Symphonic Aura known on for You -- its songs print no cast
     /// line, so their landings on you are the only trace; see
     /// `note_self_effect_text`. Off again on a loadout change.
@@ -1440,7 +1434,6 @@ impl Default for Ingest {
             ally_last_seen: HashMap::new(),
             ally_cuts: HashMap::new(),
             self_buffs: HashMap::new(),
-            self_class_evidence: Default::default(),
             recent_grants: Vec::new(),
             last_level_up: None,
             symphonic_aura: false,
@@ -1451,7 +1444,6 @@ impl Default for Ingest {
             implied_level: HashMap::new(),
             stance_pool: None,
             invocation_pool: None,
-            you_chain_count: 0,
             ally_pending_leave: HashMap::new(),
             closed_seen: 0,
             pending_summons: Vec::new(),
@@ -1639,10 +1631,40 @@ impl Ingest {
     /// verb, a Quick Buff landing. Feeds the same detector your own
     /// evidence does; your log simply carries more kinds of it about you.
     fn note_class_evidence(&mut self, ts: Millis, who: &str, classes: &[String]) {
-        if classes.is_empty() || who.eq_ignore_ascii_case("You") || !self.tracks_classes(who, ts) {
+        // why: the empty check comes FIRST -- `tracks_classes` reaches into
+        // the entity table, and asking it about a name a line said nothing
+        // about is a side effect, not a lookup
+        if classes.is_empty() || !self.tracks_classes(who, ts) {
             return;
         }
-        self.cut_ally_chain_if_absent(ts, who);
+        self.record_class_evidence(ts, who, classes);
+    }
+
+    /// why: an ability ACTIVATION is itself proof of a player -- no mob
+    /// activates a poison or a discipline -- so this gate is only the pet
+    /// exclusion (C9/P7), looser than `tracks_classes`. The one deliberate
+    /// exception to the funnel's own gate, stated here instead of restated
+    /// at the call site.
+    fn note_class_evidence_unproven(&mut self, ts: Millis, who: &str, classes: &[String]) {
+        if classes.is_empty() || self.is_pet(who) {
+            return;
+        }
+        self.record_class_evidence(ts, who, classes);
+    }
+
+    /// why: ONE way class evidence reaches the detector, for you and for
+    /// every ally alike -- this used to be restated at 13 call sites, each
+    /// re-deriving the unit and its own guards, and only the ally path was
+    /// funnelled at all
+    fn record_class_evidence(&mut self, ts: Millis, who: &str, classes: &[String]) {
+        if classes.is_empty() {
+            return;
+        }
+        // why: an ally's chain is cut when they have been absent; you are
+        // never absent from your own log
+        if !who.eq_ignore_ascii_case("You") {
+            self.cut_ally_chain_if_absent(ts, who);
+        }
         let sym = self.sym(who).0;
         let unit = self.units.current();
         self.classes.observe_cast(sym, unit, classes);
@@ -2143,12 +2165,7 @@ impl Ingest {
                 // shows another player's own AA gain) -- real, curated
                 // class data from the wiki scrape (aadata.rs's own
                 // `category` field), never wired into classdetect before
-                let you = self.sym("You");
-                self.classes.observe_cast(
-                    you.0,
-                    self.units.current(),
-                    &crate::aadata::classes_for(&name),
-                );
+                self.note_class_evidence(ts, "You", &crate::aadata::classes_for(&name));
                 // why: the aura's on/off is an AA toggle -- see note_symphonic_aura
                 if let Some(state) = name.strip_prefix("Symphonic Aura: ") {
                     self.note_symphonic_aura(ts, state == "Enabled");
@@ -2228,17 +2245,15 @@ impl Ingest {
                 // own doc, unlike classdetect's pet exclusion, a pet's real
                 // cast is real information here, not misleading class evidence
                 self.recent_casts.push(ts, caster.0, base.to_string());
+                self.note_class_evidence(ts, &who, class_evidence_for_cast(&spell));
                 if self.tracks_classes(&who, ts) {
-                    self.classes.observe_cast(
-                        caster.0,
-                        self.units.current(),
-                        class_evidence_for_cast(&spell),
-                    );
                     self.note_implied_level(ts, &who, &spell);
                 }
                 if who == "You" {
                     let evidence = class_evidence_for_cast(&spell);
-                    self.note_self_class(ts, evidence);
+                    // why: the evidence above is already in the open chain,
+                    // so the detector's own count answers S1
+                    self.note_self_class(ts);
                     // why: L8's spell floor. The empty-evidence check IS
                     // the spellbook guard: class_evidence_for_cast drops a
                     // bare cast of a spell an item can click, and keeps a
@@ -2299,12 +2314,7 @@ impl Ingest {
                 // why: no resolve() call -- "blocked by stacking conflict"
                 // isn't the same failure as Resisted (a resist roll), would
                 // skew resist-rate stats; no outcome variant fits, stays out entirely
-                let you = self.sym("You").0;
-                self.classes.observe_cast(
-                    you,
-                    self.units.current(),
-                    class_evidence_for(base_spell_name(&spell)),
-                );
+                self.note_class_evidence(ts, "You", class_evidence_for(base_spell_name(&spell)));
                 if let Some(blocker) = blocker {
                     self.record_effect_ping(ts, &target, &blocker);
                 }
@@ -2315,12 +2325,7 @@ impl Ingest {
                 // and spell are both named directly in the line, not
                 // inferred), same direct-push shape CastResisted's own
                 // handler already uses, just landed: true this time.
-                let you = self.sym("You").0;
-                self.classes.observe_cast(
-                    you,
-                    self.units.current(),
-                    class_evidence_for(base_spell_name(&spell)),
-                );
+                self.note_class_evidence(ts, "You", class_evidence_for(base_spell_name(&spell)));
                 let resolved = self.resolve_name(&who);
                 let sym = self.sym(&resolved).0;
                 self.effects
@@ -2330,6 +2335,7 @@ impl Ingest {
                 // other real landing confirmation (record_damage's
                 // tag::SPELL branch, Heal, confirm_spell_effect)
                 let spell_sym = self.store.sym(base_spell_name(&spell)).0;
+                let you = self.sym("You").0;
                 self.casts.confirm_landed(ts, you, spell_sym);
             }
             Action::StateEffect { target, text } => self.record_effect_ping(ts, &target, &text),
@@ -2337,37 +2343,27 @@ impl Ingest {
                 self.last_loc = Some((ts, x, y, z));
             }
             Action::AbilityActivated { who, ability } => {
-                let sym = self.sym(&who);
-                if !self.is_pet(&who) {
-                    self.classes.observe_cast(
-                        sym.0,
-                        self.units.current(),
-                        crate::classdata::classes_for(&ability),
-                    );
-                }
+                self.note_class_evidence_unproven(
+                    ts,
+                    &who,
+                    crate::classdata::classes_for(&ability),
+                );
                 self.record_effect_ping(ts, &who, &ability);
             }
             Action::PetSummon { owner } => self.note_pet_summon(ts, &owner),
             Action::Stance { stance } => {
-                let you = self.sym("You");
                 let pool = crate::stancedata::classes_for(&stance);
-                self.classes.observe_cast(you.0, self.units.current(), pool);
+                self.note_class_evidence(ts, "You", pool);
                 self.stance_pool = (!pool.is_empty()).then_some(pool);
             }
             Action::SkillUp { skill, level } => {
-                let you = self.sym("You");
-                self.classes.observe_cast(
-                    you.0,
-                    self.units.current(),
-                    crate::skilldata::classes_for(&skill),
-                );
+                self.note_class_evidence(ts, "You", crate::skilldata::classes_for(&skill));
                 // why: log order -- the last "(N)" seen is the current level
                 self.skill_levels.insert(skill, (level, ts));
             }
             Action::Invocation { invocation } => {
-                let you = self.sym("You");
                 let pool = crate::invocationdata::classes_for(&invocation);
-                self.classes.observe_cast(you.0, self.units.current(), pool);
+                self.note_class_evidence(ts, "You", pool);
                 self.invocation_pool = (!pool.is_empty()).then_some(pool);
                 // why: SpellPerf judges hits against a same-invocation
                 // baseline -- the recite line is the only switch signal
@@ -3745,13 +3741,11 @@ impl Ingest {
         let Some(you) = self.store.names.get("You").map(|s| s.0) else {
             return;
         };
-        let chains = self.classes.chain_count(you);
-        if chains != self.you_chain_count {
-            // why: the first chain appearing is not a close
-            if self.you_chain_count != 0 {
-                self.stance_pool = None;
-            }
-            self.you_chain_count = chains;
+        // why: a chain closing (P5) means a swap went undetected, and the
+        // stance it carried is gone with it. The detector reports the
+        // event; this used to diff a polled chain count every unit.
+        if self.classes.take_chain_closed(you) {
+            self.stance_pool = None;
         }
         let unit = self.units.current();
         if let Some(pool) = self.stance_pool {
@@ -3769,14 +3763,15 @@ impl Ingest {
     /// earliest instant the swap could have happened.
     fn note_loadout_change(&mut self, at: Millis) {
         self.self_buffs.retain(|_, (landed, _)| *landed >= at);
-        self.self_class_evidence.clear();
         self.symphonic_aura = false;
         // why: P8 -- the chain closes here; the fight still counted as
         // open (backfill only expires it on the next damage line) stays
         // with the old chain, the next unit starts the new one
         if let Some(you) = self.store.names.get("You").map(|s| s.0) {
             self.classes.close_chain(you, self.units.after_current());
-            self.you_chain_count = self.classes.chain_count(you);
+            // why: this close IS the swap being handled right here -- it
+            // must not come back as an undetected one on the next unit
+            self.classes.take_chain_closed(you);
         }
         // why: P10 -- a swap takes you out of every stance; the invocation stays
         self.stance_pool = None;
@@ -3795,15 +3790,13 @@ impl Ingest {
     /// why: exactly CLASS_COUNT classes at once -- a 4th distinct class
     /// in your own unambiguous casts means the set changed, i.e. a swap
     /// happened somewhere before this cast
-    fn note_self_class(&mut self, ts: Millis, classes: &[String]) {
-        let [class] = classes else { return };
-        if self.self_class_evidence.contains(class) {
+    fn note_self_class(&mut self, ts: Millis) {
+        let Some(you) = self.store.names.get("You").map(|s| s.0) else {
             return;
-        }
-        if self.self_class_evidence.len() >= eqlp_session::classdetect::CLASS_COUNT {
+        };
+        if self.classes.own_classes_seen(you) > eqlp_session::classdetect::CLASS_COUNT {
             self.note_loadout_change(ts);
         }
-        self.self_class_evidence.insert(class.clone());
     }
 
     /// why: 3+ spells granted at once with no level-up just before is a
@@ -8284,8 +8277,14 @@ mod aa_evidence_tests {
         let lines: Vec<&[u8]> = vec![b"[Fri Aug 07 00:25:51 2026] You have gained the ability \"Not A Real Ability\" at a cost of 0 ability points."];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let you = ing.store.names.get("You").expect("You should be interned");
-        assert!(ing.classes.configurations_of(you.0).is_empty());
+        // why: nothing to record means nothing interned either -- the
+        // evidence funnel no longer interns "You" just to drop the pool
+        let recorded = ing
+            .store
+            .names
+            .get("You")
+            .is_some_and(|you| !ing.classes.configurations_of(you.0).is_empty());
+        assert!(!recorded);
     }
 }
 

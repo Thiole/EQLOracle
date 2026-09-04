@@ -1,4 +1,4 @@
-//! why: skill -> class lookup, same pattern as `classdata.rs`/`stancedata.rs`
+//! why: skill -> class lookup, one of the packs `classpool.rs` serves
 //!
 //! Only skills purely class-gated count as evidence. Tracking included
 //! (Bard/Druid/Ranger only). Forage deliberately excluded -- Iksar/Wood
@@ -7,21 +7,25 @@
 //! (2026-09-03); multi-class pools (Kick, Bash, Sneak ...) stay out
 //! until every class page can be checked -- 11 have no skill section,
 //! and an incomplete pool would falsely eliminate a class.
-
-use std::collections::HashMap;
+use crate::classpool::{self, ClassPool};
 use std::sync::OnceLock;
 
-const SKILL_DATA_JSON: &str = include_str!("../../../packs/skill_classes.json");
+static POOL: OnceLock<ClassPool> = OnceLock::new();
 
-static SKILL_DATA: OnceLock<HashMap<String, Vec<String>>> = OnceLock::new();
+fn pool() -> &'static ClassPool {
+    POOL.get_or_init(|| {
+        ClassPool::load(
+            "skill_classes.json",
+            include_str!("../../../packs/skill_classes.json"),
+            classpool::ci,
+            &[],
+        )
+    })
+}
 
-/// why: empty means unknown skill, not zero eligible classes
+/// why: empty means unknown name, not zero eligible classes
 pub fn classes_for(skill: &str) -> &'static [String] {
-    let map = SKILL_DATA.get_or_init(|| {
-        serde_json::from_str(SKILL_DATA_JSON)
-            .unwrap_or_else(|e| panic!("packs/skill_classes.json failed to parse: {e}"))
-    });
-    map.get(skill).map(|v| v.as_slice()).unwrap_or(&[])
+    pool().classes_for(skill)
 }
 
 #[cfg(test)]

@@ -125,11 +125,6 @@ pub fn for_target(app: &AppHandle, target: &str) -> Vec<ParseRecord> {
     filter_for_target(all(app), target)
 }
 
-/// Only confirmed kills against `target`.
-pub fn confirmed_kills_for_target(app: &AppHandle, target: &str) -> Vec<ParseRecord> {
-    only_confirmed_kills(for_target(app, target))
-}
-
 /// why: get_mob_history's view; output: target-filtered, newest first
 pub fn mob_history_view(
     records: Vec<ParseRecord>,

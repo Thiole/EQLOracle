@@ -1088,12 +1088,7 @@ name = "eqlp-store"
 version = "0.15.0"
 dependencies = [
  "eqlp-source",
- "eqlp-testkit",
 ]
-
-[[package]]
-name = "eqlp-testkit"
-version = "0.15.0"
 
 [[package]]
 name = "equivalent"
