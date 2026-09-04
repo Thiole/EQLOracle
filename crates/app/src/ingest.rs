@@ -1267,6 +1267,10 @@ pub struct Ingest {
     /// saw them cast -- their own /who row beats it, but without one this
     /// is the only level an ally has. Keyed like the roster (fold case).
     pub implied_level: HashMap<String, u8>,
+    /// why: keep every row and ping instead of folding finished zones --
+    /// off in the app (see the zone cull), on for probes that analyse the
+    /// whole log after the fact
+    pub keep_full_history: bool,
     /// why: whose log this is, from the file name -- lets your own /who
     /// row apply to "You" instead of a stranger by the same name. The
     /// self model is the same model, just fed more (Spencer).
@@ -1438,6 +1442,7 @@ impl Default for Ingest {
             symphonic_aura: false,
             units: UnitTrack::default(),
             character: None,
+            keep_full_history: false,
             implied_level: HashMap::new(),
             stance_pool: None,
             invocation_pool: None,
@@ -2055,10 +2060,12 @@ impl Ingest {
                 // result -- see Store::compact_before. Idle fights are
                 // closed first: backfill only expires them on the next
                 // damage line, which may be a zone away.
-                self.encounters.expire(ts);
-                self.drain_closed();
-                self.store.compact_before(ts);
-                self.effects.cull_before(ts);
+                if !self.keep_full_history {
+                    self.encounters.expire(ts);
+                    self.drain_closed();
+                    self.store.compact_before(ts);
+                    self.effects.cull_before(ts);
+                }
                 if let Some(you) = self.store.names.get("You").map(|s| s.0) {
                     self.classes.freeze_closed(you);
                 }

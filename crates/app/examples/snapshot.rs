@@ -30,7 +30,11 @@ fn main() {
     let sess = eqlp_app::overview::session(&ing);
     println!(
         "session: mode={} duration={}m current_level={:?} gained={:?} xp/hr={:?}",
-        sess.mode, sess.session_duration_ms / 60000, sess.current_level, sess.levels_gained, sess.xp_pct_per_hour
+        sess.mode,
+        sess.session_duration_ms / 60000,
+        sess.current_level,
+        sess.levels_gained,
+        sess.xp_pct_per_hour
     );
     let kills = ing.store.encounters.iter().filter(|e| e.slain).count();
     println!(
