@@ -66,8 +66,24 @@ fn main() {
             println!("  {c:16} {l}");
         }
     }
+    // why: optional 3rd arg -- dump the chain as the row reads it at one
+    // instant, weights included, to trace a class the row should not hold
+    if let Some(at) = args.next().and_then(|a| a.parse::<i64>().ok()) {
+        if let Some(sym) = ing.store.names.get(&name) {
+            let unit = ing.unit_at(at);
+            println!("\nchain at {at} (unit {unit:?}):");
+            if let Some(v) = ing.classes.chain_at(sym.0, unit) {
+                println!("  first={:?} last={:?} closed={:?}", v.first, v.last, v.closed);
+                println!("  confirmed={:?} prior={:?}", v.confirmed, v.prior);
+                println!("  candidates={:?} leading={:?}", v.candidates, v.leading);
+                println!("  who={:?} units={} conflicts={}", v.who, v.units, v.conflicts);
+                println!("  floors={:?} max_ding={:?}", v.floors, v.max_ding);
+                println!("  weights={:?}", v.weights);
+            }
+        }
+    }
     if let Some(sym) = ing.store.names.get(&name) {
-        for c in ["Necromancer", "Shadow Knight", "Bard", "Ranger"] {
+        for c in ["Necromancer", "Shadow Knight", "Bard", "Paladin"] {
             let trail = ing.classes.level_trail(sym.0, c);
             println!("\n{c} trail ({} stamps):", trail.len());
             for (u, l, t) in trail {
