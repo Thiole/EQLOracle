@@ -136,6 +136,72 @@ const MANA_USERS: &[&str] = &[
 ];
 const PURE_CASTERS: &[&str] = &["Enchanter", "Wizard", "Magician", "Necromancer"];
 
+/// why: the three shapes a class plays as, for weighing how much a buff
+/// kind is worth to it -- a pure caster wants mana, a melee wants haste,
+/// a priest wants both
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Shape {
+    PureCaster,
+    Priest,
+    Melee,
+}
+
+const PRIESTS: &[&str] = &["Cleric", "Druid", "Shaman"];
+
+fn shape_of(class: &str) -> Shape {
+    if PURE_CASTERS.contains(&class) {
+        Shape::PureCaster
+    } else if PRIESTS.contains(&class) {
+        Shape::Priest
+    } else {
+        Shape::Melee
+    }
+}
+
+/// why: Spencer -- "rank by how relevant it is to my class". A kind's
+/// worth is the most any one of your three classes gets out of it, so a
+/// trio with a melee in it still ranks haste high while its caster half
+/// ranks mana regen high. Numbers are an ordering, not a simulation.
+pub fn relevance(kind: BuffKind, my_classes: &[String]) -> u32 {
+    if !benefits(kind, my_classes) {
+        return 0;
+    }
+    let weight = |shape: Shape| -> u32 {
+        match (kind, shape) {
+            (BuffKind::ManaRegen, Shape::PureCaster) => 100,
+            (BuffKind::ManaRegen, Shape::Priest) => 95,
+            (BuffKind::ManaRegen, Shape::Melee) => 55,
+            (BuffKind::Haste, Shape::Melee) => 100,
+            (BuffKind::Haste, _) => 20,
+            (BuffKind::Hp, Shape::Melee) => 85,
+            (BuffKind::Hp, _) => 70,
+            (BuffKind::Ac, Shape::Melee) => 80,
+            (BuffKind::Ac, _) => 55,
+            (BuffKind::Attack, Shape::Melee) => 75,
+            (BuffKind::Attack, _) => 15,
+            (BuffKind::Strength, Shape::Melee) => 70,
+            (BuffKind::Strength, _) => 15,
+            (BuffKind::HpRegen, Shape::Melee) => 60,
+            (BuffKind::HpRegen, _) => 50,
+            (BuffKind::Resist, _) => 50,
+            (BuffKind::DamageShield, Shape::Melee) => 55,
+            (BuffKind::DamageShield, _) => 30,
+            (BuffKind::Dexterity, Shape::Melee) => 45,
+            (BuffKind::Dexterity, _) => 15,
+            (BuffKind::Stamina, Shape::Melee) => 40,
+            (BuffKind::Stamina, _) => 30,
+            (BuffKind::Agility, Shape::Melee) => 35,
+            (BuffKind::Agility, _) => 25,
+            (BuffKind::Movement, _) => 25,
+        }
+    };
+    // why: summed over your three, not the max of them -- a kind two of
+    // your classes want beats one only the third wants (ENC/SHD/WIZ:
+    // mana regen 255 over haste 140), which is what "relevant to my
+    // class combo" means
+    my_classes.iter().map(|c| weight(shape_of(c))).sum()
+}
+
 /// why: which kinds YOUR combo gets anything out of -- mana regen needs
 /// a mana user, haste/attack/STR/DEX a melee class; the rest help everyone
 pub fn benefits(kind: BuffKind, my_classes: &[String]) -> bool {
@@ -168,6 +234,9 @@ pub struct BuffRowDto {
     pub label: &'static str,
     /// why: on you right now -- the spell's name when it is
     pub active: Option<String>,
+    /// why: how much this kind is worth to your own classes -- rows are
+    /// ordered by it, most relevant first (see `relevance`)
+    pub relevance: u32,
     /// why: every line of this kind the party could cast, best first --
     /// what is assumed missing when nothing of the kind is on you
     pub lines: Vec<BuffLineDto>,
@@ -318,7 +387,7 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         }
     }
 
-    let rows: Vec<BuffRowDto> = best
+    let mut rows: Vec<BuffRowDto> = best
         .into_iter()
         .map(|(kind, by_line)| {
             let mut lines: Vec<(u32, BuffLineDto)> = by_line
@@ -341,10 +410,18 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
                 kind,
                 label: kind.label(),
                 active: active_by_kind.get(&kind).cloned(),
+                relevance: relevance(kind, &my_classes),
                 lines: lines.into_iter().map(|(_, l)| l).collect(),
             }
         })
         .collect();
+    // why: most relevant to your own classes first -- what is missing at
+    // the top is what actually costs you
+    rows.sort_by(|a, b| {
+        b.relevance
+            .cmp(&a.relevance)
+            .then_with(|| a.label.cmp(b.label))
+    });
     let good = rows.iter().all(|r| r.active.is_some());
     extra_active.sort();
     GroupBuffsDto {
@@ -392,6 +469,32 @@ mod tests {
         assert_eq!(line_key(clarity_ii), "Clarity");
         assert_eq!(base_name("Clarity II"), "Clarity");
         assert_eq!(base_name("Spirit of Wolf"), "Spirit of Wolf");
+    }
+
+    /// why: Spencer -- "rank by how relevant it is to my class". Your own
+    /// ENC/SHD/WIZ combo puts mana regen first and still ranks haste for
+    /// the Shadow Knight half; a pure melee combo inverts it
+    #[test]
+    fn kinds_rank_by_what_your_own_classes_get_out_of_them() {
+        let mine = vec![
+            "Enchanter".to_string(),
+            "Shadow Knight".to_string(),
+            "Wizard".to_string(),
+        ];
+        let r = |k| relevance(k, &mine);
+        assert!(r(BuffKind::ManaRegen) > r(BuffKind::Haste));
+        assert!(r(BuffKind::Haste) > 0, "the SK half melees");
+        assert!(r(BuffKind::Hp) > r(BuffKind::Movement));
+
+        let melee = vec![
+            "Warrior".to_string(),
+            "Rogue".to_string(),
+            "Monk".to_string(),
+        ];
+        let m = |k| relevance(k, &melee);
+        assert_eq!(m(BuffKind::ManaRegen), 0, "no mana user in the trio");
+        assert!(m(BuffKind::Haste) > m(BuffKind::Hp));
+        assert!(m(BuffKind::Attack) > m(BuffKind::Agility));
     }
 
     #[test]

@@ -52,6 +52,8 @@ export interface BuffRowDto {
   label: string;
   /** why: the spell on you now, when one of this kind is */
   active: string | null;
+  /** why: how much this kind is worth to your own classes -- rows arrive ordered by it */
+  relevance: number;
   /** why: every line of this kind the party could cast, best first -- what is assumed missing */
   lines: BuffLineDto[];
 }
