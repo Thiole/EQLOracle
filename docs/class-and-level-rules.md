@@ -79,16 +79,22 @@ Code: `crates/session/src/classdetect.rs` (your classes),
 
 ## Allies
 
-- A1. An ally's classes come from votes: their cast lines, damage/heal
-  "by <spell>" lines, Quick Buff landings, class-only melee verbs
-  (Backstab, Frenzy, Shoot). Chains are per ally per stretch of activity.
-- A2. A chain ends on 5 minutes of silence, group leave/join, your zone
-  line, or their gate/teleport cast followed by silence. The next chain
-  starts with a soft prior of 0.4 from the old one.
-- A3. A /who line with classes pins that chain's classes and level. /anon
-  hides classes and pins nothing; inference carries on.
-- A4. "Confirmed" for the Group Buff Tracker means the /who pin or 12+
-  votes (`CONFIRMED_VOTES`). Pets are excluded.
+There is ONE class model (P1-P10), for you and for every tracked player.
+Your own log simply feeds it more kinds of evidence about you. Only the
+rules below are ally-specific, and they only decide where a chain breaks.
+
+- A1. An ally's evidence is their cast lines, damage/heal "by <spell>"
+  lines, Quick Buff landings, and class-only melee verbs. It goes into
+  the same detector, keyed by the ally, in the encounter it happened in.
+- A2. Their chain is cut by 5 minutes of silence, a group leave or join,
+  your own zone line, or a gate they cast and went quiet after. The
+  detector's own carry rules (P4) then apply.
+- A3. A /who row is ground truth for the chain it printed in: its trio
+  wins over inference and its level floors every class in it. /anon
+  prints no classes and pins nothing. Your OWN row (matched against the
+  log's character name) lands on "You", so it reaches every surface.
+- A4. "Confirmed" means a /who row, or a class that cleared the
+  detector's own bar (P2). Pets are excluded and never get a chain.
 
 ## Your level
 

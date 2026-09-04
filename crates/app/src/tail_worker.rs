@@ -172,13 +172,19 @@ fn run(
             last_rescan = now;
             if let Some(newest) = newest_log_in(&log_dir) {
                 if target.as_ref() != Some(&newest) {
+                    // why: whose log this is -- read before the move
+                    let character = identity_from_filename(&newest).map(|(c, _)| c);
                     target = Some(newest.clone());
                     // why: "watch live" and "browse past fights" are the same
                     // tail, just before/after catching up
                     tail = Some(Tail::from_start(newest));
                     framer = Framer::default();
                     backfilling = true;
-                    *ingest.lock_recover() = Ingest::default();
+                    let mut fresh = Ingest::default();
+                    // why: whose log this is -- your own /who row then
+                    // lands on "You" like every other self observation
+                    fresh.character = character;
+                    *ingest.lock_recover() = fresh;
                     switched = true;
                 }
             }

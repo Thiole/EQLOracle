@@ -2,8 +2,8 @@
 //! party's confirmed classes can cast on you, that benefits your own
 //! class combo, is currently on you; else the missing ones and who could
 //! cast them. Party = the group tracker's current roster (pets excluded);
-//! a class is confirmed by a /who row in this chain or a dozen combat
-//! votes; a level comes from /who only (unknown level = any rank).
+//! a class is confirmed by a /who row in this chain or by the class
+//! detector's own bar; a level comes from /who only (unknown = any rank).
 
 use crate::ingest::Ingest;
 use crate::spelldata::{spells, Spell};
@@ -262,10 +262,6 @@ pub struct GroupBuffsDto {
     pub extra_active: Vec<String>,
 }
 
-/// why: a class counts as confirmed with this many combat votes, same
-/// bar the ally table turns green at
-const CONFIRMED_VOTES: u32 = 12;
-
 /// why: "Clarity II" and "Clarity" are one line -- a trailing roman
 /// numeral is a rank, same rule the spellbook's own line grouping uses
 fn base_name(name: &str) -> &str {
@@ -318,12 +314,15 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         if name.eq_ignore_ascii_case("You") || ing.effective_kind(&name, now) == Kind::Pet {
             continue;
         }
-        let (classes, level, confirmed) = match ing.ally_who(&name, now) {
-            Some((lvl, trio)) => (trio.to_vec(), Some(lvl), true),
-            None => {
-                let (c, votes) = ing.ally_classes(&name, now);
-                (c, None, votes >= CONFIRMED_VOTES)
-            }
+        // why: one class model -- a /who row is ground truth (trio and
+        // level), else the chain's own confirmed classes; a class still
+        // short of the bar is a guess and does not decide a buff
+        let (classes, level, confirmed) = match ing.class_chain(&name, now) {
+            Some(view) => match view.who.clone() {
+                Some((lvl, trio)) => (trio, Some(lvl), true),
+                None => (view.confirmed.clone(), None, !view.confirmed.is_empty()),
+            },
+            None => (Vec::new(), None, false),
         };
         party.push(PartyMemberDto {
             name,

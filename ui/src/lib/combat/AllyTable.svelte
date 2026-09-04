@@ -19,7 +19,7 @@
     <Table.Header>
       <Table.Row>
         <Table.Head>name</Table.Head>
-        <Table.Head title="green: a /who row from this presence, or a dozen combat votes; yellow: inferred from fewer. Resets when they leave, or you zone.">class</Table.Head>
+        <Table.Head title="one class model for you and for them: a /who row is ground truth, otherwise evidence per encounter chain. Green once a class clears the bar, yellow while it is still a guess. A chain restarts when they leave, or you zone.">class</Table.Head>
         <Table.Head class="text-right">total</Table.Head>
         <Table.Head class="text-right">%</Table.Head>
         <Table.Head class="text-right">dps</Table.Head>
@@ -52,8 +52,8 @@
                votes back it, yellow with a "?" before. Both reset when
                the ally leaves or you zone. -->
           <Table.Cell class="font-mono text-[11px] tabular-nums {a.class_confirmed || a.class_evidence >= 12 ? 'text-good' : 'text-caution'}"
-            title={a.class_source === 'self' ? `your own class detection${a.level != null ? ` (level ${a.level})` : ''}` : a.class_confirmed ? `confirmed by /who this presence (level ${a.level})` : a.classes.length ? `inferred from ${a.class_evidence} cast${a.class_evidence === 1 ? '' : 's'}/swing${a.class_evidence === 1 ? '' : 's'}` : 'no class evidence yet'}>
-            {#if a.class_source === 'self'}
+            title={a.class_source === 'who' ? `a /who row this presence (level ${a.level})` : a.classes.length ? `${a.class_source === 'self' ? 'your own' : 'their'} class detection -- ${a.class_evidence} encounter${a.class_evidence === 1 ? '' : 's'} of evidence in this chain${a.class_confirmed ? '' : ', still short of the bar'}` : 'no class evidence yet'}>
+            {#if a.class_source !== 'who'}
               <!-- why: docs P9 -- a prior is dimmed, an open slot shows "?",
                    a running conflict adds " ?", a closed chain " ??" -->
               {#each a.classes as c, i (c)}{i ? '/' : ''}<span class={a.class_prior.includes(c) ? 'opacity-60' : ''} title={a.class_prior.includes(c) ? `${c}: carried as a prior, reconfirming` : c}>{abbr(c)}</span>{/each}{#if a.classes.length < 3}{a.classes.length ? '/' : ''}<span class="text-caution" title={a.class_candidates.length ? `open slot, between: ${a.class_candidates.join(', ')}` : 'open slot, no candidates yet'}>?</span>{/if}{#if a.class_chain_end === '??'}<span class="text-bad" title="chain closed by contradiction"> ??</span>{:else if a.class_conflicts}<span class="text-caution" title="{a.class_conflicts} conflicting encounter{a.class_conflicts === 1 ? '' : 's'} running"> ?</span>{/if}{a.level != null ? ` ${a.level}` : ''}
@@ -71,7 +71,7 @@
           <Table.Row>
             <Table.Cell colspan={7} class="bg-muted/40 p-0">
               <div class="grid grid-cols-2 gap-3 p-3">
-                {#if a.class_source === 'self' && (a.classes.length < 3 || a.class_prior.length || a.class_conflicts || a.class_chain_end)}
+                {#if a.class_source !== 'who' && (a.classes.length < 3 || a.class_prior.length || a.class_conflicts || a.class_chain_end)}
                   <!-- why: Q34 -- what the open slot is stuck between, and the chain's state -->
                   <div class="col-span-2 text-[11px]">
                     <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">class detection</h4>

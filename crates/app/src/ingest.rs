@@ -115,31 +115,18 @@ const PULSE_WINDOW_MS: Millis = 15_000;
 const STALE_ENCOUNTER_MS: Millis = 5 * 60 * 1000;
 /// why: the most one tick may advance the log clock -- see tick
 const MAX_TICK_ELAPSED_MS: Millis = 2_000;
-/// why: one stretch of an ally's presence -- consecutive fights with no
-/// gap past ALLY_ABSENCE_MS, no group leave/join, no zone line of yours.
-/// A class can't change inside one; it can only change in a gap. So
-/// evidence accumulates per chain, and a past fight reads the chain
-/// that contained it ("shouldn't it be done per encounter chain?").
-#[derive(Debug, Clone, Default)]
-pub struct AllyChain {
-    pub start: Millis,
-    pub last: Millis,
-    pub scores: HashMap<String, f32>,
-    pub votes: u32,
-    /// why: a /who row that printed inside this chain -- confirmed trio
-    pub who: Option<(u8, Vec<String>)>,
-}
-/// why: ally (lowercased) -> chains, oldest first
-pub type AllyChains = HashMap<String, Vec<AllyChain>>;
+/// why: when each ally was last seen acting -- one stretch of presence is
+/// consecutive activity with no gap past ALLY_ABSENCE_MS, no group
+/// leave/join, no zone line of yours, and their classes can only change
+/// in such a gap. The classes themselves live in the one class detector,
+/// the same model your own do; this only says where a chain breaks.
+pub type AllyLastSeen = HashMap<String, Millis>;
 /// why: an ally silent this long has left -- their class votes start over
 /// when they act again (Brutall left Lower Guk mid-session and came back
 /// a different trio, ~15 levels lower; the others never zoned)
 const ALLY_ABSENCE_MS: Millis = 5 * 60 * 1000;
 /// why: an ally still acting this soon after a gate cast never left
 const GATE_SETTLE_MS: Millis = 8_000;
-/// why: the previous chain's scores seed the next as a prior summing to
-/// this -- less than one fresh vote, so one fresh vote already leads
-const CHAIN_PRIOR_WEIGHT: f32 = 0.4;
 /// why: 30 minutes with no party action ends a session -- see note_party_action
 const SESSION_GAP_MS: Millis = 30 * 60 * 1000;
 
@@ -1261,7 +1248,7 @@ pub struct Ingest {
     /// 100% unreliable" -- dropped on your zone line, their absence, or
     /// a group leave/join, exactly like the combat votes.
     /// why: superseded by ally_chains' `who`; kept out of the struct
-    pub ally_chains: AllyChains,
+    pub ally_last_seen: AllyLastSeen,
     /// why: a group leave/join cuts the ally's chain at this ts
     ally_cuts: HashMap<String, Millis>,
     /// why: beneficial spells currently on YOU -- spell -> (landed at,
@@ -1276,6 +1263,10 @@ pub struct Ingest {
     last_level_up: Option<Millis>,
     /// why: evidence units for class detection -- see UnitTrack
     pub units: UnitTrack,
+    /// why: whose log this is, from the file name -- lets your own /who
+    /// row apply to "You" instead of a stranger by the same name. The
+    /// self model is the same model, just fed more (Spencer).
+    pub character: Option<String>,
     /// why: docs P10 -- the stance and invocation in effect are states,
     /// evidence in every unit until changed; a swap drops every stance
     /// (game rule), the invocation survives it
@@ -1434,7 +1425,7 @@ impl Default for Ingest {
             entities_by_enc: HashMap::new(),
             observed_drops: HashMap::new(),
             observed_zone_drops: HashMap::new(),
-            ally_chains: HashMap::new(),
+            ally_last_seen: HashMap::new(),
             ally_cuts: HashMap::new(),
             self_buffs: HashMap::new(),
             self_class_evidence: Default::default(),
@@ -1442,6 +1433,7 @@ impl Default for Ingest {
             last_level_up: None,
             symphonic_aura: false,
             units: UnitTrack::default(),
+            character: None,
             stance_pool: None,
             invocation_pool: None,
             you_chain_count: 0,
@@ -1538,10 +1530,12 @@ impl Ingest {
         }
     }
 
-    /// why: the chain this action belongs to -- the ally's last chain when
-    /// nothing cut it (gap past ALLY_ABSENCE_MS, a group leave/join cut,
-    /// your own zone line since its last action), else a fresh one
-    fn ally_chain_at(&mut self, ts: Millis, who: &str) -> &mut AllyChain {
+    /// why: the presence rules that cut an ally's evidence chain -- a
+    /// gap past ALLY_ABSENCE_MS, a group leave or join, your own zone
+    /// line, or a gate they cast and went quiet after. The chain itself
+    /// is the class detector's; this only decides where it breaks, so an
+    /// ally and you run through one model with one set of rules.
+    fn cut_ally_chain_if_absent(&mut self, ts: Millis, who: &str) {
         let key = who.to_lowercase();
         // why: a gate they cast and then went quiet after IS their zone
         // line -- see ally_pending_leave
@@ -1551,66 +1545,36 @@ impl Ingest {
                 *cut = (*cut).max(gate_ts);
             }
         }
+        let last = self.ally_last_seen.get(&key).copied();
         let cut = self.ally_cuts.get(&key).copied();
         let zoned = self.last_zone_enter_ms;
-        let chains = self.ally_chains.entry(key).or_default();
-        let fresh = match chains.last() {
-            None => true,
-            Some(c) => {
-                ts - c.last > ALLY_ABSENCE_MS
-                    // why: >= -- a gate cast votes (updating `last`) at the
-                    // very timestamp its cut is recorded at
-                    || cut.is_some_and(|t| t >= c.last)
-                    || zoned.is_some_and(|z| z > c.last)
-            }
-        };
-        if fresh {
-            // why: SOFT -- "it's possible they are the same, but not
-            // everything is locked in": the new chain starts from the old
-            // one's scores scaled to a weak prior, so the guess carries,
-            // while the vote count starts at zero and the "?" stays until
-            // fresh evidence confirms or overturns it
-            // why: normalized to a fixed small weight -- a long old chain
-            // must not outweigh a couple of fresh votes
-            let prior: HashMap<String, f32> = chains
-                .last()
-                .map(|c| {
-                    let total: f32 = c.scores.values().sum();
-                    if total <= 0.0 {
-                        return HashMap::new();
-                    }
-                    c.scores
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v / total * CHAIN_PRIOR_WEIGHT))
-                        .collect()
-                })
-                .unwrap_or_default();
-            chains.push(AllyChain {
-                start: ts,
-                last: ts,
-                scores: prior,
-                ..Default::default()
-            });
+        let stale = last.is_some_and(|l| {
+            ts - l > ALLY_ABSENCE_MS
+                // why: >= -- a gate cast is evidence at the very
+                // timestamp its own cut is recorded at
+                || cut.is_some_and(|t| t >= l)
+                || zoned.is_some_and(|z| z > l)
+        });
+        self.ally_last_seen.insert(key, ts.max(last.unwrap_or(ts)));
+        if stale {
+            let sym = self.sym(who).0;
+            let unit = self.units.current();
+            self.classes.close_chain(sym, unit);
         }
-        let c = chains.last_mut().expect("just pushed or present");
-        if ts > c.last {
-            c.last = ts;
-        }
-        c
     }
 
-    /// why: one vote split across every class that could have done it --
-    /// see AllyChain. An unknown spell (empty set) votes for nothing.
-    fn vote_ally_classes(&mut self, ts: Millis, who: &str, classes: &[String]) {
-        if classes.is_empty() {
+    /// why: one class-evidence line about someone who is not you -- their
+    /// cast, a damage or heal line naming the spell, a class-only melee
+    /// verb, a Quick Buff landing. Feeds the same detector your own
+    /// evidence does; your log simply carries more kinds of it about you.
+    fn note_class_evidence(&mut self, ts: Millis, who: &str, classes: &[String]) {
+        if classes.is_empty() || who.eq_ignore_ascii_case("You") || !self.tracks_classes(who, ts) {
             return;
         }
-        let share = 1.0 / classes.len() as f32;
-        let c = self.ally_chain_at(ts, who);
-        for class in classes {
-            *c.scores.entry(class.clone()).or_insert(0.0) += share;
-        }
-        c.votes += 1;
+        self.cut_ally_chain_if_absent(ts, who);
+        let sym = self.sym(who).0;
+        let unit = self.units.current();
+        self.classes.observe_cast(sym, unit, classes);
     }
 
     /// why: an ally began a spell that moves the caster -- a landing in the
@@ -1628,11 +1592,27 @@ impl Ingest {
         }
     }
 
-    /// why: a /who row printed -- confirms the trio for the chain it
-    /// lands in ("in the instant it's cast it confirms")
+    /// why: a /who row printed -- its trio and level are ground truth
+    /// for the chain it lands in ("in the instant it's cast it confirms")
     fn note_ally_who(&mut self, ts: Millis, who: &str, level: u8, trio: Vec<String>) {
-        let c = self.ally_chain_at(ts, who);
-        c.who = Some((level, trio));
+        // why: your own row in a /who is about YOU -- the detector knows
+        // you as "You", not by character name
+        let who = if self
+            .character
+            .as_deref()
+            .is_some_and(|c| c.eq_ignore_ascii_case(who))
+        {
+            "You"
+        } else {
+            who
+        };
+        // why: a /who row is proof of a real player, so they earn a chain
+        // even before they act
+        self.encounters.entities.note_player_channel(who);
+        self.cut_ally_chain_if_absent(ts, who);
+        let sym = self.sym(who).0;
+        let unit = self.units.current();
+        self.classes.observe_who(sym, unit, level, trio);
     }
 
     /// why: the ally left or joined the group -- the chain is cut here;
@@ -1641,17 +1621,6 @@ impl Ingest {
         self.ally_cuts.insert(who.to_lowercase(), ts);
     }
 
-    /// why: the chain covering `at` -- the last chain that started no
-    /// later than `at` (a fight's own time reads the presence it was in)
-    fn ally_chain_covering(&self, who: &str, at: Millis) -> Option<&AllyChain> {
-        self.ally_chains
-            .get(&who.to_lowercase())?
-            .iter()
-            .rev()
-            .find(|c| c.start <= at)
-    }
-
-    /// why: the /who trio for the chain covering `at`, if a row printed in it
     /// why: memory -- every NPC caster used to get its own class chain
     /// (12k entities, 51 MB on a real log); only You, proven players, and
     /// current group members are worth a chain. Pets never are.
@@ -1670,33 +1639,37 @@ impl Ingest {
         self.units.at(at)
     }
 
-    pub fn ally_who(&self, who: &str, at: Millis) -> Option<(u8, &[String])> {
-        self.ally_chain_covering(who, at)?
-            .who
-            .as_ref()
-            .map(|(l, trio)| (*l, trio.as_slice()))
+    /// why: the class chain covering `at` for anyone the app tracks --
+    /// one accessor, one model; callers read what they need from it
+    pub fn class_chain(
+        &self,
+        who: &str,
+        at: Millis,
+    ) -> Option<eqlp_session::classdetect::ChainView> {
+        let sym = self.store.names.get(who)?;
+        self.classes.chain_at(sym.0, self.unit_at(at))
     }
 
-    /// why: the ally's inferred classes in the chain covering `at` -- the
-    /// top scorers, at most three, each within a third of the leader (a
-    /// class that only ever shared votes with the real ones drops out),
-    /// plus the evidence count
+    /// why: the /who row for the chain covering `at`, if one printed in it
+    pub fn ally_who(&self, who: &str, at: Millis) -> Option<(u8, Vec<String>)> {
+        self.class_chain(who, at)?.who
+    }
+
+    /// why: their classes as of `at` -- confirmed first, then anything
+    /// carried as a prior, plus how many encounters of evidence back it
     pub fn ally_classes(&self, who: &str, at: Millis) -> (Vec<String>, u32) {
-        let Some(c) = self.ally_chain_covering(who, at) else {
+        let Some(v) = self.class_chain(who, at) else {
             return (Vec::new(), 0);
         };
-        let mut v: Vec<(&String, f32)> = c.scores.iter().map(|(k, s)| (k, *s)).collect();
-        v.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        let Some(&(_, top)) = v.first() else {
-            return (Vec::new(), 0);
+        // why: a /who row wins; else what cleared the bar, else what the
+        // leading trios already agree on (a first sighting still answers,
+        // the caller shows it as unconfirmed)
+        let mut t = match v.who.as_ref() {
+            Some((_, trio)) => trio.clone(),
+            None => v.inferred(),
         };
-        let classes = v
-            .iter()
-            .take(3)
-            .filter(|(_, s)| *s >= top / 3.0)
-            .map(|(k, _)| (*k).clone())
-            .collect();
-        (classes, c.votes)
+        t.sort();
+        (t, v.units as u32)
     }
 
     /// why: feeds the 30-minute gap rule -- every action by you or a
@@ -2126,7 +2099,7 @@ impl Ingest {
                 // AbilityActivated -- the first hook never fired)
                 if !who.eq_ignore_ascii_case("You") && !self.is_pet(&who) {
                     let classes = crate::classdata::classes_for(base_spell_name(&spell));
-                    self.vote_ally_classes(ts, &who, classes);
+                    self.note_class_evidence(ts, &who, classes);
                     // why: after the vote -- the gate cast itself is
                     // evidence for this chain, the leaving cuts the next
                     self.note_ally_leaving_cast(ts, &who, &spell);
@@ -2715,21 +2688,6 @@ impl Ingest {
         // store, and timeline all see one name
         let src = canonical_you(src);
         let dst = canonical_you(dst);
-        // why: an ally's class evidence from what they LAND -- a named
-        // spell maps to the classes that can cast it (the same table your
-        // own detection uses), a class-only melee verb to its class.
-        // Not for "You" (your own detection stays on casts/stances/AAs)
-        // and not for pets.
-        if !src.eq_ignore_ascii_case("You") && !self.is_pet(src) {
-            if tags & tag::SPELL != 0 {
-                let classes = crate::classdata::classes_for(base_spell_name(ability));
-                self.vote_ally_classes(ts, src, classes);
-            } else if tags & tag::MELEE != 0 {
-                if let Some(class) = class_only_melee(ability) {
-                    self.vote_ally_classes(ts, src, &[class.to_string()]);
-                }
-            }
-        }
         // why: the damage-path pet match -- see note_actor's own doc.
         // Actor side only: a brand-new name TAKING its first hit is a
         // mob being pulled, not a pet spawning
@@ -2754,6 +2712,23 @@ impl Ingest {
         self.note_party_action(ts, src);
         let enc = self.link(ts, src, dst);
         self.note_involvement(enc, src, dst, ts);
+        // why: an ally's class evidence from what they LAND -- a named
+        // spell maps to the classes that can cast it (the same table your
+        // own detection uses), a class-only melee verb to its class.
+        // Not for "You" (your own detection stays on casts/stances/AAs)
+        // and not for pets. AFTER note_involvement: the evidence belongs
+        // to the unit of the fight it happened in, and that call is what
+        // opens it.
+        if !src.eq_ignore_ascii_case("You") && !self.is_pet(src) {
+            if tags & tag::SPELL != 0 {
+                let classes = crate::classdata::classes_for(base_spell_name(ability));
+                self.note_class_evidence(ts, src, classes);
+            } else if tags & tag::MELEE != 0 {
+                if let Some(class) = class_only_melee(ability) {
+                    self.note_class_evidence(ts, src, &[class.to_string()]);
+                }
+            }
+        }
         let a = self.sym(src);
         let t = self.sym(dst);
         self.note_shared_target(ts, enc, src, t);
@@ -3932,7 +3907,7 @@ impl Ingest {
         if let Some(src) = source.as_deref() {
             if !src.eq_ignore_ascii_case("You") && !self.is_pet(src) {
                 let classes = crate::flavordata::classes_for_flavor(text);
-                self.vote_ally_classes(ts, src, classes);
+                self.note_class_evidence(ts, src, classes);
             }
         }
         self.effects
@@ -7773,6 +7748,54 @@ mod stance_evidence_tests {
         assert_eq!(after.abilities.len(), before.abilities.len());
         assert_eq!(after.abilities[0].hits, before.abilities[0].hits);
         assert_eq!(after.abilities[0].crits, before.abilities[0].crits);
+    }
+
+    /// why: one class model -- a /who row is evidence in the same
+    /// detector your own casts feed, so it reaches every surface, and
+    /// your own row (matched by the log's character name) lands on "You"
+    #[test]
+    fn a_who_row_confirms_the_trio_in_the_one_detector_for_an_ally_and_for_you() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest {
+            character: Some("Manipulator".to_string()),
+            ..Default::default()
+        };
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:00:00 2026] You hit a gnoll for 10 points of damage.",
+            b"[Tue Jul 28 15:00:00 2026] You have slain a gnoll!",
+            b"[Tue Jul 28 15:01:00 2026] [50 SHD/WIZ/ENC] Manipulator (Iksar) <Guild> ZONE: The Plane of Hate (hateplane)",
+            b"[Tue Jul 28 15:01:01 2026] [34 BRD/WIZ/ENC] Gnombre (Gnome)  ZONE: The Plane of Hate (hateplane)",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let now = ing.now_ms();
+
+        let you = ing.store.names.get("You").expect("You interned").0;
+        let mine = ing.classes.configuration_of_visit(you, ing.unit_at(now));
+        assert_eq!(
+            mine,
+            vec![
+                "Enchanter".to_string(),
+                "Shadow Knight".to_string(),
+                "Wizard".to_string()
+            ],
+            "your own /who row is your own detection"
+        );
+        assert_eq!(
+            ing.class_chain("You", now).and_then(|v| v.who).map(|w| w.0),
+            Some(50),
+            "and its level is ground truth"
+        );
+
+        let (theirs, _) = ing.ally_classes("Gnombre", now);
+        assert_eq!(
+            theirs,
+            vec![
+                "Bard".to_string(),
+                "Enchanter".to_string(),
+                "Wizard".to_string()
+            ]
+        );
+        assert_eq!(ing.ally_who("Gnombre", now).map(|w| w.0), Some(34));
     }
 
     #[test]

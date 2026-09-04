@@ -942,7 +942,10 @@ pub fn list_allies(
             // why: your own row shows your detected classes in the same
             // column -- the configuration your own detection resolved
             // for the fight's zone visit, else your best overall
-            let mut chain: Option<eqlp_session::classdetect::ChainView> = None;
+            // why: the chain the row's classes came from -- your own or an
+            // ally's, one model either way; the row shows its priors,
+            // candidates, conflicts and how it ended
+            let chain: Option<eqlp_session::classdetect::ChainView>;
             let (classes, class_confirmed, class_evidence, level, class_source) = if name
                 .eq_ignore_ascii_case("You")
             {
@@ -969,12 +972,21 @@ pub fn list_allies(
                 chain = you.and_then(|y| ing.classes.chain_at(y, ing.unit_at(class_at)));
                 (cfg, confirmed, 0, level, "self")
             } else {
-                match ing.ally_who(&name, class_at) {
-                    Some((lvl, trio)) => (trio.to_vec(), true, 0, Some(lvl), "who"),
-                    None => {
-                        let (c, n) = ing.ally_classes(&name, class_at);
-                        (c, false, n, None, "inferred")
-                    }
+                // why: the same class model your own row reads -- a /who
+                // row is ground truth, else the chain's own evidence, and
+                // the chain view carries the priors and candidates too
+                chain = ing.class_chain(&name, class_at);
+                match chain.as_ref() {
+                    Some(v) => match v.who.clone() {
+                        Some((lvl, trio)) => (trio, true, 0, Some(lvl), "who"),
+                        None => {
+                            let mut t = v.inferred();
+                            t.sort();
+                            let confirmed = !v.confirmed.is_empty();
+                            (t, confirmed, v.units as u32, None, "inferred")
+                        }
+                    },
+                    None => (Vec::new(), false, 0, None, "inferred"),
                 }
             };
             let class_chain_end = match chain.as_ref().and_then(|c| c.closed) {
@@ -2524,11 +2536,12 @@ mod live_meter_window_tests {
         );
     }
 
-    /// why: ally class inference is per ACTIVITY CHAIN -- Brutall left
+    /// why: ally class evidence is per ACTIVITY CHAIN -- Brutall left
     /// Lower Guk mid-session and came back as a different trio; the
     /// others never zoned. Silence past the absence window, a group
     /// leave/join, or your own zone line each start a new chain, and a
-    /// fight reads the chain that contained it.
+    /// fight reads the chain that contained it. One model with your own
+    /// classes; only the presence rules are ally-specific.
     #[test]
     fn an_allys_class_chain_breaks_on_silence_and_on_your_zone_line() {
         let ing = ingest_from(
@@ -2538,24 +2551,25 @@ mod live_meter_window_tests {
              [Tue Jul 28 15:20:00 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
         );
         let now = ing.now_ms();
-        let (classes, votes) = ing.ally_classes("Brutall", now);
-        assert_eq!(
-            votes, 1,
-            "the 19-minute silence started a new chain, got {classes:?}"
-        );
-        // why: soft -- the old wizard score carries as a weak prior, but
-        // the fresh vote leads
+        let fresh = ing.class_chain("Brutall", now).expect("a chain");
+        let old = ing
+            .class_chain("Brutall", now - 18 * 60_000)
+            .expect("a chain");
         assert_ne!(
-            classes.first().map(String::as_str),
-            Some("Wizard"),
-            "the fresh vote leads: {classes:?}"
+            fresh.first, old.first,
+            "the 19-minute silence started a new chain"
         );
-        let (old, old_votes) = ing.ally_classes("Brutall", now - 18 * 60_000);
-        assert_eq!(
-            old_votes, 2,
-            "the earlier fight reads its own chain: {old:?}"
+        assert!(
+            old.inferred().iter().any(|c| c == "Wizard"),
+            "the Ice Comet fight says Wizard: {:?}",
+            old.inferred()
         );
-        assert!(old.iter().any(|c| c == "Wizard"));
+        assert!(
+            !fresh.inferred().iter().any(|c| c == "Wizard"),
+            "the new chain starts from its own evidence: {:?}",
+            fresh.inferred()
+        );
+
         // why: your own zone line cuts every chain -- the new zone starts
         // clean, and the fight before it still reads the old chain
         let ing = ingest_from(
@@ -2566,26 +2580,18 @@ mod live_meter_window_tests {
              [Tue Jul 28 15:02:00 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
         );
         let now = ing.now_ms();
-        let (classes, votes) = ing.ally_classes("Brutall", now);
-        assert_eq!(
-            votes, 1,
-            "the new chain has only the Lifetap vote, got {classes:?}"
-        );
-        let (old, old_votes) = ing.ally_classes("Brutall", now - 60_000);
-        assert_eq!(
-            old_votes, 1,
-            "the old chain keeps its own vote, got {old:?}"
-        );
+        let fresh = ing.class_chain("Brutall", now).expect("a chain");
+        let old = ing.class_chain("Brutall", now - 60_000).expect("a chain");
+        assert_ne!(fresh.first, old.first, "your zone line cut the chain");
         assert!(
-            old.iter().any(|c| c == "Wizard"),
-            "a 'begins casting' line votes: {old:?}"
+            old.inferred().iter().any(|c| c == "Wizard"),
+            "a 'begins casting' line is evidence: {:?}",
+            old.inferred()
         );
     }
 
     /// why: THEIR zone line -- a gate they cast and went quiet after cuts
-    /// the chain; one they cast and kept acting after does not. And the
-    /// cut is soft: the old scores carry as a weak prior, the vote count
-    /// starts over, so the guess shows with a "?" until fresh evidence.
+    /// the chain; one they cast and kept acting after does not.
     #[test]
     fn an_allys_gate_cast_followed_by_silence_cuts_the_chain_softly() {
         let ing = ingest_from(
@@ -2594,23 +2600,28 @@ mod live_meter_window_tests {
              [Tue Jul 28 15:01:10 2026] Brutall begins casting Gate.\n\
              [Tue Jul 28 15:02:00 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
         );
-        let (classes, votes) = ing.ally_classes("Brutall", ing.now_ms());
-        assert_eq!(votes, 1, "gated and gone 50s: a new chain, got {classes:?}");
-        assert_ne!(
-            classes.first().map(String::as_str),
-            Some("Wizard"),
-            "the carried prior is weak -- the fresh vote leads: {classes:?}"
+        let now = ing.now_ms();
+        let fresh = ing.class_chain("Brutall", now).expect("a chain");
+        assert!(
+            !fresh.inferred().iter().any(|c| c == "Wizard"),
+            "gated and gone 50s: a new chain from its own evidence, got {:?}",
+            fresh.inferred()
         );
+
         let ing = ingest_from(
             "[Tue Jul 28 15:00:10 2026] Brutall tells the group, 'hi'\n\
              [Tue Jul 28 15:01:00 2026] Brutall begins casting Ice Comet.\n\
              [Tue Jul 28 15:01:10 2026] Brutall begins casting Gate.\n\
              [Tue Jul 28 15:01:13 2026] Brutall hit a gnoll for 100 points of magic damage by Lifetap.\n",
         );
-        let (classes, votes) = ing.ally_classes("Brutall", ing.now_ms());
+        let now = ing.now_ms();
+        let one = ing.class_chain("Brutall", now).expect("a chain");
         assert_eq!(
-            votes, 3,
-            "acting 3s after the gate: never left, one chain, got {classes:?}"
+            one.first,
+            ing.class_chain("Brutall", now - 13_000)
+                .expect("a chain")
+                .first,
+            "acting 3s after the gate: never left, one chain"
         );
     }
 

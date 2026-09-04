@@ -1,8 +1,10 @@
-//! why: how good is ally class inference? Every activity chain that has
-//!      a /who row: does the chain's own inference fit the row's trio?
+//! why: how good is class inference on its own? Every chain that has a
+//!      /who row is ground truth: does the chain's own inference, which
+//!      never sees that row, fit the trio it states?
 //! input: <log>
 use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
 use eqlp_app::parser::build_engine;
+
 fn main() {
     let path = std::env::args().nth(1).unwrap();
     let raw = std::fs::read(&path).unwrap();
@@ -14,16 +16,16 @@ fn main() {
     }
     let (mut rows, mut both, mut fits, mut wrong, mut none) = (0, 0, 0, 0, 0);
     let mut examples: Vec<String> = Vec::new();
-    for (name, chains) in &ing.ally_chains {
-        for chain in chains {
-            let Some((level, trio)) = &chain.who else {
+    let entities: Vec<u32> = ing.classes.known_entities().collect();
+    for sym in entities {
+        let name = ing.store.name(eqlp_store::Sym(sym)).to_string();
+        for chain in ing.classes.chains(sym) {
+            let Some((level, trio)) = chain.who.clone() else {
                 continue;
             };
             rows += 1;
-            let (cfg, votes) = ing.ally_classes(name, chain.start);
-            // why: a prior-only chain (no fresh votes) is a "?" in the UI,
-            // not an inference -- it doesn't count either way
-            if cfg.is_empty() || votes == 0 {
+            let cfg = chain.inferred();
+            if cfg.is_empty() {
                 none += 1;
                 continue;
             }
@@ -34,7 +36,8 @@ fn main() {
                 wrong += 1;
                 if examples.len() < 8 {
                     examples.push(format!(
-                        "  {name} ({level}) who={trio:?} inferred={cfg:?} ({votes} votes)"
+                        "  {name} ({level}) who={trio:?} inferred={cfg:?} ({} encounters)",
+                        chain.units
                     ));
                 }
             }

@@ -55,6 +55,9 @@ fn unit(k: usize) -> Unit {
 /// Everything one unit said about an entity, deduplicated.
 #[derive(Debug, Clone, Default)]
 struct UnitEvidence {
+    /// why: a /who row states the trio outright -- ground truth for the
+    /// chain it printed in, the one evidence kind that needs no bar
+    who: Option<(u8, Vec<String>)>,
     unambiguous: BTreeSet<String>,
     pools: Vec<BTreeSet<String>>,
     /// why: (class, level) lists per cast -- a floor only when exactly
@@ -152,6 +155,11 @@ struct Derived {
     max_ding: Option<u8>,
     conflict_run: Vec<usize>,
     units_seen: usize,
+    who: Option<(u8, Vec<String>)>,
+    /// why: what every leading trio agrees on, before the per-class bar --
+    /// the honest best guess after a single sighting, which the ally
+    /// table shows with a "?" until the bar is cleared
+    leading_now: BTreeSet<String>,
 }
 
 impl Default for Derived {
@@ -167,6 +175,8 @@ impl Default for Derived {
             max_ding: None,
             conflict_run: Vec::new(),
             units_seen: 0,
+            who: None,
+            leading_now: BTreeSet::new(),
         }
     }
 }
@@ -183,6 +193,9 @@ impl Derived {
     }
     /// why: confirmed first (heaviest first), then priors by weight, at
     /// most CLASS_COUNT
+    /// why: the INFERENCE only -- a /who row is applied by `ChainView::trio`
+    /// on top, so the two stay separately readable (the ally_class_check
+    /// probe scores one against the other)
     fn trio(&self) -> (Vec<String>, Vec<String>) {
         let by_weight = |a: &String, b: &String| {
             self.weight(b)
@@ -230,6 +243,15 @@ impl Derived {
     /// returns whether the unit conflicted with the leading trios (P5)
     fn apply(&mut self, k: usize, ev: &UnitEvidence) -> bool {
         self.units_seen += 1;
+        // why: ground truth -- a /who row's trio IS the answer for this
+        // chain, and its level floors every class in it
+        if let Some((level, trio)) = &ev.who {
+            self.who = Some((*level, trio.clone()));
+            for c in trio {
+                let f = self.floors.entry(c.clone()).or_insert(0);
+                *f = (*f).max(*level);
+            }
+        }
         // P4: a zone line weakens everything before this unit's own evidence
         for _ in 0..ev.zone_lines {
             for w in self.scores.iter_mut() {
@@ -352,6 +374,12 @@ impl Derived {
         self.candidates = cand_union
             .iter()
             .filter(|ix| !cand_inter.contains(ix))
+            .map(|&ix| CLASSES[ix].to_string())
+            .collect();
+        // why: what every top trio agrees on, bar cleared or not -- one
+        // sighting of a class-only spell already answers with that class
+        self.leading_now = cand_inter
+            .iter()
             .map(|&ix| CLASSES[ix].to_string())
             .collect();
 
@@ -515,6 +543,12 @@ pub struct ChainView {
     /// why: what the unresolved slot is stuck between (Q34) -- the
     /// current elimination narrowing, else every class with weight
     pub candidates: Vec<String>,
+    /// why: a /who row printed in this chain -- its trio is the answer and
+    /// its level is ground truth (your own row gets the same treatment)
+    pub who: Option<(u8, Vec<String>)>,
+    /// why: what the leading trios already agree on, bar or no bar -- a
+    /// first sighting's honest guess
+    pub leading: Vec<String>,
     pub floors: Vec<(String, u8)>,
     pub max_ding: Option<u8>,
     pub units: usize,
@@ -523,10 +557,26 @@ pub struct ChainView {
 }
 
 impl ChainView {
-    /// why: the trio as shown -- confirmed then priors
+    /// why: the trio as shown -- a /who row is ground truth and wins;
+    /// otherwise what the evidence confirmed, then anything carried as a prior
     pub fn trio(&self) -> Vec<String> {
+        if let Some((_, trio)) = &self.who {
+            return trio.clone();
+        }
         let mut v = self.confirmed.clone();
         v.extend(self.prior.iter().cloned());
+        v
+    }
+
+    /// why: what the evidence alone says, ignoring any /who row -- lets a
+    /// probe score inference against ground truth. Falls back to what the
+    /// leading trios agree on, so one sighting still answers.
+    pub fn inferred(&self) -> Vec<String> {
+        let mut v = self.confirmed.clone();
+        v.extend(self.prior.iter().cloned());
+        if v.is_empty() {
+            v = self.leading.clone();
+        }
         v
     }
     pub fn is_full(&self) -> bool {
@@ -573,6 +623,18 @@ impl Detector {
         if !ev.level_pairs.contains(&v) {
             ev.level_pairs.push(v);
         }
+    }
+
+    /// why: a /who row for `entity`: its trio is this chain's answer and
+    /// its level is ground truth. Same call for an ally and for you --
+    /// one model, the self side just has more evidence feeding it.
+    pub fn observe_who(&mut self, entity: u32, unit: Unit, level: u8, trio: Vec<String>) {
+        if trio.is_empty() {
+            return;
+        }
+        let k = key(unit);
+        let state = self.by_entity.entry(entity).or_default();
+        state.open_chain(k).evidence_mut(k).who = Some((level, trio));
     }
 
     /// why: P4 -- a zone line weakens, never breaks
@@ -675,6 +737,8 @@ impl Detector {
             max_ding: d.max_ding,
             units: d.units_seen,
             weights,
+            who: d.who.clone(),
+            leading: d.leading_now.iter().cloned().collect(),
             conflicts: d.conflict_run.len(),
         }
     }
