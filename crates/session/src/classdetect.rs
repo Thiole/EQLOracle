@@ -76,7 +76,15 @@ struct LevelStamp {
     at: usize,
     level: u8,
     tier: LevelSource,
+    /// why: which chain wrote it, so the chain can take it back when its
+    /// own trio moves on (Spencer: wait, then retroactively level the
+    /// class that actually confirmed). `GROUND_TRUTH` is a /who row,
+    /// which no inference may revoke.
+    chain: usize,
 }
+
+/// why: a /who row's stamp belongs to no chain and is never revoked
+const GROUND_TRUTH: usize = usize::MAX;
 
 /// The rolling per-class level record (L1-L4).
 ///
@@ -94,7 +102,7 @@ impl LevelRecord {
     /// why: L2 -- raise, never lower. A raise applies from `at` forward,
     /// so later stamps it supersedes are dropped rather than kept as
     /// competing guesses (L4: one strand, rewritten in place).
-    fn raise(&mut self, class: &str, at: usize, level: u8, tier: LevelSource) {
+    fn raise(&mut self, class: &str, at: usize, level: u8, tier: LevelSource, chain: usize) {
         if level == 0 || level > LEVEL_CAP {
             return;
         }
@@ -122,9 +130,37 @@ impl LevelRecord {
             }
             return;
         }
-        v.push(LevelStamp { at, level, tier });
+        v.push(LevelStamp {
+            at,
+            level,
+            tier,
+            chain,
+        });
         v.sort_by_key(|st| (st.at, st.level));
         v.retain(|st| st.at <= at || st.level > level);
+    }
+
+    /// why: a chain takes back what it wrote once its own leading trios
+    /// stop holding the class. The level was never that class's to keep:
+    /// the dings stay in the chain and land on whichever class the
+    /// evidence settles on. Ground truth (/who) is never revoked.
+    fn revoke(&mut self, class: &str, chain: usize) {
+        if let Some(v) = self.by_class.get_mut(class) {
+            v.retain(|st| st.chain != chain);
+            if v.is_empty() {
+                self.by_class.remove(class);
+            }
+        }
+    }
+
+    /// why: every class this chain ever wrote a level for -- checked
+    /// against what it still holds, so a dropped class is cleaned up
+    fn classes_written_by(&self, chain: usize) -> Vec<String> {
+        self.by_class
+            .iter()
+            .filter(|(_, v)| v.iter().any(|st| st.chain == chain))
+            .map(|(c, _)| c.clone())
+            .collect()
     }
 
     /// why: L3's self-correction -- a cemented observation says the class
@@ -155,6 +191,23 @@ impl LevelRecord {
     /// known BEFORE it, or the ding would justify itself
     fn before(&self, class: &str, at: usize) -> Option<(u8, LevelSource)> {
         self.upto(class, at, false)
+    }
+
+    /// why: L5 read forwards -- a ding to N says the trio held a class
+    /// standing at exactly N-1. When exactly ONE class in the record was
+    /// there, the ding names it, and no trio inference is needed. Soft
+    /// records are excluded or a guess would bootstrap itself.
+    fn classes_at(&self, level: u8, at: usize) -> Vec<(String, usize)> {
+        self.by_class
+            .iter()
+            .filter_map(|(c, v)| {
+                let st = v
+                    .iter()
+                    .filter(|st| st.at <= at)
+                    .max_by_key(|st| (st.level, st.tier))?;
+                (st.tier != LevelSource::Soft && st.level == level).then(|| (c.clone(), st.at))
+            })
+            .collect()
     }
 
     /// why: the class's level today -- what the row and the planner show
@@ -279,6 +332,11 @@ struct Derived {
     /// why: every class that ever counted as confirmed in this chain --
     /// a prior once it drops out, until re-cleared or the chain closes
     ever_confirmed: BTreeSet<String>,
+    /// why: classes this chain ever proved with their OWN class-only
+    /// evidence. Unlike the weights it never decays -- a zone line halves
+    /// weight (P4), and a class proven on Sunday must still count as
+    /// proven on Monday when its dings land (the Necromancer's arc).
+    proven_own: BTreeSet<String>,
     confirmed_now: BTreeSet<String>,
     /// why: what the leading trios disagree on -- the open slot's candidates
     candidates: BTreeSet<String>,
@@ -300,6 +358,7 @@ impl Default for Derived {
             unamb: HashMap::new(),
             pooled: HashMap::new(),
             ever_confirmed: BTreeSet::new(),
+            proven_own: BTreeSet::new(),
             confirmed_now: BTreeSet::new(),
             candidates: BTreeSet::new(),
             floors: HashMap::new(),
@@ -317,6 +376,21 @@ impl Derived {
         self.unamb.get(class).copied().unwrap_or(0.0)
             + self.pooled.get(class).copied().unwrap_or(0.0)
     }
+    /// why: Spencer -- "if a tie, use other rules that have to confirm
+    /// otherwise, otherwise you wait ... then retroactively level that
+    /// class". Elimination can fill the row's slot, since something has
+    /// to go there, but it must never stamp a LEVEL: a class that only
+    /// ever appeared as the leftover of a pool is interchangeable with
+    /// whatever else the pool held. Paladin was stamped 11/12/13 at
+    /// exactly Shadow Knight's weight with no Paladin-only line in 395MB
+    /// of log. A class that cleared its own class-only bar has been
+    /// proven by something no other class could have done, and the
+    /// chain's dings then apply to it backwards over the whole chain --
+    /// so waiting for that proof loses nothing.
+    fn proved_itself(&self, class: &str) -> bool {
+        self.proven_own.contains(class)
+    }
+
     /// why: P2's bars -- 2 units of class-only evidence, or 3 of pools
     fn clears_bar(&self, class: &str) -> bool {
         self.unamb.get(class).copied().unwrap_or(0.0) >= UNAMBIGUOUS_BAR
@@ -460,7 +534,11 @@ impl Derived {
             }
             // P2 bars per class: units of class-only evidence, units of pools
             for c in &ev.unambiguous {
-                *self.unamb.entry(c.clone()).or_insert(0.0) += SUPPORT_GAIN;
+                let w = self.unamb.entry(c.clone()).or_insert(0.0);
+                *w += SUPPORT_GAIN;
+                if *w >= UNAMBIGUOUS_BAR {
+                    self.proven_own.insert(c.clone());
+                }
             }
             let in_pools: BTreeSet<&String> = ev.pools.iter().flatten().collect();
             for c in &in_pools {
@@ -665,6 +743,12 @@ struct EntityState {
     /// this a class swapped in AFTER you hit the cap never dings again
     /// and reads at whatever the trio's last ding was.
     levels: LevelRecord,
+    /// why: every class this character ever proved with its OWN class-only
+    /// evidence, across all chains. A ding names a class only if it is in
+    /// here -- the Necromancer proved itself in August and its arc resumed
+    /// 94 units later in a chain that never saw another Necromancer-only
+    /// spell, while Paladin never proved itself once in 395MB of log.
+    ever_proved: BTreeSet<String>,
 }
 
 impl EntityState {
@@ -680,7 +764,7 @@ impl EntityState {
     /// retroactively; this promotes it into the rolling record, tiered by
     /// how solid the chain's trio is (L3).
     fn sync_chain_levels(&mut self) {
-        let (learned, tier, at) = {
+        let (learned, held, tier, at, proven_this_chain) = {
             let Some(chain) = self.chains.last() else {
                 return;
             };
@@ -693,18 +777,42 @@ impl EntityState {
             };
             let held: BTreeSet<String> = match &d.who {
                 Some((_, t)) => t.iter().cloned().collect(),
-                None => d.confirmed_now.clone(),
+                None => d
+                    .confirmed_now
+                    .iter()
+                    .chain(d.ever_confirmed.iter())
+                    .cloned()
+                    .collect(),
             };
             let learned: Vec<(String, u8)> = d
                 .floors
                 .iter()
-                .filter(|(c, _)| held.contains(*c))
+                .filter(|(c, _)| {
+                    let live = match &d.who {
+                        Some((_, t)) => t.contains(*c),
+                        None => d.confirmed_now.contains(*c),
+                    };
+                    live && d.proved_itself(c)
+                })
                 .map(|(c, l)| (c.clone(), *l))
                 .collect();
-            (learned, tier, chain.last())
+            (learned, held, tier, chain.last(), d.proven_own.clone())
         };
+        for c in &proven_this_chain {
+            self.ever_proved.insert(c.clone());
+        }
+        let chain = self.chains.len().saturating_sub(1);
+        // why: the chain takes back levels for classes it no longer holds
+        // at all -- a trio that moved on never keeps its old guess's
+        // levels. Judged on what the chain still HOLDS, not on what it
+        // happens to have a floor for this instant.
+        for class in self.levels.classes_written_by(chain) {
+            if !held.contains(&class) {
+                self.levels.revoke(&class, chain);
+            }
+        }
         for (class, level) in learned {
-            self.levels.raise(&class, at, level, tier);
+            self.levels.raise(&class, at, level, tier, chain);
         }
     }
 
@@ -716,13 +824,14 @@ impl EntityState {
     /// the real 395MB log: every class drifted up to ~50 (Warrior 48,
     /// Beastlord 47 on a character that plays neither), those records then
     /// eliminated real trios through L5, and unresolved visits doubled.
-    fn assumed_trio(&self) -> (Vec<String>, LevelSource) {
+    fn assumed_trio(&self) -> (Vec<String>, LevelSource, BTreeSet<String>) {
         let Some(chain) = self.chains.last() else {
-            return (Vec::new(), LevelSource::Soft);
+            return (Vec::new(), LevelSource::Soft, BTreeSet::new());
         };
         let d = chain.derived(&self.levels);
         if let Some((_, trio)) = &d.who {
-            return (trio.clone(), LevelSource::Cemented);
+            let all = trio.iter().cloned().collect();
+            return (trio.clone(), LevelSource::Cemented, all);
         }
         let (confirmed, _prior) = d.trio();
         let tier = if confirmed.len() == CLASS_COUNT {
@@ -730,7 +839,12 @@ impl EntityState {
         } else {
             LevelSource::Soft
         };
-        (confirmed, tier)
+        let proven = confirmed
+            .iter()
+            .filter(|c| d.proved_itself(c))
+            .cloned()
+            .collect();
+        (confirmed, tier, proven)
     }
 }
 
@@ -745,7 +859,7 @@ impl EntityState {
     /// why: one call site's worth of borrow juggling -- the open chain
     /// needs the record to commit a unit, and both live on this struct
     fn evidence_at(&mut self, k: usize) -> &mut UnitEvidence {
-        let EntityState { chains, levels } = self;
+        let EntityState { chains, levels, .. } = self;
         if chains.last().is_none_or(|c| c.closed.is_some()) {
             chains.push(Chain::new(k));
         }
@@ -758,7 +872,7 @@ impl EntityState {
     /// why: P5 -- close at the first conflicting unit, replay the rest
     /// into a fresh chain that confirms on its own
     fn split_last(&mut self, at: usize, end: ChainEnd) {
-        let EntityState { chains, levels } = self;
+        let EntityState { chains, levels, .. } = self;
         let Some(old) = chains.last_mut() else {
             return;
         };
@@ -874,7 +988,10 @@ impl Detector {
                 ev.level_pairs.push(v);
             }
         }
-        let (trio, tier) = state.assumed_trio();
+        let (trio, tier, proven) = state.assumed_trio();
+        // why: a class that only ever turned up as a pool's leftover never
+        // takes a level (see `proved_itself`)
+        let trio: Vec<String> = trio.into_iter().filter(|c| proven.contains(c)).collect();
         if trio.is_empty() {
             return;
         }
@@ -909,7 +1026,8 @@ impl Detector {
             LevelSource::Soft
         };
         for c in &trio {
-            state.levels.raise(c, k, need, tier);
+            let chain = state.chains.len().saturating_sub(1);
+            state.levels.raise(c, k, need, tier, chain);
         }
     }
 
@@ -929,7 +1047,9 @@ impl Detector {
         // claimed more for a class than this row allows (L3).
         for class in trio {
             state.levels.correct_soft(&class, k, level);
-            state.levels.raise(&class, k, level, LevelSource::Cemented);
+            state
+                .levels
+                .raise(&class, k, level, LevelSource::Cemented, GROUND_TRUTH);
         }
     }
 
@@ -948,7 +1068,7 @@ impl Detector {
     pub fn observe_ding(&mut self, entity: u32, unit: Unit, level: u8) {
         let k = key(unit);
         let state = self.by_entity.entry(entity).or_default();
-        let (trio, tier) = state.assumed_trio();
+        let (trio, tier, proven) = state.assumed_trio();
         // why: same as L5 -- a soft record never closes a chain, and a
         // chain closes only against a trio it is actually sure of: the
         // real Aug 10 case is ENC 50 / WIZ 50 / SHD 34 dinging 26
@@ -975,8 +1095,58 @@ impl Detector {
             return;
         }
         state.evidence_at(k).dings.push(level);
+        let chain = state.chains.len().saturating_sub(1);
         for c in &trio {
-            state.levels.raise(c, k, level, tier);
+            // why: a class takes a ding either because it proved itself in
+            // this chain, or because the ding CONTINUES its own record --
+            // 25 then 26 is the same class levelling on, which is the
+            // "other rule that has to confirm otherwise" (Spencer). The
+            // continuity must rest on a record that is not soft, or a
+            // guess would bootstrap itself: Paladin sat on a soft 10 from
+            // an unconfirmed trio and would have claimed the 11 next to it.
+            let continues = state
+                .levels
+                .at(c, k)
+                .is_some_and(|(l, src)| src != LevelSource::Soft && l + 1 == level);
+            if proven.contains(c) || continues {
+                state.levels.raise(c, k, level, tier, chain);
+            }
+        }
+        // why: Spencer -- "even if level up proves a class, retroactively
+        // level that class". A ding to N with exactly one class standing
+        // at N-1 names that class outright, whatever the trio inference
+        // is doing: the Necromancer's arc carried on 25 -> 26 the next
+        // day in a chain that never saw a Necromancer-only spell again.
+        if level > 1 {
+            // why: only a class this chain or the one before it proved on
+            // its own evidence may be named this way -- an arc carries
+            // across a chain boundary (the Necromancer stopped at 25 one
+            // night and resumed at 26 the next day, in a chain that never
+            // saw another Necromancer-only spell), but a class that never
+            // proved itself anywhere still waits.
+            let mut named: Vec<(String, usize)> = state
+                .levels
+                .classes_at(level - 1, k)
+                .into_iter()
+                .filter(|(c, _)| state.ever_proved.contains(c))
+                .collect();
+            // why: several classes pass through the same level over a
+            // character's life, so "who stands at N-1" alone is not an
+            // answer -- the arc that is still running is the one whose
+            // record was written LAST. A tie on that is no answer at all.
+            named.sort_by_key(|(_, at)| std::cmp::Reverse(*at));
+            let unique = match named.as_slice() {
+                [(_, a), (_, b), ..] => a != b,
+                [_] => true,
+                [] => false,
+            };
+            if unique {
+                let (c, _) = &named[0];
+                let chain = state.chains.len().saturating_sub(1);
+                state
+                    .levels
+                    .raise(c, k, level, LevelSource::Cemented, chain);
+            }
         }
         state.sync_chain_levels();
     }
