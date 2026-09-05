@@ -79,6 +79,20 @@ fn main() {
     }
     println!("group buff lines named: {named}, unreachable: {bad}");
     println!("my_classes={:?}", dto.my_classes);
+    println!("INNATES ({}):", dto.innates.len());
+    for i in &dto.innates {
+        println!(
+            "  {:<26} best={:<28} lvl={:<3} active={:?}",
+            i.line, i.best_spell, i.best_level, i.active
+        );
+    }
+    println!("MAYBES ({}):", dto.maybes.len());
+    for i in dto.maybes.iter().take(6) {
+        println!(
+            "  {:<26} best={:<28} lvl={:<3} active={:?}",
+            i.line, i.best_spell, i.best_level, i.active
+        );
+    }
     for r in &dto.rows {
         println!(
             "  row {:<14} active={:?} upgrade={} best={:?}",

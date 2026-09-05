@@ -337,6 +337,12 @@ pub struct GroupBuffsDto {
     pub my_classes: Vec<String>,
     pub party: Vec<PartyMemberDto>,
     pub rows: Vec<BuffRowDto>,
+    /// why: your OWN self-casts, as a flat checklist -- Grim Aura,
+    /// Vampiric Embrace. Not lines with upgrades; just on or not.
+    pub innates: Vec<SelfBuffDto>,
+    /// why: illusions -- real stats, but a suggestion rather than
+    /// something missing. Shown quieter, and never counted against you.
+    pub maybes: Vec<SelfBuffDto>,
     /// why: buffs on you the party can't account for (someone outside
     /// the group, or an unknown class) -- listed, never counted against
     pub extra_active: Vec<String>,
@@ -385,6 +391,33 @@ fn is_upgrade(active: Option<(&str, u32)>, best_spell: Option<&str>, best_level:
         return false;
     }
     level < best_level
+}
+
+/// why: an illusion is a MAYBE -- it grants real stats, but "put on a
+/// wolf form for the ATK" is a suggestion, not a checklist item. Read off
+/// the slot, not the name: 47 spells carry an Illusion effect against 26
+/// called "Illusion: ...", and the difference is Call of Bones, Form of
+/// Bleached Bone and friends.
+fn is_illusion(spell: &Spell) -> bool {
+    spell
+        .slots
+        .iter()
+        .any(|slot| slot.effect.starts_with("Illusion"))
+}
+
+/// why: one self-cast buff line of your own. No upgrade arrow and no
+/// caster list -- nobody else is involved, so the only question is
+/// whether it is on. Spencer: "grim aura as its own track ... a list of
+/// 'make sure these are on' as innates".
+#[derive(Debug, Clone, Serialize)]
+pub struct SelfBuffDto {
+    /// why: rank numeral stripped, same line grouping the party rows use
+    pub line: String,
+    /// why: the best rank of it YOU can cast
+    pub best_spell: String,
+    pub best_level: u32,
+    /// why: what of this line is on you right now, if anything
+    pub active: Option<String>,
 }
 
 pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
@@ -468,7 +501,12 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             // why: a self-only buff is not a party buff -- nobody can put
             // it on you -- but you can put it on YOURSELF, so it is a real
             // missing buff when your own trio has it and it is not up
-            if is_recourse(spell) || !(is_party_buff(spell) || (is_me && is_self_buff(spell))) {
+            // why: self-casts are no longer folded in here -- they became
+            // their own `innates`/`maybes` sections, because an upgrade
+            // arrow between a party buff and a thing only you can cast on
+            // yourself was never a real relationship
+            let _ = is_me;
+            if is_recourse(spell) || !is_party_buff(spell) {
                 continue;
             }
             let Some(kind) = kind_of(spell) else { continue };
@@ -542,6 +580,92 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         }
     }
 
+    // why: your OWN self-casts, split from the party rows -- a flat
+    // checklist ("make sure these are on") and, separately, illusions as
+    // suggestions. Best rank per line, castable at your own level.
+    let mut innate_by_line: BTreeMap<String, (u32, String, bool)> = BTreeMap::new();
+    if !my_classes.is_empty() {
+        for spell in spells() {
+            // why: kind_of is the filter that makes this a BUFF list --
+            // it admits the real stat buffs on their own effects and
+            // rejects the summon-item, enchant-metal, water-breathing and
+            // ultravision spells that are also self-target and beneficial.
+            // Without it this ran to 92 entries, most of them not buffs.
+            if !is_self_buff(spell)
+                || is_recourse(spell)
+                || !reachable(spell)
+                || kind_of(spell).is_none()
+            {
+                continue;
+            }
+            let Some(sc) = spell.classes.iter().find(|sc| {
+                my_classes.iter().any(|c| c == &sc.class)
+                    && sc.level.is_none_or(|need| need <= u32::from(LEVEL_CAP))
+                    && me
+                        .level
+                        .is_none_or(|lvl| sc.level.is_none_or(|need| need <= u32::from(lvl)))
+            }) else {
+                continue;
+            };
+            let rank = sc.level.unwrap_or(0);
+            // why: keyed by KIND, not by line. EQ's self-buff lines rename
+            // per rank (Minor/Lesser/Major/Greater/Arch Shielding), which
+            // `line_key` cannot group because it only strips numerals --
+            // keyed by line the checklist showed six Shieldings. One entry
+            // per thing you want up is what a checklist means. Illusions
+            // key separately so a wolf form never hides a real AC buff.
+            let illusion = is_illusion(spell);
+            let key = format!(
+                "{}{}",
+                if illusion { "~" } else { "" },
+                kind_of(spell).map(|k| k.label()).unwrap_or("")
+            );
+            let e = innate_by_line
+                .entry(key)
+                .or_insert_with(|| (0, spell.name.clone(), illusion));
+            if rank >= e.0 {
+                *e = (rank, spell.name.clone(), illusion);
+            }
+        }
+    }
+    // why: an innate is on when one of YOUR OWN self-casts of that kind is
+    // on -- not when a groupmate's buff happens to cover the same kind.
+    // `active_by_kind` answers the latter, and using it read "armor class:
+    // covered" off a party AC buff while your own Shielding was down.
+    // A lower rank of your own still counts.
+    let active_self_by_kind: HashMap<BuffKind, String> = ing
+        .self_buffs
+        .iter()
+        .filter(|(_, (_, expires))| !expires.is_some_and(|e| e < now))
+        .filter_map(|(name, _)| {
+            let sp = crate::spelldata::spell_by_name(name)?;
+            (is_self_buff(sp) && !is_recourse(sp)).then_some(())?;
+            Some((kind_of(sp)?, name.clone()))
+        })
+        .collect();
+    let (mut innates, mut maybes) = (Vec::new(), Vec::new());
+    for (key, (best_level, best_spell, illusion)) in innate_by_line {
+        let line = key.trim_start_matches('~').to_string();
+        let active = crate::spelldata::spell_by_name(&best_spell)
+            .and_then(kind_of)
+            .and_then(|k| active_self_by_kind.get(&k))
+            .cloned();
+        let dto = SelfBuffDto {
+            active,
+            line,
+            best_spell,
+            best_level,
+        };
+        if illusion {
+            maybes.push(dto);
+        } else {
+            innates.push(dto);
+        }
+    }
+    // why: highest requirement first -- the meaningful ones lead
+    innates.sort_by(|a, b| b.best_level.cmp(&a.best_level).then(a.line.cmp(&b.line)));
+    maybes.sort_by(|a, b| b.best_level.cmp(&a.best_level).then(a.line.cmp(&b.line)));
+
     let mut rows: Vec<BuffRowDto> = best
         .into_iter()
         .map(|(kind, by_line)| {
@@ -602,7 +726,12 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             .then_with(|| a.label.cmp(b.label))
     });
     let upgrades = rows.iter().filter(|r| r.upgrade).count();
-    let good = rows.iter().all(|r| r.active.is_some()) && upgrades == 0;
+    // why: an innate you can cast and have not is missing the same way a
+    // party buff is. A MAYBE never counts against you -- that is what
+    // makes it a maybe.
+    let good = rows.iter().all(|r| r.active.is_some())
+        && innates.iter().all(|i| i.active.is_some())
+        && upgrades == 0;
     extra_active.sort();
     GroupBuffsDto {
         good,
@@ -610,6 +739,8 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         my_classes,
         party,
         rows,
+        innates,
+        maybes,
         extra_active,
     }
 }

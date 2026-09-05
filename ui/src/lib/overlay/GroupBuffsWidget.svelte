@@ -23,9 +23,14 @@
   // why: name them -- "missing 2" makes you go looking, "missing Clarity,
   // Haste" is the answer itself
   const missingNames = $derived(missingRows.map((r) => r.label).join(', '));
+  // why: an innate you can cast and have not is missing the same way a
+  // party buff is; a MAYBE never counts against you, which is what makes
+  // it a maybe
+  const missingInnates = $derived(data ? data.innates.filter((i) => !i.active) : []);
+  const maybes = $derived(data ? data.maybes.filter((m) => !m.active) : []);
   // why: a low-tier buff is not coverage -- see BuffRowDto.upgrade
   const upgrades = $derived(data ? data.rows.filter((r) => r.upgrade).length : 0);
-  const clean = $derived(missing === 0 && upgrades === 0);
+  const clean = $derived(missing === 0 && upgrades === 0 && missingInnates.length === 0);
 </script>
 
 <div
@@ -47,15 +52,19 @@
         <!-- why: no rows means nothing is KNOWN, which is not the same as
              nothing being wrong -- saying "All good" there would be a
              claim the data does not support -->
-        group buffs: {!data.rows.length
+        group buffs: {!data.rows.length && !data.innates.length
           ? 'nothing confirmed yet'
           : clean
             ? 'All good'
-            : [missing ? `missing ${missingNames}` : '', upgrades ? `${upgrades} upgradeable` : ''].filter(Boolean).join(', ')}
+            : [
+                missing ? `missing ${missingNames}` : '',
+                missingInnates.length ? `${missingInnates.length} innate${missingInnates.length === 1 ? '' : 's'}` : '',
+                upgrades ? `${upgrades} upgradeable` : '',
+              ].filter(Boolean).join(', ')}
       </span>
       <span class="truncate font-mono text-[10px] text-foreground/60" title="your classes">{data.my_classes.map(abbr).join('/')}</span>
     </div>
-    {#if missing || upgrades}
+    {#if missing || upgrades || missingInnates.length || maybes.length}
     <div class="truncate font-mono text-[10px] text-foreground/60" title="party -- confirmed classes count; ? means not confirmed yet">
       {#each data.party as m, i (m.name)}{i ? ' · ' : ''}<span title={m.buffs.length ? `on ${m.name}: ${m.buffs.join(', ')}` : `nothing seen landing on ${m.name}`}>{m.name} {m.classes.length ? m.classes.map(abbr).join('/') : '?'}{m.confirmed ? '' : '?'}{m.buffs.length ? ` +${m.buffs.length}` : ''}</span>{/each}
     </div>
@@ -82,6 +91,32 @@
         </div>
       {/each}
     </div>
+    <!-- why: your own self-casts as a checklist -- no upgrade arrow and no
+         caster, "a list of make sure these are on as innates" -->
+    {#if missingInnates.length}
+      <div class="flex flex-col gap-0.5 border-t border-foreground/15 pt-1">
+        <div class="text-[10px] text-muted-foreground">innates</div>
+        {#each missingInnates as i (i.line)}
+          <div class="flex items-baseline justify-between gap-2 text-[10px]">
+            <span class="truncate text-foreground/80">{i.line}</span>
+            <span class="truncate text-caution" title="cast it on yourself">{i.best_spell}</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
+    <!-- why: illusions are a MAYBE -- real stats, but a suggestion, so
+         they are quieter and never counted against you -->
+    {#if maybes.length}
+      <div class="flex flex-col gap-0.5 border-t border-foreground/15 pt-1">
+        <div class="text-[10px] text-muted-foreground">maybe</div>
+        {#each maybes as m (m.line + m.best_spell)}
+          <div class="flex items-baseline justify-between gap-2 text-[10px] text-foreground/55">
+            <span class="truncate">{m.line}</span>
+            <span class="truncate">{m.best_spell}</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
     {/if}
   {/if}
 </div>

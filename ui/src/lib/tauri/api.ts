@@ -70,6 +70,15 @@ export interface PartyMemberDto {
   /** why: buff kinds currently on THEM, from landings your log saw */
   buffs: string[];
 }
+/** why: one self-cast of your own -- no upgrade arrow, no casters, the
+ * only question is whether it is on. */
+export interface SelfBuffDto {
+  line: string;
+  best_spell: string;
+  best_level: number;
+  active: string | null;
+}
+
 export interface GroupBuffsDto {
   good: boolean;
   /** why: kinds that are up, but from a lower rank than the party could cast */
@@ -77,6 +86,10 @@ export interface GroupBuffsDto {
   my_classes: string[];
   party: PartyMemberDto[];
   rows: BuffRowDto[];
+  /** why: your OWN self-casts, a flat "make sure these are on" checklist */
+  innates: SelfBuffDto[];
+  /** why: illusions -- suggestions, never counted against you */
+  maybes: SelfBuffDto[];
   extra_active: string[];
 }
 
