@@ -1579,19 +1579,16 @@ fn fold_incoming(rows: Vec<LiveMeterRowDto>) -> Vec<LiveMeterRowDto> {
     if rows.len() <= 1 {
         return rows;
     }
-    let rank = |r: &LiveMeterRowDto| -> u8 {
-        if crate::raiding::is_curated_raid_target(&r.name) {
-            2
-        // why: fold_key, because this name came off a LOG line where the
-        // article is capitalised at sentence start ("A gnoll scout hits
-        // you"). `is_trash_name` reads canonical wiki names, where a
-        // capital "A" is a real part of the name -- it has a test saying
-        // so -- and must not be loosened for this caller's sake.
-        } else if !crate::npcdata::is_trash_name(&eqlp_session::fold_key(&r.name)) {
-            1
-        } else {
-            0
-        }
+    // why: ranked by what the mob IS, never by how its name is spelled --
+    // "its not always capitalized. can you just rank the things you are in
+    // combat with and rank them by rank". A curated raid target outranks
+    // everything; under that the mob's own level off its NPC page is the
+    // threat order (Lord Nagafen 55, a gnoll brewer 17, an orc raider 5),
+    // and a name the scrape never heard of ranks 0 and is settled by
+    // damage. 6514 of 6532 NPC pages state a level.
+    let rank = |r: &LiveMeterRowDto| -> (u8, u32) {
+        let boss = u8::from(crate::raiding::is_curated_raid_target(&r.name));
+        (boss, crate::npcdata::level_of(&r.name).unwrap_or(0))
     };
     // why: `rows` arrives sorted by total, so the first of the best rank
     // is already the hardest-hitting of that rank
@@ -2771,22 +2768,26 @@ mod live_meter_window_tests {
         assert_eq!(folded[1].name, "2 others");
         assert_eq!(folded[1].total, 1200, "the bucket carries their sum");
 
-        // why: a log line capitalises the article at sentence start, and
-        // "A gnoll scout" is still trash -- this put it in the lead slot
-        // over a harder-hitting mob before the fold
-        let folded = fold_incoming(vec![row("a gnoll brewer", 900), row("A gnoll scout", 300)]);
+        // why: the mob's own level decides between two ordinary mobs --
+        // the brewer is 17, the orc raider 5 -- so spelling and raw damage
+        // both stop mattering
+        let folded = fold_incoming(vec![row("an orc raider", 900), row("a gnoll brewer", 300)]);
         assert_eq!(
             folded[0].name, "a gnoll brewer",
-            "both are trash, damage decides"
+            "level 17 outranks level 5"
         );
-
-        // why: all one rank -- the hardest hitter takes the slot
-        let folded = fold_incoming(vec![row("a gnoll pup", 900), row("a gnoll brewer", 300)]);
-        assert_eq!(folded[0].name, "a gnoll pup");
         assert_eq!(folded[1].name, "1 others");
 
+        // why: neither is in the scrape, so both rank 0 and the hardest
+        // hitter takes the slot
+        let folded = fold_incoming(vec![
+            row("a nonexistent thing", 900),
+            row("another fake", 300),
+        ]);
+        assert_eq!(folded[0].name, "a nonexistent thing");
+
         // why: nothing to fold
-        let one = fold_incoming(vec![row("a gnoll pup", 900)]);
+        let one = fold_incoming(vec![row("a gnoll brewer", 900)]);
         assert_eq!(one.len(), 1);
         assert!(fold_incoming(Vec::new()).is_empty());
     }

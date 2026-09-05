@@ -174,6 +174,20 @@ pub fn era_of(name: &str) -> Option<&'static str> {
     }
 }
 
+/// why: the mob's own level, as a number the app can rank by. The scrape
+/// stores free text -- "17", "30-34", "5-12 / 5-7 (Befallen)", "12ish",
+/// "~53" -- so this reads the LARGEST number in it, which is the mob's
+/// ceiling and the honest thing to rank a threat by. 6514 of 6532 NPC
+/// pages state one.
+pub fn level_of(name: &str) -> Option<u32> {
+    let n = npc_for(name)?;
+    let raw = n.level.as_deref()?;
+    raw.split(|c: char| !c.is_ascii_digit())
+        .filter(|t| !t.is_empty())
+        .filter_map(|t| t.parse::<u32>().ok())
+        .max()
+}
+
 /// why: an item counts as a ZONE drop only when this many distinct NPCs
 /// in the zone are attributed with it -- the first cut unioned every
 /// NPC's whole table, which smeared 167 single-mob drops onto every
