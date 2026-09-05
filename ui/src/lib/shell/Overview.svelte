@@ -346,7 +346,14 @@
 
       <Card class="rounded-sm">
         <CardContent class="px-3 py-2.5">
-          <h2 class="stat-figure mb-1.5 text-[18px]">Group Buffs</h2>
+          <div class="mb-1.5 flex items-center justify-between">
+            <h2 class="stat-figure text-[18px]">Group Buffs</h2>
+            <!-- why: the mute is one-way from here -- the full line list,
+                 muted entries included, lives in the Overlay module -->
+            <button type="button" class="text-[11px] text-brand-soft hover:text-primary hover:underline" onclick={() => goto('overlay')}>
+              all lines →
+            </button>
+          </div>
           {#if !buffs}
             <p class="text-[11px] text-muted-foreground">Loading…</p>
           {:else if !buffs.rows.length && !buffs.innates.length}
