@@ -178,6 +178,78 @@ fn main() {
     for (k, v) in u.iter().take(12) {
         println!("   dropped {v:>10}  {k}");
     }
+    // why: the reported shape -- "its not being attributed to me in the
+    // current fight in the overlay". Per fight: what the store kept for
+    // You against what the meter's own siding would let through.
+    println!("last 25 fights, your damage kept vs sided:");
+    let mut recent2: Vec<_> = s.encounters.iter().filter(|e| !e.absorbed).collect();
+    recent2.sort_by_key(|e| e.start_ms);
+    for e in recent2.iter().rev().take(25) {
+        let (mut mine, mut mine_sided) = (0u64, 0u64);
+        let mut lost_to: BTreeMap<String, u64> = BTreeMap::new();
+        for i in e.range() {
+            if s.enc[i] != e.id.0 || s.kind[i] != EventKind::Damage {
+                continue;
+            }
+            let ts = s.ts[i];
+            let a = ing.effective_name(s.name(s.actor[i]));
+            if !a.eq_ignore_ascii_case("You") {
+                continue;
+            }
+            let t = s.name(s.target[i]).to_string();
+            mine += s.amount[i];
+            let ae = ing.allegiance_at(&a, ts).is_enemy();
+            let te = ing.allegiance_at(&t, ts).is_enemy();
+            if !ae && te {
+                mine_sided += s.amount[i];
+            } else {
+                *lost_to.entry(t).or_insert(0) += s.amount[i];
+            }
+        }
+        if mine == 0 {
+            continue;
+        }
+        let note = if lost_to.is_empty() {
+            String::new()
+        } else {
+            let mut v: Vec<_> = lost_to.into_iter().collect();
+            v.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+            format!("   LOST -> {:?}", &v[..v.len().min(3)])
+        };
+        // why: the overlay window is a fixed 360x240 -- rows below the
+        // fold are not rendered off-screen, they are clipped away. Where
+        // "You" ranks decides whether the player can see their own row.
+        let mut totals: BTreeMap<String, u64> = BTreeMap::new();
+        for i in e.range() {
+            if s.enc[i] != e.id.0 || s.kind[i] != EventKind::Damage {
+                continue;
+            }
+            let ts = s.ts[i];
+            let an = ing.effective_name(s.name(s.actor[i]));
+            let tn = s.name(s.target[i]).to_string();
+            if ing.allegiance_at(&an, ts).is_enemy() || !ing.allegiance_at(&tn, ts).is_enemy() {
+                continue;
+            }
+            *totals.entry(an).or_insert(0) += s.amount[i];
+        }
+        let mut ranked: Vec<_> = totals.into_iter().collect();
+        ranked.sort_by_key(|(_, v)| std::cmp::Reverse(*v));
+        let rank = ranked
+            .iter()
+            .position(|(n, _)| n.eq_ignore_ascii_case("You"))
+            .map(|p| p + 1)
+            .unwrap_or(0);
+        println!(
+            "  id={:<5} {:<26} yours={:>7} sided={:>7} allies={:<3} your_rank={}{}",
+            e.id.0,
+            s.name(e.target),
+            mine,
+            mine_sided,
+            ranked.len(),
+            rank,
+            note
+        );
+    }
     match eqlp_app::combat::live_meter(&ing) {
         None => println!("live_meter: NONE -- nothing would render"),
         Some(m) => {
