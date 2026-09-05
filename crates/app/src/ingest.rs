@@ -2384,6 +2384,20 @@ impl Ingest {
                 spell,
                 target,
             } => {
+                // why: a resisted target prints a resist line INSTEAD of a
+                // landing, so one cast's targets are landings + resists.
+                // Keyed by the spell's own landing message, so both halves
+                // of the same cast add up in one bucket.
+                if let Some(who) = target.as_deref() {
+                    if let Some(effect) = crate::spelltext::area_effect_of(base_spell_name(&spell))
+                    {
+                        let counted = {
+                            let resolved = self.resolve_name(who);
+                            self.store.sym(&resolved)
+                        };
+                        self.note_fanout(ts, effect, counted);
+                    }
+                }
                 let src = self.sym(&source).0;
                 let spell_sym = self.store.sym(base_spell_name(&spell)).0;
                 self.casts
@@ -9972,6 +9986,66 @@ mod instance_census_tests {
         };
         assert_eq!(count("a gnoll"), Some(3), "three landed in one instant");
         assert_eq!(count("a patrolling gnoll"), None, "one is not a census");
+    }
+
+    /// why: a resisted target prints a resist line INSTEAD of a landing,
+    /// so a fully resisted area effect revealed nothing at all
+    #[test]
+    fn a_resisted_area_effect_still_counts_the_pull() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        // why: Color Flux is PB AE -- every one of these was a mob present
+        let lines: Vec<&[u8]> = vec![
+            b"[Wed Jul 29 16:11:55 2026] a gnoll resisted your Color Flux!",
+            b"[Wed Jul 29 16:11:55 2026] a gnoll resisted your Color Flux!",
+            b"[Wed Jul 29 16:11:55 2026] a gnoll resisted your Color Flux!",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing.mark_live();
+        let sym = ing.store.names.get("a gnoll").expect("interned");
+        assert_eq!(
+            ing.instances.get(&sym).map(|(c, _)| *c),
+            Some(3),
+            "three resisted, so three were there"
+        );
+    }
+
+    /// why: one cast's targets are the ones it landed on PLUS the ones
+    /// that resisted it -- counting the halves apart floors at the larger
+    /// half instead of the true pull
+    #[test]
+    fn landings_and_resists_of_one_cast_add_up() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Wed Jul 29 16:11:55 2026] a gnoll is stunned by scintillating colors.",
+            b"[Wed Jul 29 16:11:55 2026] a gnoll is stunned by scintillating colors.",
+            b"[Wed Jul 29 16:11:55 2026] a gnoll resisted your Color Flux!",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing.mark_live();
+        let sym = ing.store.names.get("a gnoll").expect("interned");
+        assert_eq!(
+            ing.instances.get(&sym).map(|(c, _)| *c),
+            Some(3),
+            "two stunned plus one resisted is three mobs"
+        );
+    }
+
+    /// why: a SINGLE-target spell resisted twice in one instant is two
+    /// casters on one mob, not two mobs
+    #[test]
+    fn a_resisted_single_target_spell_is_not_a_census() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Wed Jul 29 16:11:55 2026] a gnoll resisted your Shock of Ice!",
+            b"[Wed Jul 29 16:11:55 2026] a gnoll resisted your Shock of Ice!",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing.mark_live();
+        let sym = ing.store.names.get("a gnoll").expect("interned");
+        assert_eq!(ing.instances.get(&sym).map(|(c, _)| *c), None);
     }
 
     /// why: two separate casts are not one pull of six -- the count is per

@@ -624,3 +624,56 @@ mod cast_on_other_tests {
         assert!(cast_on_other("").is_none());
     }
 }
+
+/// why: a resisted target prints a resist line INSTEAD of a landing, so
+/// the cast's real target count is landings + resists. Returns the spell's
+/// own landing message so a resist lands in the SAME fan-out bucket the
+/// landings do; falls back to the spell name for area spells that print
+/// nothing on the target.
+pub fn area_effect_of(name: &str) -> Option<&'static str> {
+    static IDX: OnceLock<std::collections::HashMap<String, &'static str>> = OnceLock::new();
+    IDX.get_or_init(|| {
+        crate::spelldata::spells()
+            .iter()
+            .filter(|s| {
+                matches!(
+                    s.target_type.as_deref(),
+                    Some("AE" | "Free Target AE" | "PB AE" | "PBAOE" | "Targeted AE")
+                )
+            })
+            .map(|s| {
+                let effect = s
+                    .msg_cast_on_other
+                    .as_deref()
+                    .and_then(|m| m.strip_prefix("Someone "))
+                    .unwrap_or(s.name.as_str());
+                (s.name.to_lowercase(), effect)
+            })
+            .collect()
+    })
+    .get(&name.to_lowercase())
+    .copied()
+}
+
+#[cfg(test)]
+mod area_effect_tests {
+    use super::*;
+
+    /// why: the resist has to land in the same bucket the landings do, or
+    /// the two halves of one cast are counted apart
+    #[test]
+    fn an_area_spell_reports_the_message_its_landings_use() {
+        let effect = area_effect_of("Color Flux").expect("Color Flux is PB AE");
+        assert_eq!(
+            cast_on_other(&format!("a gnoll {effect}")).map(|(_, e)| e),
+            Some(effect),
+            "a landing of the same spell must key the same"
+        );
+    }
+
+    /// why: two casters resisting on ONE mob in one instant is not two mobs
+    #[test]
+    fn a_single_target_spell_has_no_area_effect() {
+        assert_eq!(area_effect_of("Shock of Ice"), None);
+    }
+}
