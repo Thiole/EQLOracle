@@ -417,6 +417,33 @@ fn line_key(spell: &Spell) -> String {
     base_name(&spell.name).to_string()
 }
 
+/// why: EQ names a rank line two ways -- a numeral ("Clarity II", which
+/// `base_name` already strips) or a leading rank word ("Minor", "Lesser",
+/// "Major", "Greater", "Arch"). Only the second vocabulary groups a line;
+/// grouping on the trailing word instead would merge Grim Aura with
+/// Divine Aura, Banshee Aura and Null Aura, which are different spells
+/// that happen to end the same way -- one of them the Cleric invuln.
+///
+/// Reported as "Dark Temptation and Grim Aura fit the same bucket, but
+/// they stack": keyed by BuffKind they were one entry, so whichever was
+/// up hid the other. Nothing in the packs says which buffs stack --
+/// spell_stacking.json is 48 entries of poisons and DoTs, and neither of
+/// those two is in it -- so the honest unit is the LINE, and two spells
+/// that are not ranks of each other are two lines.
+const RANK_WORDS: &[&str] = &[
+    "minor", "lesser", "greater", "major", "arch", "superior", "improved",
+];
+
+fn rank_line(name: &str) -> String {
+    let stripped = base_name(name);
+    match stripped.split_once(' ') {
+        Some((head, rest)) if RANK_WORDS.iter().any(|w| head.eq_ignore_ascii_case(w)) => {
+            rest.to_string()
+        }
+        _ => stripped.to_string(),
+    }
+}
+
 /// why: a buff is only an upgrade over a DIFFERENT buff. Reported live as
 /// "Vampiric Embrace -> Vampiric Embrace": the two sides measure level
 /// differently and always have -- the active side takes the MINIMUM class
@@ -666,11 +693,17 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             // per thing you want up is what a checklist means. Illusions
             // key separately so a wolf form never hides a real AC buff.
             let illusion = is_illusion(spell);
-            let key = format!(
-                "{}{}",
-                if illusion { "~" } else { "" },
-                kind_of(spell).map(|k| k.label()).unwrap_or("")
-            );
+            // why: keyed by LINE, not by kind. Two ATK self-buffs that
+            // STACK (Grim Aura and Dark Temptation) are two things to keep
+            // up, not one bucket where whichever is on hides the other.
+            // The rank vocabulary still collapses a real line, so the six
+            // Shieldings stay one entry. Illusions key together, since you
+            // wear one form at a time.
+            let key = if illusion {
+                "~illusion".to_string()
+            } else {
+                rank_line(&spell.name)
+            };
             let e = innate_by_line
                 .entry(key)
                 .or_insert_with(|| (0, spell.name.clone(), illusion));
@@ -684,18 +717,20 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
     // `active_by_kind` answers the latter, and using it read "armor class:
     // covered" off a party AC buff while your own Shielding was down.
     // A lower rank of your own still counts.
-    let active_self_by_kind: HashMap<BuffKind, String> = ing
+    let active_self_by_line: HashMap<String, String> = ing
         .self_buffs
         .iter()
         .filter(|(_, (_, expires))| !expires.is_some_and(|e| e < now))
         .filter_map(|(name, _)| {
             let sp = crate::spelldata::spell_by_name(name)?;
             // why: an ILLUSION never satisfies an innate. Wearing a Dry
-            // Bone form covers the resist maybe, not the "keep Lesser
-            // Familiar up" item -- they are different asks, and letting a
-            // form tick the checklist hid real missing self-buffs.
+            // Bone form covers the maybe, not the "keep Lesser Familiar
+            // up" item -- different asks, and letting a form tick the
+            // checklist hid real missing self-buffs.
             (is_self_buff(sp) && !is_recourse(sp) && !is_illusion(sp)).then_some(())?;
-            Some((kind_of(sp)?, name.clone()))
+            // why: by LINE -- a lower rank of the same line still counts
+            // as on, and two stacking spells stay two answers
+            Some((rank_line(&sp.name), name.clone()))
         })
         .collect();
     // why: you can only wear one form at a time, so a single active
@@ -713,7 +748,11 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         });
     let (mut innates, mut maybes) = (Vec::new(), Vec::new());
     for (key, (best_level, best_spell, illusion)) in innate_by_line {
-        let line = key.trim_start_matches('~').to_string();
+        let line = if illusion {
+            "illusion".to_string()
+        } else {
+            key.clone()
+        };
         let active = if illusion {
             // why: any illusion covers them all
             active_illusion.clone()
@@ -724,10 +763,7 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             // lesser familiar." is the only confirmation it is out
             ing.familiar_since_ms.map(|_| best_spell.clone())
         } else {
-            crate::spelldata::spell_by_name(&best_spell)
-                .and_then(kind_of)
-                .and_then(|k| active_self_by_kind.get(&k))
-                .cloned()
+            active_self_by_line.get(&line).cloned()
         };
         let dto = SelfBuffDto {
             active,
@@ -928,6 +964,32 @@ mod tests {
             &["Wizard".into(), "Enchanter".into()]
         ));
         assert!(benefits(BuffKind::Hp, &["Wizard".into()]));
+    }
+
+    /// why: "Dark Temptation and Grim Aura fit the same bucket, but they
+    /// stack" -- keyed by BuffKind they were one entry, so whichever was
+    /// up hid the other. Nothing in the packs says which buffs stack
+    /// (spell_stacking.json is 48 poisons and DoTs, neither of these), so
+    /// the honest unit is the LINE.
+    #[test]
+    fn a_rank_line_collapses_and_two_stacking_buffs_do_not() {
+        // why: EQ's rank vocabulary, which is what makes a line a line
+        assert_eq!(rank_line("Minor Shielding"), "Shielding");
+        assert_eq!(rank_line("Arch Shielding"), "Shielding");
+        assert_eq!(rank_line("Shielding"), "Shielding");
+        assert_eq!(rank_line("Lesser Familiar"), "Familiar");
+        assert_eq!(rank_line("Minor Familiar"), "Familiar");
+
+        // why: two spells that stack are two answers
+        assert_ne!(rank_line("Grim Aura"), rank_line("Dark Temptation"));
+
+        // why: grouping on the TRAILING word instead would merge these,
+        // and one of them is the Cleric invulnerability
+        assert_ne!(rank_line("Grim Aura"), rank_line("Divine Aura"));
+        assert_ne!(rank_line("Grim Aura"), rank_line("Banshee Aura"));
+
+        // why: the numeral form still folds, as it always did
+        assert_eq!(rank_line("Clarity II"), "Clarity");
     }
 
     /// why: "Barrier of Force isnt in the game i think? so that should be
