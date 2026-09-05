@@ -1277,6 +1277,9 @@ pub struct Ingest {
     /// disagrees for real zones, and a wrong shortname means no map loads
     /// and every location feature reads "not your current zone".
     pub zone_shortnames: HashMap<String, String>,
+    /// why: when you last summoned a familiar -- its own "is it up" signal,
+    /// since a familiar lands no buff message of its own
+    pub familiar_since_ms: Option<Millis>,
     /// why: whose log this is, from the file name -- lets your own /who
     /// row apply to "You" instead of a stranger by the same name. The
     /// self model is the same model, just fed more (Spencer).
@@ -1446,6 +1449,7 @@ impl Default for Ingest {
             character: None,
             keep_full_history: false,
             zone_shortnames: HashMap::new(),
+            familiar_since_ms: None,
             spell_file: None,
             implied_level: HashMap::new(),
             stance_pool: None,
@@ -2427,7 +2431,19 @@ impl Ingest {
                 );
                 self.record_effect_ping(ts, &who, &ability);
             }
-            Action::PetSummon { owner } => self.note_pet_summon(ts, &owner),
+            Action::PetSummon { owner, flavor } => {
+                // why: "You summon forth a lesser familiar." -- a familiar
+                // is not a pet you fight with, it is a self-buff you keep
+                // up, and this line is the only confirmation it landed
+                if owner.eq_ignore_ascii_case("You")
+                    && flavor
+                        .as_deref()
+                        .is_some_and(|f| f.to_ascii_lowercase().contains("familiar"))
+                {
+                    self.familiar_since_ms = Some(ts);
+                }
+                self.note_pet_summon(ts, &owner);
+            }
             Action::Stance { stance } => {
                 let pool = crate::stancedata::classes_for(&stance);
                 self.note_class_evidence(ts, "You", pool);
@@ -4832,6 +4848,10 @@ enum Action {
     /// the owner. See `Ingest::note_pet_summon`.
     PetSummon {
         owner: String,
+        /// why: "a lesser familiar" vs "a frenzied spirit" -- the line
+        /// never names the pet, but the flavour is how a FAMILIAR is told
+        /// from an ordinary pet, and a familiar is a buff you keep up
+        flavor: Option<String>,
     },
     /// "You assume a/an <stance> stance." -- self only, see `stancedata`
     /// for why this feeds `classes.observe_cast` the exact same way a
@@ -5337,6 +5357,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         }),
         "pet.summoned" => Some(Action::PetSummon {
             owner: str_field("who")?,
+            flavor: str_field("flavor"),
         }),
         "state.stance" => Some(Action::Stance {
             stance: str_field("stance")?,

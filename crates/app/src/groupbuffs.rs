@@ -30,6 +30,14 @@ pub enum BuffKind {
     Stamina,
     Agility,
     DamageShield,
+    /// why: "Increase Absorb Damage" -- a rune. Barrier of Force was
+    /// filing under MANA REGEN, because absorb matched no arm and the
+    /// walk fell through to the incidental 3 mana/tick on its third slot.
+    Rune,
+    /// why: a familiar. Lesser Familiar was filing under RESISTS off its
+    /// first slot, when what you want tracked is "have I got my familiar
+    /// out". EQ names them plainly and there are two, both Wizard self.
+    Familiar,
     /// why: "Add Proc" -- Vampiric Embrace and its line. A real beneficial
     /// self-buff that mapped to no kind, so it could never be reported
     /// missing however plainly the log showed it absent.
@@ -39,6 +47,8 @@ pub enum BuffKind {
 impl BuffKind {
     pub fn label(self) -> &'static str {
         match self {
+            BuffKind::Rune => "rune",
+            BuffKind::Familiar => "familiar",
             BuffKind::Proc => "weapon proc",
             BuffKind::ManaRegen => "mana regen",
             BuffKind::Haste => "haste",
@@ -60,6 +70,12 @@ impl BuffKind {
 /// why: the first recognizable slot decides the kind; procs, levitate,
 /// see-invis and the rest are situational and never "missing"
 pub fn kind_of(spell: &Spell) -> Option<BuffKind> {
+    // why: checked before the slot walk -- a familiar's slots describe
+    // what it GIVES (resists, mana, see invisible), so walking them files
+    // it under whichever effect comes first and loses the thing itself
+    if spell.name.ends_with("Familiar") {
+        return Some(BuffKind::Familiar);
+    }
     for slot in &spell.slots {
         let e = slot.effect.as_str();
         // why: checked before the Increase/Absorb gate -- a proc slot
@@ -78,6 +94,9 @@ pub fn kind_of(spell: &Spell) -> Option<BuffKind> {
         // HpRegen arm below already applies. Catches Cannibalize and the
         // Gift of Brilliance line too, and keeps the bard Clarity songs,
         // which do tick despite an Instant duration.
+        if e.starts_with("Absorb") || e.starts_with("Increase Absorb") {
+            return Some(BuffKind::Rune);
+        }
         if e.contains("Mana") && e.to_ascii_lowercase().contains("per tick") {
             return Some(BuffKind::ManaRegen);
         }
@@ -214,6 +233,10 @@ pub fn relevance(kind: BuffKind, my_classes: &[String]) -> u32 {
             (BuffKind::ManaRegen, Shape::Melee) => 55,
             // why: a proc rides melee swings, so it is worth what your
             // swinging half is worth -- and nothing to a pure caster
+            // why: a rune soaks damage whatever you are
+            (BuffKind::Rune, _) => 60,
+            // why: a familiar is mana and resists that never falls off
+            (BuffKind::Familiar, _) => 65,
             (BuffKind::Proc, Shape::Melee) => 70,
             (BuffKind::Proc, _) => 10,
             (BuffKind::Haste, Shape::Melee) => 100,
@@ -566,6 +589,14 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         let Some(spell) = crate::spelldata::spell_by_name(spell_name) else {
             continue;
         };
+        // why: an illusion never stands in for a party buff. Reported as
+        // "strength: Illusion: Earth Elemental -> Berserker Spirit" -- the
+        // form was being read as the buff on you and Berserker Spirit as
+        // an upgrade over it, when the honest statement is just that
+        // Berserker Spirit is not up. Forms answer maybes, nothing else.
+        if is_illusion(spell) {
+            continue;
+        }
         match kind_of(spell) {
             Some(k) => {
                 // why: the rank ON you, by its own level requirement --
@@ -673,6 +704,12 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         let active = if illusion {
             // why: any illusion covers them all
             active_illusion.clone()
+        } else if crate::spelldata::spell_by_name(&best_spell).and_then(kind_of)
+            == Some(BuffKind::Familiar)
+        {
+            // why: a familiar lands no buff message -- "You summon forth a
+            // lesser familiar." is the only confirmation it is out
+            ing.familiar_since_ms.map(|_| best_spell.clone())
         } else {
             crate::spelldata::spell_by_name(&best_spell)
                 .and_then(kind_of)
@@ -878,6 +915,35 @@ mod tests {
             &["Wizard".into(), "Enchanter".into()]
         ));
         assert!(benefits(BuffKind::Hp, &["Wizard".into()]));
+    }
+
+    /// why: multi-effect spells were filing under whichever effect the
+    /// slot walk hit first -- Barrier of Force is a Wizard RUNE that landed
+    /// under mana regen off its third slot, and Lesser Familiar landed
+    /// under resists off its first. Both now have a bucket of their own.
+    #[test]
+    fn a_rune_and_a_familiar_are_not_what_their_first_slot_says() {
+        let by = |n: &str| spells().iter().find(|s| s.name == n).expect(n);
+
+        let rune = by("Barrier of Force");
+        assert!(
+            rune.slots
+                .iter()
+                .any(|sl| sl.effect.contains("Mana") && sl.effect.contains("per tick")),
+            "it really does carry mana regen, which is why it hid there"
+        );
+        assert_eq!(kind_of(rune), Some(BuffKind::Rune));
+
+        let fam = by("Lesser Familiar");
+        assert!(
+            fam.slots.iter().any(|sl| sl.effect.contains("Resist")),
+            "its first slot really is resists, which is why it hid there"
+        );
+        assert_eq!(kind_of(fam), Some(BuffKind::Familiar));
+        assert_eq!(kind_of(by("Minor Familiar")), Some(BuffKind::Familiar));
+
+        // why: the real resist buff takes the resists slot back
+        assert_eq!(kind_of(by("Elemental Armor")), Some(BuffKind::Resist));
     }
 
     /// why: an illusion is read off its SLOT, not its name -- 47 spells
