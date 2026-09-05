@@ -71,7 +71,14 @@ pub fn kind_of(spell: &Spell) -> Option<BuffKind> {
         {
             continue;
         }
-        if e.contains("Mana") {
+        // why: REGEN ticks. "Increase Mana by 161" is Harvest -- an
+        // instant mana return with a Stun rider, a combat ability you
+        // fire, not a buff you keep up ("harvest is more a mana drain, a
+        // combat ability. not really a mana regen buff"). Same test the
+        // HpRegen arm below already applies. Catches Cannibalize and the
+        // Gift of Brilliance line too, and keeps the bard Clarity songs,
+        // which do tick despite an Instant duration.
+        if e.contains("Mana") && e.to_ascii_lowercase().contains("per tick") {
             return Some(BuffKind::ManaRegen);
         }
         if e.contains("Attack Speed") {
@@ -639,17 +646,39 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         .filter(|(_, (_, expires))| !expires.is_some_and(|e| e < now))
         .filter_map(|(name, _)| {
             let sp = crate::spelldata::spell_by_name(name)?;
-            (is_self_buff(sp) && !is_recourse(sp)).then_some(())?;
+            // why: an ILLUSION never satisfies an innate. Wearing a Dry
+            // Bone form covers the resist maybe, not the "keep Lesser
+            // Familiar up" item -- they are different asks, and letting a
+            // form tick the checklist hid real missing self-buffs.
+            (is_self_buff(sp) && !is_recourse(sp) && !is_illusion(sp)).then_some(())?;
             Some((kind_of(sp)?, name.clone()))
         })
         .collect();
+    // why: you can only wear one form at a time, so a single active
+    // illusion answers for every illusion suggestion -- "if an illusion is
+    // active, discount all other illusion suggestions". Kind-by-kind was
+    // wrong here: wearing a wolf covers the ATK maybe but left the Dry
+    // Bone and Earth Elemental ones still asking to be cast.
+    let active_illusion: Option<String> = ing
+        .self_buffs
+        .iter()
+        .filter(|(_, (_, expires))| !expires.is_some_and(|e| e < now))
+        .find_map(|(name, _)| {
+            let sp = crate::spelldata::spell_by_name(name)?;
+            is_illusion(sp).then(|| name.clone())
+        });
     let (mut innates, mut maybes) = (Vec::new(), Vec::new());
     for (key, (best_level, best_spell, illusion)) in innate_by_line {
         let line = key.trim_start_matches('~').to_string();
-        let active = crate::spelldata::spell_by_name(&best_spell)
-            .and_then(kind_of)
-            .and_then(|k| active_self_by_kind.get(&k))
-            .cloned();
+        let active = if illusion {
+            // why: any illusion covers them all
+            active_illusion.clone()
+        } else {
+            crate::spelldata::spell_by_name(&best_spell)
+                .and_then(kind_of)
+                .and_then(|k| active_self_by_kind.get(&k))
+                .cloned()
+        };
         let dto = SelfBuffDto {
             active,
             line,
@@ -849,6 +878,37 @@ mod tests {
             &["Wizard".into(), "Enchanter".into()]
         ));
         assert!(benefits(BuffKind::Hp, &["Wizard".into()]));
+    }
+
+    /// why: an illusion is read off its SLOT, not its name -- 47 spells
+    /// carry the effect against 26 called "Illusion: ...", and the
+    /// difference is Call of Bones and its line. And Harvest is not mana
+    /// regen: "harvest is more a mana drain, a combat ability".
+    #[test]
+    fn a_form_is_an_illusion_and_an_instant_drain_is_not_regen() {
+        let by = |n: &str| spells().iter().find(|s| s.name == n).expect(n);
+
+        assert!(is_illusion(by("Illusion: Spirit Wolf")));
+        assert!(
+            is_illusion(by("Call of Bones")),
+            "an illusion that is not named like one"
+        );
+        assert!(!is_illusion(by("Grim Aura")), "a real innate");
+
+        // why: regen TICKS -- Harvest returns mana once and stuns, which
+        // is an ability you fire, not a buff you keep up
+        let harvest = by("Harvest");
+        assert_eq!(harvest.duration.as_deref(), Some("Instant"));
+        assert_ne!(
+            kind_of(harvest),
+            Some(BuffKind::ManaRegen),
+            "an instant mana return is not regen"
+        );
+        assert_eq!(kind_of(by("Clarity")), Some(BuffKind::ManaRegen));
+        assert_eq!(
+            kind_of(by("Boon of the Clear Mind")),
+            Some(BuffKind::ManaRegen)
+        );
     }
 
     /// why: reported live -- "weapon proc / Vampiric Embrace -> Vampiric
