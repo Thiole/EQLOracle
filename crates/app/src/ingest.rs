@@ -2530,25 +2530,50 @@ impl Ingest {
                 // why: the mob changed sides -- its fight may be over
                 // (Builder::flag_end); any further action still extends it
                 self.encounters.flag_end(&who, ts);
-                // why: remember which spell established the charm -- your
-                // newest begun cast (the "has been charmed." confirm
-                // follows your own charm cast within the retention
-                // window) -- so Recovered below can tell the charm's own
-                // wear-off from every other spell fading off that NAME
-                let spell = self.store.names.get("You").and_then(|you| {
-                    self.recent_casts
-                        .entries
-                        .iter()
-                        .rev()
-                        .find(|e| e.caster == you.0 && ts - e.ts <= RECENT_CAST_RETENTION_MS)
-                        .map(|e| e.spell.clone())
-                });
-                self.charm = Some(crate::effects::CharmStatus {
-                    who,
-                    active: true,
-                    since_ms: ts,
-                    spell,
-                });
+                // why: the line names NO caster, and the pack's own note
+                // measures 179 landings against 85 casts of my own -- more
+                // than half are somebody else's. Reported: "charm should be
+                // for only my effects spells so tracking other charms
+                // should be attributed to the respective allies".
+                //
+                // So: find the newest CHARM cast by anyone inside the
+                // retention window, and let the caster decide. Narrowed
+                // from "your newest cast of anything" too -- a nuke landing
+                // in the window used to be recorded as the spell that
+                // established the charm, which is what `Recovered` below
+                // compares wear-offs against.
+                let owner = self
+                    .recent_casts
+                    .entries
+                    .iter()
+                    .rev()
+                    .find(|e| ts - e.ts <= RECENT_CAST_RETENTION_MS && is_charm_spell(&e.spell))
+                    .map(|e| (e.caster, e.spell.clone()));
+                let you = self.store.names.get("You").map(|s| s.0);
+                match owner {
+                    // why: yours -- the only case that moves `self.charm`,
+                    // which every consumer reads as MY charmed pet
+                    Some((caster, spell)) if Some(caster) == you => {
+                        self.charm = Some(crate::effects::CharmStatus {
+                            who,
+                            active: true,
+                            since_ms: ts,
+                            spell: Some(spell),
+                        });
+                    }
+                    // why: an ally's -- credit the mob's damage to them the
+                    // same way a summoned pet is credited, and leave
+                    // `self.charm` alone. Their charmed pet is not yours.
+                    Some((caster, _)) => {
+                        let owner_name = self.store.names.name(Sym(caster)).to_string();
+                        let resolved = self.resolve_name(&who);
+                        self.pet_owner.insert(resolved, owner_name);
+                    }
+                    // why: nobody's charm cast is in the window -- the mob
+                    // really is charmed (timeline above says so) but there
+                    // is no honest owner to name
+                    None => {}
+                }
             }
             Action::Recovered { who, spell } => {
                 // why: state.charm_broken's pattern is generic -- ANY
@@ -5600,6 +5625,14 @@ fn class_only_melee(canonical: &str) -> Option<&'static str> {
     }
 }
 
+/// why: "<name> has been charmed." names no caster, so the only way to
+/// attribute a charm is that somebody just cast one. A charm spell is one
+/// whose own slot says so -- 24 in the pack, no name list here.
+fn is_charm_spell(name: &str) -> bool {
+    crate::spelldata::spell_by_name(base_spell_name(name))
+        .is_some_and(|sp| sp.slots.iter().any(|slot| slot.effect.starts_with("Charm")))
+}
+
 fn base_spell_name(name: &str) -> &str {
     if PROTECTED_SPELL_NAMES.contains(&name) {
         return name;
@@ -6182,10 +6215,28 @@ mod charm_reaffirm_tests {
     use super::*;
     use crate::parser::build_engine;
 
+    /// why: every test here is about a charm's LIFECYCLE -- reaffirming,
+    /// breaking, not being resurrected -- which presumes the charm is
+    /// YOURS. "<name> has been charmed." names no caster, so ownership now
+    /// comes from your own charm cast inside the retention window; without
+    /// one these were exercising the ownership hole rather than the
+    /// behaviour they describe.
     fn run(lines: &[&str]) -> Ingest {
         let engine = build_engine().expect("pack builds");
         let mut ing = Ingest::default();
-        let bytes: Vec<&[u8]> = lines.iter().map(|l| l.as_bytes()).collect();
+        // why: stamped from the FIRST line so the cast lands inside the
+        // retention window whatever date a case uses -- these fixtures
+        // span Jul 28 and Aug 29
+        let cast = lines
+            .first()
+            .and_then(|l| l.split_once(']'))
+            .map(|(stamp, _)| format!("{stamp}] You begin casting Allure."));
+        let mut all: Vec<&str> = Vec::new();
+        if let Some(c) = cast.as_deref() {
+            all.push(c);
+        }
+        all.extend_from_slice(lines);
+        let bytes: Vec<&[u8]> = all.iter().map(|l| l.as_bytes()).collect();
         backfill_lines(&mut ing, &engine, &bytes, 1);
         ing
     }
@@ -6291,19 +6342,28 @@ mod charm_reaffirm_tests {
         assert!(ing.allegiance_at("heart harpie", now).is_enemy());
     }
 
-    /// why: no recent cast at confirm time (log started mid-session,
-    /// retention expired) -- unknown charm spell falls back to the old
-    /// name-only clear: missing a real break is worse than a false one
+    /// why: this used to cover "a charm we know about but cannot name the
+    /// spell for", which fell back to breaking on ANY wear-off. That state
+    /// is now unreachable: a charm with no charm-cast of your own inside
+    /// the retention window is not YOURS, so there is nothing of yours to
+    /// break. Documented as the contract rather than deleted, because it
+    /// records a real trade -- a charm established before the log begins
+    /// (rotation mid-charm) is no longer tracked as yours at all.
+    ///
+    /// `run` stamps its own cast from the first line, so the bare case is
+    /// built by hand here.
     #[test]
-    fn an_unknown_charm_spell_still_breaks_on_any_wearoff() {
-        let ing = run(&[
-            "[Sat Aug 29 19:11:32 2026] heart harpie has been charmed.",
-            "[Sat Aug 29 19:23:58 2026] Your Tashania spell has worn off of heart harpie.",
-        ]);
-        let c = ing.charm.as_ref().expect("charm still tracked");
+    fn a_charm_with_no_cast_of_your_own_is_not_yours() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Sat Aug 29 19:11:32 2026] heart harpie has been charmed.",
+            b"[Sat Aug 29 19:23:58 2026] Your Tashania spell has worn off of heart harpie.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
         assert!(
-            !c.active,
-            "unknown charm spell keeps the conservative clear"
+            ing.charm.is_none(),
+            "no charm cast of your own means the charm was never yours"
         );
     }
 

@@ -222,7 +222,10 @@
   {:else if widget === 'session'}
     <SessionWidget session={sessionData} {opacity} {overallOpacity} />
   {:else if widget === 'group_buffs'}
-    <GroupBuffsWidget data={groupBuffsData} {opacity} {overallOpacity} />
+    <!-- why: buffs are a between-fights checklist -- "during combat, hide
+         the lines ... it should collapse in combat and be 100% hidden".
+         An open encounter IS combat (LiveMeterDto.open). -->
+    <GroupBuffsWidget data={groupBuffsData} inCombat={meter?.open ?? false} {opacity} {overallOpacity} />
   {:else if widget === 'cc_tracker'}
     <CCTrackerWidget {status} {opacity} {overallOpacity} size={ccSize} />
   {/if}

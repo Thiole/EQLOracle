@@ -185,6 +185,17 @@ mod tests {
         ing
     }
 
+    /// why: "<name> has been charmed." names no caster, so a charm is only
+    /// YOURS once one of your own charm casts sits inside the retention
+    /// window. These tests are about the charm's LIFECYCLE -- breaking,
+    /// zoning, reaffirming -- so they need a charm that is actually yours;
+    /// without the cast they were exercising the ownership hole instead.
+    fn run_charmed(lines: &[&str]) -> Ingest {
+        let mut all = vec!["[Tue Jul 28 15:00:58 2026] You begin casting Allure."];
+        all.extend_from_slice(lines);
+        run(&all)
+    }
+
     #[test]
     fn no_effects_yet_is_all_none_not_a_panic() {
         let ing = run(&[]);
@@ -197,13 +208,13 @@ mod tests {
 
     #[test]
     fn a_charm_landing_then_breaking_reports_active_then_inactive() {
-        let ing = run(&["[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed."]);
+        let ing = run_charmed(&["[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed."]);
         let dto = status_effects(&ing);
         let c = dto.charm.expect("a charm should be tracked");
         assert_eq!(c.who, "an abhorrent");
         assert!(c.active);
 
-        let ing = run(&[
+        let ing = run_charmed(&[
             "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
             "[Tue Jul 28 15:01:05 2026] Your Allure spell has worn off of an abhorrent.",
         ]);
@@ -216,7 +227,7 @@ mod tests {
     /// it unconditionally, not wait for a confirmation that may never come
     #[test]
     fn zoning_breaks_an_active_charm_even_with_no_explicit_break_line() {
-        let ing = run(&[
+        let ing = run_charmed(&[
             "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
             "[Tue Jul 28 15:01:05 2026] You have entered The Northern Desert of Ro.",
         ]);
@@ -233,7 +244,7 @@ mod tests {
     /// false-clear a still-active charm on a different target
     #[test]
     fn an_unrelated_spell_wearing_off_a_different_target_does_not_clear_the_charm() {
-        let ing = run(&[
+        let ing = run_charmed(&[
             "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
             "[Tue Jul 28 15:01:05 2026] Your Skin like Steel spell has worn off of You.",
         ]);
@@ -249,7 +260,7 @@ mod tests {
     /// line), whether it expired or a fresh mob reused the same name.
     #[test]
     fn a_charmed_name_attacking_you_breaks_the_charm_with_no_worn_off_line() {
-        let ing = run(&[
+        let ing = run_charmed(&[
             "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
             "[Tue Jul 28 15:01:05 2026] an abhorrent hits You for 4 points of damage.",
         ]);
@@ -265,7 +276,7 @@ mod tests {
     /// be mistaken for evidence of a break
     #[test]
     fn a_charmed_pet_attacking_something_else_does_not_break_the_charm() {
-        let ing = run(&[
+        let ing = run_charmed(&[
             "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
             "[Tue Jul 28 15:01:05 2026] an abhorrent hits a rat for 4 points of damage.",
         ]);

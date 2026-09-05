@@ -6,7 +6,12 @@
   // ("dont show green if its good"). Sources include your own detected
   // classes, so a buff you can cast on yourself still reads as missing.
   import type { GroupBuffsDto } from '$lib/tauri/api';
-  let { data, opacity, overallOpacity }: { data: GroupBuffsDto | null; opacity: number; overallOpacity: number } = $props();
+  let {
+    data,
+    inCombat = false,
+    opacity,
+    overallOpacity,
+  }: { data: GroupBuffsDto | null; inCombat?: boolean; opacity: number; overallOpacity: number } = $props();
   const ABBR: Record<string, string> = {
     Warrior: 'WAR', Cleric: 'CLR', Paladin: 'PAL', Ranger: 'RNG', 'Shadow Knight': 'SHD', Druid: 'DRU',
     Monk: 'MNK', Bard: 'BRD', Rogue: 'ROG', Shaman: 'SHM', Necromancer: 'NEC', Wizard: 'WIZ',
@@ -29,7 +34,10 @@
   style:opacity={overallOpacity}
   style:text-shadow="0 1px 2px rgba(0, 0, 0, 0.9), 0 0px 4px rgba(0, 0, 0, 0.6)"
 >
-  {#if !data}
+  {#if inCombat}
+    <!-- why: nothing at all mid-fight. Buffs are what you fix BETWEEN
+         pulls; a checklist you cannot act on is just occlusion. -->
+  {:else if !data}
     <p class="text-muted-foreground">group buffs…</p>
   {:else if !data.rows.length && !data.party.length}
     <p class="text-muted-foreground">group buffs: no party</p>
