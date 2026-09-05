@@ -884,8 +884,11 @@ victim = { from = "victim", as = "str" }
 id = "xp.gain"
 kind = "xp"
 priority = 40
-anchors = ["experience!"]
-pattern = '''^You gain (?P<scope>party |group |raid |)experience! \((?P<pct>[0-9.]+)%\)$'''
+anchors = ["experience"]
+# why: the bonus clause sits BEFORE the "!", so an anchor of "experience!"
+# does not even occur in the line -- see xp.gain_bare for the format change
+# that produced it
+pattern = '''^You gain (?P<scope>party |group |raid |)experience(?: \(with a bonus\))?! \((?P<pct>[0-9.]+)%\)$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You gain experience! (11.000%)"]
 [rule.fields]
 scope = { from = "scope", as = "str" }
@@ -895,7 +898,7 @@ pct = { from = "pct", as = "f64" }
 id = "xp.gain_bare"
 kind = "xp"
 priority = 40
-anchors = ["You gain ", "experience!"]
+anchors = ["You gain ", "experience"]
 # why: xp.gain above requires a trailing "(N.NNN%)" clause -- a real,
 # distinct bare form exists with no percentage at all, scope prefix and
 # all (own real example: "You gain party experience!", no parenthetical).
@@ -904,10 +907,17 @@ anchors = ["You gain ", "experience!"]
 # unable to carry a scope, real gap for anything (a Sky Quest turn-in's
 # own real confirmation, see skyquests.rs's own doc) that cares this is
 # specifically an experience-gain and not just unstructured flavor text.
-pattern = '''^You gain (?P<scope>party |group |raid |)experience!$'''
+# why: the server CHANGED this message. Through Sep 01 it printed
+# "You gain experience! (2.500%)"; from Sep 04 it prints "You gain
+# experience (with a bonus)!" with no percentage at all -- measured on the
+# real log, 132 percent-form lines on Aug 27 and 0 on Sep 04 against 18
+# bonus-form. Neither rule matched the new shape, so experience silently
+# stopped being recorded at all.
+pattern = '''^You gain (?P<scope>party |group |raid |)experience(?: \(with a bonus\))?!$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] You gain experience!",
   "[Thu Aug 27 12:07:05 2026] You gain party experience!",
+  "[Fri Sep 04 19:46:48 2026] You gain experience (with a bonus)!",
 ]
 [rule.fields]
 scope = { from = "scope", as = "str" }

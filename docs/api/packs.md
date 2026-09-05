@@ -30,7 +30,7 @@ tools/scrapers/ script that produces it. The standard envelope is
 
 ## items.json
 - shape: envelope [count, scraped, source], payload key(s): tiers_included, items, components
-- consumer: gearplanner.rs, inventory.rs, itemdata.rs
+- consumer: inventory.rs, itemdata.rs, gearplanner.rs
 - producer: build_monster_drops.py
 
 ## mana_table.json
