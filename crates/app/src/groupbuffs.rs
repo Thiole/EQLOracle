@@ -7,6 +7,7 @@
 
 use crate::ingest::Ingest;
 use crate::spelldata::{spells, Spell};
+use eqlp_session::classdetect::LEVEL_CAP;
 use eqlp_session::Kind;
 use eqlp_source::Millis;
 use serde::Serialize;
@@ -216,6 +217,24 @@ pub fn benefits(kind: BuffKind, my_classes: &[String]) -> bool {
     }
 }
 
+/// why: a buff the party cannot possibly have. Two independent cuts,
+/// and the pack says neither subsumes the other: filtering on level alone
+/// still admits 34 out-of-era spells at or under the cap, and filtering on
+/// era alone still admits 98 era-unknown spells above it. The reported
+/// case was both at once -- "Skin of the Shadow" is Kunark Era AND
+/// Necromancer 55, recommended as an upgrade over Shield of Words.
+///
+/// An era the scrape never stated PASSES: 196 such spells sit at or under
+/// the cap and are ordinary Classic buffs, so refusing them would hide
+/// real recommendations to catch a few. The cap is what covers that gap.
+fn reachable(spell: &Spell) -> bool {
+    let live = crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA);
+    match spell.era.as_deref().and_then(crate::gearplanner::era_ix) {
+        Some(ix) => live.is_none_or(|l| ix <= l),
+        None => true,
+    }
+}
+
 /// why: one spell LINE the party could put on you -- ranks of a line are
 /// one entry (Clarity I/II/III is "Clarity"), because casting any of them
 /// covers the same slot
@@ -371,8 +390,17 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             if !benefits(kind, &my_classes) {
                 continue;
             }
+            if !reachable(spell) {
+                continue;
+            }
             let castable = spell.classes.iter().find(|sc| {
                 member.classes.iter().any(|c| c == &sc.class)
+                    // why: nobody can reach a rank above the server's cap,
+                    // whatever their own level is or isn't -- the spell
+                    // scrape carries Live's levels (Improved Invisibility
+                    // is listed Wizard 55), and an unknown ally level used
+                    // to let every one of those through
+                    && sc.level.is_none_or(|need| need <= u32::from(LEVEL_CAP))
                     && member
                         .level
                         .is_none_or(|lvl| sc.level.is_none_or(|need| need <= u32::from(lvl)))
@@ -587,5 +615,40 @@ mod tests {
             &["Wizard".into(), "Enchanter".into()]
         ));
         assert!(benefits(BuffKind::Hp, &["Wizard".into()]));
+    }
+
+    /// why: the reported case -- the Shield of Words kind recommended
+    /// "Skin of the Shadow", which is Kunark Era AND Necromancer 55, so
+    /// nobody on this server can cast it for either reason
+    #[test]
+    fn an_unreachable_buff_is_never_recommended() {
+        let by_name = |n: &str| spells().iter().find(|s| s.name == n).expect(n);
+
+        let shadow = by_name("Skin of the Shadow");
+        assert_eq!(shadow.era.as_deref(), Some("Kunark Era"));
+        assert!(!reachable(shadow), "a Kunark spell is out of era");
+        assert!(
+            shadow
+                .classes
+                .iter()
+                .all(|c| c.level.is_some_and(|l| l > u32::from(LEVEL_CAP))),
+            "and every rank of it is above the cap"
+        );
+
+        // why: the buff it was offered as an upgrade over stays offered
+        let words = by_name("Shield of Words");
+        assert!(reachable(words), "Classic Era, and castable at 45");
+        assert!(words
+            .classes
+            .iter()
+            .any(|c| c.level.is_some_and(|l| l <= u32::from(LEVEL_CAP))));
+
+        // why: an era the scrape never stated is not proof of anything --
+        // 196 such spells sit under the cap and are ordinary Classic buffs
+        let unknown = spells()
+            .iter()
+            .find(|s| s.era.is_none())
+            .expect("the pack has era-unknown spells");
+        assert!(reachable(unknown));
     }
 }
