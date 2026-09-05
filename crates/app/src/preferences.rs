@@ -50,6 +50,11 @@ fn default_buff_layout() -> String {
     "full".to_string()
 }
 
+/// why: asked for directly -- "default to 2", the condensed layout
+fn default_dps_layout() -> String {
+    "condensed".to_string()
+}
+
 /// why: the second opacity knob. overlay_<widget>_opacity above is
 /// background-only (rgba alpha on the panel; text stays fully
 /// readable). This is a CSS `opacity` on the whole outer element, so
@@ -221,6 +226,14 @@ pub struct Preferences {
     /// "dps_meter"/"skill_tracker" strings commands::overlay_label
     /// already uses), empty until a widget's been dragged and re-locked
     /// at least once.
+    /// why: how much of the fight the DPS meter OVERLAY draws --
+    /// "minimal" (teammates only), "condensed" (the default: teammates
+    /// plus two folded enemy rows) or "full" (every enemy its own row).
+    /// Ally pets fold to one row in all three. Plain string, same
+    /// "unrecognized value falls back" contract as `theme`; combat's own
+    /// DpsLayout::parse validates it on read.
+    #[serde(default = "default_dps_layout")]
+    pub overlay_dps_meter_layout: String,
     /// why: how the Group Buff Tracker OVERLAY draws itself -- "full"
     /// (the list) or "minimal" (one verdict line). Spencer: "it doesnt
     /// change any information in app. just minimizes the screen space in
@@ -302,6 +315,7 @@ impl Default for Preferences {
             tracked_target_effects: Vec::new(),
             tracked_drop_items: Vec::new(),
             tracked_drop_seen_counts: HashMap::new(),
+            overlay_dps_meter_layout: default_dps_layout(),
             overlay_group_buffs_layout: default_buff_layout(),
             muted_buff_lines: Vec::new(),
             overlay_positions: HashMap::new(),
@@ -450,6 +464,7 @@ mod tests {
             tracked_skills: vec!["Kick".to_string(), "Backstab".to_string()],
             tracked_target_effects: vec!["Tashania".to_string()],
             tracked_drop_items: vec!["Light Woolen Mask".to_string()],
+            overlay_dps_meter_layout: "full".to_string(),
             overlay_group_buffs_layout: "minimal".to_string(),
             muted_buff_lines: vec!["Cure Disease".to_string()],
             tracked_drop_seen_counts,
@@ -479,6 +494,7 @@ mod tests {
         assert_eq!(back.tracked_drop_items, vec!["Light Woolen Mask"]);
         assert_eq!(back.muted_buff_lines, vec!["Cure Disease"]);
         assert_eq!(back.overlay_group_buffs_layout, "minimal");
+        assert_eq!(back.overlay_dps_meter_layout, "full");
         assert_eq!(
             back.tracked_drop_seen_counts.get("Light Woolen Mask"),
             Some(&2)
@@ -522,6 +538,7 @@ mod tests {
             back.overlay_group_buffs_layout, "full",
             "an old file is not silently shrunk"
         );
+        assert_eq!(back.overlay_dps_meter_layout, "condensed");
         assert!(back.tracked_drop_seen_counts.is_empty());
         assert!(back.overlay_positions.is_empty());
     }

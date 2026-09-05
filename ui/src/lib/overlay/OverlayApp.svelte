@@ -29,6 +29,7 @@
   import GroupBuffsWidget from './GroupBuffsWidget.svelte';
   import { asCcSize, CC_SIZE_WINDOW_DIMS, DEFAULT_CC_SIZE, type CcSize } from './ccSize';
   import { asBuffLayout, BUFF_LAYOUT_WINDOW_DIMS, DEFAULT_BUFF_LAYOUT, type BuffLayout } from './buffLayout';
+  import { asDpsLayout, DPS_LAYOUT_WINDOW_DIMS, type DpsLayout } from './dpsLayout';
 
   const widget = currentOverlayWidget();
 
@@ -170,6 +171,11 @@
       if (widget === 'group_buffs') {
         buffLayout = asBuffLayout(e.payload[1]);
         const { w, h } = BUFF_LAYOUT_WINDOW_DIMS[buffLayout];
+        void getCurrentWindow().setSize(new LogicalSize(w, h));
+        return;
+      }
+      if (widget === 'dps_meter') {
+        const { w, h } = DPS_LAYOUT_WINDOW_DIMS[asDpsLayout(e.payload[1])];
         void getCurrentWindow().setSize(new LogicalSize(w, h));
         return;
       }

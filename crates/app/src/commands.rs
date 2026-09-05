@@ -575,9 +575,10 @@ pub fn get_window_capability() -> WindowCapabilityDto {
 /// live preview inside the main window itself
 
 #[tauri::command]
-pub fn get_live_meter(state: State<AppState>) -> Option<combat::LiveMeterDto> {
+pub fn get_live_meter(app: AppHandle, state: State<AppState>) -> Option<combat::LiveMeterDto> {
+    let layout = combat::DpsLayout::parse(&preferences::load(&app).overlay_dps_meter_layout);
     let ing = state.ingest.lock_recover();
-    let m = combat::live_meter(&ing);
+    let m = combat::live_meter_with(&ing, layout);
     // why: EQLP_METER_TRACE=<file> -- one line per widget poll straight
     // from the running app: wall clock, log clock, encounter, open, rows,
     // your total. The only way to see what the widget was actually
@@ -760,6 +761,17 @@ fn cc_tracker_dims(size: &str) -> (f64, f64) {
 /// own BUFF_LAYOUT_WINDOW_DIMS is the other half. "minimal" is one
 /// verdict line, so the window shrinks to it; anything unrecognized is
 /// the full list.
+/// why: same hand-mirrored contract as cc_tracker_dims -- dpsLayout.ts's
+/// own DPS_LAYOUT_WINDOW_DIMS is the other half. Minimal drops the enemy
+/// side entirely, full gives every enemy its own row.
+fn dps_meter_dims(layout: &str) -> (f64, f64) {
+    match layout {
+        "minimal" => (360.0, 150.0),
+        "full" => (360.0, 330.0),
+        _ => (360.0, 240.0),
+    }
+}
+
 fn group_buffs_dims(layout: &str) -> (f64, f64) {
     match layout {
         "minimal" => (180.0, 46.0),
@@ -819,6 +831,7 @@ pub async fn set_overlay_enabled(
         // why: a verdict line plus a short list of buff kinds, unless the
         // player picked the minimal layout -- see group_buffs_dims
         "group_buffs" => group_buffs_dims(&preferences::load(&app).overlay_group_buffs_layout),
+        "dps_meter" => dps_meter_dims(&preferences::load(&app).overlay_dps_meter_layout),
         _ => (360.0, 240.0),
     };
     // why: built hidden, shown only after hide_from_window_switcher --

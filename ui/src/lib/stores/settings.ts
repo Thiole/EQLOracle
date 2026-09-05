@@ -4,21 +4,18 @@
 // to. Both are read from other modules (GameData, Character's GearPanel),
 // not just Settings itself, which is why this lives here rather than as
 // local component state in Settings.svelte.
-import { writable, derived, get } from "svelte/store";
-import { api, type PreferencesDto, type TrackedLootDto } from "../tauri/api";
-import { asCcSize, DEFAULT_CC_SIZE, type CcSize } from "../overlay/ccSize";
-import {
-  asBuffLayout,
-  DEFAULT_BUFF_LAYOUT,
-  type BuffLayout,
-} from "../overlay/buffLayout";
+import { writable, derived, get } from 'svelte/store';
+import { api, type PreferencesDto, type TrackedLootDto } from '../tauri/api';
+import { asCcSize, DEFAULT_CC_SIZE, type CcSize } from '../overlay/ccSize';
+import { asBuffLayout, DEFAULT_BUFF_LAYOUT, type BuffLayout } from '../overlay/buffLayout';
+import { asDpsLayout, DEFAULT_DPS_LAYOUT, type DpsLayout } from '../overlay/dpsLayout';
 
 export const volume = writable(100);
 /** why: the raw saved preference -- null means "no explicit choice yet",
  * see effectiveEra below for what that resolves to. */
 export const era = writable<string | null>(null);
 export const eraOptions = writable<string[]>([]);
-export const currentEra = writable("Sky Era");
+export const currentEra = writable('Sky Era');
 /** why: false (default) = infer everything fresh every launch, same as
  * always. true = also keep a saved per-character class profile across
  * restarts as a fallback for zone routing -- see `PreferencesDto.
@@ -26,9 +23,9 @@ export const currentEra = writable("Sky Era");
 export const saveProfile = writable(false);
 /** why: which release channel this install checks for updates against --
  * see PreferencesDto.update_channel's own doc */
-export const updateChannel = writable<"public" | "beta">("public");
+export const updateChannel = writable<'public' | 'beta'>('public');
 /** why: a themes.css `data-theme` slug -- see PreferencesDto.theme's own doc */
-export const theme = writable("eqlp");
+export const theme = writable('eqlp');
 /** why: each overlay widget owns its own on/off -- deliberately NOT
  * loaded from or saved to preferences (see preferences.rs's own doc):
  * whether a widget is currently showing is live session state, not a
@@ -110,14 +107,17 @@ export const trackedDropSeenCounts = writable<Record<string, number>>({});
 /** why: see PreferencesDto.drop_watch_checkpoint_ms's own doc --
  * dropWatchLoot.ts owns reading/writing this, this store just persists it */
 export const dropWatchCheckpointMs = writable<number | null>(null);
-/** why: how the Group Buff Tracker overlay draws itself -- see
- * PreferencesDto.overlay_group_buffs_layout's own doc. App-side displays
- * never read it. */
-export const groupBuffsLayout = writable<BuffLayout>(DEFAULT_BUFF_LAYOUT);
 /** why: buff lines the Group Buff Tracker should not watch -- see
  * PreferencesDto.muted_buff_lines's own doc. Empty by default; the
  * entry point is Settings -> Overlay -> Group Buffs. */
 export const mutedBuffLines = writable<string[]>([]);
+/** why: how the Group Buff Tracker overlay draws itself -- see
+ * PreferencesDto.overlay_group_buffs_layout's own doc. App-side displays
+ * never read it. */
+export const groupBuffsLayout = writable<BuffLayout>(DEFAULT_BUFF_LAYOUT);
+/** why: how much of the fight the DPS meter overlay draws -- see
+ * PreferencesDto.overlay_dps_meter_layout's own doc */
+export const dpsMeterLayout = writable<DpsLayout>(DEFAULT_DPS_LAYOUT);
 export const settingsLoaded = writable(false);
 
 // why: applies on every change, not just after an explicit setTheme() --
@@ -125,7 +125,7 @@ export const settingsLoaded = writable(false);
 // theme is live the moment it's known rather than waiting on Settings.
 // svelte to mount. Guarded for SSR/test environments with no `document`.
 theme.subscribe((t) => {
-  if (typeof document !== "undefined") {
+  if (typeof document !== 'undefined') {
     document.documentElement.dataset.theme = t;
   }
 });
@@ -133,20 +133,14 @@ theme.subscribe((t) => {
 /** why: what every era-aware API call should actually send -- resolves
  * the "no preference saved" null to the live server's own current era,
  * once, here, instead of every caller duplicating that fallback. */
-export const effectiveEra = derived(
-  [era, currentEra],
-  ([$era, $currentEra]) => $era ?? $currentEra,
-);
+export const effectiveEra = derived([era, currentEra], ([$era, $currentEra]) => $era ?? $currentEra);
 
 let loading: Promise<void> | null = null;
 
 export function loadPreferences(): Promise<void> {
   if (loading) return loading;
   loading = (async () => {
-    const [opts, prefs] = await Promise.all([
-      api.getEraOptions(),
-      api.getPreferences(),
-    ]);
+    const [opts, prefs] = await Promise.all([api.getEraOptions(), api.getPreferences()]);
     // why: list/map fields tolerate an absent value at this boundary --
     // a prefs blob older than a field (or a harness fixture predating
     // it) otherwise feeds undefined into components that .length/.map
@@ -178,8 +172,9 @@ export function loadPreferences(): Promise<void> {
     trackedDropItems.set(prefs.tracked_drop_items ?? []);
     trackedDropSeenCounts.set(prefs.tracked_drop_seen_counts ?? {});
     dropWatchCheckpointMs.set(prefs.drop_watch_checkpoint_ms);
-    mutedBuffLines.set(prefs.muted_buff_lines ?? []);
     groupBuffsLayout.set(asBuffLayout(prefs.overlay_group_buffs_layout));
+    dpsMeterLayout.set(asDpsLayout(prefs.overlay_dps_meter_layout));
+    mutedBuffLines.set(prefs.muted_buff_lines ?? []);
     settingsLoaded.set(true);
   })();
   return loading;
@@ -212,6 +207,7 @@ function currentPrefs(): PreferencesDto {
     drop_watch_checkpoint_ms: get(dropWatchCheckpointMs),
     muted_buff_lines: get(mutedBuffLines),
     overlay_group_buffs_layout: get(groupBuffsLayout),
+    overlay_dps_meter_layout: get(dpsMeterLayout),
   };
 }
 
@@ -227,16 +223,12 @@ export async function setEra(e: string) {
 
 export async function setSaveProfile(on: boolean) {
   saveProfile.set(on);
-  await api
-    .setPreferences({ ...currentPrefs(), save_profile: on })
-    .catch(() => {});
+  await api.setPreferences({ ...currentPrefs(), save_profile: on }).catch(() => {});
 }
 
-export async function setUpdateChannel(channel: "public" | "beta") {
+export async function setUpdateChannel(channel: 'public' | 'beta') {
   updateChannel.set(channel);
-  await api
-    .setPreferences({ ...currentPrefs(), update_channel: channel })
-    .catch(() => {});
+  await api.setPreferences({ ...currentPrefs(), update_channel: channel }).catch(() => {});
 }
 
 export async function setTheme(slug: string) {
@@ -252,7 +244,7 @@ export async function setTheme(slug: string) {
  * caller should show that reason rather than pretend the window opened. */
 export async function setDpsMeterEnabled(on: boolean) {
   dpsMeterEnabled.set(on);
-  await api.setOverlayEnabled("dps_meter", on);
+  await api.setOverlayEnabled('dps_meter', on);
 }
 
 /** why: persists, and live-pushes to the open overlay window (a no-op
@@ -260,45 +252,36 @@ export async function setDpsMeterEnabled(on: boolean) {
  * since a slider drag shouldn't wait on a disk write to feel live */
 export async function setDpsMeterOpacity(v: number) {
   dpsMeterOpacity.set(v);
-  void api.setOverlayOpacity("dps_meter", v);
-  await api
-    .setPreferences({ ...currentPrefs(), overlay_dps_meter_opacity: v })
-    .catch(() => {});
+  void api.setOverlayOpacity('dps_meter', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_dps_meter_opacity: v }).catch(() => {});
 }
 
 /** why: the SEPARATE "everything" fade -- same live-push/persist split as setDpsMeterOpacity above */
 export async function setDpsMeterOverallOpacity(v: number) {
   dpsMeterOverallOpacity.set(v);
-  void api.setOverlayOverallOpacity("dps_meter", v);
-  await api
-    .setPreferences({ ...currentPrefs(), overlay_dps_meter_overall_opacity: v })
-    .catch(() => {});
+  void api.setOverlayOverallOpacity('dps_meter', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_dps_meter_overall_opacity: v }).catch(() => {});
 }
 
 /** why: same contract as setDpsMeterEnabled -- see its own doc */
 export async function setSkillTrackerEnabled(on: boolean) {
   skillTrackerEnabled.set(on);
-  await api.setOverlayEnabled("skill_tracker", on);
+  await api.setOverlayEnabled('skill_tracker', on);
 }
 
 /** why: same contract as setDpsMeterOpacity -- see its own doc */
 export async function setSkillTrackerOpacity(v: number) {
   skillTrackerOpacity.set(v);
-  void api.setOverlayOpacity("skill_tracker", v);
-  await api
-    .setPreferences({ ...currentPrefs(), overlay_skill_tracker_opacity: v })
-    .catch(() => {});
+  void api.setOverlayOpacity('skill_tracker', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_skill_tracker_opacity: v }).catch(() => {});
 }
 
 /** why: see setDpsMeterOverallOpacity's own doc -- same "everything" fade, this widget's own */
 export async function setSkillTrackerOverallOpacity(v: number) {
   skillTrackerOverallOpacity.set(v);
-  void api.setOverlayOverallOpacity("skill_tracker", v);
+  void api.setOverlayOverallOpacity('skill_tracker', v);
   await api
-    .setPreferences({
-      ...currentPrefs(),
-      overlay_skill_tracker_overall_opacity: v,
-    })
+    .setPreferences({ ...currentPrefs(), overlay_skill_tracker_overall_opacity: v })
     .catch(() => {});
 }
 
@@ -309,9 +292,7 @@ export async function setSkillTrackerOverallOpacity(v: number) {
  * for a list that changes rarely) */
 export async function setTrackedSkills(skills: string[]) {
   trackedSkills.set(skills);
-  await api
-    .setPreferences({ ...currentPrefs(), tracked_skills: skills })
-    .catch(() => {});
+  await api.setPreferences({ ...currentPrefs(), tracked_skills: skills }).catch(() => {});
 }
 
 /** why: the one call every real "track" button uses -- Spellbook's own
@@ -320,9 +301,7 @@ export async function setTrackedSkills(skills: string[]) {
  * tracked, flip it", not the whole list */
 export async function toggleTrackedSkill(name: string) {
   const current = get(trackedSkills);
-  const next = current.includes(name)
-    ? current.filter((s) => s !== name)
-    : [...current, name];
+  const next = current.includes(name) ? current.filter((s) => s !== name) : [...current, name];
   await setTrackedSkills(next);
 }
 
@@ -331,52 +310,43 @@ export async function toggleTrackedSkill(name: string) {
  * setTrackedSkills */
 export async function setTrackedTargetEffects(spells: string[]) {
   trackedTargetEffects.set(spells);
-  await api
-    .setPreferences({ ...currentPrefs(), tracked_target_effects: spells })
-    .catch(() => {});
+  await api.setPreferences({ ...currentPrefs(), tracked_target_effects: spells }).catch(() => {});
 }
 
 /** why: the one call Spellbook's own "Overlay spell tracking" section
  * uses -- same "is this one tracked, flip it" shape as toggleTrackedSkill */
 export async function toggleTrackedTargetEffect(name: string) {
   const current = get(trackedTargetEffects);
-  const next = current.includes(name)
-    ? current.filter((s) => s !== name)
-    : [...current, name];
+  const next = current.includes(name) ? current.filter((s) => s !== name) : [...current, name];
   await setTrackedTargetEffects(next);
 }
 
 /** why: same contract as setDpsMeterEnabled -- see its own doc */
 export async function setDropWatchEnabled(on: boolean) {
   dropWatchEnabled.set(on);
-  await api.setOverlayEnabled("drop_watch", on);
+  await api.setOverlayEnabled('drop_watch', on);
 }
 
 /** why: same contract as setDpsMeterOpacity -- see its own doc */
 export async function setDropWatchOpacity(v: number) {
   dropWatchOpacity.set(v);
-  void api.setOverlayOpacity("drop_watch", v);
-  await api
-    .setPreferences({ ...currentPrefs(), overlay_drop_watch_opacity: v })
-    .catch(() => {});
+  void api.setOverlayOpacity('drop_watch', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_drop_watch_opacity: v }).catch(() => {});
 }
 
 /** why: see setDpsMeterOverallOpacity's own doc -- same "everything" fade, this widget's own */
 export async function setDropWatchOverallOpacity(v: number) {
   dropWatchOverallOpacity.set(v);
-  void api.setOverlayOverallOpacity("drop_watch", v);
+  void api.setOverlayOverallOpacity('drop_watch', v);
   await api
-    .setPreferences({
-      ...currentPrefs(),
-      overlay_drop_watch_overall_opacity: v,
-    })
+    .setPreferences({ ...currentPrefs(), overlay_drop_watch_overall_opacity: v })
     .catch(() => {});
 }
 
 /** why: same contract as setDpsMeterEnabled -- see its own doc */
 export async function setCcTrackerEnabled(on: boolean) {
   ccTrackerEnabled.set(on);
-  await api.setOverlayEnabled("cc_tracker", on);
+  await api.setOverlayEnabled('cc_tracker', on);
 }
 
 /** why: the one "turn everything on/off together" action, shared by
@@ -404,45 +374,36 @@ export async function setOverlayEnabledAll(on: boolean) {
 /** why: same contract as setSessionWidgetEnabled -- see its own doc */
 export async function setGroupBuffsEnabled(on: boolean) {
   groupBuffsEnabled.set(on);
-  await api.setOverlayEnabled("group_buffs", on);
+  await api.setOverlayEnabled('group_buffs', on);
 }
 export async function setGroupBuffsOpacity(v: number) {
   groupBuffsOpacity.set(v);
-  void api.setOverlayOpacity("group_buffs", v);
-  await api
-    .setPreferences({ ...currentPrefs(), overlay_group_buffs_opacity: v })
-    .catch(() => {});
+  void api.setOverlayOpacity('group_buffs', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_group_buffs_opacity: v }).catch(() => {});
 }
 export async function setGroupBuffsOverallOpacity(v: number) {
   groupBuffsOverallOpacity.set(v);
-  void api.setOverlayOverallOpacity("group_buffs", v);
-  await api
-    .setPreferences({
-      ...currentPrefs(),
-      overlay_group_buffs_overall_opacity: v,
-    })
-    .catch(() => {});
+  void api.setOverlayOverallOpacity('group_buffs', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_group_buffs_overall_opacity: v }).catch(() => {});
 }
 
 /** why: same contract as setDpsMeterEnabled -- see its own doc */
 export async function setSessionWidgetEnabled(on: boolean) {
   sessionWidgetEnabled.set(on);
-  await api.setOverlayEnabled("session", on);
+  await api.setOverlayEnabled('session', on);
 }
 
 /** why: same contract as setDpsMeterOpacity -- see its own doc */
 export async function setSessionWidgetOpacity(v: number) {
   sessionWidgetOpacity.set(v);
-  void api.setOverlayOpacity("session", v);
-  await api
-    .setPreferences({ ...currentPrefs(), overlay_session_opacity: v })
-    .catch(() => {});
+  void api.setOverlayOpacity('session', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_session_opacity: v }).catch(() => {});
 }
 
 /** why: see setDpsMeterOverallOpacity's own doc -- same "everything" fade, this widget's own */
 export async function setSessionWidgetOverallOpacity(v: number) {
   sessionWidgetOverallOpacity.set(v);
-  void api.setOverlayOverallOpacity("session", v);
+  void api.setOverlayOverallOpacity('session', v);
   await api
     .setPreferences({ ...currentPrefs(), overlay_session_overall_opacity: v })
     .catch(() => {});
@@ -451,71 +412,62 @@ export async function setSessionWidgetOverallOpacity(v: number) {
 /** why: same contract as setDpsMeterOpacity -- see its own doc */
 export async function setCcTrackerOpacity(v: number) {
   ccTrackerOpacity.set(v);
-  void api.setOverlayOpacity("cc_tracker", v);
-  await api
-    .setPreferences({ ...currentPrefs(), overlay_cc_tracker_opacity: v })
-    .catch(() => {});
+  void api.setOverlayOpacity('cc_tracker', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_cc_tracker_opacity: v }).catch(() => {});
 }
 
 /** why: see setDpsMeterOverallOpacity's own doc -- same "everything" fade, this widget's own */
 export async function setCcTrackerOverallOpacity(v: number) {
   ccTrackerOverallOpacity.set(v);
-  void api.setOverlayOverallOpacity("cc_tracker", v);
+  void api.setOverlayOverallOpacity('cc_tracker', v);
   await api
-    .setPreferences({
-      ...currentPrefs(),
-      overlay_cc_tracker_overall_opacity: v,
-    })
+    .setPreferences({ ...currentPrefs(), overlay_cc_tracker_overall_opacity: v })
     .catch(() => {});
 }
 
 /** why: resizes the real OS window (if open), not just a CSS value --
  * same live-push/persist split as setCcTrackerOpacity above, see
  * ccSize.ts's own doc */
-/** why: the layout is a WINDOW size change as much as a render one --
- * one verdict line inside the full window would minimize nothing, so
- * this pushes the live resize the same way setCcTrackerSize does */
+/** why: a layout is a WINDOW size change as much as a render one -- one
+ * verdict line inside the full window would minimize nothing, so both of
+ * these push the live resize the way setCcTrackerSize does */
 export async function setGroupBuffsLayout(v: BuffLayout) {
   groupBuffsLayout.set(v);
-  void api.setOverlaySize("group_buffs", v);
-  await api
-    .setPreferences({ ...currentPrefs(), overlay_group_buffs_layout: v })
-    .catch(() => {});
+  void api.setOverlaySize('group_buffs', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_group_buffs_layout: v }).catch(() => {});
+}
+
+export async function setDpsMeterLayout(v: DpsLayout) {
+  dpsMeterLayout.set(v);
+  void api.setOverlaySize('dps_meter', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_dps_meter_layout: v }).catch(() => {});
 }
 
 export async function setCcTrackerSize(v: CcSize) {
   ccTrackerSize.set(v);
-  void api.setOverlaySize("cc_tracker", v);
-  await api
-    .setPreferences({ ...currentPrefs(), overlay_cc_tracker_size: v })
-    .catch(() => {});
+  void api.setOverlaySize('cc_tracker', v);
+  await api.setPreferences({ ...currentPrefs(), overlay_cc_tracker_size: v }).catch(() => {});
 }
 
 /** why: which items show a heads-up in the Drop Watch overlay -- IS
  * persisted, same as setTrackedSkills */
 export async function setTrackedDropItems(items: string[]) {
   trackedDropItems.set(items);
-  await api
-    .setPreferences({ ...currentPrefs(), tracked_drop_items: items })
-    .catch(() => {});
+  await api.setPreferences({ ...currentPrefs(), tracked_drop_items: items }).catch(() => {});
 }
 
 /** why: the "remove from Drop Watch?" prompt's own baseline -- see
  * PreferencesDto.tracked_drop_seen_counts's own doc */
 export async function setTrackedDropSeenCounts(counts: Record<string, number>) {
   trackedDropSeenCounts.set(counts);
-  await api
-    .setPreferences({ ...currentPrefs(), tracked_drop_seen_counts: counts })
-    .catch(() => {});
+  await api.setPreferences({ ...currentPrefs(), tracked_drop_seen_counts: counts }).catch(() => {});
 }
 
 /** why: dropWatchLoot.ts's own periodic checkpoint save -- see
  * PreferencesDto.drop_watch_checkpoint_ms's own doc */
 export async function setDropWatchCheckpointMs(ms: number) {
   dropWatchCheckpointMs.set(ms);
-  await api
-    .setPreferences({ ...currentPrefs(), drop_watch_checkpoint_ms: ms })
-    .catch(() => {});
+  await api.setPreferences({ ...currentPrefs(), drop_watch_checkpoint_ms: ms }).catch(() => {});
 }
 
 /** why: the one call every "track this drop" button uses -- Sky Quests'
@@ -534,9 +486,7 @@ export async function trackDropItems(names: string[]) {
   const adding = [...new Set(names)].filter((n) => !current.includes(n));
   if (!adding.length) return;
   await setTrackedDropItems([...current, ...adding]);
-  const statuses = await api
-    .getTrackedLootStatus(adding)
-    .catch(() => [] as TrackedLootDto[]);
+  const statuses = await api.getTrackedLootStatus(adding).catch(() => [] as TrackedLootDto[]);
   const counts = { ...get(trackedDropSeenCounts) };
   for (const n of adding) {
     counts[n] = statuses.find((s) => s.item === n)?.count ?? 0;
@@ -549,13 +499,9 @@ export async function trackDropItems(names: string[]) {
  * backend does the filtering and this only persists the list */
 export async function toggleMutedBuffLine(line: string) {
   const current = get(mutedBuffLines);
-  const next = current.includes(line)
-    ? current.filter((l) => l !== line)
-    : [...current, line];
+  const next = current.includes(line) ? current.filter((l) => l !== line) : [...current, line];
   mutedBuffLines.set(next);
-  await api
-    .setPreferences({ ...currentPrefs(), muted_buff_lines: next })
-    .catch(() => {});
+  await api.setPreferences({ ...currentPrefs(), muted_buff_lines: next }).catch(() => {});
 }
 
 export async function toggleTrackedDropItem(name: string) {
@@ -564,13 +510,8 @@ export async function toggleTrackedDropItem(name: string) {
   const next = adding ? [...current, name] : current.filter((s) => s !== name);
   await setTrackedDropItems(next);
   if (adding) {
-    const [existing] = await api
-      .getTrackedLootStatus([name])
-      .catch(() => [] as TrackedLootDto[]);
-    await setTrackedDropSeenCounts({
-      ...get(trackedDropSeenCounts),
-      [name]: existing?.count ?? 0,
-    });
+    const [existing] = await api.getTrackedLootStatus([name]).catch(() => [] as TrackedLootDto[]);
+    await setTrackedDropSeenCounts({ ...get(trackedDropSeenCounts), [name]: existing?.count ?? 0 });
   }
 }
 
@@ -580,12 +521,8 @@ export async function toggleTrackedDropItem(name: string) {
  * resolution is a multi-field chain (`available_from`/`eras`/`era`), not
  * one field this could compare the same simple way. AAs carry no era
  * field at all (the scrape never tagged them) -- never filtered. */
-export function passesEra(
-  entryEra: string | null | undefined,
-  ceiling: string,
-  order: string[],
-): boolean {
-  if (ceiling === "All") return true;
+export function passesEra(entryEra: string | null | undefined, ceiling: string, order: string[]): boolean {
+  if (ceiling === 'All') return true;
   const ceilIx = order.indexOf(ceiling);
   if (ceilIx === -1) return true; // an unrecognized ceiling -- don't hide anything over it
   if (!entryEra) return true; // unresolved era -- always shown, matches gearplanner::in_era's own stance

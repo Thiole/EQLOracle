@@ -1587,6 +1587,10 @@ export interface PreferencesDto {
    * within a fixed window of whenever the app happens to check. null
    * until Drop Watch has tracked anything at least once. */
   drop_watch_checkpoint_ms: number | null;
+  /** why: how much of the fight the DPS meter OVERLAY draws --
+   * 'minimal' | 'condensed' | 'full'. Ally pets fold to one row in all
+   * three; what changes is the enemy side. */
+  overlay_dps_meter_layout: string;
   /** why: how the Group Buff Tracker OVERLAY draws itself -- 'full' |
    * 'minimal'. Changes nothing in the app, only the in-game widget's own
    * screen footprint. Plain string, validated by asBuffLayout on read. */

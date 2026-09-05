@@ -1409,7 +1409,43 @@ pub fn encounter_for(ing: &Ingest, target_sym: Sym) -> Option<&Encounter> {
 /// (self-corrects in a lull). Closed -> window frozen at the end, the
 /// whole engagement, so the summary doesn't decay to 0 after the fight.
 /// None before any encounter exists yet this session.
+/// why: how much of the fight the overlay draws. Allies are the same set
+/// in all three -- "non allies cannot attack the same target", so there is
+/// no roster to filter by -- and ally pets always fold to one row. What
+/// changes is the enemy side: none, the two folded rows, or every entity.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DpsLayout {
+    /// why: teammates only, no enemy side at all
+    Minimal,
+    /// why: the default -- teammates plus the highest-ranked enemy and
+    /// one combined row for the rest (see fold_incoming)
+    Condensed,
+    /// why: every enemy its own row, carrying its own census marker. The
+    /// census is NOT split into a row per instance -- nothing in the log
+    /// tells one "a mummy" from another.
+    Full,
+}
+
+impl DpsLayout {
+    /// why: an unrecognized value (old install, hand-edited prefs) falls
+    /// back to the default rather than erroring -- same contract as
+    /// preferences' own `theme`
+    pub fn parse(v: &str) -> Self {
+        match v {
+            "minimal" => DpsLayout::Minimal,
+            "full" => DpsLayout::Full,
+            _ => DpsLayout::Condensed,
+        }
+    }
+}
+
+/// why: the default layout, and what every caller that does not care
+/// about the preset gets
 pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
+    live_meter_with(ing, DpsLayout::Condensed)
+}
+
+pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> {
     let now = ing.now_ms();
     let primary = current_encounter(ing)?;
     // why: the engagement is EVERY fight of yours that overlapped the
@@ -1576,6 +1612,32 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     // otherwise, which is exactly what was reported. Damage rows never
     // gain a cast count; this row exists only because there is no damage
     // to show for it.
+    // why: "group pets into one" -- every ally pet sums into a single
+    // row in every layout, so a group of summoners does not push the
+    // people out of a fixed-size window. Folded before the rows are
+    // built, so the combined share and DPS come out of the same maths
+    // every other row uses.
+    let pets: Vec<String> = out_acc
+        .iter()
+        .filter(|(_, a)| a.is_pet)
+        .map(|(n, _)| n.clone())
+        .collect();
+    if pets.len() > 1 {
+        let mut merged = Acc {
+            total: 0,
+            first_ts: Millis::MAX,
+            is_player: false,
+            is_pet: true,
+        };
+        for n in &pets {
+            if let Some(a) = out_acc.remove(n) {
+                merged.total += a.total;
+                merged.first_ts = merged.first_ts.min(a.first_ts);
+            }
+        }
+        out_acc.insert(format!("pets ({})", pets.len()), merged);
+    }
+
     let mut support: HashMap<String, u32> = HashMap::new();
     for enc in &encs {
         for i in enc.range() {
@@ -1620,7 +1682,13 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
         start_ms,
         duration_ms,
         outgoing,
-        incoming: fold_incoming(build(in_acc)),
+        // why: the layout's whole job -- nothing, the two folded rows, or
+        // every entity
+        incoming: match layout {
+            DpsLayout::Minimal => Vec::new(),
+            DpsLayout::Condensed => fold_incoming(build(in_acc)),
+            DpsLayout::Full => build(in_acc),
+        },
     })
 }
 
@@ -2632,6 +2700,59 @@ mod live_meter_window_tests {
         let lines = framed_lines(text.as_bytes());
         backfill_lines(&mut ing, &engine, &lines, 1);
         ing
+    }
+
+    /// why: three layouts, one axis -- the enemy side. Allies read the
+    /// same in all three ("both are the same thing. non allies cannot
+    /// attack the same target"), so only the incoming half moves.
+    #[test]
+    fn the_layout_decides_how_much_of_the_enemy_side_is_drawn() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:02 2026] a gnoll hits You for 10 points of damage.\n\
+             [Tue Jul 28 15:01:03 2026] a gnoll pup hits You for 9 points of damage.\n\
+             [Tue Jul 28 15:01:04 2026] a gnoll scout hits You for 8 points of damage.\n\
+             [Tue Jul 28 15:01:05 2026] a gnoll runt hits You for 7 points of damage.\n",
+        );
+        let n = |l| live_meter_with(&ing, l).expect("live fight").incoming.len();
+        assert_eq!(n(DpsLayout::Minimal), 0, "teammates only");
+        assert_eq!(
+            n(DpsLayout::Condensed),
+            2,
+            "top enemy plus one combined row"
+        );
+        assert_eq!(n(DpsLayout::Full), 4, "every entity its own row");
+        // why: an unrecognized value is the default, never an error
+        assert_eq!(DpsLayout::parse("nonsense"), DpsLayout::Condensed);
+        assert_eq!(DpsLayout::parse("minimal"), DpsLayout::Minimal);
+    }
+
+    /// why: "group pets into one" -- every ally pet is one row in every
+    /// layout, so a group of summoners cannot push the people out of a
+    /// fixed-size window
+    #[test]
+    fn ally_pets_fold_into_a_single_row() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:01 2026] Kaeus hits a gnoll for 50 points of damage.\n\
+             [Tue Jul 28 15:01:02 2026] Kaeuson hits a gnoll for 20 points of damage.\n\
+             [Tue Jul 28 15:01:03 2026] Kaeuson hits a gnoll for 20 points of damage.\n\
+             [Tue Jul 28 15:01:04 2026] Kaeuson hits a gnoll for 20 points of damage.\n\
+             [Tue Jul 28 15:01:05 2026] Xaberon hits a gnoll for 30 points of damage.\n\
+             [Tue Jul 28 15:01:06 2026] Xaberon hits a gnoll for 30 points of damage.\n\
+             [Tue Jul 28 15:01:07 2026] Xaberon hits a gnoll for 30 points of damage.\n",
+        );
+        let m = live_meter(&ing).expect("live fight");
+        let pets: Vec<&LiveMeterRowDto> = m.outgoing.iter().filter(|r| r.is_pet).collect();
+        assert_eq!(pets.len(), 1, "one row, whatever the pet count");
+        assert_eq!(pets[0].name, "pets (2)");
+        assert_eq!(pets[0].total, 150, "the combined row carries the sum");
+        assert!(
+            m.outgoing.iter().any(|r| r.name == "Kaeus"),
+            "a person is never folded into it"
+        );
     }
 
     /// why: the spec -- the encounter's own timer runs from the player's
