@@ -28,6 +28,7 @@
   import SessionWidget from './SessionWidget.svelte';
   import GroupBuffsWidget from './GroupBuffsWidget.svelte';
   import { asCcSize, CC_SIZE_WINDOW_DIMS, DEFAULT_CC_SIZE, type CcSize } from './ccSize';
+  import { asBuffLayout, BUFF_LAYOUT_WINDOW_DIMS, DEFAULT_BUFF_LAYOUT, type BuffLayout } from './buffLayout';
 
   const widget = currentOverlayWidget();
 
@@ -47,6 +48,7 @@
   let sessionData = $state<SessionDto | null>(null);
   let groupBuffsData = $state<GroupBuffsDto | null>(null);
   let ccSize = $state<CcSize>(DEFAULT_CC_SIZE);
+  let buffLayout = $state<BuffLayout>(DEFAULT_BUFF_LAYOUT);
   let rootEl: HTMLDivElement | undefined = $state();
 
   async function refreshPrefs() {
@@ -84,6 +86,10 @@
     } else if (widget === 'group_buffs') {
       opacity = p.overlay_group_buffs_opacity;
       overallOpacity = p.overlay_group_buffs_overall_opacity;
+      // why: render only -- the window's own dims are set at open time
+      // and live-resized by the 'overlay-size' listener, same split as
+      // ccSize below
+      buffLayout = asBuffLayout(p.overlay_group_buffs_layout);
     } else if (widget === 'cc_tracker') {
       opacity = p.overlay_cc_tracker_opacity;
       overallOpacity = p.overlay_cc_tracker_overall_opacity;
@@ -159,6 +165,14 @@
     // when only one widget currently uses an event.
     const unlistenSize = listen<[string, string]>('overlay-size', (e) => {
       if (e.payload[0] !== widget) return;
+      // why: the payload is that widget's own preset -- a size for the CC
+      // Tracker, a layout for Group Buffs. Both resize this window.
+      if (widget === 'group_buffs') {
+        buffLayout = asBuffLayout(e.payload[1]);
+        const { w, h } = BUFF_LAYOUT_WINDOW_DIMS[buffLayout];
+        void getCurrentWindow().setSize(new LogicalSize(w, h));
+        return;
+      }
       ccSize = asCcSize(e.payload[1]);
       const { w, h } = CC_SIZE_WINDOW_DIMS[ccSize];
       void getCurrentWindow().setSize(new LogicalSize(w, h));
@@ -225,7 +239,7 @@
     <!-- why: buffs are a between-fights checklist -- "during combat, hide
          the lines ... it should collapse in combat and be 100% hidden".
          An open encounter IS combat (LiveMeterDto.open). -->
-    <GroupBuffsWidget data={groupBuffsData} inCombat={meter?.open ?? false} {opacity} {overallOpacity} />
+    <GroupBuffsWidget data={groupBuffsData} inCombat={meter?.open ?? false} layout={buffLayout} {opacity} {overallOpacity} />
   {:else if widget === 'cc_tracker'}
     <CCTrackerWidget {status} {opacity} {overallOpacity} size={ccSize} />
   {/if}

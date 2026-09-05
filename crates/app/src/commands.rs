@@ -756,6 +756,17 @@ fn cc_tracker_dims(size: &str) -> (f64, f64) {
     }
 }
 
+/// why: same hand-mirrored contract as cc_tracker_dims -- buffLayout.ts's
+/// own BUFF_LAYOUT_WINDOW_DIMS is the other half. "minimal" is one
+/// verdict line, so the window shrinks to it; anything unrecognized is
+/// the full list.
+fn group_buffs_dims(layout: &str) -> (f64, f64) {
+    match layout {
+        "minimal" => (180.0, 46.0),
+        _ => (280.0, 220.0),
+    }
+}
+
 /// why: creates (or closes) this one widget's own floating window -- a
 /// fresh capability check every time, never trusts a stale frontend
 /// value, since the session's own display server can't change mid-run
@@ -805,8 +816,9 @@ pub async fn set_overlay_enabled(
         "cc_tracker" => cc_tracker_dims(&preferences::load(&app).overlay_cc_tracker_size),
         // why: compact square, asked directly -- three stat columns + a mote strip
         "session" => (250.0, 162.0),
-        // why: a verdict line plus a short list of buff kinds
-        "group_buffs" => (280.0, 220.0),
+        // why: a verdict line plus a short list of buff kinds, unless the
+        // player picked the minimal layout -- see group_buffs_dims
+        "group_buffs" => group_buffs_dims(&preferences::load(&app).overlay_group_buffs_layout),
         _ => (360.0, 240.0),
     };
     // why: built hidden, shown only after hide_from_window_switcher --

@@ -1579,6 +1579,10 @@ export interface PreferencesDto {
    * within a fixed window of whenever the app happens to check. null
    * until Drop Watch has tracked anything at least once. */
   drop_watch_checkpoint_ms: number | null;
+  /** why: how the Group Buff Tracker OVERLAY draws itself -- 'full' |
+   * 'minimal'. Changes nothing in the app, only the in-game widget's own
+   * screen footprint. Plain string, validated by asBuffLayout on read. */
+  overlay_group_buffs_layout: string;
   /** why: buff lines the Group Buff Tracker should not watch -- keyed by
    * the rank-stripped line name, so "Clarity" covers every rank. Entry
    * point is Settings -> Overlay -> Group Buffs. */

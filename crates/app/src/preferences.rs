@@ -44,6 +44,12 @@ fn default_cc_tracker_size() -> String {
     "small".to_string()
 }
 
+/// why: the full list is the layout every existing install already has --
+/// a new preset must not silently shrink someone's widget on upgrade
+fn default_buff_layout() -> String {
+    "full".to_string()
+}
+
 /// why: the second opacity knob. overlay_<widget>_opacity above is
 /// background-only (rgba alpha on the panel; text stays fully
 /// readable). This is a CSS `opacity` on the whole outer element, so
@@ -215,6 +221,14 @@ pub struct Preferences {
     /// "dps_meter"/"skill_tracker" strings commands::overlay_label
     /// already uses), empty until a widget's been dragged and re-locked
     /// at least once.
+    /// why: how the Group Buff Tracker OVERLAY draws itself -- "full"
+    /// (the list) or "minimal" (one verdict line). Spencer: "it doesnt
+    /// change any information in app. just minimizes the screen space in
+    /// game". A plain string, not a union, same "unrecognized value falls
+    /// back" contract as `theme`; buffLayout.ts's asBuffLayout validates
+    /// it on read.
+    #[serde(default = "default_buff_layout")]
+    pub overlay_group_buffs_layout: String,
     /// why: buff lines the player does not want the Group Buff Tracker
     /// to watch -- "if someone doesnt want cure disease line, they might
     /// not want to watch for it". Keyed by the same rank-stripped line
@@ -288,6 +302,7 @@ impl Default for Preferences {
             tracked_target_effects: Vec::new(),
             tracked_drop_items: Vec::new(),
             tracked_drop_seen_counts: HashMap::new(),
+            overlay_group_buffs_layout: default_buff_layout(),
             muted_buff_lines: Vec::new(),
             overlay_positions: HashMap::new(),
             planner_race: None,
@@ -435,6 +450,7 @@ mod tests {
             tracked_skills: vec!["Kick".to_string(), "Backstab".to_string()],
             tracked_target_effects: vec!["Tashania".to_string()],
             tracked_drop_items: vec!["Light Woolen Mask".to_string()],
+            overlay_group_buffs_layout: "minimal".to_string(),
             muted_buff_lines: vec!["Cure Disease".to_string()],
             tracked_drop_seen_counts,
             overlay_positions,
@@ -462,6 +478,7 @@ mod tests {
         assert_eq!(back.tracked_target_effects, vec!["Tashania"]);
         assert_eq!(back.tracked_drop_items, vec!["Light Woolen Mask"]);
         assert_eq!(back.muted_buff_lines, vec!["Cure Disease"]);
+        assert_eq!(back.overlay_group_buffs_layout, "minimal");
         assert_eq!(
             back.tracked_drop_seen_counts.get("Light Woolen Mask"),
             Some(&2)
@@ -501,6 +518,10 @@ mod tests {
         assert!(back.tracked_target_effects.is_empty());
         assert!(back.tracked_drop_items.is_empty());
         assert!(back.muted_buff_lines.is_empty());
+        assert_eq!(
+            back.overlay_group_buffs_layout, "full",
+            "an old file is not silently shrunk"
+        );
         assert!(back.tracked_drop_seen_counts.is_empty());
         assert!(back.overlay_positions.is_empty());
     }

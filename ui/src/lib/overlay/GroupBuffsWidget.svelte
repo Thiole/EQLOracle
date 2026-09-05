@@ -6,12 +6,20 @@
   // ("dont show green if its good"). Sources include your own detected
   // classes, so a buff you can cast on yourself still reads as missing.
   import type { GroupBuffsDto } from '$lib/tauri/api';
+  import { DEFAULT_BUFF_LAYOUT, type BuffLayout } from './buffLayout';
   let {
     data,
     inCombat = false,
+    layout = DEFAULT_BUFF_LAYOUT,
     opacity,
     overallOpacity,
-  }: { data: GroupBuffsDto | null; inCombat?: boolean; opacity: number; overallOpacity: number } = $props();
+  }: {
+    data: GroupBuffsDto | null;
+    inCombat?: boolean;
+    layout?: BuffLayout;
+    opacity: number;
+    overallOpacity: number;
+  } = $props();
   const ABBR: Record<string, string> = {
     Warrior: 'WAR', Cleric: 'CLR', Paladin: 'PAL', Ranger: 'RNG', 'Shadow Knight': 'SHD', Druid: 'DRU',
     Monk: 'MNK', Bard: 'BRD', Rogue: 'ROG', Shaman: 'SHM', Necromancer: 'NEC', Wizard: 'WIZ',
@@ -31,6 +39,21 @@
   // why: a low-tier buff is not coverage -- see BuffRowDto.upgrade
   const upgrades = $derived(data ? data.rows.filter((r) => r.upgrade).length : 0);
   const clean = $derived(missing === 0 && upgrades === 0 && missingInnates.length === 0);
+  // why: the minimal layout is a verdict and nothing else -- Spencer's own
+  // three states. "Warning" is your OWN self-buffs being wrong, which
+  // only you can fix, so it outranks the party half: "Others missing"
+  // means your buffs are good and theirs on you are not.
+  const verdict = $derived(
+    !data
+      ? { text: 'Buffs: …', tone: 'text-foreground/60' }
+      : !data.rows.length && !data.innates.length
+        ? { text: 'Buffs: unknown', tone: 'text-foreground/60' }
+        : missingInnates.length
+          ? { text: 'Buffs: Warning', tone: 'text-bad' }
+          : missing || upgrades
+            ? { text: 'Buffs: Others missing', tone: 'text-caution' }
+            : { text: 'Buffs: OK', tone: 'text-foreground/70' },
+  );
 </script>
 
 <div
@@ -42,6 +65,10 @@
   {#if inCombat}
     <!-- why: nothing at all mid-fight. Buffs are what you fix BETWEEN
          pulls; a checklist you cannot act on is just occlusion. -->
+  {:else if layout === 'minimal'}
+    <!-- why: one line, the whole widget -- the window shrinks to match
+         (see buffLayout.ts). Same data, less screen. -->
+    <span class="font-medium {verdict.tone}">{verdict.text}</span>
   {:else if !data}
     <p class="text-muted-foreground">group buffs…</p>
   {:else if !data.rows.length && !data.party.length}

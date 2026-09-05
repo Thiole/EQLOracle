@@ -57,9 +57,12 @@
     setGroupBuffsOverallOpacity,
     mutedBuffLines,
     toggleMutedBuffLine,
+    groupBuffsLayout,
+    setGroupBuffsLayout,
     loadPreferences,
   } from '$lib/stores/settings';
   import type { CcSize } from './ccSize';
+  import type { BuffLayout } from './buffLayout';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
   import TrackedSkillsList from './TrackedSkillsList.svelte';
   import BellIcon from '@lucide/svelte/icons/bell';
@@ -209,18 +212,18 @@
   }
 </script>
 
-{#snippet sizePicker(current: CcSize, onPick: (v: CcSize) => void, disabled: boolean)}
+{#snippet presetPicker(options: string[], current: string, onPick: (v: string) => void, disabled: boolean)}
   <div class="mt-2 flex gap-1">
-    {#each [['small', 'small'], ['medium', 'medium'], ['large', 'large']] as [v, label] (v)}
+    {#each options as v (v)}
       <button
         type="button"
         {disabled}
-        onclick={() => onPick(v as CcSize)}
+        onclick={() => onPick(v)}
         class="rounded-md border px-2 py-1 text-[11px] {current === v
           ? 'border-primary text-foreground'
           : 'border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground'} {disabled ? 'opacity-40' : ''}"
       >
-        {label}
+        {v}
       </button>
     {/each}
   </div>
@@ -384,7 +387,7 @@
           <p class="mt-1 text-[11px] text-bad">{ccTrackerError}</p>
         {/if}
         <p class="mt-2 text-[11px] text-muted-foreground">size</p>
-        {@render sizePicker($ccTrackerSize, (v) => void setCcTrackerSize(v), capped)}
+        {@render presetPicker(['small', 'medium', 'large'], $ccTrackerSize, (v) => void setCcTrackerSize(v as CcSize), capped)}
         {#if $ccTrackerEnabled && !capped}
           {@render repositionButton('cc_tracker')}
         {/if}
@@ -448,6 +451,12 @@
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
         <h2 class="panel-title mb-1.5">Group Buffs</h2>
+        <!-- why: at the top of the section, above the enable toggle --
+             this is how the IN-GAME widget lays itself out, nothing here
+             or anywhere else in the app changes with it. -->
+        <p class="text-[11px] text-muted-foreground">layout -- minimal is one verdict line in game, in a window shrunk to fit it</p>
+        {@render presetPicker(['full', 'minimal'], $groupBuffsLayout, (v) => void setGroupBuffsLayout(v as BuffLayout), capped)}
+        <div class="mt-2"></div>
         <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
           <Checkbox checked={$groupBuffsEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleGroupBuffs(v)} />
           enable
