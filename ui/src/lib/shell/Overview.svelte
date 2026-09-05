@@ -356,16 +356,17 @@
           {:else}
             <ul class="flex flex-col gap-0.5 text-[11px]">
               {#each neededBuffs as b (b.line)}
-                <li class="group/mute flex items-center justify-between gap-2">
+                <li class="flex items-center justify-between gap-2">
                   <span class="truncate text-foreground">{b.line}</span>
                   <span class="flex shrink-0 items-center gap-1.5">
                     <span class="text-muted-foreground">{b.label}</span>
-                    <!-- why: the Drop Watch bell's opposite number -- same
-                         hover-to-reveal affordance, the other direction:
-                         this stops the tracker watching that line. -->
+                    <!-- why: the Drop Watch bell's opposite number, and
+                         always visible -- reported as "I dont see any
+                         bells in that section", which hover-to-reveal
+                         earns: an affordance nobody finds is not one. -->
                     <button
                       type="button"
-                      class="hidden rounded-sm p-0.5 text-muted-foreground group-hover/mute:block hover:text-bad"
+                      class="rounded-sm p-0.5 text-muted-foreground/60 hover:text-bad"
                       title="Stop tracking {b.line} -- undo in Settings -> Overlay -> Group Buffs"
                       onclick={() => void muteLine(b.line)}
                     >
