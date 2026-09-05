@@ -535,3 +535,92 @@ mod tests {
         assert!(match_effect_polarity("You hit a gnoll for 5 points of damage.").is_none());
     }
 }
+
+/// why: an AoE lands ONE line per target, and the target's name is the
+/// only thing that varies -- every `msg_cast_on_other` in the pack reads
+/// "Someone <predicate>.", so a log line is "<name> <predicate>.". 798
+/// distinct predicates, so this is the spell data answering rather than a
+/// curated list. Returns the name and the predicate; several of one name
+/// on one predicate in one instant is a census of that pull.
+///
+/// A name can be any number of words, so the split is found by trying each
+/// space and asking whether the tail is a predicate the catalog knows.
+pub fn cast_on_other(text: &str) -> Option<(&str, &'static str)> {
+    static IDX: OnceLock<std::collections::HashSet<&'static str>> = OnceLock::new();
+    // why: only spells that AREA target. A single-target spell lands once,
+    // so a repeat of its message in one instant means two casters hit one
+    // mob, not two mobs -- "Someone winces." is shared by Chords of
+    // Dissonance (PB AE) and Cannibalize (Self), and counting the second
+    // would inflate rather than floor. 156 messages survive the filter.
+    let idx = IDX.get_or_init(|| {
+        const AREA: &[&str] = &["AE", "Free Target AE", "PB AE", "PBAOE", "Targeted AE"];
+        crate::spelldata::spells()
+            .iter()
+            .filter(|s| s.target_type.as_deref().is_some_and(|t| AREA.contains(&t)))
+            .filter_map(|s| s.msg_cast_on_other.as_deref())
+            .filter_map(|m| m.strip_prefix("Someone "))
+            .collect()
+    });
+    let mut start = 0;
+    while let Some(off) = text[start..].find(' ') {
+        let cut = start + off + 1;
+        if let Some(hit) = idx.get(&text[cut..]) {
+            // why: a bare predicate with no name in front is not a landing
+            return (cut > 1).then_some((&text[..cut - 1], *hit));
+        }
+        start = cut;
+    }
+    None
+}
+
+#[cfg(test)]
+mod cast_on_other_tests {
+    use super::*;
+
+    /// why: an AoE lands one line per target, so the split between the
+    /// target's NAME and the spell's own message is what makes a census
+    /// possible. The name can be any number of words, so the split is
+    /// found by asking the catalog.
+    #[test]
+    fn a_landing_splits_into_target_and_message() {
+        let (who, effect) =
+            cast_on_other("a gnoll is stunned by scintillating colors.").expect("a known landing");
+        assert_eq!(who, "a gnoll");
+        assert_eq!(effect, "is stunned by scintillating colors.");
+
+        // why: multi-word names are the normal case
+        let (who, _) = cast_on_other("An Amygdalan knight winces.").expect("PB AE bard song");
+        assert_eq!(who, "An Amygdalan knight");
+    }
+
+    /// why: only spells that AREA target fan out. A single-target message
+    /// repeating in one instant means two casters hit ONE mob, which would
+    /// inflate the count rather than floor it.
+    #[test]
+    fn a_single_target_message_is_not_a_census() {
+        // why: "Someone's body convulses." is Single-target; if this ever
+        // starts matching, the filter has been loosened
+        for text in [
+            "a gnoll has been mesmerized.",
+            "a gnoll staggers under the assault.",
+        ] {
+            if let Some((_, e)) = cast_on_other(text) {
+                let area = spelldata::spells().iter().any(|s| {
+                    s.msg_cast_on_other.as_deref() == Some(&format!("Someone {e}"))
+                        && matches!(
+                            s.target_type.as_deref(),
+                            Some("AE" | "Free Target AE" | "PB AE" | "PBAOE" | "Targeted AE")
+                        )
+                });
+                assert!(area, "{text:?} matched a non-area spell");
+            }
+        }
+    }
+
+    /// why: a line with no name in front is not a landing
+    #[test]
+    fn a_bare_message_is_not_a_landing() {
+        assert!(cast_on_other("winces.").is_none());
+        assert!(cast_on_other("").is_none());
+    }
+}

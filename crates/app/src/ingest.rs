@@ -2065,6 +2065,16 @@ impl Ingest {
                 let ts_ms = ts.secs() * 1000;
                 self.note_line_gap(ts_ms);
                 let text = String::from_utf8_lossy(body.slice(line));
+                // why: ADDITIVE -- a census observation does not claim the
+                // line. It used to sit in front of the flavor dictionary
+                // and swallowed lines that were also effect pings.
+                if let Some((who, effect)) = crate::spelltext::cast_on_other(&text) {
+                    let counted = {
+                        let resolved = self.resolve_name(who);
+                        self.store.sym(&resolved)
+                    };
+                    self.note_fanout(ts_ms, effect, counted);
+                }
                 if !self.flavor_evidence_for(ts_ms, &text) {
                     self.note_unmatched_shape(body.slice(line));
                 }
@@ -6574,6 +6584,13 @@ enum Classified {
         text: String,
     },
     /// why: known landing message about `who`, not "You"; never class evidence
+    /// why: an area effect lands one line per target, so the same name on
+    /// the same predicate in one instant counts that pull -- see
+    /// Ingest::note_fanout. Text only; the merge resolves the name.
+    OtherEffectLanding {
+        who: String,
+        effect: &'static str,
+    },
     ThirdPersonFlavorHit {
         who: String,
         text: String,
@@ -6697,6 +6714,20 @@ fn classify_chunk(engine: &Engine, lines: &[&[u8]]) -> ChunkResult {
                 } else {
                     false
                 };
+                // why: ADDITIVE and last -- a census observation never
+                // claims the line, it only counts it. Placed after every
+                // classifier because it used to sit in front of them and
+                // swallowed lines that were also effect pings.
+                if let Some((who, effect)) = crate::spelltext::cast_on_other(&text) {
+                    let ts_ms = ts.secs() * 1000;
+                    matched.push((
+                        ts_ms,
+                        Some(Classified::OtherEffectLanding {
+                            who: who.to_string(),
+                            effect,
+                        }),
+                    ));
+                }
                 // why: a recognized-but-unruled line isn't "Unparsed";
                 // only a real miss on both checks gets shape-clustered
                 if !recognized {
@@ -6798,6 +6829,16 @@ pub fn backfill_lines(ing: &mut Ingest, engine: &Engine, lines: &[&[u8]], thread
                     ing.note_self_effect_text(ts_ms, &text);
                     ing.record_effect_ping(ts_ms, "You", &text);
                     ing.attribute_flavor_hit(ts_ms, &text, classes);
+                }
+                Some(Classified::OtherEffectLanding { who, effect }) => {
+                    // why: the RAW name, not `sym` -- that merges a pet
+                    // into its owner, and ten mobs charmed by one player
+                    // read as ten of him
+                    let counted = {
+                        let resolved = ing.resolve_name(&who);
+                        ing.store.sym(&resolved)
+                    };
+                    ing.note_fanout(ts_ms, effect, counted);
                 }
                 Some(Classified::ThirdPersonFlavorHit { who, text }) => {
                     ing.record_effect_ping(ts_ms, &who, &text);
