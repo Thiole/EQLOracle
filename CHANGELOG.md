@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-09-05 (0.16.0)
+
+### Startup
+
+- The app is usable about a second after launch instead of twenty. Startup folds the last 24 MiB of the log and goes live, then re-folds the whole file behind it and swaps that in; history is deferred, never skipped. Measured on a 378 MB log: the current zone reads correctly off the last 4 MiB, which folds in 131 ms against 16.4 s for the whole file. Counts jump when the full fold lands.
+- The class trio and configuration list order by RECENCY, not by how much you played something. On a multi-year log the most-played trio is whatever you mained once; the one you are wearing now is the one the gear planner starts from.
+- Level estimates re-run automatically when the full history lands, since that is where the complete per-class level record lives. A level you typed is still never overwritten.
+
+### Combat
+
+- Your own damage-over-time ticks are counted as yours. A DoT tick names your CHARACTER rather than "You", and only the /who path folded that, so a DoT class's primary output landed on a second identity that was not ally-side and vanished from the meter entirely. Affects every DoT-heavy class.
+- Incoming is at most two lines: the mob that matters, then "N others" carrying their combined damage. Rank comes from the mob itself -- a curated raid target first, then its own level off its NPC page -- not from how its name is spelled.
+- Experience is recorded again. The server changed the message from "You gain experience! (2.500%)" to "You gain experience (with a bonus)!", and the bonus clause sits before the "!", so neither rule matched and experience stopped being recorded at all.
+- A charm is yours only if you cast it. The line names no caster, and more than half the charms in a real log are other people's; an ally's charm now credits its damage to them instead of to you.
+- The DPS meter drops the "% of usual" landing check, which belongs to the Skill Tracker.
+
+### Group Buff Tracker
+
+- Three sections instead of one list: what the PARTY can put on you (with upgrades), your own self-casts as a flat "make sure these are on" checklist, and illusions as maybes that never count against you.
+- Your own classes count as a source. A buff your trio can cast on yourself is one you are missing when it is not up, and nobody else has to be online.
+- Nothing unreachable is recommended: out-of-era spells, ranks above the server's level cap, NPC-only spells, and recourses (the effect half of a debuff you cast on an enemy).
+- Two spells that STACK are two entries. Buffs are tracked by line, so six ranks of Shielding are one item while Grim Aura and Dark Temptation stay separate.
+- Runs and familiars have their own tracks instead of filing under whichever effect their first slot happened to name.
+- Quiet by default: only problems draw a row, an all-clear is a single line, and the whole widget hides while a fight is open.
+
+### Epic Quests
+
+- Out of era is the default and in-era has to be earned through the acquisition chain: the dropper must exist, be reachable in the live era, AND its own page must list the item. 48 of 124 materials are verifiably farmable, against 66 shown before. Era falls back to the dropper's zone when its own page states none, so a partial wiki update moves the answer on its own.
+- Materials list one per row, and out-of-era ones are hidden by default.
+
+### Maps
+
+- The map follows you into zones the wiki names differently -- it calls Oasis of Marr "marr" while the map file is "oasis", so live-follow loaded nothing there.
+- Split cities load the half you are standing in. North Qeynos loaded the South map; North Kaladim loaded the South map; Southern Felwithe loaded nothing.
+- A sub-area message ("You have entered an Arena (PvP) area.") is no longer taken as a zone change, which used to blank the map until the next real zone line.
+
+### Everywhere
+
+- Lists stop reordering themselves between launches. Five surfaces walked an unordered container straight into the output: skills, ability rows, encounter drops, allies on equal damage, and gear scores, where the same item could score 32.33333333333333 one run and 32.333333333333336 the next.
+
 ## 2026-09-02 (0.15.0)
 
 ### Encounters and the DPS meter
