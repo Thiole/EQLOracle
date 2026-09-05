@@ -202,7 +202,10 @@
      the actual title bar (every window manager supports that) repositions it. -->
 <div bind:this={rootEl} class="min-h-screen w-screen p-2">
   {#if widget === 'dps_meter'}
-    <DpsMeterWidget {meter} {spellCheck} {opacity} {overallOpacity} />
+    <!-- why: the landing-average check lives in the Skill Tracker only --
+         "you're still showing the x% of usual in dps meter. it shouldnt be
+         there. that info is fine in the skill tracker" -->
+    <DpsMeterWidget {meter} {opacity} {overallOpacity} />
   {:else if widget === 'skill_tracker'}
     <SkillTrackerWidget
       {status}

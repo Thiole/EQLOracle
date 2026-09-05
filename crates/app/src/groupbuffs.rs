@@ -124,6 +124,17 @@ pub fn kind_of(spell: &Spell) -> Option<BuffKind> {
 /// "Grim Aura". Not a party buff by definition (nobody can put it on
 /// you), but you can put it on yourself, so it is a real missing buff
 /// when your own trio has it and it is not up.
+/// why: a RECOURSE is the effect half of a spell you cast on an ENEMY --
+/// Spencer: "Siphon Strength is more a combat ability in the sense you
+/// debuff to get it, not a 'buff' you put on". You never cast it, so it
+/// is never something you are missing. EQ's own naming convention, not a
+/// per-spell list: three in the pack, and two name a real parent spell.
+/// One of them ("siphon strength recourse") is scraped WITH a class,
+/// which is why it reached the tracker at all.
+fn is_recourse(spell: &Spell) -> bool {
+    spell.name.to_ascii_lowercase().ends_with(" recourse")
+}
+
 pub fn is_self_buff(spell: &Spell) -> bool {
     let beneficial = matches!(
         spell.spell_type.as_deref(),
@@ -438,7 +449,7 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             // why: a self-only buff is not a party buff -- nobody can put
             // it on you -- but you can put it on YOURSELF, so it is a real
             // missing buff when your own trio has it and it is not up
-            if !(is_party_buff(spell) || (is_me && is_self_buff(spell))) {
+            if is_recourse(spell) || !(is_party_buff(spell) || (is_me && is_self_buff(spell))) {
                 continue;
             }
             let Some(kind) = kind_of(spell) else { continue };
@@ -695,6 +706,15 @@ mod tests {
             !benefits(BuffKind::Proc, &["Wizard".into()]),
             "never swings"
         );
+
+        // why: a recourse is the effect half of a debuff you cast on an
+        // enemy -- never something you are missing
+        let rec = spells()
+            .iter()
+            .find(|s| s.name == "siphon strength recourse")
+            .expect("the pack's one classed recourse");
+        assert!(is_self_buff(rec), "it looks like a self buff");
+        assert!(is_recourse(rec), "but it is a recourse");
 
         // why: the noise this must NOT let in -- a gate is not a buff
         for name in ["Gate", "Feign Death", "Illusion: Barbarian"] {

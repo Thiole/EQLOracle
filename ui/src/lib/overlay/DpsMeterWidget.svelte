@@ -9,7 +9,7 @@
   // not reset when a target dies); the encounter's own timer sits in
   // the header. The bar is % share, not dps -- share is the stable
   // comparative read, dps breathes.
-  import type { LiveMeterRowDto, LiveMeterDto, SpellCheckDto } from '$lib/tauri/api';
+  import type { LiveMeterRowDto, LiveMeterDto } from '$lib/tauri/api';
 
   // why: this widget's panel background alpha -- each overlay widget
   // owns its own opacity, not one shared window-wide value (see
@@ -19,12 +19,10 @@
   // no matter how see-through the background is.
   let {
     meter,
-    spellCheck = null,
     opacity,
     overallOpacity,
   }: {
     meter: LiveMeterDto | null;
-    spellCheck?: SpellCheckDto | null;
     opacity: number;
     overallOpacity: number;
   } = $props();
@@ -125,33 +123,5 @@
       </div>
     {/if}
 
-    <!-- why: rolling landing-average check, target-blind -- appears
-         only while a well-sampled spell is landing well under its
-         baseline (partial resists). Baseline prefers the last 5 zones
-         under the CURRENT invocation so a stance switch isn't a false
-         dip; session norm is the fallback. See ingest::SpellPerf. -->
-    {#if spellCheck && spellCheck.struggling.length}
-      <div class="flex flex-col gap-0.5 border-t border-foreground/15 pt-1">
-        {#each spellCheck.struggling as s (s.name)}
-          <div class="flex items-center gap-2 text-[10px]">
-            <span class="min-w-0 flex-1 truncate text-bad">{s.name}</span>
-            <span
-              class="shrink-0 font-mono tabular-nums text-bad"
-              title="recent avg hit {fmtCompact(s.recent_avg)} vs {s.matched
-                ? `${spellCheck.invocation ?? 'same-invocation'} baseline`
-                : 'session norm'} {fmtCompact(s.baseline)}"
-              >{(s.ratio * 100).toFixed(0)}% of usual</span
-            >
-          </div>
-        {/each}
-        {#if spellCheck.alternatives.length}
-          <div class="truncate text-[10px] text-muted-foreground">
-            holding: {spellCheck.alternatives
-              .map((a) => `${a.name} ~${fmtCompact(a.baseline)}`)
-              .join(' · ')}
-          </div>
-        {/if}
-      </div>
-    {/if}
   {/if}
 </div>
