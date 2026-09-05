@@ -78,4 +78,26 @@ fn main() {
         }
     }
     println!("group buff lines named: {named}, unreachable: {bad}");
+    println!("my_classes={:?}", dto.my_classes);
+    for r in &dto.rows {
+        println!(
+            "  row {:<14} active={:?} upgrade={} best={:?}",
+            r.label,
+            r.active,
+            r.upgrade,
+            r.lines.first().map(|l| (&l.best_spell, l.best_level))
+        );
+        if r.active.is_none() {
+            println!(
+                "  MISSING {:<14} -> {}",
+                r.label,
+                r.lines
+                    .iter()
+                    .map(|l| l.best_spell.clone())
+                    .take(3)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+    }
 }

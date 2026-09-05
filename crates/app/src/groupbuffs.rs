@@ -30,11 +30,16 @@ pub enum BuffKind {
     Stamina,
     Agility,
     DamageShield,
+    /// why: "Add Proc" -- Vampiric Embrace and its line. A real beneficial
+    /// self-buff that mapped to no kind, so it could never be reported
+    /// missing however plainly the log showed it absent.
+    Proc,
 }
 
 impl BuffKind {
     pub fn label(self) -> &'static str {
         match self {
+            BuffKind::Proc => "weapon proc",
             BuffKind::ManaRegen => "mana regen",
             BuffKind::Haste => "haste",
             BuffKind::Hp => "hit points",
@@ -57,6 +62,11 @@ impl BuffKind {
 pub fn kind_of(spell: &Spell) -> Option<BuffKind> {
     for slot in &spell.slots {
         let e = slot.effect.as_str();
+        // why: checked before the Increase/Absorb gate -- a proc slot
+        // states neither, which is why this kind did not exist
+        if e.starts_with("Add Proc") {
+            return Some(BuffKind::Proc);
+        }
         if !e.starts_with("Increase") && !e.starts_with("Absorb") && !e.starts_with("Damage Shield")
         {
             continue;
@@ -110,6 +120,18 @@ pub fn kind_of(spell: &Spell) -> Option<BuffKind> {
 
 /// why: a buff on ANOTHER player -- the beneficial types, cast on a
 /// friend or the group, never Self/Pet
+/// why: a buff that only ever lands on its caster -- "Vampiric Embrace",
+/// "Grim Aura". Not a party buff by definition (nobody can put it on
+/// you), but you can put it on yourself, so it is a real missing buff
+/// when your own trio has it and it is not up.
+pub fn is_self_buff(spell: &Spell) -> bool {
+    let beneficial = matches!(
+        spell.spell_type.as_deref(),
+        Some("Beneficial") | Some("Statistic Buff") | Some("Resist Buff") | Some("Movement Buff")
+    );
+    beneficial && spell.target_type.as_deref() == Some("Self") && !spell.classes.is_empty()
+}
+
 pub fn is_party_buff(spell: &Spell) -> bool {
     let beneficial = matches!(
         spell.spell_type.as_deref(),
@@ -172,6 +194,10 @@ pub fn relevance(kind: BuffKind, my_classes: &[String]) -> u32 {
             (BuffKind::ManaRegen, Shape::PureCaster) => 100,
             (BuffKind::ManaRegen, Shape::Priest) => 95,
             (BuffKind::ManaRegen, Shape::Melee) => 55,
+            // why: a proc rides melee swings, so it is worth what your
+            // swinging half is worth -- and nothing to a pure caster
+            (BuffKind::Proc, Shape::Melee) => 70,
+            (BuffKind::Proc, _) => 10,
             (BuffKind::Haste, Shape::Melee) => 100,
             (BuffKind::Haste, _) => 20,
             (BuffKind::Hp, Shape::Melee) => 85,
@@ -212,7 +238,12 @@ pub fn benefits(kind: BuffKind, my_classes: &[String]) -> bool {
         .any(|c| !PURE_CASTERS.contains(&c.as_str()));
     match kind {
         BuffKind::ManaRegen => uses_mana,
-        BuffKind::Haste | BuffKind::Attack | BuffKind::Strength | BuffKind::Dexterity => melees,
+        // why: a weapon proc is worth nothing to a trio that never swings
+        BuffKind::Haste
+        | BuffKind::Attack
+        | BuffKind::Strength
+        | BuffKind::Dexterity
+        | BuffKind::Proc => melees,
         _ => true,
     }
 }
@@ -398,14 +429,23 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
     // who could cast it -- confirmed classes only
     type LineAcc = BTreeMap<String, (u32, String, HashSet<String>)>;
     let mut best: BTreeMap<BuffKind, LineAcc> = BTreeMap::new();
-    for member in party
+    let sources = party
         .iter()
-        .chain(std::iter::once(&me))
-        .filter(|m| m.confirmed)
-    {
-        for spell in spells().iter().filter(|s| is_party_buff(s)) {
+        .map(|m| (false, m))
+        .chain(std::iter::once((true, &me)));
+    for (is_me, member) in sources.filter(|(_, m)| m.confirmed) {
+        for spell in spells() {
+            // why: a self-only buff is not a party buff -- nobody can put
+            // it on you -- but you can put it on YOURSELF, so it is a real
+            // missing buff when your own trio has it and it is not up
+            if !(is_party_buff(spell) || (is_me && is_self_buff(spell))) {
+                continue;
+            }
             let Some(kind) = kind_of(spell) else { continue };
-            if !benefits(kind, &my_classes) {
+            // why: `benefits` stops a groupmate offering mana regen to a
+            // pure melee. It cannot arise for a spell you cast on
+            // YOURSELF -- your own class having it settles the question.
+            if !is_me && !benefits(kind, &my_classes) {
                 continue;
             }
             if !reachable(spell) {
@@ -633,6 +673,35 @@ mod tests {
             &["Wizard".into(), "Enchanter".into()]
         ));
         assert!(benefits(BuffKind::Hp, &["Wizard".into()]));
+    }
+
+    /// why: Spencer -- "it should be detecting SHD/etc and be suggesting
+    /// innates like vampiric embrace". A self-only buff is not a PARTY
+    /// buff (nobody can put it on you) and its proc slot states neither
+    /// Increase nor Absorb, so it mapped to no kind either -- it could
+    /// never be reported missing however plainly the log showed it absent.
+    #[test]
+    fn a_self_only_proc_buff_is_a_buff() {
+        let ve = spells()
+            .iter()
+            .find(|s| s.name == "Vampiric Embrace")
+            .expect("Vampiric Embrace");
+        assert!(!is_party_buff(ve), "nobody else can cast it on you");
+        assert!(is_self_buff(ve), "but you can cast it on yourself");
+        assert_eq!(kind_of(ve), Some(BuffKind::Proc));
+        assert!(reachable(ve), "Classic Era");
+        assert!(benefits(BuffKind::Proc, &["Shadow Knight".into()]));
+        assert!(
+            !benefits(BuffKind::Proc, &["Wizard".into()]),
+            "never swings"
+        );
+
+        // why: the noise this must NOT let in -- a gate is not a buff
+        for name in ["Gate", "Feign Death", "Illusion: Barbarian"] {
+            if let Some(s) = spells().iter().find(|s| s.name == name) {
+                assert_eq!(kind_of(s), None, "{name} is not a buff");
+            }
+        }
     }
 
     /// why: the reported case -- the Shield of Words kind recommended

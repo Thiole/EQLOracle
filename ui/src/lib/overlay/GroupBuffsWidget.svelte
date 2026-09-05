@@ -20,6 +20,7 @@
   const missingNames = $derived(missingRows.map((r) => r.label).join(', '));
   // why: a low-tier buff is not coverage -- see BuffRowDto.upgrade
   const upgrades = $derived(data ? data.rows.filter((r) => r.upgrade).length : 0);
+  const clean = $derived(missing === 0 && upgrades === 0);
 </script>
 
 <div
@@ -34,18 +35,24 @@
     <p class="text-muted-foreground">group buffs: no party</p>
   {:else}
     <div class="flex items-baseline justify-between">
-      <span class="font-medium {missing === 0 && upgrades === 0 ? 'text-foreground/70' : 'text-caution'}">
-        group buffs: {missing === 0 && upgrades === 0
-          ? 'All good'
-          : [missing ? `missing ${missingNames}` : '', upgrades ? `${upgrades} upgradeable` : ''].filter(Boolean).join(', ')}
+      <span class="font-medium {clean ? 'text-foreground/70' : 'text-caution'}">
+        <!-- why: no rows means nothing is KNOWN, which is not the same as
+             nothing being wrong -- saying "All good" there would be a
+             claim the data does not support -->
+        group buffs: {!data.rows.length
+          ? 'nothing confirmed yet'
+          : clean
+            ? 'All good'
+            : [missing ? `missing ${missingNames}` : '', upgrades ? `${upgrades} upgradeable` : ''].filter(Boolean).join(', ')}
       </span>
       <span class="truncate font-mono text-[10px] text-foreground/60" title="your classes">{data.my_classes.map(abbr).join('/')}</span>
     </div>
+    {#if missing || upgrades}
     <div class="truncate font-mono text-[10px] text-foreground/60" title="party -- confirmed classes count; ? means not confirmed yet">
       {#each data.party as m, i (m.name)}{i ? ' · ' : ''}<span title={m.buffs.length ? `on ${m.name}: ${m.buffs.join(', ')}` : `nothing seen landing on ${m.name}`}>{m.name} {m.classes.length ? m.classes.map(abbr).join('/') : '?'}{m.confirmed ? '' : '?'}{m.buffs.length ? ` +${m.buffs.length}` : ''}</span>{/each}
     </div>
     <div class="flex flex-col gap-0.5">
-      {#each data.rows as r (r.kind)}
+      {#each data.rows.filter((r) => !r.active || r.upgrade) as r (r.kind)}
         <div class="flex items-baseline justify-between gap-2">
           <span class="text-foreground/80">{r.label}</span>
           {#if r.active && !r.upgrade}
@@ -66,9 +73,7 @@
           {/if}
         </div>
       {/each}
-      {#if !data.rows.length}
-        <p class="text-muted-foreground">no confirmed party classes with buffs for you yet</p>
-      {/if}
     </div>
+    {/if}
   {/if}
 </div>
