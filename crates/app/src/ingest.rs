@@ -1499,15 +1499,15 @@ struct Identified<'a> {
 }
 
 impl<'a> Identified<'a> {
-    fn new(ts: Millis, src: &'a str, dst: &'a str) -> Self {
-        // why: see canonical_you's own doc -- "YOU" must not intern as a
-        // second player identity; normalized here so the graph (link),
-        // store, and timeline all see one name
-        let src = canonical_you(src);
+    /// why: `character` is the tailed log's own character name -- a DoT
+    /// tick names it instead of "You", and both mean self. See
+    /// canonical_you's own doc.
+    fn new(ts: Millis, src: &'a str, dst: &'a str, character: Option<&str>) -> Self {
+        let src = canonical_you(src, character);
         Identified {
             ts,
             src,
-            dst: canonical_you(dst),
+            dst: canonical_you(dst, character),
             src_is_you: src.eq_ignore_ascii_case("You"),
         }
     }
@@ -2884,7 +2884,7 @@ impl Ingest {
         amount: u64,
         flags: Flags,
     ) {
-        let id = Identified::new(ts, src, dst);
+        let id = Identified::new(ts, src, dst, self.character.as_deref());
         self.observe_actors(&id);
         let linked = self.link_damage(&id);
         let involved = self.note_damage_involvement(linked);
@@ -3131,10 +3131,10 @@ impl Ingest {
     }
 
     fn record_heal(&mut self, ts: Millis, src: &str, dst: &str, ability: &str, amount: u64) {
-        self.note_party_action(ts, canonical_you(src));
+        self.note_party_action(ts, canonical_you(src, self.character.as_deref()));
         // why: same normalization as record_damage -- see canonical_you
-        let src = canonical_you(src);
-        let dst = canonical_you(dst);
+        let src = canonical_you(src, self.character.as_deref());
+        let dst = canonical_you(dst, self.character.as_deref());
         let enc = self
             .current_encounter_of(src)
             .or_else(|| self.current_encounter_of(dst));
@@ -3169,8 +3169,8 @@ impl Ingest {
     /// "Miss"/"Block"/... ability the defender "used"
     fn record_avoided(&mut self, ts: Millis, src: &str, dst: &str, verb: &str, mitigation: Flags) {
         // why: same normalization as record_damage -- see canonical_you
-        let src = canonical_you(src);
-        let dst = canonical_you(dst);
+        let src = canonical_you(src, self.character.as_deref());
+        let dst = canonical_you(dst, self.character.as_deref());
         // why: an avoided swing is an ENGAGEMENT edge, same as a landed
         // one -- it opens or joins a fight through the graph. Before, a
         // miss only rode along on an existing fight: a second mob of a
@@ -3217,7 +3217,7 @@ impl Ingest {
 
     fn record_death(&mut self, ts: Millis, victim: &str) {
         // why: same normalization as record_damage -- see canonical_you
-        let victim = canonical_you(victim);
+        let victim = canonical_you(victim, self.character.as_deref());
         // why: dying drops every buff -- the Group Buff Tracker's ledger with it
         if victim == "You" {
             self.self_buffs.clear();
@@ -3684,7 +3684,7 @@ impl Ingest {
     fn resolve_name(&mut self, name: &str) -> String {
         // why: see canonical_you's own doc -- covers the effect/cast/
         // pet paths the record_* heads don't
-        let name = canonical_you(name);
+        let name = canonical_you(name, self.character.as_deref());
         self.encounters.entities.observe(name);
         self.encounters.entities.display_name(name).to_string()
     }
@@ -4476,7 +4476,7 @@ impl Ingest {
     /// runs after link/sym already interned these names, so display_name
     /// resolves without creating identity.
     fn participant_is_yours(&self, name: &str, ts: Millis) -> bool {
-        let name = canonical_you(name);
+        let name = canonical_you(name, self.character.as_deref());
         if name.eq_ignore_ascii_case("you") {
             return true;
         }
@@ -5564,12 +5564,22 @@ fn canonical_melee_ability(verb: &str) -> &'static str {
 /// because nothing queried incoming damage BY the player's own sym
 /// until deathrecap.rs did; every existing comparison was already
 /// eq_ignore_ascii_case. "you" never split (first-char fold covers it).
-fn canonical_you(name: &str) -> &str {
+/// why: the log names you TWO ways and both mean self. Most lines say
+/// "You", but a DoT tick names your CHARACTER -- "Suwu has taken 14
+/// damage from Choke by Manipulator." -- and so do several other shapes.
+/// Folding only the literal "you" left a DoT class's entire output on a
+/// second entity that is not even ally-side, so it vanished from the
+/// meter rather than showing up mislabelled. `note_ally_who` had always
+/// done this fold for /who rows, alone, with the comment "the detector
+/// knows you as You, not by character name"; it is true everywhere.
+fn canonical_you<'a>(name: &'a str, character: Option<&str>) -> &'a str {
     if name.eq_ignore_ascii_case("you") {
-        "You"
-    } else {
-        name
+        return "You";
     }
+    if character.is_some_and(|c| c.eq_ignore_ascii_case(name)) {
+        return "You";
+    }
+    name
 }
 
 /// why: resolves a written reflexive pronoun back to the caster's real name
@@ -9826,6 +9836,54 @@ mod spell_perf_tests {
             "baseline {}",
             row.baseline
         );
+    }
+}
+
+#[cfg(test)]
+mod self_name_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    /// why: reported by another player -- a DoT was not reaching the
+    /// combat tracker. The tick names your CHARACTER, not "You" ("Suwu
+    /// has taken 14 damage from Choke by Manipulator."), and only the
+    /// /who path folded that, so a DoT class's whole output landed on a
+    /// second entity that is not ally-side and vanished from the meter
+    /// entirely rather than showing up mislabelled.
+    #[test]
+    fn a_dot_tick_naming_your_character_is_your_damage() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest {
+            character: Some("Manipulator".to_string()),
+            ..Default::default()
+        };
+        let lines: Vec<&[u8]> = vec![
+            b"[Sat Aug 08 00:06:20 2026] You begin casting Choke.",
+            b"[Sat Aug 08 00:06:33 2026] Suwu has taken 14 damage from Choke by Manipulator.",
+            b"[Sat Aug 08 00:06:39 2026] Suwu has taken 14 damage from Choke by Manipulator.",
+            b"[Sat Aug 08 00:06:45 2026] You hit Suwu for 30 points of damage.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing.mark_live();
+        let m = crate::combat::live_meter(&ing).expect("a fight");
+        let you = m
+            .outgoing
+            .iter()
+            .find(|r| r.name == "You")
+            .expect("your own row");
+        assert_eq!(you.total, 58, "30 melee plus two 14-point DoT ticks");
+        assert_eq!(m.outgoing.len(), 1, "and not split across two entities");
+    }
+
+    /// why: an unrelated name is still someone else
+    #[test]
+    fn another_players_name_is_not_folded_to_you() {
+        let character = Some("Manipulator");
+        assert_eq!(canonical_you("Manipulator", character), "You");
+        assert_eq!(canonical_you("you", character), "You");
+        assert_eq!(canonical_you("Vabekn", character), "Vabekn");
+        // why: no character known yet -- only the literal pronoun folds
+        assert_eq!(canonical_you("Manipulator", None), "Manipulator");
     }
 }
 
