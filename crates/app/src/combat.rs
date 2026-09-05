@@ -1607,6 +1607,13 @@ fn fold_incoming(rows: Vec<LiveMeterRowDto>) -> Vec<LiveMeterRowDto> {
             rest.push(r);
         }
     }
+    // why: one other mob is not a bucket -- it costs the same second line
+    // to NAME it, and "1 others" is both wrong and less useful than the
+    // thing it is hiding
+    if rest.len() == 1 {
+        out.push(rest.remove(0));
+        return out;
+    }
     if !rest.is_empty() {
         // why: the bucket carries the COMBINED damage, so the two lines
         // still sum to the side total the header prints
@@ -1615,6 +1622,7 @@ fn fold_incoming(rows: Vec<LiveMeterRowDto>) -> Vec<LiveMeterRowDto> {
         let dps: f64 = rest.iter().map(|r| r.dps).sum();
         let active_ms = rest.iter().map(|r| r.active_ms).max().unwrap_or(0);
         out.push(LiveMeterRowDto {
+            // why: only ever 2 or more here, so the plural is honest
             name: format!("{} others", rest.len()),
             pct,
             total,
@@ -2776,7 +2784,10 @@ mod live_meter_window_tests {
             folded[0].name, "a gnoll brewer",
             "level 17 outranks level 5"
         );
-        assert_eq!(folded[1].name, "1 others");
+        assert_eq!(
+            folded[1].name, "an orc raider",
+            "one other is named, never bucketed as \"1 others\""
+        );
 
         // why: neither is in the scrape, so both rank 0 and the hardest
         // hitter takes the slot
