@@ -1560,8 +1560,74 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
         start_ms,
         duration_ms,
         outgoing: build(out_acc),
-        incoming: build(in_acc),
+        incoming: fold_incoming(build(in_acc)),
     })
+}
+
+/// why: what is hitting YOU is one question -- "which of these matters" --
+/// and a wall of trash rows does not answer it. Asked for directly: "the
+/// incoming should show: main target (rarest mob) like boss highest prio >
+/// mini boss > rare > normal", then "combining incoming extras for 1 mob +
+/// others, max 2 lines, prioritize highest rank to the individual slot".
+///
+/// Rank comes from data the app already holds, and only three tiers are
+/// real: a curated raid target is a boss, a proper-noun name is a named
+/// mob, "a gnoll" is trash. Nothing distinguishes a mini-boss, so that
+/// tier is not invented -- damage breaks ties inside a tier, which puts
+/// the hardest-hitting one of equals in the slot.
+fn fold_incoming(rows: Vec<LiveMeterRowDto>) -> Vec<LiveMeterRowDto> {
+    if rows.len() <= 1 {
+        return rows;
+    }
+    let rank = |r: &LiveMeterRowDto| -> u8 {
+        if crate::raiding::is_curated_raid_target(&r.name) {
+            2
+        // why: fold_key, because this name came off a LOG line where the
+        // article is capitalised at sentence start ("A gnoll scout hits
+        // you"). `is_trash_name` reads canonical wiki names, where a
+        // capital "A" is a real part of the name -- it has a test saying
+        // so -- and must not be loosened for this caller's sake.
+        } else if !crate::npcdata::is_trash_name(&eqlp_session::fold_key(&r.name)) {
+            1
+        } else {
+            0
+        }
+    };
+    // why: `rows` arrives sorted by total, so the first of the best rank
+    // is already the hardest-hitting of that rank
+    let lead = rows
+        .iter()
+        .enumerate()
+        .max_by_key(|(i, r)| (rank(r), std::cmp::Reverse(*i)))
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+    let mut out = Vec::with_capacity(2);
+    let mut rest: Vec<LiveMeterRowDto> = Vec::new();
+    for (i, r) in rows.into_iter().enumerate() {
+        if i == lead {
+            out.push(r);
+        } else {
+            rest.push(r);
+        }
+    }
+    if !rest.is_empty() {
+        // why: the bucket carries the COMBINED damage, so the two lines
+        // still sum to the side total the header prints
+        let total: u64 = rest.iter().map(|r| r.total).sum();
+        let pct: f64 = rest.iter().map(|r| r.pct).sum();
+        let dps: f64 = rest.iter().map(|r| r.dps).sum();
+        let active_ms = rest.iter().map(|r| r.active_ms).max().unwrap_or(0);
+        out.push(LiveMeterRowDto {
+            name: format!("{} others", rest.len()),
+            pct,
+            total,
+            dps,
+            active_ms,
+            is_player: false,
+            is_pet: false,
+        });
+    }
+    out
 }
 
 // ---------------------------------------------------------------- class detection
@@ -2676,6 +2742,53 @@ mod live_meter_window_tests {
                 .first,
             "acting 3s after the gate: never left, one chain"
         );
+    }
+
+    /// why: "combining incoming extras for 1 mob + others, max 2 lines,
+    /// prioritize highest rank to the individual slot" -- a boss takes the
+    /// slot over a harder-hitting trash mob, and the bucket still sums to
+    /// what the header prints
+    #[test]
+    fn incoming_folds_to_a_lead_mob_and_a_bucket() {
+        let row = |name: &str, total: u64| LiveMeterRowDto {
+            name: name.to_string(),
+            pct: 10.0,
+            total,
+            dps: total as f64,
+            active_ms: 1000,
+            is_player: false,
+            is_pet: false,
+        };
+
+        // why: sorted by total, as `build` leaves them
+        let folded = fold_incoming(vec![
+            row("a gnoll pup", 900),
+            row("Lord Nagafen", 500),
+            row("a gnoll brewer", 300),
+        ]);
+        assert_eq!(folded.len(), 2, "never more than two lines");
+        assert_eq!(folded[0].name, "Lord Nagafen", "rank beats raw damage");
+        assert_eq!(folded[1].name, "2 others");
+        assert_eq!(folded[1].total, 1200, "the bucket carries their sum");
+
+        // why: a log line capitalises the article at sentence start, and
+        // "A gnoll scout" is still trash -- this put it in the lead slot
+        // over a harder-hitting mob before the fold
+        let folded = fold_incoming(vec![row("a gnoll brewer", 900), row("A gnoll scout", 300)]);
+        assert_eq!(
+            folded[0].name, "a gnoll brewer",
+            "both are trash, damage decides"
+        );
+
+        // why: all one rank -- the hardest hitter takes the slot
+        let folded = fold_incoming(vec![row("a gnoll pup", 900), row("a gnoll brewer", 300)]);
+        assert_eq!(folded[0].name, "a gnoll pup");
+        assert_eq!(folded[1].name, "1 others");
+
+        // why: nothing to fold
+        let one = fold_incoming(vec![row("a gnoll pup", 900)]);
+        assert_eq!(one.len(), 1);
+        assert!(fold_incoming(Vec::new()).is_empty());
     }
 
     /// why: incoming mirrors the calc from the enemy side
