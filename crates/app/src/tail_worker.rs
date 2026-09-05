@@ -54,6 +54,15 @@ const HEARTBEAT_MS: i64 = 3_000;
 /// progress tick until done
 const BACKFILL_CHUNK_LINES: usize = 100_000;
 
+/// why: how much of a log's tail makes the app USABLE, measured rather
+/// than guessed (examples/backfill_window.rs, real 378 MiB log): the
+/// current zone reads correctly off the last 4 MiB, and 19 MiB folds in
+/// 796 ms against 16.4 s for the whole file. Everything the launch screen
+/// answers -- where am I, what am I fighting, what did I just loot --
+/// lives in the tail. Cumulative history (kills ever, loot ever,
+/// progression) does not, which is what the second pass is for.
+const WARM_START_BYTES: u64 = 24 * 1024 * 1024;
+
 /// why: toolbar/Overview status -- cheap to clone, read every `get_status`
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct TailStatus {
@@ -117,6 +126,82 @@ pub fn spawn(
     WorkerHandle { stop }
 }
 
+/// why: a byte offset into a log is only meaningful at a line boundary --
+/// starting mid-line hands the framer a fragment that parses as nothing,
+/// or worse, as something else. Walks FORWARD to the next newline, so the
+/// warm pass starts on a whole line and never re-reads a partial one.
+fn line_aligned_offset(path: &Path, want: u64) -> u64 {
+    use std::io::{Read, Seek, SeekFrom};
+    let Ok(mut f) = std::fs::File::open(path) else {
+        return 0;
+    };
+    if f.seek(SeekFrom::Start(want)).is_err() {
+        return 0;
+    }
+    let mut buf = vec![0u8; 256 * 1024];
+    let Ok(n) = f.read(&mut buf) else {
+        return 0;
+    };
+    match buf[..n].iter().position(|&b| b == b'\n') {
+        Some(i) => want + i as u64 + 1,
+        // why: no newline in a whole buffer -- give up on the warm start
+        // rather than guess; the full fold still runs
+        None => 0,
+    }
+}
+
+/// why: the SECOND pass -- the whole log, folded into a fresh `Ingest`
+/// behind the warm one, then swapped in by the caller. Deliberately not a
+/// thread: nothing else needs the CPU while it runs, and a swap between
+/// two threads is a consistency problem this does not have to own. The
+/// tail and framer come back with it so the live seam continues from the
+/// byte this fold actually reached.
+fn fold_history(
+    path: &Path,
+    engine: &eqlp_core::Engine,
+    log_dir: &Path,
+    threads: usize,
+    stop: &AtomicBool,
+    mut progress: impl FnMut(),
+) -> Option<(Ingest, Tail, Framer)> {
+    let mut ing = Ingest::default();
+    if let Some(base) = log_dir.parent() {
+        ing.set_spell_file(base);
+    }
+    ing.character = identity_from_filename(path).map(|(c, _)| c);
+    let mut t = Tail::from_start(path);
+    let mut framer = Framer::default();
+    let mut batch: Vec<Vec<u8>> = Vec::with_capacity(BACKFILL_CHUNK_LINES);
+    let mut aborted = false;
+    // why: same streamed, bounded-batch shape as the warm pass -- a slurp
+    // put peak memory near 1 GiB on a 322 MB log and got the process killed
+    t.poll(|chunk| {
+        if aborted {
+            return;
+        }
+        framer.push(chunk, |line| batch.push(line.to_vec()));
+        while batch.len() >= BACKFILL_CHUNK_LINES {
+            if stop.load(Ordering::Relaxed) {
+                aborted = true;
+                batch.clear();
+                return;
+            }
+            let refs: Vec<&[u8]> = batch.iter().map(|v| v.as_slice()).collect();
+            backfill_guarded(&mut ing, engine, &refs, threads);
+            batch.clear();
+            progress();
+        }
+    });
+    if aborted {
+        return None;
+    }
+    if !batch.is_empty() {
+        let refs: Vec<&[u8]> = batch.iter().map(|v| v.as_slice()).collect();
+        backfill_guarded(&mut ing, engine, &refs, threads);
+    }
+    Some((ing, t, framer))
+}
+
 fn run(
     app: AppHandle,
     log_dir: PathBuf,
@@ -165,6 +250,9 @@ fn run(
     let mut tail: Option<Tail> = None;
     let mut framer = Framer::default();
     let mut backfilling = false;
+    // why: set when the warm pass skipped history, cleared when the full
+    // fold has replaced it -- Some(path) is "this log still owes a re-fold"
+    let mut history_pending: Option<PathBuf> = None;
 
     // why: EQLP_REPLAY_UNTIL="Wed Sep 02 11:30:00 2026" -- replay the log
     // up to that instant and freeze there, mid-fight if that is where it
@@ -200,6 +288,33 @@ fn run(
     };
 
     while !stop.load(Ordering::Relaxed) && !frozen {
+        // why: the warm pass is live and serving by now, so the full fold
+        // costs the user nothing but a "still loading history" label. Runs
+        // before the rescan so a freshly switched log warms first.
+        if !backfilling {
+            if let Some(path) = history_pending.take() {
+                emit_tick(&app, &log_dir, &target, "history", true, &ingest, &status);
+                let folded =
+                    fold_history(&path, &engine, &log_dir, backfill_threads, &stop, || {
+                        emit_tick(&app, &log_dir, &target, "history", true, &ingest, &status)
+                    });
+                if let Some((full, full_tail, full_framer)) = folded {
+                    {
+                        let mut ing = ingest.lock_recover();
+                        *ing = full;
+                        ing.mark_live();
+                        ing.tick(clock.now_ms());
+                    }
+                    // why: the seam continues from where the FULL fold
+                    // reached, not where the warm one did -- the warm tail
+                    // and its framer are discarded with the state they built
+                    tail = Some(full_tail);
+                    framer = full_framer;
+                    emit_tick(&app, &log_dir, &target, "grew", false, &ingest, &status);
+                }
+            }
+        }
+
         let now = clock.now_ms();
         let mut switched = false;
 
@@ -210,9 +325,30 @@ fn run(
                     // why: whose log this is -- read before the move
                     let character = identity_from_filename(&newest).map(|(c, _)| c);
                     target = Some(newest.clone());
-                    // why: "watch live" and "browse past fights" are the same
-                    // tail, just before/after catching up
-                    tail = Some(Tail::from_start(newest));
+                    // why: WARM START -- fold the tail first so the app is
+                    // usable in about a second, then re-fold the whole file
+                    // behind it (see `history_pending`). The full history is
+                    // never skipped, only deferred: a launch that used to
+                    // show nothing for twenty seconds now shows the right
+                    // zone, fight and loot almost immediately.
+                    let len = std::fs::metadata(&newest).map(|m| m.len()).unwrap_or(0);
+                    // why: EQLP_REPLAY_UNTIL freezes at an instant that can
+                    // sit BEFORE a warm start would begin -- a probe asking
+                    // for a moment in last week's play must replay the whole
+                    // log to reach it, so the warm path is off there
+                    let warm = if replay_until.is_none() && len > WARM_START_BYTES {
+                        line_aligned_offset(&newest, len - WARM_START_BYTES)
+                    } else {
+                        0
+                    };
+                    history_pending = (warm > 0).then(|| newest.clone());
+                    tail = Some(if warm > 0 {
+                        Tail::from_offset(newest, warm)
+                    } else {
+                        // why: "watch live" and "browse past fights" are the
+                        // same tail, just before/after catching up
+                        Tail::from_start(newest)
+                    });
                     framer = Framer::default();
                     backfilling = true;
                     let mut fresh = Ingest::default();

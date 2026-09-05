@@ -1043,7 +1043,11 @@ pub fn list_allies(
             }
         })
         .collect();
-    out.sort_by_key(|b| std::cmp::Reverse(b.total));
+    // why: the name breaks the tie -- two allies on equal damage were left
+    // in whatever order `by_name` (a HashMap) yielded them, so the ally
+    // list reordered for no reason. Same defect as the drop and ability
+    // lists; this one hid behind a sort that only looked total.
+    out.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.name.cmp(&b.name)));
     out
 }
 
@@ -1599,6 +1603,21 @@ const SESSION_GAP_MS: Millis = 24 * 60 * 60 * 1000;
 /// first zone.enter) has nothing to compare against, so it's just
 /// attached to the earliest real session (or its own, if there isn't
 /// one); it never affects level_range_for's own output either way.
+/// why: a configuration's RECENCY -- the newest unit it was ever seen in.
+/// `Unit` is an index into UnitTrack, so nothing inside classdetect can
+/// date one; this is the only place that join happens, shared by the
+/// configuration list and the gear planner's default trio so the two can
+/// never disagree about which loadout is current.
+pub fn latest_visit_ms(
+    ing: &Ingest,
+    visits: &[eqlp_session::classdetect::ZoneVisit],
+) -> Option<Millis> {
+    visits
+        .iter()
+        .filter_map(|&v| ing.units.bounds(v?).map(|(start, _)| start))
+        .max()
+}
+
 fn split_into_sessions(
     ing: &Ingest,
     visits: &[eqlp_session::classdetect::ZoneVisit],
@@ -1670,25 +1689,32 @@ pub fn class_configurations(ing: &Ingest, name: &str) -> ClassConfigurationsDto 
         };
     };
     let (resolved, unresolved) = ing.classes.visits_by_resolved_configuration(sym.0);
-    let mut configurations: Vec<ClassConfigurationDto> = Vec::new();
+    let mut rows: Vec<(Option<Millis>, ClassConfigurationDto)> = Vec::new();
     for (classes, visits) in resolved {
         for session_visits in split_into_sessions(ing, &visits, SESSION_GAP_MS) {
             let level_range = level_range_for(ing, &session_visits);
-            configurations.push(ClassConfigurationDto {
-                classes: classes.clone(),
-                zone_visits: session_visits.len(),
-                level_range,
-            });
+            rows.push((
+                latest_visit_ms(ing, &session_visits),
+                ClassConfigurationDto {
+                    classes: classes.clone(),
+                    zone_visits: session_visits.len(),
+                    level_range,
+                },
+            ));
         }
     }
-    // why: same "most-played first" ordering visits_by_resolved_configuration
-    // itself used before splitting -- otherwise a class-set's several
-    // session-rows would land wherever they happened to be pushed
-    configurations.sort_by(|a, b| {
-        b.zone_visits
-            .cmp(&a.zone_visits)
-            .then_with(|| a.classes.cmp(&b.classes))
+    // why: RECENCY first, not most-played -- asked for directly ("the 3
+    // selected have it be the 3 most recently used ... as if its working
+    // off your most recently used loadout"). Over a multi-year log the
+    // most-played trio is whatever you mained once, which is not what you
+    // are wearing now. An undated row sorts last; visits then classes
+    // break ties so the order is still total.
+    rows.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| b.1.zone_visits.cmp(&a.1.zone_visits))
+            .then_with(|| a.1.classes.cmp(&b.1.classes))
     });
+    let configurations: Vec<ClassConfigurationDto> = rows.into_iter().map(|(_, c)| c).collect();
     ClassConfigurationsDto {
         configurations,
         unresolved_visits: unresolved.len(),

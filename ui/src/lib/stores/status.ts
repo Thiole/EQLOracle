@@ -4,6 +4,7 @@
 // themselves.
 import { writable } from 'svelte/store';
 import { api, type StatusDto, type TailStatus, type LineCounts } from '../tauri/api';
+import { reloadAfterHistory } from './character';
 
 export const status = writable<StatusDto | null>(null);
 
@@ -30,6 +31,15 @@ export async function refreshStatusUntilUp() {
 // `parse-tick`'s own payload shape -- applied in place rather than a
 // full `refreshStatus()` round trip, since the tick already carries
 // everything this store needs.
+// why: the warm pass serves the log's tail immediately and the full fold
+// swaps in behind it; `"history"` is the tail status while that runs, so
+// the edge out of it is the one moment the character view is looking at a
+// state that just got replaced under it.
+let historyWasFolding = false;
+
 export function applyStatusTick(tick: { status: TailStatus; counts: LineCounts }) {
+  const wasFolding = historyWasFolding;
+  historyWasFolding = tick.status.tail_status === 'history';
   status.update((s) => (s ? { ...s, status: tick.status, counts: tick.counts } : { configured: true, status: tick.status, counts: tick.counts }));
+  if (wasFolding && !historyWasFolding) void reloadAfterHistory();
 }

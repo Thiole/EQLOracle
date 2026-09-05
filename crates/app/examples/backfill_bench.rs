@@ -38,7 +38,7 @@ fn main() {
     thread_candidates.retain(|&t| t <= available * 2);
     thread_candidates.dedup();
 
-    let chunk_candidates: Vec<usize> = vec![DEFAULT_CHUNK_LINES, 200_000];
+    let chunk_candidates: Vec<usize> = vec![10_000, 25_000, 50_000, DEFAULT_CHUNK_LINES];
 
     for &chunk_lines in &chunk_candidates {
         println!("\n-- chunk_lines={chunk_lines} --");

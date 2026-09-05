@@ -207,6 +207,25 @@ export async function loadCharacterModule() {
   void checkForExistingInventoryDump();
 }
 
+/** why: startup folds the last 24 MiB first so the app is usable in about
+ * a second, then re-folds the whole log behind it and REPLACES the state
+ * (see tail_worker's warm pass). Everything below ran once against that
+ * partial view; the full history is where the complete per-class level
+ * record lives, so the estimate is re-run the moment it lands.
+ *
+ * `loadCharacterModule`'s own auto-apply only fires into EMPTY stores, so
+ * re-running it alone would change nothing -- the estimate is forced here.
+ * It still never overwrites a level the user typed: `applyEstimatedLevels`
+ * yields to `userLevels`, and the active trio is left alone because the
+ * warm pass already picked the most RECENT loadout, which is the same
+ * answer the full log gives. */
+export async function reloadAfterHistory() {
+  await loadCharacterModule();
+  applyEstimatedLevels();
+  void refreshEstimate();
+  void refreshGear();
+}
+
 export function setRace(r: string) {
   race.set(r);
   savePlannerState();

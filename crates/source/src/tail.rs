@@ -81,6 +81,20 @@ impl Tail {
         Tail::new(path, false)
     }
 
+    /// why: warm start -- the app is usable off the last few MiB of a log
+    /// while the full history folds behind it, so a tail has to be able to
+    /// begin somewhere other than both ends. `offset` is taken on trust:
+    /// the caller aligns it to a line boundary, because only the caller
+    /// knows what a line is.
+    pub fn from_offset(path: impl Into<PathBuf>, offset: u64) -> Tail {
+        let mut t = Tail::new(path, false);
+        if let Ok(m) = std::fs::metadata(&t.path) {
+            t.offset = offset.min(m.len());
+            t.id = file_id(&m);
+        }
+        t
+    }
+
     fn new(path: impl Into<PathBuf>, skip_existing: bool) -> Tail {
         let path = path.into();
         let mut t = Tail {

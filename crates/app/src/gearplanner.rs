@@ -94,10 +94,14 @@ pub fn default_classes(ing: &crate::ingest::Ingest, name: &str) -> Vec<String> {
         return Vec::new();
     };
     let (resolved, _) = ing.classes.visits_by_resolved_configuration(sym.0);
-    let Some((dominant, _)) = resolved.into_iter().next() else {
-        return Vec::new();
-    };
-    dominant
+    // why: the most RECENT loadout, not the most-played one -- see
+    // combat::latest_visit_ms. `visits_by_resolved_configuration` orders by
+    // visit count, which on a long log answers "what did you main once".
+    resolved
+        .into_iter()
+        .max_by_key(|(_, visits)| crate::combat::latest_visit_ms(ing, visits))
+        .map(|(classes, _)| classes)
+        .unwrap_or_default()
 }
 
 /// why: `item.classes` is a plain code list, ["ALL"], or ["ALL_EXCEPT",
