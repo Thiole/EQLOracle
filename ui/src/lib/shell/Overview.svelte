@@ -7,7 +7,9 @@
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
   import { Button } from '$lib/components/ui/button';
-  import { api, type ZoneContextDto, type MobDto } from '$lib/tauri/api';
+  import { api, type ZoneContextDto, type MobDto, type GroupBuffsDto } from '$lib/tauri/api';
+  import BellOffIcon from '@lucide/svelte/icons/bell-off';
+  import { toggleMutedBuffLine } from '$lib/stores/settings';
   import { activeModule } from '$lib/stores/shell';
   import { race, activeClasses, defaultClasses, classConfigurations, loadCharacterModule } from '$lib/stores/character';
   import { session, refreshSession, resetSession, setSessionWindow } from '$lib/stores/session';
@@ -30,6 +32,7 @@
   function loadOverviewData() {
     api.getZoneContext().then((z) => (zoneCtx = z));
     api.listMobs().then((list) => (mobs = list ?? []));
+    loadGroupBuffs();
   }
   $effect(() => {
     loadOverviewData();
@@ -37,6 +40,32 @@
     window.addEventListener('eqlp:parse-settled', onSettled);
     return () => window.removeEventListener('eqlp:parse-settled', onSettled);
   });
+
+  // why: the same tracker the overlay shows, on the landing page -- what
+  // is MISSING only (a covered buff needs no row), each one carrying its
+  // own mute. Party rows and your own innates read the same here: a line
+  // you could have on and do not.
+  let buffs = $state<GroupBuffsDto | null>(null);
+  function loadGroupBuffs() {
+    api.getGroupBuffs().then((d) => (buffs = d)).catch(() => (buffs = null));
+  }
+  // why: the LINE is what a mute switches off, the label is the stat it
+  // fills -- "not the spell but the slot it fills". A row that is up but
+  // upgradeable still needs saying; it names the better line.
+  const neededBuffs = $derived(
+    buffs
+      ? [
+          ...buffs.rows
+            .filter((r) => !r.active || r.upgrade)
+            .map((r) => ({ line: r.lines[0]?.line ?? r.label, label: r.label })),
+          ...buffs.innates.filter((i) => !i.active).map((i) => ({ line: i.line, label: i.label })),
+        ].filter((b, i, all) => all.findIndex((o) => o.line === b.line) === i)
+      : [],
+  );
+  async function muteLine(line: string) {
+    await toggleMutedBuffLine(line);
+    loadGroupBuffs();
+  }
 
   // why: "manual override button to set timeframe" -- a start and an
   // optional end as local datetimes; empty end means "now"
@@ -284,6 +313,7 @@
         </Card>
       </div>
 
+      <div class="flex flex-col gap-3">
       <Card class="rounded-sm">
         <CardContent class="px-3 py-2.5">
           <div class="mb-1.5 flex items-center justify-between">
@@ -313,6 +343,42 @@
           {/if}
         </CardContent>
       </Card>
+
+      <Card class="rounded-sm">
+        <CardContent class="px-3 py-2.5">
+          <h2 class="stat-figure mb-1.5 text-[18px]">Group Buffs</h2>
+          {#if !buffs}
+            <p class="text-[11px] text-muted-foreground">Loading…</p>
+          {:else if !buffs.rows.length && !buffs.innates.length}
+            <p class="text-[11px] text-muted-foreground">Nothing confirmed yet -- no party classes detected.</p>
+          {:else if !neededBuffs.length}
+            <p class="text-[11px] text-muted-foreground">Every buff you could have on is on.</p>
+          {:else}
+            <ul class="flex flex-col gap-0.5 text-[11px]">
+              {#each neededBuffs as b (b.line)}
+                <li class="group/mute flex items-center justify-between gap-2">
+                  <span class="truncate text-foreground">{b.line}</span>
+                  <span class="flex shrink-0 items-center gap-1.5">
+                    <span class="text-muted-foreground">{b.label}</span>
+                    <!-- why: the Drop Watch bell's opposite number -- same
+                         hover-to-reveal affordance, the other direction:
+                         this stops the tracker watching that line. -->
+                    <button
+                      type="button"
+                      class="hidden rounded-sm p-0.5 text-muted-foreground group-hover/mute:block hover:text-bad"
+                      title="Stop tracking {b.line} -- undo in Settings -> Overlay -> Group Buffs"
+                      onclick={() => void muteLine(b.line)}
+                    >
+                      <BellOffIcon class="size-3" />
+                    </button>
+                  </span>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </CardContent>
+      </Card>
+      </div>
     </div>
   {/if}
 </div>

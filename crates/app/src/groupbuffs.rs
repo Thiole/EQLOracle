@@ -507,6 +507,11 @@ fn is_illusion(spell: &Spell) -> bool {
 pub struct SelfBuffDto {
     /// why: rank numeral stripped, same line grouping the party rows use
     pub line: String,
+    /// why: the STAT it fills, not the spell -- "weapon proc", "attack".
+    /// Spencer: "lists out the assosciated buff/buff stat (not the spell
+    /// but the slot it fills)". Empty only if the line's own best spell
+    /// left the catalog, which cannot happen for a line built from it.
+    pub label: &'static str,
     /// why: the best rank of it YOU can cast
     pub best_spell: String,
     pub best_level: u32,
@@ -792,9 +797,13 @@ pub fn group_buffs(ing: &Ingest, muted: &[String]) -> GroupBuffsDto {
         } else {
             active_self_by_line.get(&line).cloned()
         };
+        let label = crate::spelldata::spell_by_name(&best_spell)
+            .and_then(kind_of)
+            .map_or("", |k| k.label());
         let dto = SelfBuffDto {
             active,
             line,
+            label,
             best_spell,
             best_level,
         };
@@ -1015,6 +1024,7 @@ mod tests {
         };
         let innate = |n: &str| SelfBuffDto {
             line: n.to_string(),
+            label: "",
             best_spell: n.to_string(),
             best_level: 1,
             active: None,

@@ -74,6 +74,8 @@ export interface PartyMemberDto {
  * only question is whether it is on. */
 export interface SelfBuffDto {
   line: string;
+  /** why: the STAT the line fills, not the spell -- "weapon proc", "attack" */
+  label: string;
   best_spell: string;
   best_level: number;
   active: string | null;

@@ -56,6 +56,14 @@ fn main() {
     // standalone example has access to
     out.insert("get_app_version".to_string(), json!({ "": "0.1.0" }));
 
+    // ---- get_group_buffs: nothing muted -- the real command reads the
+    // player's own preferences, which this standalone example has no
+    // AppHandle for
+    out.insert(
+        "get_group_buffs".to_string(),
+        json!({ "": eqlp_app::groupbuffs::group_buffs(&ing, &[]) }),
+    );
+
     // ---- list_zone_visits ----
     let visits = combat::list_zone_visits(&ing);
     out.insert("list_zone_visits".to_string(), json!({ "": visits }));
