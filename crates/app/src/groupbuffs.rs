@@ -380,11 +380,29 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         });
     }
 
-    // why: per kind, the best (highest-level) party-castable spell and
-    // everyone who could cast it -- confirmed classes only
+    // why: YOU are a source too -- asked for directly ("should use
+    // detected innate buffs for current classes"). The roster above
+    // deliberately skips you (it answers "who am I grouped with"), but a
+    // buff your own detected trio can cast is one you are missing when it
+    // is not up, and nobody else has to be online for it. Kept out of
+    // `party` so the roster line still reads as the group.
+    let me = PartyMemberDto {
+        name: "You".to_string(),
+        classes: my_classes.clone(),
+        level: ing.ally_level("You", now).0,
+        confirmed: !my_classes.is_empty(),
+        buffs: Vec::new(),
+    };
+
+    // why: per kind, the best (highest-level) castable spell and everyone
+    // who could cast it -- confirmed classes only
     type LineAcc = BTreeMap<String, (u32, String, HashSet<String>)>;
     let mut best: BTreeMap<BuffKind, LineAcc> = BTreeMap::new();
-    for member in party.iter().filter(|m| m.confirmed) {
+    for member in party
+        .iter()
+        .chain(std::iter::once(&me))
+        .filter(|m| m.confirmed)
+    {
         for spell in spells().iter().filter(|s| is_party_buff(s)) {
             let Some(kind) = kind_of(spell) else { continue };
             if !benefits(kind, &my_classes) {

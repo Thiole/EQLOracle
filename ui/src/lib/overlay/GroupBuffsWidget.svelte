@@ -1,8 +1,10 @@
 <script lang="ts">
-  // why: Group Buff Tracker -- one word first ("Good" / "Missing N"),
-  // then one line per buff kind the party can put on you: green with
-  // the active spell, yellow with the best spell and who could cast it.
-  // The party line shows who counts and what their classes read as.
+  // why: Group Buff Tracker -- a verdict first ("All good", else the
+  // NAMES of what is missing), then one line per buff kind you could
+  // have on you. Only problems carry colour: a covered buff is the
+  // expected state and does not need to shout, asked for directly
+  // ("dont show green if its good"). Sources include your own detected
+  // classes, so a buff you can cast on yourself still reads as missing.
   import type { GroupBuffsDto } from '$lib/tauri/api';
   let { data, opacity, overallOpacity }: { data: GroupBuffsDto | null; opacity: number; overallOpacity: number } = $props();
   const ABBR: Record<string, string> = {
@@ -11,7 +13,11 @@
     Magician: 'MAG', Enchanter: 'ENC', Beastlord: 'BST', Berserker: 'BER',
   };
   const abbr = (c: string) => ABBR[c] ?? c.slice(0, 3).toUpperCase();
-  const missing = $derived(data ? data.rows.filter((r) => !r.active).length : 0);
+  const missingRows = $derived(data ? data.rows.filter((r) => !r.active) : []);
+  const missing = $derived(missingRows.length);
+  // why: name them -- "missing 2" makes you go looking, "missing Clarity,
+  // Haste" is the answer itself
+  const missingNames = $derived(missingRows.map((r) => r.label).join(', '));
   // why: a low-tier buff is not coverage -- see BuffRowDto.upgrade
   const upgrades = $derived(data ? data.rows.filter((r) => r.upgrade).length : 0);
 </script>
@@ -24,14 +30,14 @@
 >
   {#if !data}
     <p class="text-muted-foreground">group buffs…</p>
-  {:else if !data.party.length}
+  {:else if !data.rows.length && !data.party.length}
     <p class="text-muted-foreground">group buffs: no party</p>
   {:else}
     <div class="flex items-baseline justify-between">
-      <span class="font-medium {missing === 0 && upgrades === 0 ? 'text-good' : 'text-caution'}">
+      <span class="font-medium {missing === 0 && upgrades === 0 ? 'text-foreground/70' : 'text-caution'}">
         group buffs: {missing === 0 && upgrades === 0
-          ? 'Good'
-          : [missing ? `missing ${missing}` : '', upgrades ? `${upgrades} upgradeable` : ''].filter(Boolean).join(', ')}
+          ? 'All good'
+          : [missing ? `missing ${missingNames}` : '', upgrades ? `${upgrades} upgradeable` : ''].filter(Boolean).join(', ')}
       </span>
       <span class="truncate font-mono text-[10px] text-foreground/60" title="your classes">{data.my_classes.map(abbr).join('/')}</span>
     </div>
@@ -43,7 +49,7 @@
         <div class="flex items-baseline justify-between gap-2">
           <span class="text-foreground/80">{r.label}</span>
           {#if r.active && !r.upgrade}
-            <span class="truncate text-good" title="on you">{r.active}</span>
+            <span class="truncate text-foreground/60" title="on you">{r.active}</span>
           {:else if r.active}
             <!-- why: up, but a better rank is castable -- name it -->
             <span
