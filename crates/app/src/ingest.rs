@@ -1280,6 +1280,15 @@ pub struct Ingest {
     /// why: when you last summoned a familiar -- its own "is it up" signal,
     /// since a familiar lands no buff message of its own
     pub familiar_since_ms: Option<Millis>,
+    /// why: how many of a same-named mob the log has PROVEN were up at
+    /// once, and when. An AoE fans out one landing line per target, so N
+    /// of one name in a single instant is a census, not an estimate --
+    /// nothing else in the log distinguishes concurrent duplicates. High
+    /// water mark: the most ever seen together, never a live tally.
+    pub instances: HashMap<Sym, (u32, Millis)>,
+    /// why: the fan-out being counted right now -- (instant, effect)
+    fanout: Option<(Millis, &'static str)>,
+    fanout_counts: HashMap<Sym, u32>,
     /// why: whose log this is, from the file name -- lets your own /who
     /// row apply to "You" instead of a stranger by the same name. The
     /// self model is the same model, just fed more (Spencer).
@@ -1450,6 +1459,9 @@ impl Default for Ingest {
             keep_full_history: false,
             zone_shortnames: HashMap::new(),
             familiar_since_ms: None,
+            instances: HashMap::new(),
+            fanout: None,
+            fanout_counts: HashMap::new(),
             spell_file: None,
             implied_level: HashMap::new(),
             stance_pool: None,
@@ -1926,6 +1938,9 @@ impl Ingest {
     /// why: switches from replaying-fast to live -- tick starts advancing
     /// the clock by real elapsed time too, not just new-line timestamps
     pub fn mark_live(&mut self) {
+        // why: the last instant of the backfill is complete now, so
+        // whatever it counted is a fact
+        self.flush_fanout();
         self.live = true;
         // why: the seam is the one moment backfill's doubling slack is
         // known to be dead weight -- see Store::shrink_to_fit
@@ -2064,6 +2079,9 @@ impl Ingest {
     /// not a fresh read -- else wall-elapsed would double-count time
     /// lines already advanced the clock past, racing it ahead of real time.
     pub fn tick(&mut self, wall_now_ms: Millis) {
+        // why: live lines arrive one at a time, so a fan-out is only known
+        // to be over when the next thing happens
+        self.flush_fanout();
         if self.live {
             if let Some(last) = self.last_wall_ms {
                 // why: capped -- ticks come every poll (~100ms); one elapsed
@@ -2515,6 +2533,15 @@ impl Ingest {
                 self.pending_group_inviter = Some((ts, resolved));
             }
             Action::Mez { who } => {
+                // why: counted on the RAW name, not `sym`, which merges a
+                // pet into its owner -- ten different mobs charmed by one
+                // player all landed on that player's sym and read as ten
+                // of him. A census has to count the thing that was mezzed.
+                let counted = {
+                    let resolved = self.resolve_name(&who);
+                    self.store.sym(&resolved)
+                };
+                self.note_fanout(ts, "mez", counted);
                 let sym = self.sym(&who);
                 self.timeline.observed(ts, sym.0, State::Mezzed);
                 // why: a mezzed add that never swung is still part of
@@ -3836,6 +3863,39 @@ impl Ingest {
     }
 
     /// why: registers owner as a pending candidate for whichever new entity acts next
+    /// why: an AoE lands ONE line per target, so several of the same name
+    /// in a single instant proves that many were up together -- the only
+    /// signal in the log that counts concurrent duplicates. Everything
+    /// else was measured and rejected: attack rate reads 1.00 whether one
+    /// or six died (multi-kill windows are sequential pulls), and the
+    /// before/after-kill rate ratio medians 1.55 where a true pair should
+    /// read 2.0, wrong about a third of the time.
+    ///
+    /// Kept as a high-water mark and never decremented: "at least this
+    /// many were here" is honest, a live count is not recoverable.
+    fn note_fanout(&mut self, ts: Millis, effect: &'static str, sym: Sym) {
+        if self.fanout != Some((ts, effect)) {
+            self.flush_fanout();
+            self.fanout = Some((ts, effect));
+        }
+        *self.fanout_counts.entry(sym).or_insert(0) += 1;
+    }
+
+    /// why: the instant is over, so whatever it counted is now a fact
+    fn flush_fanout(&mut self) {
+        for (sym, n) in self.fanout_counts.drain() {
+            if n < 2 {
+                continue;
+            }
+            let ts = self.fanout.map(|(t, _)| t).unwrap_or(0);
+            let e = self.instances.entry(sym).or_insert((0, ts));
+            if n >= e.0 {
+                *e = (n, ts);
+            }
+        }
+        self.fanout = None;
+    }
+
     fn note_pet_summon(&mut self, ts: Millis, owner: &str) {
         let resolved = self.resolve_name(owner);
         self.pending_summons.push((ts, resolved));
@@ -9835,6 +9895,64 @@ mod spell_perf_tests {
             (row.baseline - 1000.0).abs() < 1.0,
             "baseline {}",
             row.baseline
+        );
+    }
+}
+
+#[cfg(test)]
+mod instance_census_tests {
+    use super::*;
+    use crate::parser::build_engine;
+
+    /// why: nothing in the log distinguishes concurrent same-named mobs --
+    /// no instance id anywhere in 396 MB. An AoE is the exception: it
+    /// lands ONE line per target, so several of one name in a single
+    /// instant is a census. Measured alternatives that failed: attack rate
+    /// reads 1.00 whether one or six died, and the before/after-kill rate
+    /// ratio medians 1.55 where a true pair should read 2.0.
+    #[test]
+    fn an_aoe_landing_counts_the_mobs_it_hit() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Wed Jul 29 16:11:55 2026] a gnoll has been mesmerized.",
+            b"[Wed Jul 29 16:11:55 2026] a gnoll has been mesmerized.",
+            b"[Wed Jul 29 16:11:55 2026] a gnoll has been mesmerized.",
+            b"[Wed Jul 29 16:11:55 2026] a patrolling gnoll has been mesmerized.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing.mark_live();
+        let count = |n: &str| {
+            ing.store
+                .names
+                .get(n)
+                .and_then(|s| ing.instances.get(&s))
+                .map(|(c, _)| *c)
+        };
+        assert_eq!(count("a gnoll"), Some(3), "three landed in one instant");
+        assert_eq!(count("a patrolling gnoll"), None, "one is not a census");
+    }
+
+    /// why: two separate casts are not one pull of six -- the count is per
+    /// instant, and the mark is the largest instant ever seen
+    #[test]
+    fn separate_instants_do_not_add_up() {
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Wed Jul 29 16:11:55 2026] a gnoll has been mesmerized.",
+            b"[Wed Jul 29 16:11:55 2026] a gnoll has been mesmerized.",
+            b"[Wed Jul 29 16:12:30 2026] a gnoll has been mesmerized.",
+            b"[Wed Jul 29 16:12:30 2026] a gnoll has been mesmerized.",
+            b"[Wed Jul 29 16:12:30 2026] a gnoll has been mesmerized.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        ing.mark_live();
+        let sym = ing.store.names.get("a gnoll").expect("interned");
+        assert_eq!(
+            ing.instances.get(&sym).map(|(c, _)| *c),
+            Some(3),
+            "the high-water instant, not the sum of both"
         );
     }
 }

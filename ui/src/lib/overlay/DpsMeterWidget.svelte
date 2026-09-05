@@ -60,7 +60,13 @@
     <div class="relative overflow-hidden rounded-sm bg-foreground/10">
       <div class="absolute inset-y-0 left-0 {barClass}" style:width="{r.pct}%"></div>
       <div class="relative flex items-center gap-3 px-1.5 py-0.5">
-        <span class="min-w-0 flex-1 truncate {r.is_pet ? 'text-foreground/70 italic' : 'text-foreground'}">{r.name}</span>
+        <span class="min-w-0 flex-1 truncate {r.is_pet ? 'text-foreground/70 italic' : 'text-foreground'}"
+          >{r.name}<!--
+          why: an AoE lands one line per target, so N of one name in a
+               single instant is a census. Shown as "x5+" because it is a
+               high-water mark, never a live count -- nothing in the log
+               says how many are up right now.
+        -->{#if r.instances}<span class="ml-1 font-mono text-[10px] text-foreground/60" title="{r.instances} of these were up at once, seen when an area effect landed on all of them">&times;{r.instances}+</span>{/if}</span>
         <span class="w-10 shrink-0 text-right font-mono text-[10px] text-foreground/70 tabular-nums" title="time in encounter -- from this entity's first action">{fmtActive(r.active_ms)}</span>
         <span class="w-12 shrink-0 text-right font-mono text-foreground/80 tabular-nums" title="total damage over the whole encounter">{fmtCompact(r.total)}</span>
         <span class="w-11 shrink-0 text-right font-mono text-foreground tabular-nums" title="DPS over time in encounter">{r.dps.toFixed(0)}</span>

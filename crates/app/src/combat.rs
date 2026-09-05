@@ -1275,6 +1275,11 @@ fn fight_state_at_windowed(
 #[derive(Debug, Clone, Serialize)]
 pub struct LiveMeterRowDto {
     pub name: String,
+    /// why: how many of this name the log has PROVEN were up at once --
+    /// an AoE lands one line per target, so N in one instant is a census.
+    /// None when nothing ever proved more than one; never a live tally,
+    /// always "at least this many were here" (see Ingest::note_fanout).
+    pub instances: Option<u32>,
     pub pct: f64,
     pub total: u64,
     pub dps: f64,
@@ -1532,6 +1537,16 @@ pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
                     active_ms,
                     is_player: a.is_player,
                     is_pet: a.is_pet,
+                    // why: only ever an "at least" -- the census comes from
+                    // whichever AoE happened to land, so a name never
+                    // caught by one reads None rather than 1
+                    instances: ing
+                        .store
+                        .names
+                        .get(&name)
+                        .and_then(|sym| ing.instances.get(&sym))
+                        .map(|(n, _)| *n)
+                        .filter(|n| *n > 1),
                     name,
                 }
             })
@@ -1624,6 +1639,9 @@ fn fold_incoming(rows: Vec<LiveMeterRowDto>) -> Vec<LiveMeterRowDto> {
         out.push(LiveMeterRowDto {
             // why: only ever 2 or more here, so the plural is honest
             name: format!("{} others", rest.len()),
+            // why: a bucket is a count of NAMES, not of mobs -- the census
+            // belongs to the named row above it
+            instances: None,
             pct,
             total,
             dps,
@@ -2757,6 +2775,7 @@ mod live_meter_window_tests {
     fn incoming_folds_to_a_lead_mob_and_a_bucket() {
         let row = |name: &str, total: u64| LiveMeterRowDto {
             name: name.to_string(),
+            instances: None,
             pct: 10.0,
             total,
             dps: total as f64,

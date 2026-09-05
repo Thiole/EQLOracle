@@ -345,6 +345,10 @@ export interface OverlayDiagnosticsDto {
  * fight's live edge, not the pull. */
 export interface LiveMeterRowDto {
   name: string;
+  /** why: how many of this name the log has PROVEN were up at once -- an
+   * AoE lands one line per target, so N in one instant is a census. Null
+   * when nothing ever proved more than one; always "at least". */
+  instances: number | null;
   pct: number;
   total: number;
   dps: number;
