@@ -52,16 +52,46 @@
   // why: the LINE is what a mute switches off, the label is the stat it
   // fills -- "not the spell but the slot it fills". A row that is up but
   // upgradeable still needs saying; it names the better line.
-  const neededBuffs = $derived(
+  //
+  // Split the way the minimal overlay layout reads its verdict, so the
+  // card answers what that one word is about: your own self-buffs are
+  // "Warning", a groupmate's buffs on you are "Others missing". Party
+  // rows name the player expected to cast the line -- "the expected
+  // spell line of the players".
+  const missingRows = $derived(buffs ? buffs.rows.filter((r) => !r.active || r.upgrade) : []);
+  const missingParty = $derived(
     buffs
-      ? [
-          ...buffs.rows
-            .filter((r) => !r.active || r.upgrade)
-            .map((r) => ({ line: r.lines[0]?.line ?? r.label, label: r.label })),
-          ...buffs.innates.filter((i) => !i.active).map((i) => ({ line: i.line, label: i.label })),
-        ].filter((b, i, all) => all.findIndex((o) => o.line === b.line) === i)
+      ? missingRows
+          .filter((r) => r.others)
+          .map((r) => ({
+            line: r.lines[0]?.line ?? r.label,
+            label: r.label,
+            who: (r.lines[0]?.casters ?? []).filter((c) => c !== 'You').join(', '),
+            was: r.upgrade ? r.active : null,
+          }))
       : [],
   );
+  // why: a row only YOU can cast belongs with your own self-buffs, not
+  // under "expected from your party" -- you are a source like any
+  // groupmate, so a party row can name nobody but you
+  const missingOwn = $derived(
+    buffs
+      ? [
+          ...buffs.innates
+            .filter((i) => !i.active)
+            .map((i) => ({ line: i.line, label: i.label, who: '', was: null as string | null })),
+          ...missingRows
+            .filter((r) => !r.others)
+            .map((r) => ({
+              line: r.lines[0]?.line ?? r.label,
+              label: r.label,
+              who: '',
+              was: r.upgrade ? r.active : null,
+            })),
+        ]
+      : [],
+  );
+  const neededBuffs = $derived([...missingOwn, ...missingParty]);
   async function muteLine(line: string) {
     await toggleMutedBuffLine(line);
     loadGroupBuffs();
@@ -351,7 +381,7 @@
             <!-- why: the mute is one-way from here -- the full line list,
                  muted entries included, lives in the Overlay module -->
             <button type="button" class="text-[11px] text-brand-soft hover:text-primary hover:underline" onclick={() => goto('overlay')}>
-              all lines →
+              Settings →
             </button>
           </div>
           {#if !buffs}
@@ -361,28 +391,44 @@
           {:else if !neededBuffs.length}
             <p class="text-[11px] text-muted-foreground">Every buff you could have on is on.</p>
           {:else}
-            <ul class="flex flex-col gap-0.5 text-[11px]">
-              {#each neededBuffs as b (b.line)}
-                <li class="flex items-center justify-between gap-2">
-                  <span class="truncate text-foreground">{b.line}</span>
-                  <span class="flex shrink-0 items-center gap-1.5">
-                    <span class="text-muted-foreground">{b.label}</span>
-                    <!-- why: the Drop Watch bell's opposite number, and
-                         always visible -- reported as "I dont see any
-                         bells in that section", which hover-to-reveal
-                         earns: an affordance nobody finds is not one. -->
-                    <button
-                      type="button"
-                      class="rounded-sm p-0.5 text-muted-foreground/60 hover:text-bad"
-                      title="Stop tracking {b.line} -- undo in Settings -> Overlay -> Group Buffs"
-                      onclick={() => void muteLine(b.line)}
-                    >
-                      <BellOffIcon class="size-3" />
-                    </button>
-                  </span>
-                </li>
-              {/each}
-            </ul>
+            {#snippet buffList(items: typeof neededBuffs, heading: string)}
+              <p class="mt-1 text-[10px] text-muted-foreground first:mt-0">{heading}</p>
+              <ul class="flex flex-col gap-0.5 text-[11px]">
+                {#each items as b (b.line)}
+                  <li class="flex items-center justify-between gap-2">
+                    <span class="truncate text-foreground">
+                      {b.line}
+                      <!-- why: an upgradeable row is UP, just from a
+                           worse rank -- saying only the better line
+                           reads as missing when it is not -->
+                      {#if b.was}<span class="text-muted-foreground">(over {b.was})</span>{/if}
+                      {#if b.who}<span class="text-muted-foreground">· {b.who}</span>{/if}
+                    </span>
+                    <span class="flex shrink-0 items-center gap-1.5">
+                      <span class="text-muted-foreground">{b.label}</span>
+                      <!-- why: the Drop Watch bell's opposite number, and
+                           always visible -- reported as "I dont see any
+                           bells in that section", which hover-to-reveal
+                           earns: an affordance nobody finds is not one. -->
+                      <button
+                        type="button"
+                        class="rounded-sm p-0.5 text-muted-foreground/60 hover:text-bad"
+                        title="Stop tracking {b.line} -- undo in Settings -> Overlay -> Group Buffs"
+                        onclick={() => void muteLine(b.line)}
+                      >
+                        <BellOffIcon class="size-3" />
+                      </button>
+                    </span>
+                  </li>
+                {/each}
+              </ul>
+            {/snippet}
+            {#if missingOwn.length}
+              {@render buffList(missingOwn, 'warning -- your own self-buffs')}
+            {/if}
+            {#if missingParty.length}
+              {@render buffList(missingParty, 'others missing -- expected from your party')}
+            {/if}
           {/if}
         </CardContent>
       </Card>

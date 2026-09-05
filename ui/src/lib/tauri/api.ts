@@ -61,6 +61,10 @@ export interface BuffRowDto {
   relevance: number;
   /** why: every line of this kind the party could cast, best first -- what is assumed missing */
   lines: BuffLineDto[];
+  /** why: somebody who is not YOU can cast the BEST line here. You are a
+   * source like any groupmate, so a row can name only yourself -- and
+   * "others missing" said of a line only you can cast is a lie. */
+  others: boolean;
 }
 export interface PartyMemberDto {
   name: string;

@@ -355,6 +355,14 @@ pub struct BuffRowDto {
     /// why: every line of this kind the party could cast, best first --
     /// what is assumed missing when nothing of the kind is on you
     pub lines: Vec<BuffLineDto>,
+    /// why: somebody who is not YOU can cast the BEST line here. You are
+    /// a source like any groupmate (a buff your own trio can cast is one
+    /// you are missing), so a row can name only yourself -- and "others
+    /// missing" said of a line nobody but you can cast is a lie. Judged
+    /// on the best line alone, not any line: a groupmate who can only
+    /// cast a worse rank of the same kind does not make the rank you
+    /// should actually have their job. Read after muting.
+    pub others: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -878,6 +886,9 @@ pub fn group_buffs(ing: &Ingest, muted: &[String]) -> GroupBuffsDto {
                 upgrade,
                 relevance: relevance(kind, &my_classes),
                 lines: lines.into_iter().map(|(_, l)| l).collect(),
+                // why: set below, once muting has settled which lines
+                // are still on the row
+                others: false,
             }
         })
         .collect();
@@ -900,6 +911,9 @@ pub fn group_buffs(ing: &Ingest, muted: &[String]) -> GroupBuffsDto {
     catalog.sort();
     catalog.dedup();
     retain_unmuted(&mut rows, &mut innates, &mut maybes, muted);
+    for r in &mut rows {
+        r.others = cast_by_others(&r.lines);
+    }
     let upgrades = rows.iter().filter(|r| r.upgrade).count();
     // why: an innate you can cast and have not is missing the same way a
     // party buff is. A MAYBE never counts against you -- that is what
@@ -919,6 +933,17 @@ pub fn group_buffs(ing: &Ingest, muted: &[String]) -> GroupBuffsDto {
         catalog,
         extra_active,
     }
+}
+
+/// why: whose job the buff is. You are a source like any groupmate, so a
+/// row can name nobody but you, and calling that "others missing" is a
+/// lie. Judged on the BEST line alone: a groupmate who can only cast a
+/// worse rank of the same kind does not make the rank you should
+/// actually have their job.
+fn cast_by_others(lines: &[BuffLineDto]) -> bool {
+    lines
+        .first()
+        .is_some_and(|l| l.casters.iter().any(|c| !c.eq_ignore_ascii_case("You")))
 }
 
 /// why: a muted line is not a suggestion and not a shortfall -- it
@@ -1002,6 +1027,34 @@ mod tests {
         );
     }
 
+    /// why: "Others missing" means party members who can buff you have
+    /// not. A line only YOU can cast is your own problem, and a groupmate
+    /// who can only manage a worse rank of the kind does not own the rank
+    /// you should actually have.
+    #[test]
+    fn only_the_best_lines_caster_decides_whose_job_it_is() {
+        let line = |n: &str, casters: &[&str]| BuffLineDto {
+            line: n.to_string(),
+            best_spell: n.to_string(),
+            best_level: 1,
+            casters: casters.iter().map(|c| c.to_string()).collect(),
+        };
+        assert!(!cast_by_others(&[]), "no line, nobody's job");
+        assert!(!cast_by_others(&[line("Berserker Spirit", &["You"])]));
+        assert!(cast_by_others(&[line("Aegolism", &["Sorien"])]));
+        assert!(
+            cast_by_others(&[line("Aegolism", &["You", "Sorien"])]),
+            "a groupmate who can cast the best line owns it"
+        );
+        assert!(
+            !cast_by_others(&[
+                line("Berserker Spirit", &["You"]),
+                line("Chant of Battle", &["Kaeus"]),
+            ]),
+            "a worse rank someone else has is not the rank you should have"
+        );
+    }
+
     /// why: a muted line leaves the tracker entirely -- if it only left
     /// the display, "All good" would still be withheld by something the
     /// player switched off
@@ -1014,6 +1067,7 @@ mod tests {
             casters: Vec::new(),
         };
         let row = |kind, lines: Vec<BuffLineDto>| BuffRowDto {
+            others: false,
             kind,
             label: kind.label(),
             active: None,

@@ -38,6 +38,11 @@
   const maybes = $derived(data ? data.maybes.filter((m) => !m.active) : []);
   // why: a low-tier buff is not coverage -- see BuffRowDto.upgrade
   const upgrades = $derived(data ? data.rows.filter((r) => r.upgrade).length : 0);
+  // why: a row nobody but YOU can cast is your own problem, so it reads
+  // as Warning -- "Others missing" asserts your own half is good
+  const ownRowsMissing = $derived(
+    data ? data.rows.some((r) => (!r.active || r.upgrade) && !r.others) : false,
+  );
   const clean = $derived(missing === 0 && upgrades === 0 && missingInnates.length === 0);
   // why: the minimal layout is a verdict and nothing else -- Spencer's own
   // three states. "Warning" is your OWN self-buffs being wrong, which
@@ -48,7 +53,7 @@
       ? { text: 'Buffs: …', tone: 'text-foreground/60' }
       : !data.rows.length && !data.innates.length
         ? { text: 'Buffs: unknown', tone: 'text-foreground/60' }
-        : missingInnates.length
+        : missingInnates.length || ownRowsMissing
           ? { text: 'Buffs: Warning', tone: 'text-bad' }
           : missing || upgrades
             ? { text: 'Buffs: Others missing', tone: 'text-caution' }
