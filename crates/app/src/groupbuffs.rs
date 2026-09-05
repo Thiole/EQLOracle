@@ -368,6 +368,25 @@ fn line_key(spell: &Spell) -> String {
     base_name(&spell.name).to_string()
 }
 
+/// why: a buff is only an upgrade over a DIFFERENT buff. Reported live as
+/// "Vampiric Embrace -> Vampiric Embrace": the two sides measure level
+/// differently and always have -- the active side takes the MINIMUM class
+/// requirement across the spell's classes (Vampiric Embrace is Necromancer
+/// 7, Shadow Knight 15, so 7), the best side takes the requirement for the
+/// class the CASTER actually has (15 for a Shadow Knight). Same spell,
+/// 7 < 15, "upgrade". Comparing the names settles it without disturbing
+/// either number, both of which are right for what they are used for
+/// elsewhere -- castability, and the level shown on the row.
+fn is_upgrade(active: Option<(&str, u32)>, best_spell: Option<&str>, best_level: u32) -> bool {
+    let Some((name, level)) = active else {
+        return false;
+    };
+    if best_spell.is_some_and(|b| b.eq_ignore_ascii_case(name)) {
+        return false;
+    }
+    level < best_level
+}
+
 pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
     let now = ing.now_ms();
     let my_classes: Vec<String> = ing
@@ -547,8 +566,23 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             let on_you = active_by_kind.get(&kind).cloned();
             let active_level = on_you.as_ref().map(|(_, l)| *l);
             // why: covered means the BEST usable rank is up -- Breeze
-            // while the party's Enchanter can cast Clarity is an upgrade
-            let upgrade = active_level.is_some_and(|l| l < best_level);
+            // while the party's Enchanter can cast Clarity is an upgrade.
+            //
+            // The SAME spell never is. Reported as "Vampiric Embrace ->
+            // Vampiric Embrace": the two sides measure level differently
+            // and always have -- the active side takes the MINIMUM class
+            // requirement across the spell's classes (Vampiric Embrace is
+            // Necromancer 7, Shadow Knight 15, so 7), while the best side
+            // takes the requirement for the class the CASTER actually has
+            // (15 for a Shadow Knight). Same spell, 7 < 15, "upgrade".
+            // Comparing the names settles it without disturbing either
+            // number, both of which are right for what they are used for
+            // elsewhere -- castability, and the level shown on the row.
+            let upgrade = is_upgrade(
+                on_you.as_ref().map(|(n, l)| (n.as_str(), *l)),
+                lines.first().map(|(_, l)| l.best_spell.as_str()),
+                best_level,
+            );
             BuffRowDto {
                 kind,
                 label: kind.label(),
@@ -684,6 +718,36 @@ mod tests {
             &["Wizard".into(), "Enchanter".into()]
         ));
         assert!(benefits(BuffKind::Hp, &["Wizard".into()]));
+    }
+
+    /// why: reported live -- "weapon proc / Vampiric Embrace -> Vampiric
+    /// Embrace". The two level bases disagree for any spell whose classes
+    /// carry different requirements, so a spell outranked ITSELF.
+    #[test]
+    fn a_buff_is_never_an_upgrade_over_itself() {
+        let ve = spells()
+            .iter()
+            .find(|s| s.name == "Vampiric Embrace")
+            .expect("Vampiric Embrace");
+        let levels: Vec<u32> = ve.classes.iter().filter_map(|c| c.level).collect();
+        let (lo, hi) = (
+            *levels.iter().min().expect("levels"),
+            *levels.iter().max().expect("levels"),
+        );
+        assert!(lo < hi, "the bug needs classes that disagree: {levels:?}");
+
+        // why: exactly the reported shape -- on you at the min basis, best
+        // at the caster-class basis, same spell
+        assert!(
+            !is_upgrade(Some(("Vampiric Embrace", lo)), Some("Vampiric Embrace"), hi),
+            "a spell cannot be an upgrade over itself"
+        );
+        // why: a real upgrade still reads as one
+        assert!(is_upgrade(Some(("Breeze", 5)), Some("Clarity"), 29));
+        // why: nothing on you is missing, not an upgrade
+        assert!(!is_upgrade(None, Some("Clarity"), 29));
+        // why: what is on you already IS the best rank
+        assert!(!is_upgrade(Some(("Clarity", 29)), Some("Clarity"), 29));
     }
 
     /// why: Spencer -- "it should be detecting SHD/etc and be suggesting
