@@ -1449,8 +1449,9 @@ pub fn get_app_version(app: AppHandle) -> String {
 
 /// why: the Group Buff Tracker overlay's whole data source -- see groupbuffs.rs
 #[tauri::command]
-pub fn get_group_buffs(state: State<AppState>) -> crate::groupbuffs::GroupBuffsDto {
-    crate::groupbuffs::group_buffs(&state.ingest.lock_recover())
+pub fn get_group_buffs(app: AppHandle, state: State<AppState>) -> crate::groupbuffs::GroupBuffsDto {
+    let muted = preferences::load(&app).muted_buff_lines;
+    crate::groupbuffs::group_buffs(&state.ingest.lock_recover(), &muted)
 }
 
 /// why: the "what's new" page -- the changelog sections between the

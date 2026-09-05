@@ -55,16 +55,35 @@
     setGroupBuffsOpacity,
     groupBuffsOverallOpacity,
     setGroupBuffsOverallOpacity,
+    mutedBuffLines,
+    toggleMutedBuffLine,
     loadPreferences,
   } from '$lib/stores/settings';
   import type { CcSize } from './ccSize';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
   import TrackedSkillsList from './TrackedSkillsList.svelte';
+  import BellIcon from '@lucide/svelte/icons/bell';
+  import BellOffIcon from '@lucide/svelte/icons/bell-off';
 
   $effect(() => {
     void loadPreferences();
     void loadWindowCapability();
   });
+
+  // why: the mute list needs NAMES, and the only place they exist is the
+  // tracker's own catalog -- read once here rather than duplicating the
+  // line-grouping rules on this side. Failure is silent and empty: the
+  // rest of the card still works with no party detected yet.
+  let buffLines = $state<string[]>([]);
+  $effect(() => {
+    void api
+      .getGroupBuffs()
+      .then((d) => (buffLines = d?.catalog ?? []))
+      .catch(() => (buffLines = []));
+  });
+  // why: a muted line drops out of the tracker, so the catalog stops
+  // naming it -- union with the muted list or a mute could never be undone
+  const mutableLines = $derived([...new Set([...buffLines, ...$mutedBuffLines])].sort());
 
   let enableError = $state<string | null>(null);
   let skillTrackerError = $state<string | null>(null);
@@ -434,6 +453,37 @@
           enable
         </label>
         <p class="mt-0.5 text-[11px] text-muted-foreground">"Good" when every buff your party's confirmed classes can put on you, that helps your own classes, is on you -- else what's missing and who could cast it.</p>
+        <!-- why: the overlay itself is click-through, so the mute lives
+             here rather than on the widget -- one row per spell line the
+             tracker knows, muted ones kept listed so a mute can be
+             undone after the line leaves the catalog. -->
+        {#if mutableLines.length}
+          <div class="mt-2">
+            <div class="mb-1 text-[11px] text-muted-foreground">spell lines -- muted ones are never watched, never counted missing</div>
+            <div role="listbox" aria-label="Group buff lines" class="max-h-40 overflow-y-auto rounded-sm border border-border">
+              {#each mutableLines as line (line)}
+                {@const muted = $mutedBuffLines.includes(line)}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={muted}
+                  class="flex w-full items-center justify-between gap-2 border-b border-border/50 px-2 py-1 text-left text-[12px] last:border-b-0 {muted
+                    ? 'text-muted-foreground line-through'
+                    : 'text-foreground hover:bg-muted/40'}"
+                  title={muted ? `Watch ${line} again` : `Stop watching ${line}`}
+                  onclick={() => void toggleMutedBuffLine(line)}
+                >
+                  <span class="truncate">{line}</span>
+                  {#if muted}
+                    <BellOffIcon class="size-3 shrink-0" />
+                  {:else}
+                    <BellIcon class="size-3 shrink-0 text-muted-foreground" />
+                  {/if}
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
         {#if capped}
           <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
         {/if}

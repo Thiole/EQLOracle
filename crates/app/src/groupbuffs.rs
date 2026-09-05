@@ -386,6 +386,9 @@ pub struct GroupBuffsDto {
     /// why: illusions -- real stats, but a suggestion rather than
     /// something missing. Shown quieter, and never counted against you.
     pub maybes: Vec<SelfBuffDto>,
+    /// why: every line name the tracker knows about right now, muted
+    /// ones included -- what Overlay settings lists to mute from
+    pub catalog: Vec<String>,
     /// why: buffs on you the party can't account for (someone outside
     /// the group, or an unknown class) -- listed, never counted against
     pub extra_active: Vec<String>,
@@ -463,6 +466,27 @@ fn is_upgrade(active: Option<(&str, u32)>, best_spell: Option<&str>, best_level:
     level < best_level
 }
 
+/// why: level is a decent proxy for power and stays the default -- a
+/// higher-level rank of a line is nearly always the better one. A few
+/// lines are worth more than their level says, and nothing in the packs
+/// carries that number: "Add Proc: VampEmbraceNecro" is all the slot
+/// text says about a permanent lifetap proc. Reported as "vampiric
+/// embrace is being put below cleric spell line for similar skills. yet
+/// i think vampiric is highest true value". Hand-listed on purpose, one
+/// entry per line that needs it, keyed by the same `rank_line` name the
+/// rows and innates are grouped under. Documented in
+/// docs/class-and-level-rules.md.
+const VALUE_OVERRIDE: &[(&str, u32)] = &[("Vampiric Embrace", 60)];
+
+/// why: the sort key for "which of these is better" -- the override when
+/// a line has one, its level requirement otherwise
+fn value_of(line: &str, level: u32) -> u32 {
+    VALUE_OVERRIDE
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case(line))
+        .map_or(level, |(_, v)| *v)
+}
+
 /// why: an illusion is a MAYBE -- it grants real stats, but "put on a
 /// wolf form for the ATK" is a suggestion, not a checklist item. Read off
 /// the slot, not the name: 47 spells carry an Illusion effect against 26
@@ -490,7 +514,10 @@ pub struct SelfBuffDto {
     pub active: Option<String>,
 }
 
-pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
+/// why: `muted` -- line names the player switched off in Overlay
+/// settings. Filtered here rather than in the widget so the verdict
+/// ("All good") and the counts agree with what is actually on screen.
+pub fn group_buffs(ing: &Ingest, muted: &[String]) -> GroupBuffsDto {
     let now = ing.now_ms();
     let my_classes: Vec<String> = ing
         .store
@@ -777,9 +804,15 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             innates.push(dto);
         }
     }
-    // why: highest requirement first -- the meaningful ones lead
-    innates.sort_by(|a, b| b.best_level.cmp(&a.best_level).then(a.line.cmp(&b.line)));
-    maybes.sort_by(|a, b| b.best_level.cmp(&a.best_level).then(a.line.cmp(&b.line)));
+    // why: most valuable first -- level requirement unless the line
+    // carries an override (see VALUE_OVERRIDE)
+    let by_value = |a: &SelfBuffDto, b: &SelfBuffDto| {
+        value_of(&b.line, b.best_level)
+            .cmp(&value_of(&a.line, a.best_level))
+            .then(a.line.cmp(&b.line))
+    };
+    innates.sort_by(by_value);
+    maybes.sort_by(by_value);
 
     let mut rows: Vec<BuffRowDto> = best
         .into_iter()
@@ -800,7 +833,13 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
                     )
                 })
                 .collect();
-            lines.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.line.cmp(&b.1.line)));
+            // why: same value model the innates use -- the level
+            // requirement unless the line carries an override
+            lines.sort_by(|a, b| {
+                value_of(&b.1.line, b.0)
+                    .cmp(&value_of(&a.1.line, a.0))
+                    .then_with(|| a.1.line.cmp(&b.1.line))
+            });
             let best_level = lines.first().map(|(r, _)| *r).unwrap_or(0);
             let on_you = active_by_kind.get(&kind).cloned();
             let active_level = on_you.as_ref().map(|(_, l)| *l);
@@ -840,6 +879,18 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
             .cmp(&a.relevance)
             .then_with(|| a.label.cmp(b.label))
     });
+    // why: every line the tracker considered, muted or not -- Overlay
+    // settings lists this to offer the mute toggles, so a line has to
+    // stay listable after it is switched off
+    let mut catalog: Vec<String> = rows
+        .iter()
+        .flat_map(|r| r.lines.iter().map(|l| l.line.clone()))
+        .chain(innates.iter().map(|i| i.line.clone()))
+        .chain(maybes.iter().map(|m| m.line.clone()))
+        .collect();
+    catalog.sort();
+    catalog.dedup();
+    retain_unmuted(&mut rows, &mut innates, &mut maybes, muted);
     let upgrades = rows.iter().filter(|r| r.upgrade).count();
     // why: an innate you can cast and have not is missing the same way a
     // party buff is. A MAYBE never counts against you -- that is what
@@ -856,8 +907,29 @@ pub fn group_buffs(ing: &Ingest) -> GroupBuffsDto {
         rows,
         innates,
         maybes,
+        catalog,
         extra_active,
     }
+}
+
+/// why: a muted line is not a suggestion and not a shortfall -- it
+/// leaves the rows, the checklist and the maybes together, before the
+/// verdict is counted, so "All good" cannot be contradicted by something
+/// the player switched off. A row whose every line is muted has nothing
+/// left to say and goes with them.
+fn retain_unmuted(
+    rows: &mut Vec<BuffRowDto>,
+    innates: &mut Vec<SelfBuffDto>,
+    maybes: &mut Vec<SelfBuffDto>,
+    muted: &[String],
+) {
+    let is_muted = |line: &str| muted.iter().any(|m| m.eq_ignore_ascii_case(line));
+    for r in rows.iter_mut() {
+        r.lines.retain(|l| !is_muted(&l.line));
+    }
+    rows.retain(|r| !r.lines.is_empty());
+    innates.retain(|i| !is_muted(&i.line));
+    maybes.retain(|m| !is_muted(&m.line));
 }
 
 /// why: how far back a landing on someone else can still be up -- the
@@ -901,6 +973,78 @@ pub fn expiry_for(spell: &Spell, landed_at: Millis) -> Option<Millis> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// why: "Hand rank exceptions but default higher level is better" --
+    /// the override is the only thing that outranks a level, and a line
+    /// without one is ordered by its level exactly as before
+    #[test]
+    fn a_hand_ranked_line_outranks_its_level() {
+        // why: Vampiric Embrace is Shadow Knight 15; the cleric-line
+        // self-casts it kept losing to sit in the 30s and 40s
+        assert!(value_of("Vampiric Embrace", 15) > value_of("Shield of Words", 39));
+        assert_eq!(
+            value_of("Shield of Words", 39),
+            39,
+            "no override, no change"
+        );
+        assert_eq!(
+            value_of("vampiric embrace", 15),
+            value_of("Vampiric Embrace", 15)
+        );
+    }
+
+    /// why: a muted line leaves the tracker entirely -- if it only left
+    /// the display, "All good" would still be withheld by something the
+    /// player switched off
+    #[test]
+    fn a_muted_line_leaves_the_rows_the_innates_and_the_maybes() {
+        let line = |n: &str| BuffLineDto {
+            line: n.to_string(),
+            best_spell: n.to_string(),
+            best_level: 1,
+            casters: Vec::new(),
+        };
+        let row = |kind, lines: Vec<BuffLineDto>| BuffRowDto {
+            kind,
+            label: kind.label(),
+            active: None,
+            active_level: None,
+            upgrade: false,
+            relevance: 0,
+            lines,
+        };
+        let innate = |n: &str| SelfBuffDto {
+            line: n.to_string(),
+            best_spell: n.to_string(),
+            best_level: 1,
+            active: None,
+        };
+        let mut rows = vec![
+            row(BuffKind::Resist, vec![line("Cure Disease")]),
+            row(BuffKind::ManaRegen, vec![line("Clarity"), line("Breeze")]),
+        ];
+        let mut innates = vec![innate("Grim Aura")];
+        let mut maybes = vec![innate("illusion")];
+        retain_unmuted(
+            &mut rows,
+            &mut innates,
+            &mut maybes,
+            &[
+                "cure disease".to_string(),
+                "Grim Aura".to_string(),
+                "illusion".to_string(),
+            ],
+        );
+        assert_eq!(
+            rows.len(),
+            1,
+            "a row with every line muted has nothing to say"
+        );
+        assert_eq!(rows[0].kind, BuffKind::ManaRegen);
+        assert_eq!(rows[0].lines.len(), 2, "an unmuted sibling line stays");
+        assert!(innates.is_empty());
+        assert!(maybes.is_empty());
+    }
 
     #[test]
     fn kinds_classify_the_common_buff_lines() {

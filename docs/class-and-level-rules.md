@@ -212,6 +212,21 @@ readily a written value is revised.
 - T3. A wear-off text takes the spell off. A swap (S1-S3) takes them all off.
 - T4. "Good" means every buff kind a confirmed (A4) party class can cast
   that benefits your class combo is on you.
+- T5. Ordering within a kind, and among the innates, is by the level
+  requirement of the best rank -- higher level is the better buff.
+  Confirmed by Spencer 2026-09-05: "default higher level is better".
+- T6. T5 has a hand-listed exception table (`groupbuffs::VALUE_OVERRIDE`),
+  one entry per line whose worth the level does not reflect. Nothing in
+  the packs carries that number -- Vampiric Embrace's whole slot text is
+  "Add Proc: VampEmbraceNecro", which says nothing about a permanent
+  lifetap proc being worth more than a level-39 cleric-line self-cast.
+  Current entries: Vampiric Embrace (60).
+- T7. A muted line (`Preferences::muted_buff_lines`, set in Settings ->
+  Overlay -> Group Buffs) leaves the tracker entirely -- rows, innates,
+  maybes and the T4 verdict alike. Muting is per LINE, rank-stripped, so
+  muting "Clarity" covers every rank of it. A row whose every line is
+  muted is dropped. The overlay stays click-through; the mute list lives
+  in settings, not on the widget.
 
 ## Chain model (confirmed by Spencer 2026-09-03, being built)
 

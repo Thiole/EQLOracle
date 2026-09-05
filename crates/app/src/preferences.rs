@@ -215,6 +215,14 @@ pub struct Preferences {
     /// "dps_meter"/"skill_tracker" strings commands::overlay_label
     /// already uses), empty until a widget's been dragged and re-locked
     /// at least once.
+    /// why: buff lines the player does not want the Group Buff Tracker
+    /// to watch -- "if someone doesnt want cure disease line, they might
+    /// not want to watch for it". Keyed by the same rank-stripped line
+    /// name the tracker groups under, so muting "Clarity" covers every
+    /// rank of it. Empty by default; the entry point is Settings ->
+    /// Overlay -> Group Buffs.
+    #[serde(default)]
+    pub muted_buff_lines: Vec<String>,
     #[serde(default)]
     pub overlay_positions: HashMap<String, OverlayPosition>,
     /// why: Character Planner's hand-set race -- the log never states
@@ -280,6 +288,7 @@ impl Default for Preferences {
             tracked_target_effects: Vec::new(),
             tracked_drop_items: Vec::new(),
             tracked_drop_seen_counts: HashMap::new(),
+            muted_buff_lines: Vec::new(),
             overlay_positions: HashMap::new(),
             planner_race: None,
             planner_levels: HashMap::new(),
@@ -426,6 +435,7 @@ mod tests {
             tracked_skills: vec!["Kick".to_string(), "Backstab".to_string()],
             tracked_target_effects: vec!["Tashania".to_string()],
             tracked_drop_items: vec!["Light Woolen Mask".to_string()],
+            muted_buff_lines: vec!["Cure Disease".to_string()],
             tracked_drop_seen_counts,
             overlay_positions,
             planner_race: Some("Halfling".to_string()),
@@ -451,6 +461,7 @@ mod tests {
         assert_eq!(back.tracked_skills, vec!["Kick", "Backstab"]);
         assert_eq!(back.tracked_target_effects, vec!["Tashania"]);
         assert_eq!(back.tracked_drop_items, vec!["Light Woolen Mask"]);
+        assert_eq!(back.muted_buff_lines, vec!["Cure Disease"]);
         assert_eq!(
             back.tracked_drop_seen_counts.get("Light Woolen Mask"),
             Some(&2)
@@ -489,6 +500,7 @@ mod tests {
         );
         assert!(back.tracked_target_effects.is_empty());
         assert!(back.tracked_drop_items.is_empty());
+        assert!(back.muted_buff_lines.is_empty());
         assert!(back.tracked_drop_seen_counts.is_empty());
         assert!(back.overlay_positions.is_empty());
     }

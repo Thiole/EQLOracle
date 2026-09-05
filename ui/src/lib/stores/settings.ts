@@ -105,6 +105,10 @@ export const trackedDropSeenCounts = writable<Record<string, number>>({});
 /** why: see PreferencesDto.drop_watch_checkpoint_ms's own doc --
  * dropWatchLoot.ts owns reading/writing this, this store just persists it */
 export const dropWatchCheckpointMs = writable<number | null>(null);
+/** why: buff lines the Group Buff Tracker should not watch -- see
+ * PreferencesDto.muted_buff_lines's own doc. Empty by default; the
+ * entry point is Settings -> Overlay -> Group Buffs. */
+export const mutedBuffLines = writable<string[]>([]);
 export const settingsLoaded = writable(false);
 
 // why: applies on every change, not just after an explicit setTheme() --
@@ -159,6 +163,7 @@ export function loadPreferences(): Promise<void> {
     trackedDropItems.set(prefs.tracked_drop_items ?? []);
     trackedDropSeenCounts.set(prefs.tracked_drop_seen_counts ?? {});
     dropWatchCheckpointMs.set(prefs.drop_watch_checkpoint_ms);
+    mutedBuffLines.set(prefs.muted_buff_lines ?? []);
     settingsLoaded.set(true);
   })();
   return loading;
@@ -189,6 +194,7 @@ function currentPrefs(): PreferencesDto {
     tracked_drop_items: get(trackedDropItems),
     tracked_drop_seen_counts: get(trackedDropSeenCounts),
     drop_watch_checkpoint_ms: get(dropWatchCheckpointMs),
+    muted_buff_lines: get(mutedBuffLines),
   };
 }
 
@@ -458,6 +464,16 @@ export async function trackDropItems(names: string[]) {
     counts[n] = statuses.find((s) => s.item === n)?.count ?? 0;
   }
   await setTrackedDropSeenCounts(counts);
+}
+
+/** why: a muted buff line leaves the tracker entirely -- rows, the
+ * innate checklist and the "All good" verdict alike, which is why the
+ * backend does the filtering and this only persists the list */
+export async function toggleMutedBuffLine(line: string) {
+  const current = get(mutedBuffLines);
+  const next = current.includes(line) ? current.filter((l) => l !== line) : [...current, line];
+  mutedBuffLines.set(next);
+  await api.setPreferences({ ...currentPrefs(), muted_buff_lines: next }).catch(() => {});
 }
 
 export async function toggleTrackedDropItem(name: string) {

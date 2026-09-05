@@ -43,10 +43,13 @@ fn main() {
         }
     }
     ing.mark_live();
-    println!("party: {:?}", groupbuffs::group_buffs(&ing).party.len());
+    println!(
+        "party: {:?}",
+        groupbuffs::group_buffs(&ing, &[]).party.len()
+    );
 
     let live = gearplanner::era_ix(gearplanner::CURRENT_ERA).expect("live era ranks");
-    let dto = groupbuffs::group_buffs(&ing);
+    let dto = groupbuffs::group_buffs(&ing, &[]);
     let mut named = 0;
     let mut bad = 0;
     for kind in &dto.rows {

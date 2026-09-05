@@ -90,6 +90,9 @@ export interface GroupBuffsDto {
   innates: SelfBuffDto[];
   /** why: illusions -- suggestions, never counted against you */
   maybes: SelfBuffDto[];
+  /** why: every line the tracker knows right now, muted ones included --
+   * what Settings -> Overlay -> Group Buffs lists to mute from */
+  catalog: string[];
   extra_active: string[];
 }
 
@@ -1574,6 +1577,10 @@ export interface PreferencesDto {
    * within a fixed window of whenever the app happens to check. null
    * until Drop Watch has tracked anything at least once. */
   drop_watch_checkpoint_ms: number | null;
+  /** why: buff lines the Group Buff Tracker should not watch -- keyed by
+   * the rank-stripped line name, so "Clarity" covers every rank. Entry
+   * point is Settings -> Overlay -> Group Buffs. */
+  muted_buff_lines: string[];
 }
 
 export interface UpdateInfoDto {
