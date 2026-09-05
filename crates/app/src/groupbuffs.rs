@@ -300,6 +300,19 @@ pub fn benefits(kind: BuffKind, my_classes: &[String]) -> bool {
 /// the cap and are ordinary Classic buffs, so refusing them would hide
 /// real recommendations to catch a few. The cap is what covers that gap.
 fn reachable(spell: &Spell) -> bool {
+    // why: the wiki says outright which spells no player casts. "Barrier
+    // of Force isnt in the game i think? so that should be gone gone" --
+    // it is categorised NPC Only, mana 0, no obtain path, and its Wizard
+    // entry carries no level, so every other gate here waved it through.
+    // 350 spells carry the category and only 13 still name a class, most
+    // of those being mobs ("a diseased rat", "Spirit of the Puma").
+    if spell
+        .categories
+        .iter()
+        .any(|c| c.eq_ignore_ascii_case("NPC Only Spells"))
+    {
+        return false;
+    }
     let live = crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA);
     match spell.era.as_deref().and_then(crate::gearplanner::era_ix) {
         Some(ix) => live.is_none_or(|l| ix <= l),
@@ -915,6 +928,36 @@ mod tests {
             &["Wizard".into(), "Enchanter".into()]
         ));
         assert!(benefits(BuffKind::Hp, &["Wizard".into()]));
+    }
+
+    /// why: "Barrier of Force isnt in the game i think? so that should be
+    /// gone gone" -- it is an NPC-only spell whose Wizard entry carries no
+    /// level and no mana, so the era gate, the cap gate and the class gate
+    /// all waved it through. The wiki states the fact outright.
+    #[test]
+    fn an_npc_only_spell_is_not_reachable() {
+        let bof = spells()
+            .iter()
+            .find(|s| s.name == "Barrier of Force")
+            .expect("Barrier of Force");
+        assert!(bof.categories.iter().any(|c| c == "NPC Only Spells"));
+        assert!(
+            bof.classes.iter().all(|c| c.level.is_none()),
+            "no level, which is why the cap gate passed it"
+        );
+        assert!(
+            bof.era.is_none(),
+            "no era, which is why the era gate passed it"
+        );
+        assert!(!reachable(bof), "nobody casts it");
+
+        // why: an ordinary player spell is untouched
+        assert!(reachable(
+            spells()
+                .iter()
+                .find(|s| s.name == "Clarity")
+                .expect("Clarity")
+        ));
     }
 
     /// why: multi-effect spells were filing under whichever effect the
