@@ -87,6 +87,35 @@ Not features. This is the list that has to be green first.
 - [ ] Coverage >= 95% on the reference log
 - [ ] Melee first-person rules exercised against a melee log
 
+## Class-only melee skills — blocked on evidence
+
+**Needs: one real Flying Kick damage line.** Reported as "flying kick is also a
+100% monk skill so class detection should be able to use that", and the data
+already agrees — `packs/skill_classes.json` carries 26 single-class skills
+including Flying Kick, Tiger Claw, Dragon Punch, Eagle Strike, Round Kick and
+Tail Rake. `ingest::class_only_melee` reads none of them; it is a hand-written
+three-name match (Backstab/Frenzy/Shoot).
+
+Two things block the obvious fix:
+
+- **The generalisation is unsafe as-is.** `Smite` and `Cleave` are single-class
+  in that file AND generic melee verbs in the pack's own damage pattern — any
+  mob smites. Deriving class evidence from the file wholesale would attribute
+  Cleric to every smiting gnoll. Tried, caught, reverted. The exclusion has to
+  be the verbs `canonical_melee_ability` can emit, and Backstab/Frenzy are in
+  that set while genuinely being exclusive, so no data signal separates them.
+- **The parser is the real blocker, not the table.** There is no Flying Kick
+  damage line anywhere in the 396 MB reference log — only chat mentions of it.
+  This character is not a Monk and no Monk ally produced one, so the line shape
+  is unknown and must not be guessed (see the rule-pack discipline: every
+  pattern comes from a real line).
+
+**To unblock:** one log excerpt of a Monk landing a Flying Kick, with its
+timestamp. That gives the verb form for the melee pattern and the mapping in
+one go, and the same excerpt becomes the replay test.
+
+---
+
 ### Event model
 - [ ] **Reduce `eqlp-session::Tracker` to an encounter builder.** It currently
       owns damage totals and per-source `Rolling` buffers, which duplicates the
