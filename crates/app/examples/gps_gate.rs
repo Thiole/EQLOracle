@@ -105,12 +105,36 @@ fn main() {
         ("Toxullia Forest", "Toxxulia Forest"),
         ("The Deep", "Timorous Deep"),
         ("The Castle of Mistmoore", "Mistmoore Castle"),
+        ("South Kaladim", "Kaladim"),
+        ("North Kaladim", "Kaladim"),
+        ("West Freeport", "Freeport"),
+        ("East Freeport", "Freeport"),
+        ("North Freeport", "Freeport"),
+        ("Neriak Third Gate", "Neriak"),
+        ("Neriak Second Gate", "Neriak"),
+        ("Neriak First Gate", "Neriak"),
+        ("Runnyeye Citadel", "Runnyeye"),
+        ("Kael Drakkal", "Kael Drakkel"),
+        ("Warsliks Wood", "Warsliks Woods"),
     ];
+    let key = |raw: &str| -> String {
+        let r = raw.split('#').next().unwrap_or(raw).trim();
+        r.strip_prefix("The ").unwrap_or(r).to_string()
+    };
     let resolves = |raw: &str| -> bool {
         if zones.iter().any(|z| z.name.eq_ignore_ascii_case(raw)) {
             return true;
         }
-        if let Some(&(_, canon)) = aliases.iter().find(|&&(a, _)| a.eq_ignore_ascii_case(raw)) {
+        if zones
+            .iter()
+            .any(|z| key(&z.name).eq_ignore_ascii_case(&key(raw)))
+        {
+            return true;
+        }
+        if let Some(&(_, canon)) = aliases
+            .iter()
+            .find(|&&(a, _)| key(a).eq_ignore_ascii_case(&key(raw)))
+        {
             if zones.iter().any(|z| z.name == canon) {
                 return true;
             }
@@ -124,6 +148,24 @@ fn main() {
                 .any(|s| s.eq_ignore_ascii_case(raw))
         })
     };
+    // why: an adjacency naming a zone that does not resolve is a
+    // connection the graph silently loses -- the opposite failure to an
+    // out-of-era edge, and just as invisible
+    let mut lost: Vec<(String, String)> = Vec::new();
+    for z in zones {
+        for a in &z.adjacent_zones {
+            if !resolves(a) {
+                lost.push((z.name.clone(), a.clone()));
+            }
+        }
+    }
+    lost.sort();
+    println!("adjacency entries that resolve to no zone: {}", lost.len());
+    for (from, a) in lost.iter().take(25) {
+        println!("   {from}  ->  {a:?}");
+    }
+    println!();
+
     let mut unresolved: Vec<(&str, &str)> = Vec::new();
     for (spell, l) in teleportdata::all_landings() {
         if !resolves(&l.zone) {

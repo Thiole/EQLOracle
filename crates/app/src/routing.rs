@@ -225,18 +225,57 @@ const ZONE_NAME_ALIASES: &[(&str, &str)] = &[
     ("Toxullia Forest", "Toxxulia Forest"),
     ("The Deep", "Timorous Deep"),
     ("The Castle of Mistmoore", "Mistmoore Castle"),
+    // why: a wiki adjacency cell routinely names the HALF of a split
+    // city it borders, and the pack carries the city. Measured against
+    // the real pack: without these the graph silently loses the
+    // connection entirely -- Butcherblock lost Kaladim, which is what
+    // "a zone that borders butcherblock" was about from the other side.
+    ("South Kaladim", "Kaladim"),
+    ("North Kaladim", "Kaladim"),
+    ("West Freeport", "Freeport"),
+    ("East Freeport", "Freeport"),
+    ("North Freeport", "Freeport"),
+    ("Neriak Third Gate", "Neriak"),
+    ("Neriak Second Gate", "Neriak"),
+    ("Neriak First Gate", "Neriak"),
+    ("Runnyeye Citadel", "Runnyeye"),
+    // why: the pack's own spelling wins over the neighbour cell's
+    ("Kael Drakkal", "Kael Drakkel"),
+    ("Warsliks Wood", "Warsliks Woods"),
 ];
 
 /// why: exact match, then alias table, then map-shortname match --
 /// lets a bare shortname string ("butcher") resolve without an explicit alias
+/// why: two shapes the wiki's own adjacency cells use that no alias
+/// table should have to enumerate. A leading "The" is optional on both
+/// sides ("Southern Plains of Karana" against the alias table's "The
+/// Southern Plains of Karana", "Wakening Land" against the zone's "The
+/// Wakening Land"), and a link cell can carry its anchor
+/// ("Freeport#East Freeport"). Measured: 22 adjacency entries resolved
+/// to nothing, which is a connection the graph silently loses -- the
+/// opposite failure to an out-of-era edge and just as invisible.
+fn zone_name_key(raw: &str) -> &str {
+    let raw = raw.split('#').next().unwrap_or(raw).trim();
+    raw.strip_prefix("The ")
+        .or_else(|| raw.strip_prefix("the "))
+        .unwrap_or(raw)
+}
+
 fn resolve_zone_name(raw: &str) -> Option<&'static str> {
     let zones = zonedata::zones();
     if let Some(z) = zones.iter().find(|z| z.name.eq_ignore_ascii_case(raw)) {
         return Some(z.name.as_str());
     }
+    let key = zone_name_key(raw);
+    if let Some(z) = zones
+        .iter()
+        .find(|z| zone_name_key(&z.name).eq_ignore_ascii_case(key))
+    {
+        return Some(z.name.as_str());
+    }
     if let Some(&(_, canonical)) = ZONE_NAME_ALIASES
         .iter()
-        .find(|&&(alias, _)| alias.eq_ignore_ascii_case(raw))
+        .find(|&&(alias, _)| zone_name_key(alias).eq_ignore_ascii_case(key))
     {
         if let Some(z) = zones.iter().find(|z| z.name == canonical) {
             return Some(z.name.as_str());
@@ -788,6 +827,73 @@ mod tests {
         // every port on no evidence is the bug this fixes
         let unknown = zone_graph_for(&HashMap::from([("Wizard".to_string(), 0u8)]), None, None);
         assert_eq!(ports(&unknown), ports(&high));
+    }
+
+    /// why: the other half of the same report -- an adjacency naming a
+    /// zone that resolves to nothing is a connection the graph silently
+    /// loses. Butcherblock's own neighbour cell says "South Kaladim",
+    /// and the pack carries "Kaladim". Measured: 22 such entries before
+    /// this, 2 after, and the 2 are a wiki artifact ("Wizard").
+    #[test]
+    fn a_neighbour_named_by_its_half_or_with_an_article_still_connects() {
+        assert_eq!(resolve_zone_name("South Kaladim"), Some("Kaladim"));
+        assert_eq!(resolve_zone_name("East Freeport"), Some("Freeport"));
+        assert_eq!(resolve_zone_name("Neriak Third Gate"), Some("Neriak"));
+        // why: the article is optional on BOTH sides, no alias needed
+        assert_eq!(
+            resolve_zone_name("Wakening Land"),
+            Some("The Wakening Land")
+        );
+        assert_eq!(
+            resolve_zone_name("Northern Desert of Ro"),
+            Some("The Northern Desert of Ro")
+        );
+        assert_eq!(
+            resolve_zone_name("Southern Plains of Karana"),
+            Some("Southern Karana")
+        );
+        // why: a link cell can carry its own anchor
+        assert_eq!(
+            resolve_zone_name("Freeport#East Freeport"),
+            Some("Freeport")
+        );
+        // why: the loosening must not start inventing zones -- "Wizard"
+        // is a wiki table artifact sitting in Plane of Hate's neighbours
+        assert_eq!(resolve_zone_name("Wizard"), None);
+        assert_eq!(resolve_zone_name("Grimling Forest"), None);
+        // why: and the connection itself exists, both ways
+        let g = walk_graph();
+        let joined = |a: &str, b: &str| g.get(a).is_some_and(|es| es.iter().any(|e| e.to == b));
+        assert!(joined("Butcherblock Mountains", "Kaladim"));
+        assert!(joined("Kaladim", "Butcherblock Mountains"));
+    }
+
+    /// why: the reported case -- "a zone that borders butcherblock was
+    /// being connected in the gps. even though it's not in era". That is
+    /// Timorous Deep: a real Butcherblock adjacency (the boat), and
+    /// Kunark, so it does not exist at Sky Era.
+    #[test]
+    fn butcherblocks_kunark_neighbour_is_not_a_hop_at_sky_era() {
+        let sky = crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA);
+        let uncapped = zone_graph_for(&HashMap::new(), None, None);
+        let capped = zone_graph_for(&HashMap::new(), sky, None);
+        let leads_to = |g: &HashMap<String, Vec<Edge>>, from: &str, to: &str| {
+            g.get(from).is_some_and(|es| es.iter().any(|e| e.to == to))
+        };
+        assert!(
+            leads_to(&uncapped, "Butcherblock Mountains", "Timorous Deep"),
+            "the adjacency is real, it is the era that rules it out"
+        );
+        assert!(!capped.contains_key("Timorous Deep"));
+        assert!(!leads_to(
+            &capped,
+            "Butcherblock Mountains",
+            "Timorous Deep"
+        ));
+        assert!(
+            leads_to(&capped, "Butcherblock Mountains", "Greater Faydark"),
+            "its Classic neighbours are untouched"
+        );
     }
 
     /// why: a zone the server does not have yet is not a destination and
