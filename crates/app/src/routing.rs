@@ -829,6 +829,40 @@ mod tests {
         assert_eq!(ports(&unknown), ports(&high));
     }
 
+    /// why: exhaustive, not sampled -- "verify every step is zones only
+    /// in current era". No route can contain a hop the graph does not
+    /// hold, so auditing every node and every edge target settles it for
+    /// all routes at once, which no number of random pairs can.
+    #[test]
+    fn no_node_or_edge_in_the_capped_graph_is_out_of_era() {
+        let sky = crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA);
+        let levels = HashMap::from([("Wizard".to_string(), 50u8), ("Druid".to_string(), 50u8)]);
+        let g = zone_graph_for(&levels, sky, None);
+        let mut nodes = 0;
+        let mut edges = 0;
+        for (zone, es) in &g {
+            assert!(in_era(zone, sky), "{zone} is a node past the ceiling");
+            nodes += 1;
+            for e in es {
+                assert!(
+                    in_era(&e.to, sky),
+                    "{zone} -> {} is an edge past the ceiling",
+                    e.to
+                );
+                assert!(
+                    g.contains_key(&e.to),
+                    "{zone} -> {} leaves the graph entirely",
+                    e.to
+                );
+                edges += 1;
+            }
+        }
+        assert!(nodes > 50 && edges > 100, "{nodes} nodes, {edges} edges");
+        // why: and the ceiling is doing real work, not vacuously passing
+        let uncapped = zone_graph_for(&levels, None, None);
+        assert!(uncapped.len() > g.len());
+    }
+
     /// why: the other half of the same report -- an adjacency naming a
     /// zone that resolves to nothing is a connection the graph silently
     /// loses. Butcherblock's own neighbour cell says "South Kaladim",
