@@ -365,10 +365,6 @@ export interface LiveMeterRowDto {
   active_ms: number;
   is_player: boolean;
   is_pet: boolean;
-  /** why: landed casts by an ally who dealt NO damage this fight -- mez,
-   * charm, pacify, slow. Never set on a damage row; it only answers "was
-   * this person doing anything" when there is no damage to show. */
-  casts: number | null;
 }
 
 export interface LiveMeterDto {

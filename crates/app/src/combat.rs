@@ -1286,12 +1286,6 @@ pub struct LiveMeterRowDto {
     pub active_ms: Millis,
     pub is_player: bool,
     pub is_pet: bool,
-    /// why: landed casts by an ally who dealt NO damage this fight --
-    /// mez, charm, pacify, slow. Reported live: "many fights the overlay
-    /// wasnt showing me in the player or enemy list at all. despite me
-    /// landing casts". A damage row never carries it; the meter measures
-    /// damage, and this only answers "was this person doing anything".
-    pub casts: Option<u32>,
 }
 
 /// why: the overlay DPS meter's whole data source -- same split the
@@ -1579,7 +1573,6 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> 
                     active_ms,
                     is_player: a.is_player,
                     is_pet: a.is_pet,
-                    casts: None,
                     // why: only ever an "at least" -- the census comes from
                     // whichever AoE happened to land, so a name never
                     // caught by one reads None rather than 1.
@@ -1617,11 +1610,6 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> 
         ing.store.name(primary.target).to_string()
     };
 
-    // why: an ally who LANDED spells and dealt no damage is still in the
-    // fight -- an Enchanter mezzing and charming reads as absent
-    // otherwise, which is exactly what was reported. Damage rows never
-    // gain a cast count; this row exists only because there is no damage
-    // to show for it.
     // why: "group pets into one" -- every ally pet sums into a single
     // row in every layout, so a group of summoners does not push the
     // people out of a fixed-size window. Folded before the rows are
@@ -1648,41 +1636,8 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> 
         out_acc.insert(format!("pets ({})", pets.len()), merged);
     }
 
-    let mut support: HashMap<String, u32> = HashMap::new();
-    for enc in &encs {
-        for i in enc.range() {
-            if ing.store.enc[i] != enc.id.0
-                || ing.store.kind[i] != EventKind::Cast
-                || ing.store.flags[i] & flag::CAST_LANDED == 0
-            {
-                continue;
-            }
-            let who = ing.effective_name(ing.store.name(ing.store.actor[i]));
-            if out_acc.contains_key(&who) || ing.allegiance_at(&who, ing.store.ts[i]).is_enemy() {
-                continue;
-            }
-            *support.entry(who).or_insert(0) += 1;
-        }
-    }
-    let ally_count = out_acc.len() + support.len();
+    let ally_count = out_acc.len();
     let enemy_count = enemies.len();
-    let mut outgoing = build(out_acc);
-    let mut support: Vec<(String, u32)> = support.into_iter().collect();
-    support.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    outgoing.extend(support.into_iter().map(|(name, n)| {
-        let kind = ing.effective_kind(&name, end);
-        LiveMeterRowDto {
-            pct: 0.0,
-            total: 0,
-            dps: 0.0,
-            active_ms: 0,
-            is_player: kind == Kind::Player,
-            is_pet: kind == Kind::Pet,
-            instances: None,
-            casts: Some(n),
-            name,
-        }
-    }));
     Some(LiveMeterDto {
         target,
         open,
@@ -1691,7 +1646,7 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> 
         current_target: current_target.map(|(_, n)| n),
         start_ms,
         duration_ms,
-        outgoing,
+        outgoing: build(out_acc),
         // why: the layout's whole job -- nothing, the two folded rows, or
         // every entity
         incoming: match layout {
@@ -1771,8 +1726,6 @@ fn fold_incoming(rows: Vec<LiveMeterRowDto>) -> Vec<LiveMeterRowDto> {
             active_ms,
             is_player: false,
             is_pet: false,
-            // why: a damage bucket, never a support row
-            casts: None,
         });
     }
     out
@@ -2978,7 +2931,6 @@ mod live_meter_window_tests {
             active_ms: 1000,
             is_player: false,
             is_pet: false,
-            casts: None,
         };
 
         // why: sorted by total, as `build` leaves them
