@@ -1615,14 +1615,24 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> 
                     casts: None,
                     // why: only ever an "at least" -- the census comes from
                     // whichever AoE happened to land, so a name never
-                    // caught by one reads None rather than 1
-                    instances: ing
-                        .store
-                        .names
-                        .get(&name)
-                        .and_then(|sym| ing.instances.get(&sym))
-                        .map(|(n, _)| *n)
-                        .filter(|n| *n > 1),
+                    // caught by one reads None rather than 1.
+                    //
+                    // Never on a person or a pet. The census counts how
+                    // many entities SHARE a name in one instant, which is
+                    // proof of duplicate MOBS; there is only ever one
+                    // Puddles. Two allies landing the same area effect on
+                    // the same player in one second put that player's
+                    // name in the bucket twice and it read "Puddles x2".
+                    instances: (!a.is_player && !a.is_pet)
+                        .then(|| {
+                            ing.store
+                                .names
+                                .get(&name)
+                                .and_then(|sym| ing.instances.get(&sym))
+                                .map(|(n, _)| *n)
+                                .filter(|n| *n > 1)
+                        })
+                        .flatten(),
                     name,
                 }
             })
@@ -2733,6 +2743,24 @@ mod live_meter_window_tests {
         let lines = framed_lines(text.as_bytes());
         backfill_lines(&mut ing, &engine, &lines, 1);
         ing
+    }
+
+    /// why: the census counts how many entities share a NAME in one
+    /// instant, which is proof of duplicate mobs -- there is only ever
+    /// one of a given player. Two allies landing the same area effect on
+    /// the same player in one second put that name in the bucket twice
+    /// and the meter drew "Puddles x2".
+    #[test]
+    fn a_person_never_carries_an_instance_count() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:01 2026] Kaeus hits a gnoll for 50 points of damage.\n",
+        );
+        let m = live_meter(&ing).expect("live fight");
+        for r in m.outgoing.iter().filter(|r| r.is_player || r.is_pet) {
+            assert_eq!(r.instances, None, "{} carried a census", r.name);
+        }
     }
 
     /// why: allegiance is keyed by NAME, so charming one mob makes every
