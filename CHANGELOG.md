@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-09-06 (0.17.0)
+
+### Maps and GPS
+
+- Routes never pass through a zone the server does not have yet. Route-finding had no era concept at all -- 45 of 116 zones are past Sky Era, and on foot from Upper Guk to Greater Faydark it went straight through Timorous Deep, a real Butcherblock adjacency that is Kunark. The destination picker applies the same era ceiling Game Data already used. "All eras" turns both off. Verified over 2,250 random zone pairs: zero out-of-era hops, and zero pairs the filter made unreachable that were reachable without it.
+- Ports are gated by the level of THEIR OWN class, not by one number for the whole trio. That number came from the first class configuration on file, which on a real log read level 15 while the Wizard was 50 -- so every wizard port was refused and the route walked instead. 0 usable ports before, 44 after, with druid ports above the detected druid level still correctly refused.
+- Adjacencies that named a zone by its half or with an article now connect. "South Kaladim" resolved to nothing, so Butcherblock had no Kaladim connection at all. 22 such entries across the pack, now 2 -- both a wiki artifact that must keep resolving to nothing.
+
+### Era
+
+- Every era-aware surface answers to the era setting, with one shared default. DPS rotation suggestions and the spellbook picker listed all 2,010 spells including the 332 past Sky Era; Group Buffs filtered but against a hardcoded current era, so "All eras" could not turn it off.
+
+### Combat
+
+- An area effect landing on several mobs at once is a census of how many were up, shown as "x4+" on the meter row. It is a floor, never a live count. Resisted targets count too, since a resist replaces the landing rather than accompanying it.
+- Three DPS meter layouts: minimal (teammates only), condensed (plus the top enemy and one combined row), and full (every enemy its own row). Ally pets fold into one row in all three. Condensed by default.
+- An overlay widget cannot freeze on a stale number. The window updated only on a parse tick, and one rejected call abandoned every assignment and left the previous values on screen with the error swallowed.
+- A person never carries an instance count. Two allies landing the same area effect on one player inside a second put that name in the census twice and drew "x2" on a teammate.
+
+### Group Buff Tracker
+
+- Any buff line can be muted, from the Overview card or the full list in Settings. Muting is per line and rank-stripped, and a muted line leaves the verdict too, so "All good" is never withheld by something switched off.
+- The Overview card names what is missing, split the way the overlay reads its verdict: your own self-buffs against what the party owes you, each party line naming who can cast it.
+- Ordering keeps level as the default with a hand-listed exception table, since nothing in the packs says a permanent lifetap proc outranks a level-39 self-cast.
+
+### Overlay
+
+- Which widgets you had open survives a restart, and the master toggle restores your set instead of switching on all six.
+
 ## 2026-09-05 (0.16.0)
 
 ### Startup
