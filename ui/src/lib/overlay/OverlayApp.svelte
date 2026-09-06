@@ -104,8 +104,14 @@
   }
 
   async function refresh() {
+    // why: one rejected call used to abandon the whole assignment and
+    // leave every value at its last reading, silently, because the
+    // callers are all `void refresh()`. Settled per call instead, so a
+    // failure costs that one field for one tick, never the display.
     if (widget === 'dps_meter') {
-      [meter, spellCheck] = await Promise.all([api.getLiveMeter(), api.getSpellCheck()]);
+      const [m, sc] = await Promise.allSettled([api.getLiveMeter(), api.getSpellCheck()]);
+      if (m.status === 'fulfilled') meter = m.value;
+      if (sc.status === 'fulfilled') spellCheck = sc.value;
     } else if (widget === 'skill_tracker') {
       const [s, sk, te, sc] = await Promise.all([
         api.getStatusEffects(),
@@ -135,6 +141,15 @@
       void refreshPrefs();
       void refresh();
     });
+    // why: the tick is the only thing that refreshed this window, so one
+    // missed event -- or one rejected refresh, which assigns nothing and
+    // keeps the previous value -- froze a live number on screen while the
+    // fight carried on. Reported as "the ui had me showing as 21.6k
+    // damage for a long time, despite being in combat the rest of the
+    // fight": the store and the meter both tracked that fight correctly,
+    // the widget just stopped being told. A slow floor, not a poll: the
+    // tick still does the real work whenever it arrives.
+    const heartbeat = setInterval(() => void refresh(), 2000);
     // why: [widget, value] tuples, NOT bare values -- real bug, caught
     // live: emit_to does not actually scope delivery to one window here.
     // Every overlay-* window shares one capability entry
@@ -206,6 +221,7 @@
       rootEl.classList.add('locate-flash');
     });
     return () => {
+      clearInterval(heartbeat);
       void unlistenTick.then((f) => f());
       void unlistenOpacity.then((f) => f());
       void unlistenOverallOpacity.then((f) => f());

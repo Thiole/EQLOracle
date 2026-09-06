@@ -43,13 +43,20 @@ fn main() {
         }
     }
     ing.mark_live();
+    // why: EQLP_ALL_ERAS=1 -- the same run with no ceiling, so the
+    // difference in lines named IS what the era controller hides
+    let ceiling = if std::env::var("EQLP_ALL_ERAS").is_ok() {
+        None
+    } else {
+        gearplanner::era_ix(gearplanner::CURRENT_ERA)
+    };
     println!(
         "party: {:?}",
-        groupbuffs::group_buffs(&ing, &[], None).party.len()
+        groupbuffs::group_buffs(&ing, &[], ceiling).party.len()
     );
 
     let live = gearplanner::era_ix(gearplanner::CURRENT_ERA).expect("live era ranks");
-    let dto = groupbuffs::group_buffs(&ing, &[], None);
+    let dto = groupbuffs::group_buffs(&ing, &[], ceiling);
     let mut named = 0;
     let mut bad = 0;
     for kind in &dto.rows {
