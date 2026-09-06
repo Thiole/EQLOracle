@@ -14,7 +14,7 @@
   import DpsSuggest from './DpsSuggest.svelte';
   import { api, type UiFileInfoDto, type SpellDto, type DamageSpellDto, type SpellbookFileDto } from '$lib/tauri/api';
   import { status } from '$lib/stores/status';
-  import { trackedTargetEffects, toggleTrackedTargetEffect } from '$lib/stores/settings';
+  import { trackedTargetEffects, toggleTrackedTargetEffect, effectiveEra, eraOptions, passesEra } from '$lib/stores/settings';
   import TrackedSkillsList from '$lib/overlay/TrackedSkillsList.svelte';
 
   // why: a real loadout holds up to 14 spells -- 8 base slots plus up to
@@ -146,7 +146,13 @@
         .slice(0, RESULTS_LIMIT)
         .map((s) => ({ name: s.name, icon: s.icon, badge: `${fmtDps(s.dps_with_reuse)} dps` }));
     }
-    let pool = $spells.filter((s) => isUsable(s) && (mode === 'buffs' ? isBuff(s) : !isBuff(s)));
+    // why: a spell the server does not have yet is not something to
+    // scribe -- 332 of the pack's 2,010 are past Sky Era. `isUsable` is
+    // class and level only; the era controller in Settings decides this,
+    // same passesEra Game Data and the GPS destination picker use.
+    let pool = $spells.filter(
+      (s) => isUsable(s) && passesEra(s.era, $effectiveEra, $eraOptions) && (mode === 'buffs' ? isBuff(s) : !isBuff(s)),
+    );
     if (selectedClasses.length) pool = pool.filter((s) => usableClasses(s.classes).some((c) => selectedClasses.includes(c.class)));
     if (q) pool = pool.filter((s) => s.name.toLowerCase().includes(q));
     return [...pool]

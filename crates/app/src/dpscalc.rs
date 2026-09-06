@@ -550,10 +550,16 @@ fn build_dto(
 /// `assume_max_rank`: substitutes a flat rank 10 for every spell instead
 /// of this session's observed rank -- a "what would be best once maxed"
 /// preview, reusing the same verified scaling math.
+/// why: `ceiling` -- the era controller in Settings, as an ERA_ORDER
+/// index. A spell the server does not have yet is not a rotation
+/// suggestion: 332 of the pack's 2,010 spells are past Sky Era. None
+/// means no ceiling, which is what "All eras" selects. An unresolved
+/// era always passes, same stance as gearplanner::in_era.
 pub fn list_damage_spells(
     ing: &crate::ingest::Ingest,
     assume_max_rank: bool,
     base_dir: Option<&std::path::Path>,
+    ceiling: Option<usize>,
 ) -> Vec<DamageSpellDto> {
     let game = base_dir.map(crate::spelltimers::spell_file);
     let focus: Vec<crate::focus::FocusEffect> =
@@ -561,6 +567,12 @@ pub fn list_damage_spells(
     let aa = AaMods::read(ing);
     spelldata::spells()
         .iter()
+        .filter(|s| {
+            s.era
+                .as_deref()
+                .and_then(crate::gearplanner::era_ix)
+                .is_none_or(|ix| ceiling.is_none_or(|c| ix <= c))
+        })
         .filter_map(|s| {
             let rank = if assume_max_rank {
                 10

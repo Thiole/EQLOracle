@@ -493,7 +493,11 @@ pub fn get_spell_ranks(state: State<AppState>) -> HashMap<String, u8> {
 /// why: every damage-capable spell, rank-adjusted, unfiltered -- caller applies its own filtering
 
 #[tauri::command]
-pub fn get_damage_spells(state: State<AppState>, assume_max_rank: bool) -> Vec<DamageSpellDto> {
+pub fn get_damage_spells(
+    app: AppHandle,
+    state: State<AppState>,
+    assume_max_rank: bool,
+) -> Vec<DamageSpellDto> {
     // why: the install's spell file says which spells share a reuse timer
     let base_dir = state
         .config
@@ -504,6 +508,7 @@ pub fn get_damage_spells(state: State<AppState>, assume_max_rank: bool) -> Vec<D
         &state.ingest.lock_recover(),
         assume_max_rank,
         base_dir.as_deref(),
+        preferences::era_ceiling(&app),
     )
 }
 
@@ -1476,7 +1481,11 @@ pub fn get_app_version(app: AppHandle) -> String {
 #[tauri::command]
 pub fn get_group_buffs(app: AppHandle, state: State<AppState>) -> crate::groupbuffs::GroupBuffsDto {
     let muted = preferences::load(&app).muted_buff_lines;
-    crate::groupbuffs::group_buffs(&state.ingest.lock_recover(), &muted)
+    crate::groupbuffs::group_buffs(
+        &state.ingest.lock_recover(),
+        &muted,
+        preferences::era_ceiling(&app),
+    )
 }
 
 /// why: the "what's new" page -- the changelog sections between the
@@ -2174,12 +2183,7 @@ pub fn find_zone_route(
     };
     // why: an out-of-era zone is not a destination and not a waypoint --
     // the same era ceiling Game Data and the Gear Planner already honour
-    let era_ceiling = crate::gearplanner::era_ix(
-        preferences::load(&app)
-            .era
-            .as_deref()
-            .unwrap_or(crate::gearplanner::CURRENT_ERA),
-    );
+    let era_ceiling = preferences::era_ceiling(&app);
     routing::find_zone_route_known(
         &base_dir,
         &from_zone,

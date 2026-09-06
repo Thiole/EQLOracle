@@ -43,7 +43,7 @@ fn main() {
         kills,
         ing.zone.label_before(now).map(str::to_string)
     );
-    let gb = eqlp_app::groupbuffs::group_buffs(&ing, &[]);
+    let gb = eqlp_app::groupbuffs::group_buffs(&ing, &[], None);
     println!("frozen at {}", a[1]);
     println!(
         "you: {:?} level {:?}",

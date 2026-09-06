@@ -61,7 +61,7 @@ fn main() {
     // AppHandle for
     out.insert(
         "get_group_buffs".to_string(),
-        json!({ "": eqlp_app::groupbuffs::group_buffs(&ing, &[]) }),
+        json!({ "": eqlp_app::groupbuffs::group_buffs(&ing, &[], None) }),
     );
 
     // ---- list_zone_visits ----
@@ -259,7 +259,7 @@ fn main() {
     // (falls through to the default "" key), so this single entry covers it
     out.insert(
         "get_damage_spells".to_string(),
-        json!({ "": dpscalc::list_damage_spells(&ing, true, None) }),
+        json!({ "": dpscalc::list_damage_spells(&ing, true, None, None) }),
     );
 
     // why: one real representative race/classes/levels combo, not exhaustive

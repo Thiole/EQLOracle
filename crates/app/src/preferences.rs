@@ -326,6 +326,19 @@ impl Default for Preferences {
     }
 }
 
+/// why: the era controller in Settings, as an index into ERA_ORDER. One
+/// reader, so every era-aware surface answers to the same setting and
+/// the same default -- unset means the era the server is actually on,
+/// and "All" means no ceiling at all (era_ix returns None for it).
+pub fn era_ceiling(app: &AppHandle) -> Option<usize> {
+    crate::gearplanner::era_ix(
+        load(app)
+            .era
+            .as_deref()
+            .unwrap_or(crate::gearplanner::CURRENT_ERA),
+    )
+}
+
 const FILE_NAME: &str = "preferences.json";
 
 fn preferences_path(app: &AppHandle) -> Result<PathBuf, String> {

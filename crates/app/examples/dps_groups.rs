@@ -6,7 +6,7 @@ use eqlp_app::ingest::Ingest;
 fn main() {
     let a: Vec<String> = std::env::args().skip(1).collect();
     let ing = Ingest::default();
-    let all = list_damage_spells(&ing, true, Some(std::path::Path::new(&a[0])));
+    let all = list_damage_spells(&ing, true, Some(std::path::Path::new(&a[0])), None);
     for s in all {
         if a.len() > 1 && !a[1..].iter().any(|n| n == &s.name) {
             continue;

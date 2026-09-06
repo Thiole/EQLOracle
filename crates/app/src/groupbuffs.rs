@@ -299,7 +299,7 @@ pub fn benefits(kind: BuffKind, my_classes: &[String]) -> bool {
 /// An era the scrape never stated PASSES: 196 such spells sit at or under
 /// the cap and are ordinary Classic buffs, so refusing them would hide
 /// real recommendations to catch a few. The cap is what covers that gap.
-fn reachable(spell: &Spell) -> bool {
+fn reachable(spell: &Spell, ceiling: Option<usize>) -> bool {
     // why: the wiki says outright which spells no player casts. "Barrier
     // of Force isnt in the game i think? so that should be gone gone" --
     // it is categorised NPC Only, mana 0, no obtain path, and its Wizard
@@ -313,9 +313,8 @@ fn reachable(spell: &Spell) -> bool {
     {
         return false;
     }
-    let live = crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA);
     match spell.era.as_deref().and_then(crate::gearplanner::era_ix) {
-        Some(ix) => live.is_none_or(|l| ix <= l),
+        Some(ix) => ceiling.is_none_or(|l| ix <= l),
         None => true,
     }
 }
@@ -530,7 +529,7 @@ pub struct SelfBuffDto {
 /// why: `muted` -- line names the player switched off in Overlay
 /// settings. Filtered here rather than in the widget so the verdict
 /// ("All good") and the counts agree with what is actually on screen.
-pub fn group_buffs(ing: &Ingest, muted: &[String]) -> GroupBuffsDto {
+pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> GroupBuffsDto {
     let now = ing.now_ms();
     let my_classes: Vec<String> = ing
         .store
@@ -626,7 +625,7 @@ pub fn group_buffs(ing: &Ingest, muted: &[String]) -> GroupBuffsDto {
             if !is_me && !benefits(kind, &my_classes) {
                 continue;
             }
-            if !reachable(spell) {
+            if !reachable(spell, ceiling) {
                 continue;
             }
             let castable = spell.classes.iter().find(|sc| {
@@ -711,7 +710,7 @@ pub fn group_buffs(ing: &Ingest, muted: &[String]) -> GroupBuffsDto {
             // Without it this ran to 92 entries, most of them not buffs.
             if !is_self_buff(spell)
                 || is_recourse(spell)
-                || !reachable(spell)
+                || !reachable(spell, ceiling)
                 || kind_of(spell).is_none()
             {
                 continue;
@@ -1219,15 +1218,42 @@ mod tests {
             bof.era.is_none(),
             "no era, which is why the era gate passed it"
         );
-        assert!(!reachable(bof), "nobody casts it");
+        assert!(
+            !reachable(
+                bof,
+                crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA)
+            ),
+            "nobody casts it"
+        );
 
         // why: an ordinary player spell is untouched
         assert!(reachable(
             spells()
                 .iter()
                 .find(|s| s.name == "Clarity")
-                .expect("Clarity")
+                .expect("Clarity"),
+            crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA)
         ));
+        // why: the ceiling is the SETTING now, not a constant -- "All
+        // eras" (no ceiling) must stop refusing anything on era grounds
+        let kunark = spells()
+            .iter()
+            .find(|s| {
+                s.era.as_deref() == Some("Kunark Era")
+                    && !s
+                        .categories
+                        .iter()
+                        .any(|c| c.eq_ignore_ascii_case("NPC Only Spells"))
+            })
+            .expect("a Kunark spell");
+        assert!(
+            !reachable(
+                kunark,
+                crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA)
+            ),
+            "past the Sky Era ceiling"
+        );
+        assert!(reachable(kunark, None), "no ceiling, no era refusal");
     }
 
     /// why: multi-effect spells were filing under whichever effect the
@@ -1334,7 +1360,13 @@ mod tests {
         assert!(!is_party_buff(ve), "nobody else can cast it on you");
         assert!(is_self_buff(ve), "but you can cast it on yourself");
         assert_eq!(kind_of(ve), Some(BuffKind::Proc));
-        assert!(reachable(ve), "Classic Era");
+        assert!(
+            reachable(
+                ve,
+                crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA)
+            ),
+            "Classic Era"
+        );
         assert!(benefits(BuffKind::Proc, &["Shadow Knight".into()]));
         assert!(
             !benefits(BuffKind::Proc, &["Wizard".into()]),
@@ -1367,7 +1399,13 @@ mod tests {
 
         let shadow = by_name("Skin of the Shadow");
         assert_eq!(shadow.era.as_deref(), Some("Kunark Era"));
-        assert!(!reachable(shadow), "a Kunark spell is out of era");
+        assert!(
+            !reachable(
+                shadow,
+                crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA)
+            ),
+            "a Kunark spell is out of era"
+        );
         assert!(
             shadow
                 .classes
@@ -1378,7 +1416,13 @@ mod tests {
 
         // why: the buff it was offered as an upgrade over stays offered
         let words = by_name("Shield of Words");
-        assert!(reachable(words), "Classic Era, and castable at 45");
+        assert!(
+            reachable(
+                words,
+                crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA)
+            ),
+            "Classic Era, and castable at 45"
+        );
         assert!(words
             .classes
             .iter()
@@ -1390,6 +1434,9 @@ mod tests {
             .iter()
             .find(|s| s.era.is_none())
             .expect("the pack has era-unknown spells");
-        assert!(reachable(unknown));
+        assert!(reachable(
+            unknown,
+            crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA)
+        ));
     }
 }
