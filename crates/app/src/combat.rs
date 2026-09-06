@@ -1542,39 +1542,6 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> 
                     current_target = Some((ts, actor_name.clone()));
                 }
                 &mut in_acc
-            } else if actor_enemy == target_enemy && {
-                // why: "You" is a player whatever the class detector has
-                // worked out so far -- a fresh log with no class evidence
-                // yet must not lose your damage on this technicality
-                let is_player = |n: &str| {
-                    n.eq_ignore_ascii_case("You") || ing.effective_kind(n, ts) == Kind::Player
-                };
-                is_player(&actor_name) != is_player(&target_name)
-            } {
-                // why: allegiance is keyed by NAME, so charming one "a
-                // lava duct crawler" makes every mob of that name an
-                // ally and silently drops your damage to them -- an
-                // Enchanter's own damage, on the mobs it charms, while
-                // teammates hitting anything else are unaffected.
-                // Measured live: 1566 of 3735 on one target, and whole
-                // fights showing no allies at all. When the sides come
-                // out equal, a real PLAYER decides them: the player is
-                // the ally, the other side is the enemy. Two players or
-                // two non-players stay skipped -- nothing to separate.
-                if actor_name.eq_ignore_ascii_case("You")
-                    || ing.effective_kind(&actor_name, ts) == Kind::Player
-                {
-                    enemies.insert(target_name.to_lowercase());
-                    if actor_name.eq_ignore_ascii_case("You")
-                        && current_target.as_ref().is_none_or(|(t, _)| ts >= *t)
-                    {
-                        current_target = Some((ts, target_name.clone()));
-                    }
-                    &mut out_acc
-                } else {
-                    enemies.insert(actor_name.to_lowercase());
-                    &mut in_acc
-                }
             } else {
                 // ally-on-ally or enemy-on-enemy -- not meter damage
                 continue;
@@ -2761,33 +2728,6 @@ mod live_meter_window_tests {
         for r in m.outgoing.iter().filter(|r| r.is_player || r.is_pet) {
             assert_eq!(r.instances, None, "{} carried a census", r.name);
         }
-    }
-
-    /// why: allegiance is keyed by NAME, so charming one mob makes every
-    /// mob of that name an ally and your damage to them vanished from
-    /// the meter -- an Enchanter's own damage, on exactly the mobs it
-    /// charms. Reported repeatedly as "my damage only goes up when I hit
-    /// the current target" while teammates were unaffected; measured on
-    /// the real log as 1566 of 3735 lost on a single target.
-    #[test]
-    fn your_damage_counts_even_when_the_mob_name_reads_as_an_ally() {
-        let ing = ingest_from(
-            "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
-             [Tue Jul 28 15:01:01 2026] a gnoll has been charmed.\n\
-             [Tue Jul 28 15:01:05 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
-             [Tue Jul 28 15:01:06 2026] Kaeus hits a gnoll for 50 points of damage.\n",
-        );
-        let m = live_meter(&ing).expect("live fight");
-        let you = m
-            .outgoing
-            .iter()
-            .find(|r| r.name == "You")
-            .expect("your row survives a charmed NAME");
-        assert_eq!(you.total, 100);
-        assert!(
-            m.outgoing.iter().any(|r| r.name == "Kaeus"),
-            "and so does a teammate's"
-        );
     }
 
     /// why: three layouts, one axis -- the enemy side. Allies read the

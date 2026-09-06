@@ -508,25 +508,6 @@ impl ExaltationProcs {
     }
 }
 
-/// why: two counters, no identity. See `Ingest::charm_tally`.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct CharmTally {
-    /// why: how many of this name you hold charmed right now
-    pub mine: u8,
-    /// why: how many have proven hostile since -- damaged you or an ally,
-    /// or been damaged by your side. Proof, never inference.
-    pub hostile: u8,
-}
-
-impl CharmTally {
-    /// why: a name is only wholly yours while nothing of that name has
-    /// proven otherwise. One hostile twin no longer erases the charm,
-    /// and one charm no longer shields the twins.
-    pub fn all_mine(&self) -> bool {
-        self.mine > 0 && self.hostile == 0
-    }
-}
-
 /// why: two-tier confidence from EQL's begin/finish line pairs -- real
 /// for both scribing (596/593 in the reference log) and memorizing.
 /// Known: a finish landed at least once, definitive. Possible: a begin
@@ -1186,19 +1167,6 @@ pub struct Ingest {
     /// by `who` so an unrelated spell's own wear-off (state.charm_broken's
     /// pattern is generic, fires for any spell) can't false-clear it.
     pub charm: Option<crate::effects::CharmStatus>,
-    /// why: charm is stated per NAME, and a name is not an entity --
-    /// charming one "a sonic bat" used to make every sonic bat an ally,
-    /// so your own damage to the others vanished and one twin turning
-    /// hostile destroyed the belief for all of them. Measured on the
-    /// real log: 569 charms, same-name recharges seconds apart, and
-    /// 1566 of 3735 damage lost on a single target.
-    ///
-    /// Per name, per fight: how many of that name are YOURS, and how
-    /// many have proven hostile. Anonymous and interchangeable -- the
-    /// log never says which one, and cardinality is all a side needs.
-    /// Self-correcting rather than correct: a miscount is repaired by
-    /// the next fact that contradicts it, so nothing has to be guessed.
-    pub charm_tally: HashMap<Sym, CharmTally>,
     pub invis: Option<crate::effects::InvisStatus>,
     pub hide: Option<crate::effects::MomentaryStatus>,
     pub sneak: Option<crate::effects::MomentaryStatus>,
@@ -1451,7 +1419,6 @@ impl Default for Ingest {
             last_origin_cast: None,
             learned_origin: None,
             charm: None,
-            charm_tally: HashMap::new(),
             invis: None,
             hide: None,
             sneak: None,
@@ -2227,10 +2194,6 @@ impl Ingest {
             Action::Zone { zone } => {
                 // why: stop fights bleeding across zone changes
                 self.encounters.close_all(ts);
-                // why: the tally is fight-scoped and no charm survives a
-                // zone line -- carrying counts across would recreate the
-                // very staleness the per-fight scope exists to avoid
-                self.charm_tally.clear();
                 self.last_zone_enter_ms = Some(ts);
                 // why: a charmed pet never follows you across a zone line --
                 // real loss even with no "spell has worn off" confirmation
@@ -2630,12 +2593,6 @@ impl Ingest {
             }
             Action::Charm { who } => {
                 let sym = self.sym(&who);
-                // why: one MORE of this name is yours -- two allies can
-                // hold two of the same name at once, and the log shows
-                // same-name recharges seconds apart. Saturating: the
-                // count is evidence, never an invariant to defend.
-                let t = self.charm_tally.entry(sym).or_default();
-                t.mine = t.mine.saturating_add(1);
                 self.timeline.observed(ts, sym.0, State::Charmed);
                 // why: the mob changed sides -- its fight may be over
                 // (Builder::flag_end); any further action still extends it
@@ -3008,28 +2965,6 @@ impl Ingest {
         // new mob reusing the name), inferred here instead of waiting on
         // a break line that may never come. Same two-part clear as
         // Action::Recovered -- self.charm AND the timeline.
-        // why: a hit on "You" from a charmed NAME proves one of that name
-        // is hostile -- it does NOT prove your own charm ended, which is
-        // what clearing the whole belief used to assume. Counted instead,
-        // so the twins stop being shielded without the charm being erased.
-        // why: you do not nuke your own charm -- damage in EITHER
-        // direction between you and a charmed name proves one of that
-        // name is hostile. This is the case that lost 1566 of 3735 on a
-        // single target: your damage to the twins, discarded because the
-        // name was wholly "ally".
-        for hostile in [
-            dst.eq_ignore_ascii_case("you").then_some(src),
-            src.eq_ignore_ascii_case("you").then_some(dst),
-        ]
-        .into_iter()
-        .flatten()
-        {
-            let sym = self.sym(hostile);
-            if self.charm_tally.contains_key(&sym) {
-                let t = self.charm_tally.entry(sym).or_default();
-                t.hostile = t.hostile.saturating_add(1);
-            }
-        }
         if let Some(c) = &mut self.charm {
             if c.active && c.who.eq_ignore_ascii_case(src) && dst.eq_ignore_ascii_case("you") {
                 c.active = false;
@@ -4010,16 +3945,6 @@ impl Ingest {
             return;
         }
         c.active = true;
-        // why: the repair signal is FRESHER evidence than the hostile hit
-        // that triggered it -- the game's own group targeting says this
-        // pet is yours right now. Clearing the hostile count restores the
-        // pre-tally behaviour for exactly the case this repair exists
-        // for; an un-repaired charm keeps its contested reading, which is
-        // where a name being wholly "ally" was throwing damage away.
-        if let Some(t) = self.charm_tally.get_mut(&Sym(target_sym)) {
-            t.hostile = 0;
-            t.mine = t.mine.max(1);
-        }
         if self
             .timeline
             .state_at(target_sym, ts)
@@ -4611,20 +4536,7 @@ impl Ingest {
                 // inference-matched pet's graph kind never updates (the
                 // match lives in this map), and without this it read
                 // Enemy here despite its rows merging into the owner
-                // why: charmed is a fact about ONE of that name, not the
-                // name. Contested -- some yours, some proven hostile --
-                // reads Enemy, because the twins outnumber the charm and
-                // the log never says which one an event names. Your own
-                // charm's damage to mobs is the price; your damage to the
-                // twins is what it buys, and only one of those was being
-                // thrown away.
-                if (state == State::Charmed
-                    && self
-                        .store
-                        .names
-                        .get(canonical)
-                        .and_then(|sym| self.charm_tally.get(&sym))
-                        .is_none_or(|t| t.all_mine()))
+                if state == State::Charmed
                     || self.pet_owner.contains_key(canonical)
                     || self.behavioral_pets.contains(canonical)
                     || self.groups.currently_grouped(name, ts)
@@ -6442,57 +6354,6 @@ mod charm_reaffirm_tests {
         let bytes: Vec<&[u8]> = all.iter().map(|l| l.as_bytes()).collect();
         backfill_lines(&mut ing, &engine, &bytes, 1);
         ing
-    }
-
-    /// why: charm is stated per NAME, and a name is not an entity.
-    /// Charming one "a lava duct crawler" made every crawler an ally, so
-    /// your own damage to the others was discarded as ally-on-ally --
-    /// measured on the real log as 1566 of 3735 lost on one target. The
-    /// tally holds both facts at once instead of one overwriting the other.
-    #[test]
-    fn charming_one_of_a_name_does_not_make_the_rest_of_them_yours() {
-        let ing = run(&[
-            "[Tue Jul 28 15:01:00 2026] a sonic bat has been charmed.",
-            "[Tue Jul 28 15:01:05 2026] You hit a sonic bat for 500 points of fire damage by Burst of Flame.",
-        ]);
-        let now = ing.now_ms();
-        let sym = ing.store.names.get("a sonic bat").expect("interned");
-        let t = ing.charm_tally.get(&sym).expect("tallied");
-        assert_eq!((t.mine, t.hostile), (1, 1), "one yours, one proven hostile");
-        assert!(
-            ing.allegiance_at("a sonic bat", now).is_enemy(),
-            "contested reads enemy -- you do not nuke your own charm"
-        );
-    }
-
-    /// why: two allies can hold two of the same name at once, and the
-    /// log shows same-name recharges seconds apart. One charm ending
-    /// must not take the other down with it.
-    #[test]
-    fn two_charms_of_one_name_are_two_entries_not_one() {
-        let ing = run(&[
-            "[Tue Jul 28 15:01:00 2026] a sonic bat has been charmed.",
-            "[Tue Jul 28 15:01:19 2026] a sonic bat has been charmed.",
-        ]);
-        let sym = ing.store.names.get("a sonic bat").expect("interned");
-        let t = ing.charm_tally.get(&sym).expect("tallied");
-        assert_eq!(t.mine, 2, "two charms, two entries");
-        assert!(
-            !ing.allegiance_at("a sonic bat", ing.now_ms()).is_enemy(),
-            "two live charms, nothing hostile proven"
-        );
-    }
-
-    /// why: the tally is FIGHT-scoped -- no charm survives a zone line,
-    /// and a count carried across would recreate the staleness the scope
-    /// exists to prevent
-    #[test]
-    fn zoning_forgets_the_tally() {
-        let ing = run(&[
-            "[Tue Jul 28 15:01:00 2026] a sonic bat has been charmed.",
-            "[Tue Jul 28 15:02:00 2026] You have entered The Feerrott.",
-        ]);
-        assert!(ing.charm_tally.is_empty());
     }
 
     /// why: the wrong-instance repair -- two same-named mobs, the OTHER
