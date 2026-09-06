@@ -14,6 +14,7 @@
   import { api, type MapLineDto, type MapMarkerDto, type NpcNavPointDto, type PathDto, type TargetFloorDto, type ZoneDto, type ZoneNpcDto } from '$lib/tauri/api';
   import GdLink from '$lib/gamedata/GdLink.svelte';
   import { displayZoneName } from '$lib/utils';
+  import { effectiveEra, eraOptions, passesEra } from '$lib/stores/settings';
   import {
     mapZones,
     selectedZone,
@@ -221,10 +222,17 @@
   );
 
   let destinationSearch = $state('');
+  // why: a zone the server does not have yet is not somewhere you can be
+  // routed to -- reported live, "if I try to gps to other places,
+  // sometimes it suggests out of era locations". The same passesEra Game
+  // Data and the Gear Planner apply; "All eras" turns it off, and the
+  // backend gates the route graph on the same ceiling.
   const destinationCandidates = $derived.by((): ZoneDto[] => {
     const q = destinationSearch.trim().toLowerCase();
     if (!q || !allZones) return [];
-    return allZones.filter((z) => z.name.toLowerCase().includes(q)).slice(0, 8);
+    return allZones
+      .filter((z) => z.name.toLowerCase().includes(q) && passesEra(z.era, $effectiveEra, $eraOptions))
+      .slice(0, 8);
   });
 
   function pickDestination(toZone: string) {

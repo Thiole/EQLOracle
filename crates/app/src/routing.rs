@@ -132,21 +132,45 @@ fn walk_graph() -> &'static HashMap<String, Vec<Edge>> {
 /// capability. A teleport isn't zone-gated in this game -- castable from
 /// anywhere, landing at a fixed spot -- so it's an edge from every zone
 /// to the landing zone. Rebuilt per query, cheap enough not to cache.
+/// why: a zone the server does not have yet is not a place you can walk
+/// to, so it is neither a destination nor a waypoint. None (the pack's
+/// 13 era-less zones are all Classic) always passes, same stance as
+/// `gearplanner::era_index` and `groupbuffs::reachable`.
+fn in_era(zone: &str, ceiling: Option<usize>) -> bool {
+    let Some(ceiling) = ceiling else { return true };
+    zonedata::zones()
+        .iter()
+        .find(|z| z.name == zone)
+        .and_then(|z| z.era.as_deref())
+        .and_then(crate::gearplanner::era_ix)
+        .is_none_or(|ix| ix <= ceiling)
+}
+
+/// why: `class_levels` -- a port is gated by the level of ITS OWN class,
+/// not by one number for the whole trio. Reported live: a Wizard 50 in a
+/// trio whose first configuration read level 15 was refused every wizard
+/// port ("a 30 druid and wizard get all the portals ... depends if the
+/// player has them unlocked/leveled"). A class with no detected level is
+/// not level-gated at all -- no evidence is not evidence of level 1.
 fn zone_graph_for(
-    player_classes: &[String],
-    player_level: u8,
+    class_levels: &HashMap<String, u8>,
+    era_ceiling: Option<usize>,
     known_spells: Option<&HashSet<String>>,
 ) -> HashMap<String, Vec<Edge>> {
     let mut g = walk_graph().clone();
+    g.retain(|z, _| in_era(z, era_ceiling));
+    for edges in g.values_mut() {
+        edges.retain(|e| in_era(&e.to, era_ceiling));
+    }
     for (spell, landing) in teleportdata::all_landings() {
         let class_name = landing.class.as_str();
-        if !player_classes
+        let Some((_, have)) = class_levels
             .iter()
-            .any(|c| c.eq_ignore_ascii_case(class_name))
-        {
+            .find(|(c, _)| c.eq_ignore_ascii_case(class_name))
+        else {
             continue;
-        }
-        if player_level < landing.level {
+        };
+        if *have != 0 && *have < landing.level {
             continue;
         }
         // why: the spellbook is the real gate once it's known -- a spell
@@ -161,9 +185,12 @@ fn zone_graph_for(
         let Some(dest) = resolve_zone_name(&landing.zone) else {
             continue;
         };
+        if !in_era(dest, era_ceiling) {
+            continue;
+        }
         for z in zonedata::zones() {
-            if z.name == dest {
-                continue; // why: already there, not a real hop
+            if z.name == dest || !in_era(&z.name, era_ceiling) {
+                continue; // why: already there, or not a place yet
             }
             g.entry(z.name.clone()).or_default().push(Edge {
                 to: dest.to_string(),
@@ -500,16 +527,15 @@ pub fn find_zone_route(
     base_dir: &Path,
     from_zone: &str,
     to_zone: &str,
-    player_classes: &[String],
-    player_level: u8,
+    class_levels: &HashMap<String, u8>,
     known_start: Option<(f32, f32, f32)>,
 ) -> Option<ZoneRoute> {
     find_zone_route_known(
         base_dir,
         from_zone,
         to_zone,
-        player_classes,
-        player_level,
+        class_levels,
+        None,
         known_start,
         None,
     )
@@ -523,8 +549,8 @@ pub fn find_zone_route_known(
     base_dir: &Path,
     from_zone: &str,
     to_zone: &str,
-    player_classes: &[String],
-    player_level: u8,
+    class_levels: &HashMap<String, u8>,
+    era_ceiling: Option<usize>,
     known_start: Option<(f32, f32, f32)>,
     known_spells: Option<&HashSet<String>>,
 ) -> Option<ZoneRoute> {
@@ -534,7 +560,7 @@ pub fn find_zone_route_known(
             total_distance: 0.0,
         });
     }
-    let graph = zone_graph_for(player_classes, player_level, known_spells);
+    let graph = zone_graph_for(class_levels, era_ceiling, known_spells);
     if !graph.contains_key(from_zone) || !graph.contains_key(to_zone) {
         return None;
     }
@@ -730,14 +756,65 @@ mod tests {
 
     /// why: Ak'Anon has exactly one real neighbor -- a direct route must
     /// be one hop; nonexistent base_dir fine, tests hop structure not distance
+    /// why: a port is gated by the level of ITS OWN class, not by one
+    /// number for the whole trio. Reported live: a Wizard 50 whose
+    /// configuration read level 15 was refused every wizard port.
+    #[test]
+    fn a_port_is_gated_by_its_own_classs_level() {
+        let high = zone_graph_for(&HashMap::from([("Wizard".to_string(), 50u8)]), None, None);
+        let low = zone_graph_for(&HashMap::from([("Wizard".to_string(), 5u8)]), None, None);
+        let ports = |g: &HashMap<String, Vec<Edge>>| {
+            g.values()
+                .flatten()
+                .filter(|e| matches!(e.kind, EdgeKind::Teleport(_)))
+                .count()
+        };
+        assert!(
+            ports(&high) > ports(&low),
+            "level 50 reaches more than level 5"
+        );
+        // why: a trio's OTHER class being low must not hold the wizard back
+        let trio = zone_graph_for(
+            &HashMap::from([
+                ("Wizard".to_string(), 50u8),
+                ("Rogue".to_string(), 1u8),
+                ("Enchanter".to_string(), 15u8),
+            ]),
+            None,
+            None,
+        );
+        assert_eq!(ports(&trio), ports(&high), "the wizard is still 50");
+        // why: no detected level is not evidence of level 1 -- refusing
+        // every port on no evidence is the bug this fixes
+        let unknown = zone_graph_for(&HashMap::from([("Wizard".to_string(), 0u8)]), None, None);
+        assert_eq!(ports(&unknown), ports(&high));
+    }
+
+    /// why: a zone the server does not have yet is not a destination and
+    /// not a waypoint -- "sometimes it suggests out of era locations"
+    #[test]
+    fn the_era_ceiling_removes_zones_from_the_graph() {
+        let sky = crate::gearplanner::era_ix(crate::gearplanner::CURRENT_ERA);
+        let capped = zone_graph_for(&HashMap::new(), sky, None);
+        let uncapped = zone_graph_for(&HashMap::new(), None, None);
+        assert!(capped.len() < uncapped.len(), "Kunark and Velious are gone");
+        assert!(uncapped.contains_key("Dreadlands"), "a Kunark zone");
+        assert!(!capped.contains_key("Dreadlands"));
+        assert!(
+            capped.contains_key("Lower Guk"),
+            "an era-less Classic zone stays"
+        );
+        // why: no ceiling means no filtering, which is what "All eras" is
+        assert!(uncapped.contains_key("Cobalt Scar"));
+    }
+
     #[test]
     fn a_real_direct_adjacency_is_a_single_walk_hop() {
         let route = find_zone_route(
             Path::new("/nonexistent"),
             "Ak'Anon",
             "Steamfont Mountains",
-            &[],
-            0,
+            &HashMap::new(),
             None,
         )
         .expect("route exists");
@@ -748,7 +825,7 @@ mod tests {
     /// when the player can actually cast it -- teleports model as "from every zone"
     #[test]
     fn a_real_teleport_spell_is_reachable_when_the_player_can_cast_it() {
-        let graph = zone_graph_for(&["Wizard".to_string()], 99, None);
+        let graph = zone_graph_for(&HashMap::from([("Wizard".to_string(), 99u8)]), None, None);
         let edges = &graph["Ak'Anon"];
         assert!(
             edges
@@ -762,17 +839,19 @@ mod tests {
     /// why: gating actually gates -- level-1 Wizard and any-level Warrior both excluded
     #[test]
     fn teleport_edges_are_excluded_when_the_player_cannot_cast_them() {
-        let too_low_level = zone_graph_for(&["Wizard".to_string()], 1, None);
+        let too_low_level =
+            zone_graph_for(&HashMap::from([("Wizard".to_string(), 1u8)]), None, None);
         assert!(!too_low_level["Ak'Anon"]
             .iter()
             .any(|e| matches!(&e.kind, EdgeKind::Teleport(s) if s == "North Karana Gate")));
 
-        let wrong_class = zone_graph_for(&["Warrior".to_string()], 99, None);
+        let wrong_class =
+            zone_graph_for(&HashMap::from([("Warrior".to_string(), 99u8)]), None, None);
         assert!(!wrong_class["Ak'Anon"]
             .iter()
             .any(|e| matches!(&e.kind, EdgeKind::Teleport(s) if s == "North Karana Gate")));
 
-        let no_classes_known = zone_graph_for(&[], 0, None);
+        let no_classes_known = zone_graph_for(&HashMap::new(), None, None);
         assert!(no_classes_known["Ak'Anon"]
             .iter()
             .all(|e| matches!(e.kind, EdgeKind::Walk)));
@@ -833,8 +912,7 @@ mod tests {
             Path::new("/nonexistent"),
             "Not A Real Zone",
             "Northern Plains of Karana",
-            &[],
-            0,
+            &HashMap::new(),
             None
         )
         .is_none());
@@ -868,12 +946,11 @@ mod tests {
             Path::new("/nonexistent"),
             "The Northern Desert of Ro",
             "Lower Guk",
-            &[
-                "Wizard".to_string(),
-                "Enchanter".to_string(),
-                "Magician".to_string(),
-            ],
-            99,
+            &HashMap::from([
+                ("Wizard".to_string(), 99u8),
+                ("Enchanter".to_string(), 99u8),
+                ("Magician".to_string(), 99u8),
+            ]),
             None,
         );
         assert!(
@@ -900,8 +977,7 @@ mod tests {
             Path::new("/nonexistent"),
             "The Northern Desert of Ro",
             "Oasis of Marr",
-            &[],
-            0,
+            &HashMap::new(),
             None,
         );
         assert!(

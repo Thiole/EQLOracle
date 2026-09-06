@@ -2108,7 +2108,7 @@ pub fn find_zone_route(
             .base_dir
             .clone()
     };
-    let (player_classes, player_level, known_start, known_spells) = {
+    let (class_levels, known_start, known_spells) = {
         let ing = state.ingest.lock_recover();
         let dto = combat::class_configurations(&ing, "You");
         // why: lowercased for the routing gate; None until the log has
@@ -2119,15 +2119,22 @@ pub fn find_zone_route(
             .map(|(n, _)| n.to_ascii_lowercase())
             .collect();
         let known_spells = (!known.is_empty()).then_some(known);
-        let (live_classes, level) = dto
+        // why: PER CLASS, not one number for the trio. `configurations
+        // .first()` used to decide this, and on a real log that was a
+        // stale 33-visit configuration reading level 15 while the
+        // Wizard was 50 -- every wizard port refused. A port is gated by
+        // the level of its own class ("a 30 druid and wizard get all the
+        // portals ... depends if the player has them unlocked/leveled").
+        let live_classes: Vec<String> = dto
             .configurations
             .first()
-            .map(|c| {
-                (
-                    c.classes.clone(),
-                    c.level_range.map(|(_, hi)| hi).unwrap_or(0),
-                )
-            })
+            .map(|c| c.classes.clone())
+            .unwrap_or_default();
+        let detected: HashMap<String, u8> = ing
+            .store
+            .names
+            .get("You")
+            .map(|y| ing.classes.class_levels(y.0).into_iter().collect())
             .unwrap_or_default();
         // why: level always comes from *this* live session, never the
         // saved profile -- level changes constantly and `profile.rs`
@@ -2151,19 +2158,34 @@ pub fn find_zone_route(
         } else {
             Vec::new()
         };
+        // why: a class the detector never levelled still counts as had,
+        // at level 0 -- `zone_graph_for` reads 0 as "no evidence" and
+        // skips the level gate rather than refusing every port, which is
+        // the failure this whole change is about
+        let mut class_levels = detected;
+        for c in player_classes {
+            class_levels.entry(c).or_insert(0);
+        }
         (
-            player_classes,
-            level,
+            class_levels,
             live_start_position(&ing, &base_dir, &from_zone),
             known_spells,
         )
     };
+    // why: an out-of-era zone is not a destination and not a waypoint --
+    // the same era ceiling Game Data and the Gear Planner already honour
+    let era_ceiling = crate::gearplanner::era_ix(
+        preferences::load(&app)
+            .era
+            .as_deref()
+            .unwrap_or(crate::gearplanner::CURRENT_ERA),
+    );
     routing::find_zone_route_known(
         &base_dir,
         &from_zone,
         &to_zone,
-        &player_classes,
-        player_level,
+        &class_levels,
+        era_ceiling,
         known_start,
         known_spells.as_ref(),
     )
