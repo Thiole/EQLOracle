@@ -281,12 +281,17 @@ pub struct Preferences {
     /// tracked anything at least once.
     #[serde(default)]
     pub drop_watch_checkpoint_ms: Option<i64>,
-    // why: no "is this widget currently on" field -- live session state,
-    // not a style preference. An earlier version persisted on/off and
-    // reopened widgets automatically, trusting stale state the same way
-    // save_profile's doc warns against for class detection. Every
-    // launch starts with every widget off; opacity still carries over
-    // once turned back on.
+    /// why: which overlay widgets the player actually wants, by the same
+    /// widget names `overlay_label` uses. Reopened at launch, so the
+    /// choice survives a restart the way positions and opacity already
+    /// did -- asked for directly, and it is what makes the master
+    /// "enable ui" toggle restore YOUR set instead of switching on all
+    /// six. Written by the per-widget toggles only: turning the master
+    /// off leaves this list alone, or turning it back on would have
+    /// nothing to restore. Empty means never chosen, and the master
+    /// toggle falls back to enabling everything that first time.
+    #[serde(default)]
+    pub overlay_enabled_widgets: Vec<String>,
 }
 
 impl Default for Preferences {
@@ -318,6 +323,7 @@ impl Default for Preferences {
             overlay_dps_meter_layout: default_dps_layout(),
             overlay_group_buffs_layout: default_buff_layout(),
             muted_buff_lines: Vec::new(),
+            overlay_enabled_widgets: Vec::new(),
             overlay_positions: HashMap::new(),
             planner_race: None,
             planner_levels: HashMap::new(),
@@ -480,6 +486,7 @@ mod tests {
             overlay_dps_meter_layout: "full".to_string(),
             overlay_group_buffs_layout: "minimal".to_string(),
             muted_buff_lines: vec!["Cure Disease".to_string()],
+            overlay_enabled_widgets: vec!["dps_meter".to_string()],
             tracked_drop_seen_counts,
             overlay_positions,
             planner_race: Some("Halfling".to_string()),
@@ -508,6 +515,7 @@ mod tests {
         assert_eq!(back.muted_buff_lines, vec!["Cure Disease"]);
         assert_eq!(back.overlay_group_buffs_layout, "minimal");
         assert_eq!(back.overlay_dps_meter_layout, "full");
+        assert_eq!(back.overlay_enabled_widgets, vec!["dps_meter"]);
         assert_eq!(
             back.tracked_drop_seen_counts.get("Light Woolen Mask"),
             Some(&2)
@@ -552,6 +560,7 @@ mod tests {
             "an old file is not silently shrunk"
         );
         assert_eq!(back.overlay_dps_meter_layout, "condensed");
+        assert!(back.overlay_enabled_widgets.is_empty(), "never chosen");
         assert!(back.tracked_drop_seen_counts.is_empty());
         assert!(back.overlay_positions.is_empty());
     }

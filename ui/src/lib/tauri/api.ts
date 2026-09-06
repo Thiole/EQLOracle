@@ -1587,6 +1587,10 @@ export interface PreferencesDto {
    * within a fixed window of whenever the app happens to check. null
    * until Drop Watch has tracked anything at least once. */
   drop_watch_checkpoint_ms: number | null;
+  /** why: which overlay widgets the player wants, by widget name --
+   * reopened at launch, and what the master "enable ui" toggle restores
+   * instead of switching on all six. Empty means never chosen. */
+  overlay_enabled_widgets: string[];
   /** why: how much of the fight the DPS meter OVERLAY draws --
    * 'minimal' | 'condensed' | 'full'. Ally pets fold to one row in all
    * three; what changes is the enemy side. */

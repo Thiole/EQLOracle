@@ -43,6 +43,10 @@ export const theme = writable('eqlp');
  * after turning this on does NOT flip this back off -- it means "the
  * system is on," not "literally every widget is on right now". */
 export const overlayEnabled = writable(false);
+/** why: which widgets the player actually wants, persisted -- see
+ * PreferencesDto.overlay_enabled_widgets. Written by the per-widget
+ * toggles only; the master toggle reads it and never clears it. */
+export const enabledWidgets = writable<string[]>([]);
 export const dpsMeterEnabled = writable(false);
 /** why: this widget's own background alpha, 0.0 (invisible) to 1.0
  * (fully opaque) -- IS persisted, a real style choice worth keeping */
@@ -174,6 +178,7 @@ export function loadPreferences(): Promise<void> {
     dropWatchCheckpointMs.set(prefs.drop_watch_checkpoint_ms);
     groupBuffsLayout.set(asBuffLayout(prefs.overlay_group_buffs_layout));
     dpsMeterLayout.set(asDpsLayout(prefs.overlay_dps_meter_layout));
+    enabledWidgets.set(prefs.overlay_enabled_widgets ?? []);
     mutedBuffLines.set(prefs.muted_buff_lines ?? []);
     settingsLoaded.set(true);
   })();
@@ -208,6 +213,7 @@ function currentPrefs(): PreferencesDto {
     muted_buff_lines: get(mutedBuffLines),
     overlay_group_buffs_layout: get(groupBuffsLayout),
     overlay_dps_meter_layout: get(dpsMeterLayout),
+    overlay_enabled_widgets: get(enabledWidgets),
   };
 }
 
@@ -242,9 +248,22 @@ export async function setTheme(slug: string) {
  * Throws the backend's own plain-language capability reason on failure
  * (see windowcap.rs); the store still flips on optimistically but the
  * caller should show that reason rather than pretend the window opened. */
+/** why: the per-widget toggles are the only writers of the remembered
+ * set -- the master toggle must be able to turn everything off and then
+ * restore exactly what was on, which it cannot do if "all off" also
+ * erased the list. */
+async function remember(widget: string, on: boolean) {
+  const next = on
+    ? [...new Set([...get(enabledWidgets), widget])]
+    : get(enabledWidgets).filter((w) => w !== widget);
+  enabledWidgets.set(next);
+  await api.setPreferences({ ...currentPrefs(), overlay_enabled_widgets: next }).catch(() => {});
+}
+
 export async function setDpsMeterEnabled(on: boolean) {
   dpsMeterEnabled.set(on);
   await api.setOverlayEnabled('dps_meter', on);
+  await remember('dps_meter', on);
 }
 
 /** why: persists, and live-pushes to the open overlay window (a no-op
@@ -267,6 +286,7 @@ export async function setDpsMeterOverallOpacity(v: number) {
 export async function setSkillTrackerEnabled(on: boolean) {
   skillTrackerEnabled.set(on);
   await api.setOverlayEnabled('skill_tracker', on);
+  await remember('skill_tracker', on);
 }
 
 /** why: same contract as setDpsMeterOpacity -- see its own doc */
@@ -325,6 +345,7 @@ export async function toggleTrackedTargetEffect(name: string) {
 export async function setDropWatchEnabled(on: boolean) {
   dropWatchEnabled.set(on);
   await api.setOverlayEnabled('drop_watch', on);
+  await remember('drop_watch', on);
 }
 
 /** why: same contract as setDpsMeterOpacity -- see its own doc */
@@ -347,6 +368,7 @@ export async function setDropWatchOverallOpacity(v: number) {
 export async function setCcTrackerEnabled(on: boolean) {
   ccTrackerEnabled.set(on);
   await api.setOverlayEnabled('cc_tracker', on);
+  await remember('cc_tracker', on);
 }
 
 /** why: the one "turn everything on/off together" action, shared by
@@ -359,22 +381,62 @@ export async function setCcTrackerEnabled(on: boolean) {
  * capability-capped) are swallowed here -- callers that need to surface
  * a reason per widget (Settings page) call the individual setters
  * directly instead of this one. */
+const WIDGET_SETTERS: Record<string, (on: boolean) => Promise<void>> = {
+  dps_meter: (on) => setDpsMeterEnabled(on),
+  skill_tracker: (on) => setSkillTrackerEnabled(on),
+  drop_watch: (on) => setDropWatchEnabled(on),
+  cc_tracker: (on) => setCcTrackerEnabled(on),
+  session: (on) => setSessionWidgetEnabled(on),
+  group_buffs: (on) => setGroupBuffsEnabled(on),
+};
+
 export async function setOverlayEnabledAll(on: boolean) {
   overlayEnabled.set(on);
-  await Promise.all([
-    setDpsMeterEnabled(on).catch(() => {}),
-    setSkillTrackerEnabled(on).catch(() => {}),
-    setDropWatchEnabled(on).catch(() => {}),
-    setCcTrackerEnabled(on).catch(() => {}),
-    setSessionWidgetEnabled(on).catch(() => {}),
-    setGroupBuffsEnabled(on).catch(() => {}),
-  ]);
+  // why: turning the system ON restores the player's OWN set, not all
+  // six -- asked for directly ("when a user enables overlay, it
+  // shouldnt enable everything"). An empty set means they have never
+  // chosen, so the first time still lights everything up and they can
+  // pare it down from there. Turning it OFF closes every window but
+  // deliberately leaves the remembered set alone -- see `remember`.
+  const remembered = get(enabledWidgets);
+  const want = on
+    ? new Set(remembered.length ? remembered : Object.keys(WIDGET_SETTERS))
+    : new Set<string>();
+  await Promise.all(
+    Object.entries(WIDGET_SETTERS).map(([w, set]) =>
+      on && !want.has(w) ? Promise.resolve() : set(on).catch(() => {}),
+    ),
+  );
+  // why: every one of those toggles just called `remember`, so turning
+  // the system off emptied the list -- put back what the player chose,
+  // or "off" then "on" would come back to nothing
+  if (!on && remembered.length) {
+    enabledWidgets.set(remembered);
+    await api
+      .setPreferences({ ...currentPrefs(), overlay_enabled_widgets: remembered })
+      .catch(() => {});
+  }
+}
+
+/** why: reopen at launch what the player had open -- positions and
+ * opacity already survived a restart, the choice of widgets did not.
+ * Silent per widget: a session with no floating-window capability
+ * simply opens none, same stance the individual setters take. */
+export async function restoreOverlays() {
+  await loadPreferences();
+  const wanted = get(enabledWidgets);
+  if (!wanted.length) return;
+  overlayEnabled.set(true);
+  await Promise.all(
+    wanted.map((w) => WIDGET_SETTERS[w]?.(true).catch(() => {}) ?? Promise.resolve()),
+  );
 }
 
 /** why: same contract as setSessionWidgetEnabled -- see its own doc */
 export async function setGroupBuffsEnabled(on: boolean) {
   groupBuffsEnabled.set(on);
   await api.setOverlayEnabled('group_buffs', on);
+  await remember('group_buffs', on);
 }
 export async function setGroupBuffsOpacity(v: number) {
   groupBuffsOpacity.set(v);
@@ -391,6 +453,7 @@ export async function setGroupBuffsOverallOpacity(v: number) {
 export async function setSessionWidgetEnabled(on: boolean) {
   sessionWidgetEnabled.set(on);
   await api.setOverlayEnabled('session', on);
+  await remember('session', on);
 }
 
 /** why: same contract as setDpsMeterOpacity -- see its own doc */

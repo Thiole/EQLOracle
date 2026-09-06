@@ -23,7 +23,7 @@
   import DropWatchLootBanner from '$lib/shell/DropWatchLootBanner.svelte';
   import DeathRecapBanner from '$lib/shell/DeathRecapBanner.svelte';
   import { status, refreshStatusUntilUp } from '$lib/stores/status';
-  import { loadPreferences } from '$lib/stores/settings';
+  import { loadPreferences, restoreOverlays } from '$lib/stores/settings';
   import { loadGameDataModule } from '$lib/stores/gamedata';
   import { activeModule } from '$lib/stores/shell';
   import { initTauriEvents } from '$lib/tauri/events';
@@ -34,6 +34,10 @@
     void refreshStatusUntilUp();
     void initTauriEvents();
     void loadPreferences();
+    // why: positions and opacity already survived a restart; which
+    // widgets were open did not, so every launch reopened nothing and
+    // the master toggle then lit all six. Asked for directly.
+    void restoreOverlays();
     // why: loaded here, not on-demand when Game Data first mounts -- the
     // Gear Planner's own item preview links to zone/NPC pages too (see
     // gdOpenPage's own doc), and those links need the catalogs already
