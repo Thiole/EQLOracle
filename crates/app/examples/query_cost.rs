@@ -13,12 +13,12 @@ use std::time::Instant;
 fn timed<T>(label: &str, f: impl Fn() -> T) -> T {
     // why: first call pays any lazy init; the median of the rest is the
     // steady-state read
-    let t0 = Instant::now();
+    let t0 = Instant::now(); // clock-exempt: benchmark measures wall time by definition
     let out = f();
     let cold = t0.elapsed();
     let mut runs: Vec<u128> = (0..5)
         .map(|_| {
-            let t = Instant::now();
+            let t = Instant::now(); // clock-exempt: benchmark measures wall time by definition
             let _ = f();
             t.elapsed().as_micros()
         })
@@ -40,7 +40,7 @@ fn main() {
     let threads = std::thread::available_parallelism()
         .map(|n| n.get().min(16))
         .unwrap_or(4);
-    let t0 = Instant::now();
+    let t0 = Instant::now(); // clock-exempt: benchmark measures wall time by definition
     let mut ing = Ingest::default();
     for chunk in lines.chunks(100_000) {
         backfill_lines(&mut ing, &engine, chunk, threads);
