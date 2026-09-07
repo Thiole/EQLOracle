@@ -4,6 +4,7 @@
   import { api } from '$lib/tauri/api';
   import { updateChannel, loadPreferences } from '$lib/stores/settings';
   import { openChangelog } from '$lib/stores/whatsnew';
+  import { DISCORD_INVITE, DISCORD_PATH } from '$lib/links';
 
   // why: Info menu shows current version. Backend command (see
   // commands::get_app_version's doc for why not a raw
@@ -39,6 +40,20 @@
       <div>
         <h3 class="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Source</h3>
         <p class="text-muted-foreground">github.com/Thiole/EQLOracle · eqloracle.com</p>
+      </div>
+
+      <div>
+        <h3 class="mb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Community</h3>
+        <a
+          class="inline-flex items-center gap-1.5 text-brand-soft hover:text-primary hover:underline"
+          href={DISCORD_INVITE}
+          target="_blank"
+          rel="noopener"
+        >
+          <svg class="h-3.5 w-3.5 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={DISCORD_PATH} /></svg>
+          Join the Discord ↗
+        </a>
+        <p class="text-muted-foreground">Releases, testing builds, help, bug reports.</p>
       </div>
 
       <div>

@@ -2,7 +2,7 @@
 
 Parsing & progression assistant for EverQuest Legends. Watches your `eqlog_<Character>_<Server>.txt`, replays what's already in it, keeps parsing live. Classes, AAs, spells, kills — all read off the log, nothing hand-entered. Runs entirely on your machine; nothing is uploaded.
 
-Website: [eqloracle.com](https://eqloracle.com)
+Website: [eqloracle.com](https://eqloracle.com) · Discord: [discord.gg/mN6fwhBBk2](https://discord.gg/mN6fwhBBk2)
 
 ## Features
 
