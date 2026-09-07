@@ -65,6 +65,7 @@
   } from '$lib/stores/settings';
   import type { CcSize } from './ccSize';
   import type { BuffLayout } from './buffLayout';
+  import { HelpTip } from '$lib/components/ui/help';
   import type { DpsLayout } from './dpsLayout';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
   import TrackedSkillsList from './TrackedSkillsList.svelte';
@@ -259,6 +260,16 @@
      swatch style: "background" only fades the panel (text/icons stay
      fully readable), "everything" is a CSS opacity on the whole widget
      -- text and icons fade with it too. -->
+<!-- why: title left, the section's own explanation behind a "?" right.
+     Every card uses this, so the page reads as controls and the words
+     are one click away rather than permanently in the way. -->
+{#snippet sectionHeader(title: string, help: string)}
+  <div class="mb-1.5 flex items-start justify-between gap-2">
+    <h2 class="panel-title">{title}</h2>
+    <HelpTip label="About {title}" text={help} />
+  </div>
+{/snippet}
+
 {#snippet alphaPreview(
   opacity: number,
   onInput: (v: number) => void,
@@ -267,7 +278,10 @@
   description: string,
   fadesText: boolean,
 )}
-  <p class="mt-2.5 text-[11px] text-muted-foreground">{label}</p>
+  <div class="mt-2.5 flex items-center gap-1">
+    <p class="text-[11px] text-muted-foreground">{label}</p>
+    <HelpTip {label} text={description} />
+  </div>
   <div class="mt-1 flex items-center gap-3 {disabled ? 'opacity-40' : ''}">
     <input
       type="range"
@@ -300,13 +314,15 @@
       </div>
     </div>
   </div>
-  <p class="mt-1 text-[11px] text-muted-foreground">{description}</p>
 {/snippet}
 
 <div class="flex flex-col gap-3 p-3">
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
-      <h2 class="panel-title mb-1.5">overlay</h2>
+      {@render sectionHeader(
+        'overlay',
+        "Each widget below is its own little window -- its own on/off, its own transparency, and its own position. \"enable ui\" turns your set back on together; each reopens right where you left it, and position is remembered per widget once you've dragged and locked it in.",
+      )}
       {#if !$windowCapability}
         <p class="text-[11px] text-muted-foreground">Checking what this session can do…</p>
       {:else if capped}
@@ -315,17 +331,10 @@
           The floating overlay isn't available here -- everything below stays saved for whenever it is.
         </p>
       {:else}
-        <p class="text-[11px] text-muted-foreground">
-          Each widget below is its own little window -- its own on/off, its own transparency, and its own position.
-        </p>
         <label class="mt-2 flex items-center gap-2 text-[12px] text-foreground">
           <Checkbox checked={allEnabled} onCheckedChange={(v: boolean) => void onToggleAll(v)} />
           enable ui
         </label>
-        <p class="mt-0.5 text-[11px] text-muted-foreground">
-          Turns every widget below on (or off) together. Each one reopens right where you last left it -- position is
-          remembered per widget once you've dragged and locked it in, nothing to redo here after the first time.
-        </p>
       {/if}
     </CardContent>
   </Card>
@@ -340,19 +349,20 @@
   <div class="grid grid-cols-2 gap-3">
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
-        <h2 class="panel-title mb-1.5">DPS meter</h2>
+        {@render sectionHeader(
+          'DPS meter',
+          "Players and assumed pets, rolling recent-fight damage. Layout: minimal is teammates only; condensed adds the top enemy and one combined row for the rest; full gives every enemy its own row. Pets always fold into one row.",
+        )}
         <!-- why: at the top of the section, like Group Buffs -- this is
              how the IN-GAME widget lays itself out, nothing in the app
              changes with it. Allies read the same in all three; what
              changes is the enemy side. -->
-        <p class="text-[11px] text-muted-foreground">layout -- minimal: teammates only · condensed: plus the top enemy and one combined row · full: every enemy its own row. Pets always fold into one row.</p>
         {@render presetPicker(['minimal', 'condensed', 'full'], $dpsMeterLayout, (v) => void setDpsMeterLayout(v as DpsLayout), capped)}
         <div class="mt-2"></div>
         <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
           <Checkbox checked={$dpsMeterEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleDpsMeter(v)} />
           enable
         </label>
-        <p class="mt-0.5 text-[11px] text-muted-foreground">Players and assumed pets, rolling recent-fight damage.</p>
         {#if capped}
           <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
         {/if}
@@ -384,12 +394,14 @@
 
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
-        <h2 class="panel-title mb-1.5">CC tracker</h2>
+        {@render sectionHeader(
+          'CC tracker',
+          "Root / Stun / Fear, three small squares -- lit up when one's on you. Size sets how big the squares draw and resizes the window to match.",
+        )}
         <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
           <Checkbox checked={$ccTrackerEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleCcTracker(v)} />
           enable
         </label>
-        <p class="mt-0.5 text-[11px] text-muted-foreground">Root / Stun / Fear, three small squares -- lit up when one's on you.</p>
         {#if capped}
           <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
         {/if}
@@ -423,12 +435,14 @@
 
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
-        <h2 class="panel-title mb-1.5">Session</h2>
+        {@render sectionHeader(
+          'Session',
+          "AA, levels, and plat per hour, plus motes found by tier -- this session's own rates.",
+        )}
         <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
           <Checkbox checked={$sessionWidgetEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleSession(v)} />
           enable
         </label>
-        <p class="mt-0.5 text-[11px] text-muted-foreground">AA, levels, and plat per hour, plus motes found by tier -- this session's own rates.</p>
         {#if capped}
           <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
         {/if}
@@ -460,25 +474,32 @@
 
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
-        <h2 class="panel-title mb-1.5">Group Buffs</h2>
+        {@render sectionHeader(
+          'Group Buffs',
+          '"Good" when every buff your party\'s confirmed classes can put on you, that helps your own classes, is on you -- else what\'s missing and who could cast it. Layout: minimal is one verdict line in game, in a window shrunk to fit it.',
+        )}
         <!-- why: at the top of the section, above the enable toggle --
              this is how the IN-GAME widget lays itself out, nothing here
              or anywhere else in the app changes with it. -->
-        <p class="text-[11px] text-muted-foreground">layout -- minimal is one verdict line in game, in a window shrunk to fit it</p>
         {@render presetPicker(['full', 'minimal'], $groupBuffsLayout, (v) => void setGroupBuffsLayout(v as BuffLayout), capped)}
         <div class="mt-2"></div>
         <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
           <Checkbox checked={$groupBuffsEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleGroupBuffs(v)} />
           enable
         </label>
-        <p class="mt-0.5 text-[11px] text-muted-foreground">"Good" when every buff your party's confirmed classes can put on you, that helps your own classes, is on you -- else what's missing and who could cast it.</p>
         <!-- why: the overlay itself is click-through, so the mute lives
              here rather than on the widget -- one row per spell line the
              tracker knows, muted ones kept listed so a mute can be
              undone after the line leaves the catalog. -->
         {#if mutableLines.length}
           <div class="mt-2">
-            <div class="mb-1 text-[11px] text-muted-foreground">spell lines -- muted ones are never watched, never counted missing</div>
+            <div class="mb-1 flex items-center gap-1">
+              <span class="text-[11px] text-muted-foreground">spell lines</span>
+              <HelpTip
+                label="About muting spell lines"
+                text="A muted line is never watched and never counted missing, so it cannot hold back the all-clear. Muting is per line and covers every rank of it."
+              />
+            </div>
             <div role="listbox" aria-label="Group buff lines" class="max-h-40 overflow-y-auto rounded-sm border border-border">
               {#each mutableLines as line (line)}
                 {@const muted = $mutedBuffLines.includes(line)}
@@ -534,12 +555,14 @@
 
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
-      <h2 class="panel-title mb-1.5">skill tracker</h2>
+      {@render sectionHeader(
+        'skill tracker',
+        'Charm, invisibility, hide, and sneak always show; cooldowns below are yours to pick.',
+      )}
       <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
         <Checkbox checked={$skillTrackerEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleSkillTracker(v)} />
         enable
       </label>
-      <p class="mt-0.5 text-[11px] text-muted-foreground">Charm, invisibility, hide, and sneak always show; cooldowns below are yours to pick.</p>
       {#if capped}
         <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
       {/if}
@@ -551,9 +574,13 @@
       {/if}
 
       <div class="mt-2.5">
-        <p class="text-[11px] text-muted-foreground">
-          tracked cooldowns <span class="text-muted-foreground/70">(add an ability from Combat's own breakdown, or track a spell right here)</span>
-        </p>
+        <div class="flex items-center gap-1">
+          <p class="text-[11px] text-muted-foreground">tracked cooldowns</p>
+          <HelpTip
+            label="About tracked cooldowns"
+            text="Add an ability from Combat's own breakdown, or track a spell right here."
+          />
+        </div>
         <div class="mt-1">
           <TrackedSkillsList
             items={$trackedSkills}
@@ -564,9 +591,13 @@
         </div>
       </div>
       <div class="mt-2.5">
-        <p class="text-[11px] text-muted-foreground">
-          target effects <span class="text-muted-foreground/70">(a DoT or debuff -- landed? how long's left? add spells from Character → Spellbook's own "overlay spell tracking" section)</span>
-        </p>
+        <div class="flex items-center gap-1">
+          <p class="text-[11px] text-muted-foreground">target effects</p>
+          <HelpTip
+            label="About target effects"
+            text={'A DoT or debuff -- landed? how long\'s left? Add spells from Character \u2192 Spellbook\'s own "overlay spell tracking" section.'}
+          />
+        </div>
         <div class="mt-1">
           <TrackedSkillsList
             items={$trackedTargetEffects}
@@ -598,15 +629,14 @@
 
   <Card class="rounded-sm">
     <CardContent class="px-3 py-2.5">
-      <h2 class="panel-title mb-1.5">drop watch</h2>
+      {@render sectionHeader(
+        'drop watch',
+        'A heads-up when you are fighting a mob known to drop something you are tracking. Add items from Sky Quests and Primary Class Unlocks; nothing is tracked by default.',
+      )}
       <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
         <Checkbox checked={$dropWatchEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleDropWatch(v)} />
         enable
       </label>
-      <p class="mt-0.5 text-[11px] text-muted-foreground">
-        A heads-up when you're fighting a mob known to drop something you're tracking -- not everything you're in combat
-        with, just a match.
-      </p>
       {#if capped}
         <p class="mt-1 text-[11px] text-muted-foreground">Needs the floating overlay -- see above.</p>
       {/if}
