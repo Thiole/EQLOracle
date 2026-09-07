@@ -404,3 +404,48 @@ fn an_ally_seen_again_after_your_zone_line_does_not_keep_the_old_trio_on_swings_
         "premise: Clarity proves Enchanter -- got {was:?}"
     );
 }
+
+/// why: "chain closed by a loadout swap signal -- why doesn't it show
+/// the data it had at the time of that zone". A closed chain answers for
+/// every fight up to the cut, not only up to its last class line, and a
+/// presence cut is labelled as one, not as a swap.
+#[test]
+fn a_cut_chain_still_answers_for_the_fights_before_the_cut() {
+    let ing = run(concat!(
+        "[Tue Jul 28 15:00:00 2026] Kilja tells the group, 'inc'\n",
+        "[Tue Jul 28 15:00:05 2026] Kilja begins casting Clarity.\n",
+        "[Tue Jul 28 15:00:08 2026] Kilja hits a gnoll for 5 points of damage.\n",
+        "[Tue Jul 28 15:00:09 2026] You hit a gnoll for 5 points of damage.\n",
+        // why: a later fight in the same presence with no class line at all
+        "[Tue Jul 28 15:01:00 2026] Kilja hits a rat for 5 points of damage.\n",
+        "[Tue Jul 28 15:01:01 2026] You hit a rat for 5 points of damage.\n",
+        "[Tue Jul 28 15:02:00 2026] You have entered Befallen.\n",
+        "[Tue Jul 28 15:10:00 2026] Kilja hits a skeleton for 5 points of damage.\n",
+        "[Tue Jul 28 15:10:01 2026] You hit a skeleton for 5 points of damage.\n",
+    ));
+    let rat_fight = eqlp_app::combat::list_encounters(&ing, None, 0, 50)
+        .into_iter()
+        .find(|e| e.target == "a rat")
+        .expect("the rat fight");
+    let at = ing
+        .class_chain("Kilja", rat_fight.start_ms)
+        .expect("the old chain covers the rat fight");
+    assert!(
+        at.inferred().iter().any(|c| c == "Enchanter"),
+        "got {:?}",
+        at.inferred()
+    );
+    assert_eq!(
+        at.closed,
+        Some(eqlp_session::classdetect::ChainEnd::Presence),
+        "a presence cut, not a swap signal"
+    );
+    let now = ing
+        .class_chain("Kilja", ing.now_ms())
+        .map(|c| c.inferred())
+        .unwrap_or_default();
+    assert!(
+        !now.iter().any(|c| c == "Enchanter"),
+        "current detection started clean -- got {now:?}"
+    );
+}

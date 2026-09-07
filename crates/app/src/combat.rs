@@ -1125,6 +1125,7 @@ fn list_side(
             let class_chain_end = match chain.as_ref().and_then(|c| c.closed) {
                 Some(eqlp_session::classdetect::ChainEnd::Contradiction) => "??",
                 Some(eqlp_session::classdetect::ChainEnd::Swap) => "swap",
+                Some(eqlp_session::classdetect::ChainEnd::Presence) => "presence",
                 None => "",
             };
             AllyDto {

@@ -280,6 +280,12 @@ pub enum ChainEnd {
     Contradiction,
     /// why: a loadout-swap signal from the app (P8)
     Swap,
+    /// why: the ally was cut for presence -- an absence past the window,
+    /// your zone line, a group leave or join, a gate they went quiet
+    /// after. Not a swap signal: nothing about their classes was seen,
+    /// only that this is a new presence. Earlier fights keep the chain
+    /// they had.
+    Presence,
 }
 
 /// why: every class the game has -- trios are enumerated over these.
@@ -689,6 +695,11 @@ struct Chain {
     current: Option<(usize, UnitEvidence)>,
     closed: Option<ChainEnd>,
     first: usize,
+    /// why: the unit the chain was cut at -- it answers for every unit
+    /// before that, not only up to its last evidence. Reported: a fight
+    /// after the ally's last class line but before the cut read no chain
+    /// at all, and the row showed nothing where the zone's own data was.
+    end_unit: Option<usize>,
     /// why: a closed chain frozen to its result once a zone is done --
     /// its evidence and score table are dropped (prediction tables are
     /// extraneous data, Spencer), only what it concluded stays
@@ -706,11 +717,16 @@ impl Chain {
         if let Some((v, _)) = &self.frozen {
             return key(v.last);
         }
-        self.current
+        let evidence = self
+            .current
             .as_ref()
             .map(|(k, _)| *k)
             .or_else(|| self.units.keys().next_back().copied())
-            .unwrap_or(self.first)
+            .unwrap_or(self.first);
+        match self.end_unit {
+            Some(e) if e > 0 => evidence.max(e - 1),
+            _ => evidence,
+        }
     }
     fn derived(&self, levels: &LevelRecord) -> Derived {
         let mut d = self.committed.clone();
@@ -916,6 +932,7 @@ impl EntityState {
         }
         let moved: BTreeMap<usize, UnitEvidence> = old.units.split_off(&at);
         old.closed = Some(end);
+        old.end_unit = Some(at);
         *closed_since_read = true;
         old.rebuild(levels);
         let mut fresh = Chain::new(at);
@@ -1191,7 +1208,7 @@ impl Detector {
 
     /// why: P8 -- a swap signal closes the chain now; evidence from
     /// `unit` on belongs to a fresh one
-    pub fn close_chain(&mut self, entity: u32, unit: Unit) {
+    pub fn close_chain(&mut self, entity: u32, unit: Unit, end: ChainEnd) {
         let k = key(unit);
         let state = self.by_entity.entry(entity).or_default();
         let Some(last) = state.chains.last_mut() else {
@@ -1206,7 +1223,7 @@ impl Detector {
             *last = fresh;
             return;
         }
-        state.split_last(k, ChainEnd::Swap);
+        state.split_last(k, end);
     }
 
     /// why: P5's close, checked after every observation on the open chain

@@ -1701,7 +1701,8 @@ impl Ingest {
         if stale {
             let sym = self.sym(who).0;
             let unit = self.units.current();
-            self.classes.close_chain(sym, unit);
+            self.classes
+                .close_chain(sym, unit, eqlp_session::classdetect::ChainEnd::Presence);
         }
     }
 
@@ -4151,7 +4152,11 @@ impl Ingest {
         // open (backfill only expires it on the next damage line) stays
         // with the old chain, the next unit starts the new one
         if let Some(you) = self.store.names.get("You").map(|s| s.0) {
-            self.classes.close_chain(you, self.units.after_current());
+            self.classes.close_chain(
+                you,
+                self.units.after_current(),
+                eqlp_session::classdetect::ChainEnd::Swap,
+            );
             // why: this close IS the swap being handled right here -- it
             // must not come back as an undetected one on the next unit
             self.classes.take_chain_closed(you);

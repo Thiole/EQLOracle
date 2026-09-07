@@ -292,6 +292,16 @@ readily a written value is revised.
   muted is dropped. The overlay stays click-through; the mute list lives
   in settings, not on the widget.
 
+- C10. A presence cut (absence past the window, your zone line -- same
+  zone or not -- a group leave/join, a gate they went quiet after) is
+  its own chain end, `ChainEnd::Presence`, not a swap signal, and fires
+  on ANY action of the ally, not only on class evidence (2026-09-07).
+  A closed chain answers for every unit up to the cut, not only up to
+  its last class line -- the fights of that presence keep what was known
+  in them; detection since the cut starts from nothing (no classes, no
+  priors, no scores carry; only the per-class level ledger persists, and
+  it constrains, never adds).
+
 ## Chain model (confirmed by Spencer 2026-09-03, being built)
 
 Replaces C2-C8. One rolling evidence chain per character;

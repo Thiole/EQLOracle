@@ -50,7 +50,8 @@ fn main() {
         let mut open = 0;
         for c in &chains {
             match c.closed {
-                Some(eqlp_session::classdetect::ChainEnd::Swap) => swap += 1,
+                Some(eqlp_session::classdetect::ChainEnd::Swap)
+                | Some(eqlp_session::classdetect::ChainEnd::Presence) => swap += 1,
                 Some(eqlp_session::classdetect::ChainEnd::Contradiction) => contra += 1,
                 None => open += 1,
             }

@@ -152,6 +152,11 @@
                       <p class="text-bad">chain closed by contradiction -- a new one is confirming</p>
                     {:else if a.class_chain_end === 'swap'}
                       <p class="text-caution">chain closed by a loadout swap signal</p>
+                    {:else if a.class_chain_end === 'presence'}
+                      <!-- why: not a swap -- a new presence (absence, your zone
+                           line, a group change). This fight keeps what was known
+                           in it; detection since then started clean. -->
+                      <p class="text-muted-foreground">this presence ended (absence, your zone line or a group change) -- detection restarted after it</p>
                     {/if}
                   </div>
                 {/if}
