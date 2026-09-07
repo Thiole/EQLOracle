@@ -1044,8 +1044,14 @@ anchors = ["gained an ability point"]
 # ability points", no parens) -- a genuinely different trailing shape
 # from ability.point_gained below (which always uses "point(s)" on both
 # sides), not just a number substitution.
-pattern = '''^You have gained an ability point!\s+You now have (?P<total>[0-9]+) ability points\.$'''
-examples = ["[Tue Jul 28 15:02:15 2026] You have gained an ability point!  You now have 5 ability points."]
+# why: the tail is "1 ability point." at exactly one -- 12 of 225 in a
+# real log, every first point after spending to zero, all unmatched.
+pattern = '''^You have gained an ability point!\s+You now have (?P<total>[0-9]+) ability points?\.$'''
+examples = [
+  "[Tue Jul 28 15:02:15 2026] You have gained an ability point!  You now have 5 ability points.",
+  "[Sun Sep 06 21:14:11 2026] You have gained an ability point!  You now have 9 ability points.",
+  "[Sun Sep 06 21:14:11 2026] You have gained an ability point!  You now have 1 ability point.",
+]
 [rule.fields]
 total = { from = "total", as = "u64" }
 

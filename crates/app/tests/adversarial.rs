@@ -353,3 +353,17 @@ fn a_shared_landing_text_resolves_to_the_rank_a_groupmate_just_cast() {
             && blind.self_buffs.contains_key("Boon of the Clear Mind")
     );
 }
+
+/// why: "dont think it is detecting the shape for things like session
+/// tracker with AA/hour" -- the single-point payout matched and went
+/// nowhere, and its "1 ability point." tail did not even match
+#[test]
+fn every_ability_point_payout_shape_reaches_the_aa_ledger() {
+    let ing = run(concat!(
+        "[Sun Sep 06 21:14:11 2026] You have gained an ability point!  You now have 9 ability points.\n",
+        "[Sun Sep 06 21:20:00 2026] You have gained an ability point!  You now have 1 ability point.\n",
+        "[Sun Sep 06 21:25:00 2026] You have gained 2 ability point(s)!  You now have 3 ability point(s).\n",
+    ));
+    let gained: Vec<(u64, u64)> = ing.aa_points.iter().map(|&(_, g, t)| (g, t)).collect();
+    assert_eq!(gained, vec![(1, 9), (1, 1), (2, 3)]);
+}

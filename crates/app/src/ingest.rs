@@ -5586,6 +5586,13 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             gained: u64_field("qty")?,
             total: u64_field("total")?,
         }),
+        // why: the single-point payout -- 225 of a real log's 320 AA
+        // payouts, matched by the pack and routed nowhere, so AA/hour
+        // never moved on them
+        "ability.point_gained_first" => Some(Action::AaEarned {
+            gained: 1,
+            total: u64_field("total")?,
+        }),
         "spell.memorize_start" | "spell.scribe_start" => Some(Action::SpellBegan {
             name: str_field("spell")?,
         }),
