@@ -3,6 +3,7 @@
   import * as Select from '$lib/components/ui/select';
   import { Card, CardContent } from '$lib/components/ui/card';
   import CopyIcon from '@lucide/svelte/icons/copy';
+  import ChevronIcon from '@lucide/svelte/icons/chevron-right';
   import AllyTable from './AllyTable.svelte';
   import HistoryPane from './HistoryPane.svelte';
   import FightTimelineChart from './FightTimelineChart.svelte';
@@ -16,6 +17,9 @@
     followCurrentFight,
     summary,
     allies,
+    enemies,
+    showEnemies,
+    toggleEnemies,
     timeline,
     selectZoneVisit,
     selectEncounter,
@@ -276,6 +280,24 @@
   <div>
     <h2 class="panel-title mb-2">allies · click to see abilities</h2>
     <AllyTable />
+  </div>
+
+  <!-- why: collapsed, and not fetched at all until opened -- the enemy
+       side of a pull is far longer than the ally side -->
+  <div>
+    <button
+      type="button"
+      class="flex items-center gap-1.5 text-muted-foreground hover:text-foreground"
+      onclick={() => void toggleEnemies()}
+    >
+      <ChevronIcon class="size-3 transition-transform {$showEnemies ? 'rotate-90' : ''}" />
+      <h2 class="panel-title">enemies{$showEnemies ? ' · click to see abilities' : ' · list all'}</h2>
+    </button>
+    {#if $showEnemies}
+      <div class="mt-2">
+        <AllyTable rows={$enemies} allySide={false} empty="No enemies in this selection." />
+      </div>
+    {/if}
   </div>
 
   <HistoryPane />

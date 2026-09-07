@@ -1751,6 +1751,11 @@ export const api = {
   listAllies: (zoneVisit: number | null, encounterId: number | null, confirmedOnly = false) =>
     invoke<AllyDto[]>('list_allies', { zoneVisit, encounterId, confirmedOnly }),
 
+  /** The same rows for the other side of the fight -- Combat's collapsed
+   * "list all", off by default. Class columns are noise on a mob. */
+  listEnemies: (zoneVisit: number | null, encounterId: number | null, confirmedOnly = false) =>
+    invoke<AllyDto[]>('list_enemies', { zoneVisit, encounterId, confirmedOnly }),
+
   getFightTimeline: (encounterId: number) => invoke<FightTimelineDto | null>('get_fight_timeline', { encounterId }),
 
   getFightStateAt: (encounterId: number, tsMs: number) =>

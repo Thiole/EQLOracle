@@ -237,6 +237,24 @@ pub fn list_allies(
     )
 }
 
+/// why: same figures for the other side, behind the Combat tab's collapsed
+/// "list all" -- a Hate pull is 28 mobs, so it is never on by default
+
+#[tauri::command]
+pub fn list_enemies(
+    state: State<AppState>,
+    zone_visit: Option<i64>,
+    encounter_id: Option<u32>,
+    confirmed_only: Option<bool>,
+) -> Vec<AllyDto> {
+    combat::list_enemies(
+        &state.ingest.lock_recover(),
+        zone_visit,
+        encounter_id,
+        confirmed_only.unwrap_or(false),
+    )
+}
+
 /// why: Combat module's drill-down -- one ally's breakdown, or the whole selection's
 
 #[tauri::command]

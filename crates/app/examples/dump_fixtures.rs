@@ -163,6 +163,22 @@ fn main() {
         Value::Object(allies_by_selection),
     );
 
+    let mut enemies_by_selection: Map<String, Value> = Map::new();
+    enemies_by_selection.insert(
+        "zoneVisit=null&encounterId=null".to_string(),
+        json!(combat::list_enemies(&ing, None, None, false)),
+    );
+    for id in [richest_id, latest_id] {
+        enemies_by_selection.insert(
+            format!("zoneVisit=null&encounterId={id}"),
+            json!(combat::list_enemies(&ing, None, Some(id), false)),
+        );
+    }
+    out.insert(
+        "list_enemies".to_string(),
+        Value::Object(enemies_by_selection),
+    );
+
     let timeline = combat::fight_timeline(&ing, richest_id);
     let mut timeline_by_id: Map<String, Value> = Map::new();
     timeline_by_id.insert(format!("encounterId={richest_id}"), json!(timeline));

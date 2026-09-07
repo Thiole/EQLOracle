@@ -842,11 +842,36 @@ pub struct AllyDto {
 /// store finds them regardless. Excludes everything currently `Enemy`
 /// per `Allegiance::of` -- a multi-mob pull's other mobs excluded too, a
 /// live-charmed mob counts as ally while the charm holds.
+/// why: the ally table, unchanged for every existing caller
 pub fn list_allies(
     ing: &Ingest,
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
     confirmed_only: bool,
+) -> Vec<AllyDto> {
+    list_side(ing, zone_visit, encounter_id, confirmed_only, false)
+}
+
+/// why: the same figures for the other side -- totals, hits, crit rate,
+/// hit rate and the melee swing rate all come from the same rows, and
+/// the only thing that made the list an ALLY list was one allegiance
+/// test. Collapsed behind its own toggle in the Combat tab, because a
+/// single Hate pull is 28 distinct mobs against 3-6 allies.
+pub fn list_enemies(
+    ing: &Ingest,
+    zone_visit: Option<i64>,
+    encounter_id: Option<u32>,
+    confirmed_only: bool,
+) -> Vec<AllyDto> {
+    list_side(ing, zone_visit, encounter_id, confirmed_only, true)
+}
+
+fn list_side(
+    ing: &Ingest,
+    zone_visit: Option<i64>,
+    encounter_id: Option<u32>,
+    confirmed_only: bool,
+    want_enemies: bool,
 ) -> Vec<AllyDto> {
     let ids = resolve_ids(ing, zone_visit, encounter_id, confirmed_only);
     // why: class evidence is per activity chain -- read at the time of the
@@ -898,7 +923,7 @@ pub fn list_allies(
                 continue;
             }
             let who = ing.effective_name(ing.store.name(ing.store.actor[i]));
-            if ing.allegiance_at(&who, now).is_enemy() {
+            if ing.allegiance_at(&who, now).is_enemy() != want_enemies {
                 continue;
             }
             *swing_count.entry(who.clone()).or_insert(0) += 1;
@@ -917,10 +942,14 @@ pub fn list_allies(
             let name = ing.store.name(sym).to_string();
             // why: one composition of kind/charm/group belief -- see
             // Ingest::allegiance_at for why this isn't effective_kind+of
-            if ing.allegiance_at(&name, now).is_enemy() {
+            if ing.allegiance_at(&name, now).is_enemy() != want_enemies {
                 continue;
             }
-            let owner = ing.pet_of(&name).map(str::to_string);
+            // why: a charmed pet folds into its charmer, who is on the
+            // other side -- never roll it up in an enemy listing
+            let owner = (!want_enemies)
+                .then(|| ing.pet_of(&name).map(str::to_string))
+                .flatten();
             let into = match owner.as_deref().and_then(|o| ing.store.names.get(o)) {
                 Some(osym) => osym,
                 None => sym,
@@ -2771,6 +2800,35 @@ mod ally_report_tests {
             you.resist_pct, None,
             "no casts at all -- must stay None, not 0%"
         );
+    }
+
+    #[test]
+    fn the_two_sides_are_disjoint_and_the_enemy_keeps_its_own_damage() {
+        let ing = run(&[
+            "[Tue Jul 28 15:00:00 2026] You tell your party, 'ready'",
+            "[Tue Jul 28 15:01:00 2026] You punch a gnoll for 5 points of damage.",
+            "[Tue Jul 28 15:01:01 2026] A gnoll hits YOU for 12 points of damage.",
+            "[Tue Jul 28 15:01:02 2026] A gnoll hits YOU for 8 points of damage.",
+        ]);
+        let allies = list_allies(&ing, None, None, false);
+        let enemies = list_enemies(&ing, None, None, false);
+        let gnoll = enemies
+            .iter()
+            .find(|e| e.name.eq_ignore_ascii_case("a gnoll"))
+            .expect("the mob is an enemy row");
+        assert_eq!(gnoll.total, 20, "its own damage, not the team's");
+        assert_eq!(gnoll.pct, 100.0, "share of the ENEMY total, not the team's");
+        assert!(
+            allies.iter().any(|a| a.name == "You"),
+            "premise: the ally list is still the ally list"
+        );
+        for a in &allies {
+            assert!(
+                !enemies.iter().any(|e| e.name == a.name),
+                "{} landed on both sides",
+                a.name
+            );
+        }
     }
 
     #[test]

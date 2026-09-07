@@ -27,6 +27,12 @@ export const selectedEncounterId = writable<number | null>(null);
 export const followCurrentFight = writable(true);
 export const summary = writable<CombatSummaryDto | null>(null);
 export const allies = writable<AllyDto[]>([]);
+
+/** why: the other side of the same fights, off by default -- one Hate
+ * pull is 28 distinct mobs against 3-6 allies, so it stays collapsed and
+ * is not even fetched until asked for. */
+export const enemies = writable<AllyDto[]>([]);
+export const showEnemies = writable(false);
 export const timeline = writable<FightTimelineDto | null>(null);
 export const stateAt = writable<{ tsMs: number; entities: EntityStateDto[] } | null>(null);
 /** Which ally row (if any) is expanded to its own ability/cast breakdown. */
@@ -194,6 +200,16 @@ async function refreshHistory() {
   loadoutSummaries.set(loadouts ?? []);
 }
 
+export async function toggleEnemies() {
+  const on = !get(showEnemies);
+  showEnemies.set(on);
+  if (!on) {
+    enemies.set([]);
+    return;
+  }
+  enemies.set((await api.listEnemies(get(selectedZoneVisit), get(selectedEncounterId))) ?? []);
+}
+
 export async function toggleAlly(name: string) {
   const current = get(expandedAlly);
   if (current === name) {
@@ -232,6 +248,7 @@ async function refreshSelection(preserveScrub = false) {
   const [s, a] = await Promise.all([api.getCombatSummary(zv, enc, null), api.listAllies(zv, enc)]);
   summary.set(s);
   allies.set(a ?? []); // defensive -- invoke<T>()'s type is an assertion, not a guarantee
+  if (get(showEnemies)) enemies.set((await api.listEnemies(zv, enc)) ?? []);
   timeline.set(enc != null ? await api.getFightTimeline(enc) : null);
   if (!preserveScrub) stateAt.set(null);
   const expanded = get(expandedAlly);
