@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as Select from '$lib/components/ui/select';
+  import { HelpTip } from '$lib/components/ui/help';
   import { Button } from '$lib/components/ui/button';
   import { Checkbox } from '$lib/components/ui/checkbox';
   import { Card, CardContent } from '$lib/components/ui/card';
@@ -66,6 +67,15 @@
   const eraLabel = (e: string) => (e === $currentEra ? `${e} (current)` : e);
 </script>
 
+<!-- why: title left, the section's own explanation behind a "?" right --
+     the page shows controls, the words are one click away. -->
+{#snippet sectionHeader(title: string, help: string)}
+  <div class="mb-1.5 flex items-start justify-between gap-2">
+    <h2 class="panel-title">{title}</h2>
+    <HelpTip label="About {title}" text={help} />
+  </div>
+{/snippet}
+
 <div class="flex flex-col gap-3 p-3">
   {#if !$settingsLoaded}
     <p class="text-[12px] text-muted-foreground">Loading…</p>
@@ -80,7 +90,10 @@
 
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
-        <h2 class="panel-title mb-1.5">notifications</h2>
+        {@render sectionHeader(
+          'notifications',
+          'Sets how loud notification sounds play once notifications reach this UI -- not wired up to actual playback yet.',
+        )}
         <label class="flex max-w-sm items-center gap-3 text-[12px]">
           <span class="w-16 shrink-0 text-muted-foreground">volume</span>
           <input
@@ -93,15 +106,19 @@
           />
           <span class="w-9 shrink-0 text-right tabular-nums text-foreground">{$volume}%</span>
         </label>
-        <p class="mt-1.5 text-[11px] text-muted-foreground">
-          Sets how loud notification sounds play once notifications reach this UI -- not wired up to actual playback yet.
-        </p>
       </CardContent>
     </Card>
 
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
-        <h2 class="panel-title mb-1.5">era</h2>
+        <div class="mb-1.5 flex items-start justify-between gap-2">
+          <h2 class="panel-title">era</h2>
+          <HelpTip label="About era">
+            Caps what Game Data, the Gear Planner, GPS destinations, buff suggestions and the spellbook show to
+            things that exist at or before this era. "All eras" turns that off entirely. Defaults to whatever era
+            EQ Legends is actually on right now (<b class="text-foreground">{$currentEra}</b>).
+          </HelpTip>
+        </div>
         <label class="flex max-w-sm items-center gap-2 text-[12px]">
           <span class="w-16 shrink-0 text-muted-foreground">era</span>
           <Select.Root type="single" value={selectedEra} onValueChange={(v) => v && setEra(v)}>
@@ -114,33 +131,28 @@
             </Select.Content>
           </Select.Root>
         </label>
-        <p class="mt-1.5 text-[11px] text-muted-foreground">
-          Caps what Game Data and the Gear Planner show to gear/zones/NPCs/spells that exist at or before this era.
-          "All eras" turns that off entirely. Defaults to whatever era EQ Legends is actually on right now
-          (<b class="text-foreground">{$currentEra}</b>).
-        </p>
       </CardContent>
     </Card>
 
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
-        <h2 class="panel-title mb-1.5">character profile</h2>
+        {@render sectionHeader(
+          'character profile',
+          "Off (default): every launch replays the whole log and figures out your classes fresh from what it actually sees. On: also remembers your last-confirmed classes between launches, and falls back to them for zone routing until this session's own replay reconfirms them -- it never overrides a class the current session has already confirmed on its own.",
+        )}
         <label class="flex items-center gap-1.5 text-[12px]">
           <Checkbox checked={$saveProfile} onCheckedChange={(v: boolean) => setSaveProfile(v)} />
           save your profile across launches
         </label>
-        <p class="mt-1.5 text-[11px] text-muted-foreground">
-          Off (default): every launch replays the whole log and figures out your classes fresh from what it actually
-          sees, same as always. On: also remembers your last-confirmed classes between launches, and falls back to
-          them for zone routing on a new launch until this session's own replay reconfirms them itself -- it never
-          overrides a class the current session has already confirmed on its own.
-        </p>
       </CardContent>
     </Card>
 
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
-        <h2 class="panel-title mb-1.5">update channel</h2>
+        {@render sectionHeader(
+          'update channel',
+          'Public (default): only real, deliberate releases. Beta: every build off the testing branch, ahead of a real release but less tested -- expect rough edges.',
+        )}
         <label class="flex max-w-sm items-center gap-2 text-[12px]">
           <span class="w-16 shrink-0 text-muted-foreground">channel</span>
           <Select.Root
@@ -157,10 +169,6 @@
             </Select.Content>
           </Select.Root>
         </label>
-        <p class="mt-1.5 text-[11px] text-muted-foreground">
-          Public (default): only real, deliberate releases. Beta: every build off the testing branch, ahead of a
-          real release but less tested -- expect rough edges.
-        </p>
 
         <div class="mt-2.5 flex items-center gap-2">
           <Button size="sm" variant="outline" class="h-7 text-[11px]" disabled={checkingUpdate} onclick={onCheckForUpdates}>
@@ -181,7 +189,10 @@
 
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
-        <h2 class="panel-title mb-1.5">theme</h2>
+        {@render sectionHeader(
+          'theme',
+          'Recolors the whole app. "Default (brass)" is this app\'s own original look; everything else is a real preset pulled from the shadcn/ui theme ecosystem -- dark variants only, same as this app\'s own always-dark stance.',
+        )}
         <label class="flex max-w-sm items-center gap-2 text-[12px]">
           <span class="w-16 shrink-0 text-muted-foreground">theme</span>
           <Select.Root type="single" value={$theme} onValueChange={(v) => v && setTheme(v)}>
@@ -210,17 +221,15 @@
             </Select.Content>
           </Select.Root>
         </label>
-        <p class="mt-1.5 text-[11px] text-muted-foreground">
-          Recolors the whole app. "Default (brass)" is this app's own original look; everything else is a real
-          preset pulled from the shadcn/ui theme ecosystem -- dark variants only, same as this app's own always-dark
-          stance.
-        </p>
       </CardContent>
     </Card>
 
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">
-        <h2 class="panel-title mb-1.5">maps</h2>
+        {@render sectionHeader(
+          'maps',
+          'The Maps module reads zone files fresh every time you open one. This button is only for the pack list itself (Base game / Brewall / ...), which is checked once per launch -- use it if you install a new map pack while the app is running.',
+        )}
         <div class="flex items-center gap-3">
           <Button size="sm" variant="outline" disabled={rescanning} onclick={onRescanMaps}>
             {rescanning ? 'Rescanning…' : 'Rescan maps folder'}
@@ -232,11 +241,6 @@
             {/if}
           </p>
         </div>
-        <p class="mt-1.5 text-[11px] text-muted-foreground">
-          The Maps module reads zone files fresh every time you open one -- this button is only for the
-          <b class="text-foreground">pack list itself</b> (Base game / Brewall / …), which is only checked once per
-          launch. Use this if you install a new map pack while the app is already running.
-        </p>
       </CardContent>
     </Card>
 
