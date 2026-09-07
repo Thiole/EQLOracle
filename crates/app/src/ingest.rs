@@ -1314,6 +1314,17 @@ pub struct Ingest {
     /// why: resolved pet -> owner; checked by sym before interning so a
     /// matched pet's actions merge into the owner's identity
     pet_owner: HashMap<String, String>,
+    /// why: pet_owner is keyed by mob NAME and never expired, so an ally
+    /// charming "An abhorrent" in August made every abhorrent's damage
+    /// today read as theirs -- measured on the real log as a player last
+    /// seen 29 days ago credited with 2,185 damage in tonight's fights.
+    ///
+    /// A SUMMONED pet's name is derived from its owner ("Bok`s warder")
+    /// and is stable forever, so those entries are fine. A CHARMED one
+    /// borrows an ordinary mob name that anybody will meet again, so it
+    /// is only true while that charm lasts. Tracked separately, and
+    /// dropped when a zone line ends every charm in flight.
+    charmed_pets: Vec<String>,
     /// why: the no-summon-line case -- a groupmate's pet summoned out of
     /// log range has NOTHING to window-match (measured: the unmatched
     /// generated-name suspects' first action lands p25=50min after any
@@ -1472,6 +1483,7 @@ impl Default for Ingest {
             seen_actors: HashSet::new(),
             you_confirmed_target_encs: HashSet::new(),
             pet_owner: HashMap::new(),
+            charmed_pets: Vec::new(),
             behavioral_pet_hits: HashMap::new(),
             behavioral_pets: HashSet::new(),
             behavioral_pet_blacklist: HashSet::new(),
@@ -2194,6 +2206,13 @@ impl Ingest {
             Action::Zone { zone } => {
                 // why: stop fights bleeding across zone changes
                 self.encounters.close_all(ts);
+                // why: no charm survives a zone line, so neither does the
+                // ownership it implied. Left standing, an ally's charm of
+                // "An abhorrent" credited them with every abhorrent
+                // anyone fought for the rest of the log.
+                for pet in self.charmed_pets.drain(..) {
+                    self.pet_owner.remove(&pet);
+                }
                 self.last_zone_enter_ms = Some(ts);
                 // why: a charmed pet never follows you across a zone line --
                 // real loss even with no "spell has worn off" confirmation
@@ -2634,7 +2653,10 @@ impl Ingest {
                     Some((caster, _)) => {
                         let owner_name = self.store.names.name(Sym(caster)).to_string();
                         let resolved = self.resolve_name(&who);
-                        self.pet_owner.insert(resolved, owner_name);
+                        self.pet_owner.insert(resolved.clone(), owner_name);
+                        // why: a charm borrows an ordinary mob name -- this
+                        // entry is only true while the charm is
+                        self.charmed_pets.push(resolved);
                     }
                     // why: nobody's charm cast is in the window -- the mob
                     // really is charmed (timeline above says so) but there
@@ -6354,6 +6376,29 @@ mod charm_reaffirm_tests {
         let bytes: Vec<&[u8]> = all.iter().map(|l| l.as_bytes()).collect();
         backfill_lines(&mut ing, &engine, &bytes, 1);
         ing
+    }
+
+    /// why: pet_owner is keyed by mob NAME and never expired, so an ally
+    /// charming "an abhorrent" owned every abhorrent anyone met after
+    /// that -- across zones, across months. Measured on the real log: a
+    /// player last seen 29 days earlier was credited with damage in
+    /// tonight's fights, and 67 of the 89 encounters holding a row for
+    /// them were not theirs at all.
+    #[test]
+    fn an_allys_charm_does_not_own_that_mob_name_forever() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:00 2026] Sidhe begins casting Allure.",
+            "[Tue Jul 28 15:01:01 2026] an abhorrent has been charmed.",
+            "[Tue Jul 28 15:01:05 2026] an abhorrent hits a gnoll for 40 points of damage.",
+            "[Tue Jul 28 15:02:00 2026] You have entered The Feerrott.",
+            "[Tue Jul 28 15:03:00 2026] an abhorrent hits a gnoll for 40 points of damage.",
+        ]);
+        // why: a zone line ends every charm, so it ends the ownership
+        assert_eq!(
+            ing.effective_name("an abhorrent"),
+            "an abhorrent",
+            "a later abhorrent is nobody's pet"
+        );
     }
 
     /// why: the wrong-instance repair -- two same-named mobs, the OTHER

@@ -615,9 +615,10 @@ pub fn get_live_meter(app: AppHandle, state: State<AppState>) -> Option<combat::
             .append(true)
             .open(path)
         {
-            let _ = writeln!(
+            let _ =
+                writeln!(
                 f,
-                "wall={} clock={} cur={:?} open={:?} rows={} you={:?} dur={} live={:?}",
+                "wall={} clock={} cur={:?} open={:?} rows={} you={:?} dur={} live={:?} names={:?}",
                 (wall / 1000) % 86400,
                 (ing.now_ms() / 1000) % 86400,
                 cur,
@@ -625,7 +626,13 @@ pub fn get_live_meter(app: AppHandle, state: State<AppState>) -> Option<combat::
                 m.as_ref().map(|m| m.outgoing.len()).unwrap_or(0),
                 you,
                 m.as_ref().map(|m| m.duration_ms / 1000).unwrap_or(0),
-                live
+                live,
+                // why: NAMES, not just a count -- a stale ally is
+                // invisible in "rows=6", which is exactly why the trace
+                // could not catch the one that was reported
+                m.as_ref()
+                    .map(|m| m.outgoing.iter().map(|r| r.name.clone()).collect::<Vec<_>>())
+                    .unwrap_or_default(),
             );
         }
     }
