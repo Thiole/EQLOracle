@@ -42,6 +42,13 @@ pub enum BuffKind {
     /// self-buff that mapped to no kind, so it could never be reported
     /// missing however plainly the log showed it absent.
     Proc,
+    /// why: SPA 121, a reverse damage shield -- "heal yourself per
+    /// successful melee hit". The cleric Blessing of the Page/Squire/
+    /// Knight/Lord Commander line. The wiki's slot prose said "Add
+    /// Proc_Strike", which filed it with Vampiric Embrace's lifetap proc
+    /// (SPA 85); the game file says they are different effects that
+    /// stack, and a Shadow Knight wants both.
+    HealOnHit,
 }
 
 impl BuffKind {
@@ -50,6 +57,7 @@ impl BuffKind {
             BuffKind::Rune => "rune",
             BuffKind::Familiar => "familiar",
             BuffKind::Proc => "weapon proc",
+            BuffKind::HealOnHit => "heal on hit",
             BuffKind::ManaRegen => "mana regen",
             BuffKind::Haste => "haste",
             BuffKind::Hp => "hit points",
@@ -69,6 +77,80 @@ impl BuffKind {
 
 /// why: the first recognizable slot decides the kind; procs, levitate,
 /// see-invis and the rest are situational and never "missing"
+/// why: the game file first, the wiki's slot prose only when there is no
+/// file (tests, the mock harness, an install without one). The file's
+/// SPA is what an effect IS; the prose is a scrape of it. Real case:
+/// "Add Proc_Strike" text filed the cleric heal-on-hit line under the
+/// same kind as a lifetap proc, and two spells the game lets you stack
+/// read as one row with an "upgrade" between them. An instant (no
+/// duration) is never a buff, which is the "per tick" test the text arms
+/// hand-roll. An SPA this map does not name falls through to the prose,
+/// so nothing the text could classify is lost.
+pub fn kind_of_with(
+    spell: &Spell,
+    file: Option<&crate::spelltimers::SpellFile>,
+) -> Option<BuffKind> {
+    if spell.name.ends_with("Familiar") {
+        return Some(BuffKind::Familiar);
+    }
+    let text = kind_of(spell);
+    let Some(entry) = file.and_then(|f| crate::spelltimers::entry_of(f, &spell.name)) else {
+        return text;
+    };
+    if !entry.has_duration {
+        return None;
+    }
+    let spas: Vec<u16> = entry
+        .slots
+        .iter()
+        .filter(|s| !s.is_spacer() && s.is_beneficial())
+        .map(|s| s.spa)
+        .collect();
+    // why: the file CORRECTS and FILLS, it does not reorder. A buff's
+    // slots run in the file's order and in the wiki's, and those differ
+    // (Shielding is HP then AC in the file, Skin Like Steel AC then HP),
+    // so "first slot wins" off the file would reshuffle kinds across the
+    // whole HP/AC family and change every row and mute key with it. A
+    // prose kind the file backs with that SPA stands; one the file does
+    // not back is wrong (Squire's "Add Proc" -- no SPA 85, an SPA 121)
+    // and yields to the file; none at all takes the file's first.
+    if let Some(k) = text {
+        if spas.iter().any(|&spa| kind_of_spa(spa) == Some(k)) {
+            return text;
+        }
+    }
+    spas.iter().find_map(|&spa| kind_of_spa(spa)).or(text)
+}
+
+/// why: the SPA ids the tracker has a kind for -- classic-EQ effect ids,
+/// each verified on the real file (Clarity 15, Celerity 11, Shield of
+/// Words 1, Aegolism 69, Berserker Spirit 4, Rune I 55, Vampiric Embrace
+/// 85, Blessing of the Squire 121, Regeneration 0 with a duration)
+fn kind_of_spa(spa: u16) -> Option<BuffKind> {
+    Some(match spa {
+        0 => BuffKind::HpRegen,
+        1 => BuffKind::Ac,
+        2 => BuffKind::Attack,
+        3 => BuffKind::Movement,
+        4 => BuffKind::Strength,
+        5 => BuffKind::Dexterity,
+        6 => BuffKind::Agility,
+        7 => BuffKind::Stamina,
+        11 => BuffKind::Haste,
+        15 => BuffKind::ManaRegen,
+        46..=50 => BuffKind::Resist,
+        // why: 55 absorbs any damage, 78 magic damage only -- both runes
+        // (Niv's Melody of Preservation carries the 78 kind)
+        55 | 78 => BuffKind::Rune,
+        59 => BuffKind::DamageShield,
+        69 => BuffKind::Hp,
+        85 => BuffKind::Proc,
+        121 => BuffKind::HealOnHit,
+        _ => return None,
+    })
+}
+
+/// why: the wiki prose walk -- the fallback, and what the tests pin
 pub fn kind_of(spell: &Spell) -> Option<BuffKind> {
     // why: checked before the slot walk -- a familiar's slots describe
     // what it GIVES (resists, mana, see invisible), so walking them files
@@ -239,6 +321,8 @@ pub fn relevance(kind: BuffKind, my_classes: &[String]) -> u32 {
             (BuffKind::Familiar, _) => 65,
             (BuffKind::Proc, Shape::Melee) => 70,
             (BuffKind::Proc, _) => 10,
+            (BuffKind::HealOnHit, Shape::Melee) => 65,
+            (BuffKind::HealOnHit, _) => 10,
             (BuffKind::Haste, Shape::Melee) => 100,
             (BuffKind::Haste, _) => 20,
             (BuffKind::Hp, Shape::Melee) => 85,
@@ -284,7 +368,8 @@ pub fn benefits(kind: BuffKind, my_classes: &[String]) -> bool {
         | BuffKind::Attack
         | BuffKind::Strength
         | BuffKind::Dexterity
-        | BuffKind::Proc => melees,
+        | BuffKind::Proc
+        | BuffKind::HealOnHit => melees,
         _ => true,
     }
 }
@@ -632,7 +717,9 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
             if is_recourse(spell) || !is_party_buff(spell) {
                 continue;
             }
-            let Some(kind) = kind_of(spell) else { continue };
+            let Some(kind) = kind_of_with(spell, ing.spell_file()) else {
+                continue;
+            };
             // why: `benefits` stops a groupmate offering mana regen to a
             // pure melee. It cannot arise for a spell you cast on
             // YOURSELF -- your own class having it settles the question.
@@ -690,7 +777,7 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
         if is_illusion(spell) {
             continue;
         }
-        match kind_of(spell) {
+        match kind_of_with(spell, ing.spell_file()) {
             Some(k) => {
                 // why: the rank ON you, by its own level requirement --
                 // the highest one up of that kind is what counts
@@ -725,7 +812,7 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
             if !is_self_buff(spell)
                 || is_recourse(spell)
                 || !reachable(spell, ceiling)
-                || kind_of(spell).is_none()
+                || kind_of_with(spell, ing.spell_file()).is_none()
             {
                 continue;
             }
@@ -999,7 +1086,9 @@ fn buffs_on(ing: &Ingest, name: &str, now: Millis) -> Vec<BuffKind> {
         let Some(spell) = crate::spelldata::spell_by_name(&ping.text) else {
             continue;
         };
-        let Some(kind) = kind_of(spell) else { continue };
+        let Some(kind) = kind_of_with(spell, ing.spell_file()) else {
+            continue;
+        };
         if expiry_for(spell, ping.ts).is_none_or(|e| e >= now) {
             kinds.insert(kind);
         }
@@ -1375,6 +1464,60 @@ mod tests {
             Some("Blessing of the Squire"),
             16
         ));
+    }
+
+    /// why: the file decides -- the cleric heal-on-hit line and Vampiric
+    /// Embrace are two kinds, an instant is no kind, and a spell the
+    /// file does not know still gets the prose answer
+    #[test]
+    fn the_games_spa_outranks_the_wikis_prose() {
+        let row = |name: &str, dur: &str, slots: &str| {
+            let mut f = vec![String::new(); 173];
+            f[1] = name.to_string();
+            f[11] = dur.to_string();
+            f[172] = slots.to_string();
+            f.join("^")
+        };
+        let file = crate::spelltimers::parse_text(
+            &[
+                row("Vampiric Embrace", "50", "1|85|821|0|100|0$2|10|0|0|100|0"),
+                row("Blessing of the Squire", "3", "1|121|2|0|100|0"),
+                row("Clarity", "3", "1|10|0|0|100|0$2|15|1|0|109|9"),
+                row("Harvest", "0", "1|15|1|0|5|0"),
+            ]
+            .join("\n"),
+        );
+        let f = Some(&file);
+        let by = |n: &str| {
+            crate::spelldata::spells()
+                .iter()
+                .find(|s| s.name == n)
+                .unwrap_or_else(|| panic!("{n} in the catalog"))
+        };
+        assert_eq!(
+            kind_of_with(by("Vampiric Embrace"), f),
+            Some(BuffKind::Proc)
+        );
+        assert_eq!(
+            kind_of_with(by("Blessing of the Squire"), f),
+            Some(BuffKind::HealOnHit)
+        );
+        assert_eq!(
+            kind_of(by("Blessing of the Squire")),
+            Some(BuffKind::Proc),
+            "premise: the prose alone files it as a proc"
+        );
+        assert_eq!(kind_of_with(by("Clarity"), f), Some(BuffKind::ManaRegen));
+        assert_eq!(
+            kind_of_with(by("Harvest"), f),
+            None,
+            "an instant is never a buff"
+        );
+        assert_eq!(
+            kind_of_with(by("Celerity"), f),
+            kind_of(by("Celerity")),
+            "unknown to the file: the prose answers"
+        );
     }
 
     /// why: Spencer -- "it should be detecting SHD/etc and be suggesting

@@ -1651,6 +1651,11 @@ impl Ingest {
             .unwrap_or_default()
     }
 
+    /// why: the install's own spell table, for whoever classifies by it
+    pub fn spell_file(&self) -> Option<&crate::spelltimers::SpellFile> {
+        self.spell_file.as_ref()
+    }
+
     pub fn set_spell_file(&mut self, base_dir: &std::path::Path) {
         self.spell_file = Some(crate::spelltimers::spell_file(base_dir));
     }

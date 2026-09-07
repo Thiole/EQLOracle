@@ -358,7 +358,7 @@ fn build_dto(
 ) -> Option<DamageSpellDto> {
     let dd_crit_mult = aa.dd_crit_mult;
     let dot_crit_mult = aa.dot_crit_mult;
-    let timer = game.map(|g| g.timer).filter(|t| *t != 0);
+    let timer = game.as_ref().map(|g| g.timer).filter(|t| *t != 0);
     let (base_hit, is_dot, base_upfront) = parse_damage(spell)?;
     if base_hit <= 0.0 {
         return None;
@@ -376,8 +376,11 @@ fn build_dto(
     // Lifebite's wiki page has neither, and a 0 cast floored to 0.1s
     // turned it into "Lifebite x118" in a rotation); a spell with no
     // cast time from either source cannot be modeled and is left out
-    let game_cast = game.map(|g| g.cast_ms as f64 / 1000.0).filter(|c| *c > 0.0);
-    let game_recast = game.map(|g| g.recast_ms as f64 / 1000.0);
+    let game_cast = game
+        .as_ref()
+        .map(|g| g.cast_ms as f64 / 1000.0)
+        .filter(|c| *c > 0.0);
+    let game_recast = game.as_ref().map(|g| g.recast_ms as f64 / 1000.0);
     let base_casting_time = game_cast.or(spell.casting_time).unwrap_or(0.0);
     if base_casting_time <= 0.0 {
         return None;
@@ -778,6 +781,7 @@ mod tests {
                     recast_ms: 12000,
                     timer: 3,
                     levels: [255; 16],
+                    ..Default::default()
                 })
             )
             .map(|d| d.reuse_group),
@@ -830,6 +834,7 @@ mod tests {
                     recast_ms: 1500,
                     timer: 25,
                     levels: [255; 16],
+                    ..Default::default()
                 })
             )
             .map(|d| d.reuse_group),
@@ -907,6 +912,7 @@ mod tests {
             recast_ms: 1500,
             timer: 0,
             levels: [255; 16],
+            ..Default::default()
         };
         let d = build_dto(lifebite, 0, &AaMods::default(), &[], Some(game)).expect("modeled");
         assert!((d.casting_time - 1.75).abs() < 1e-9);

@@ -235,6 +235,24 @@ readily a written value is revised.
   reverses the earlier reading, where a groupmate who could also cast the
   best line owned it. Consequence: the minimal overlay layout's two counts
   ("N self, N group") partition the missing rows and never double-count.
+- T9. A buff's KIND comes from the install's `spells_us.txt` when there is
+  one (column 173, `slot|SPA|base1|base2|max|formula`), the wiki's slot
+  prose only as fallback (2026-09-07). The file corrects and fills, it
+  does not reorder: a prose kind the file backs with that SPA stands, one
+  it does not back yields to the file (Blessing of the Page/Squire are
+  SPA 121, heal on hit -- not a proc, and they STACK with Vampiric
+  Embrace's SPA 85), none at all takes the file's first beneficial SPA.
+  An instant (no duration, columns 12/13 both 0) is never a buff. A
+  negative base is a debuff and never counts; attack speed's line is 100.
+  Measured on the real file: 64 buffs gained a kind, 2 changed, 0 others.
+- T10. Stacking is the file's slot rule, validated against every "did
+  not take hold (Blocked by X)" in a real log, 1,814 of 1,814: the same
+  slot number carrying the same SPA conflicts (higher value overwrites,
+  lower or equal is blocked), SPA 148/149 block or evict a named SPA in
+  a named slot below a value, `SPA 10 base 0` is a spacer and never
+  conflicts, and different slots or different SPAs in one slot stack.
+  `SpellFileEntry::conflicts` is that rule. `Resources/SpellStackingGroups.txt`
+  is a partial overlay (3,127 rows, mostly newer spells), not the rule.
 - T7. A muted line (`Preferences::muted_buff_lines`, set in Settings ->
   Overlay -> Group Buffs) leaves the tracker entirely -- rows, innates,
   maybes and the T4 verdict alike. Muting is per LINE, rank-stripped, so
