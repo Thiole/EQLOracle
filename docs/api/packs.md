@@ -80,7 +80,7 @@ tools/scrapers/ script that produces it. The standard envelope is
 
 ## spells.json
 - shape: envelope [count, scraped, source], payload key(s): spells
-- consumer: spellbookfiles.rs, spelltext.rs, targeteffects.rs, focus.rs, spelldata.rs, ingest.rs
+- consumer: spellbookfiles.rs, targeteffects.rs, focus.rs, spelldata.rs, spelltext.rs, ingest.rs
 - producer: build_spell_classes.py
 
 ## stance_classes.json

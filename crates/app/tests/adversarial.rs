@@ -235,3 +235,49 @@ fn loot_with_no_death_line_still_counts_in_loot_status() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].count, 1);
 }
+
+/// why: the reported "confirmed Bard for zones after I stopped being one".
+/// A class only ever left the trio through a swap the parser had to
+/// infer; the game says it outright in "The ability X is not available
+/// to your class!", and that line was unparsed. Bard here is proven by
+/// the one line only a Bard sees, then revoked.
+#[test]
+fn the_game_saying_an_ability_is_not_yours_takes_that_class_off_you() {
+    // why: the bar is UNITS of class-only evidence, not lines, and a zone
+    // line halves the weight carried across it -- three aura units clear
+    // it, two do not
+    let sung = concat!(
+        "[Tue Jul 28 15:00:00 2026] You tell your party, 'ready'\n",
+        "[Tue Jul 28 15:00:05 2026] This song cannot be played while Symphonic Aura is enabled.\n",
+        "[Tue Jul 28 15:00:10 2026] You punch a target for 5 points of damage.\n",
+        "[Tue Jul 28 15:00:15 2026] You have entered Lower Guk.\n",
+        "[Tue Jul 28 15:00:20 2026] This song cannot be played while Symphonic Aura is enabled.\n",
+        "[Tue Jul 28 15:00:25 2026] You punch a target for 5 points of damage.\n",
+        "[Tue Jul 28 15:00:30 2026] You have entered Upper Guk.\n",
+        "[Tue Jul 28 15:00:35 2026] This song cannot be played while Symphonic Aura is enabled.\n",
+        "[Tue Jul 28 15:00:40 2026] You punch a target for 5 points of damage.\n",
+    );
+    let before = run(sung);
+    let shown = |ing: &Ingest| {
+        ing.class_chain("You", ing.now_ms())
+            .map(|c| c.inferred())
+            .unwrap_or_default()
+    };
+    assert!(
+        shown(&before).iter().any(|c| c == "Bard"),
+        "premise: the aura lines put Bard on the row -- got {:?}",
+        shown(&before)
+    );
+
+    let revoked = run(&format!(
+        // why: the chain closes at the NEXT unit, not mid-fight (P8) --
+        // the zone line is what starts the clean one, which is exactly
+        // the "for multiple zones after" in the report
+        "{sung}[Tue Jul 28 15:00:45 2026] The ability Symphonic Aura: Disabled is not available to your class!\n[Tue Jul 28 15:00:50 2026] You have entered Befallen.\n[Tue Jul 28 15:00:55 2026] You punch a target for 5 points of damage.\n"
+    ));
+    assert!(
+        !shown(&revoked).iter().any(|c| c == "Bard"),
+        "the game said the class is not yours -- got {:?}",
+        shown(&revoked)
+    );
+}

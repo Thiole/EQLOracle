@@ -2510,6 +2510,9 @@ impl Ingest {
                 self.note_class_evidence(ts, "You", pool);
                 self.stance_pool = (!pool.is_empty()).then_some(pool);
             }
+            Action::AbilityNotYours { ability } => {
+                self.note_ability_not_yours(ts, &ability);
+            }
             Action::SkillUp { skill, level } => {
                 self.note_class_evidence(ts, "You", crate::skilldata::classes_for(&skill));
                 // why: log order -- the last "(N)" seen is the current level
@@ -4090,6 +4093,30 @@ impl Ingest {
         self.stance_pool = None;
     }
 
+    /// why: "The ability X is not available to your class!" is the game
+    /// revoking a class, and nothing else in the log ever does. Reported
+    /// real: a Bard stint ended and Bard kept showing for zones after,
+    /// because a confirmed class stays as a prior until something closes
+    /// the chain -- and no line could. Only acted on when the named class
+    /// is one we currently believe: clicking a hotbar button for a class
+    /// you never had says nothing about the trio.
+    fn note_ability_not_yours(&mut self, ts: Millis, ability: &str) {
+        let classes = crate::aadata::classes_for(ability);
+        // why: two classes sharing an AA name revoke neither on their own
+        let [class] = classes.as_slice() else {
+            return;
+        };
+        // why: `inferred`, not `trio` -- the complaint is the class being
+        // SHOWN, and a class still only leading is shown with a "?" all
+        // the same. A /who row is ground truth and outranks this line.
+        if self
+            .class_chain("You", ts)
+            .is_some_and(|c| c.who.is_none() && c.inferred().iter().any(|t| t == class))
+        {
+            self.note_loadout_change(ts);
+        }
+    }
+
     /// why: a first-person Symphonic Aura line (its AA toggle, a song it
     /// blocks, its own pause/resume) -- only a Bard ever sees one; the
     /// visit's Bard evidence when the aura sings silently for you
@@ -5000,6 +5027,12 @@ enum Action {
         skill: String,
         level: u32,
     },
+    /// why: the game refusing an ability BECAUSE of your class -- the one
+    /// negative class signal in the log. Everything else says what you
+    /// are; this says what you are not.
+    AbilityNotYours {
+        ability: String,
+    },
     /// "You begin reciting the <invocation> invocation." -- self only,
     /// same evidence role as `Stance`; see `invocationdata`.
     Invocation {
@@ -5493,6 +5526,9 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         }),
         "state.stance" => Some(Action::Stance {
             stance: str_field("stance")?,
+        }),
+        "class.ability_unavailable" => Some(Action::AbilityNotYours {
+            ability: str_field("name")?,
         }),
         "skill.up" => Some(Action::SkillUp {
             skill: str_field("skill")?,

@@ -11,7 +11,7 @@ and need the service layer described in README.md before external
 exposure. Parameters shown are the real API surface -- Tauri plumbing
 (`State`, `AppHandle`, `Window`) is elided.
 
-123 commands: 26 pure, 97 stateful.
+124 commands: 26 pure, 98 stateful.
 
 ## `get_changelog` (pure)
 why: the Info panel's own "what's new" -- every section, newest first
@@ -517,6 +517,11 @@ why: Combat module's second dropdown, defaults to the whole list -- a rendering 
 
 - args: `zone_visit: Option<i64>`; `offset: Option<usize>`; `limit: Option<usize>`
 - returns: `Vec<EncounterDto>`
+
+## `list_enemies` (stateful)
+
+- args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `confirmed_only: Option<bool>`
+- returns: `Vec<AllyDto>`
 
 ## `list_map_packs` (stateful)
 
