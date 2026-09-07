@@ -467,10 +467,18 @@ fn is_upgrade(active: Option<(&str, u32)>, best_spell: Option<&str>, best_level:
     let Some((name, level)) = active else {
         return false;
     };
-    if best_spell.is_some_and(|b| b.eq_ignore_ascii_case(name)) {
+    let Some(best) = best_spell else {
+        return level < best_level;
+    };
+    if best.eq_ignore_ascii_case(name) {
         return false;
     }
-    level < best_level
+    // why: the same value model the lists are ordered by -- a hand-ranked
+    // line keeps its rank here too. Reported as "weapon proc: Vampiric
+    // Embrace -> Blessing of the Squire": VE (7) lost to the cleric proc
+    // line (16) on raw level, the exact comparison the override exists to
+    // correct. A Shadow Knight wants VE over the cleric line, allies or not.
+    value_of(base_name(name), level) < value_of(base_name(best), best_level)
 }
 
 /// why: level is a decent proxy for power and stays the default -- a
@@ -1354,6 +1362,19 @@ mod tests {
         assert!(!is_upgrade(None, Some("Clarity"), 29));
         // why: what is on you already IS the best rank
         assert!(!is_upgrade(Some(("Clarity", 29)), Some("Clarity"), 29));
+        // why: the override reaches the upgrade judgement -- Vampiric
+        // Embrace (SHD 15, NEC 7) is never "upgraded" to the cleric proc
+        // line, and a line without an override still is
+        assert!(!is_upgrade(
+            Some(("Vampiric Embrace", 7)),
+            Some("Blessing of the Squire"),
+            16
+        ));
+        assert!(is_upgrade(
+            Some(("Blessing of the Page", 8)),
+            Some("Blessing of the Squire"),
+            16
+        ));
     }
 
     /// why: Spencer -- "it should be detecting SHD/etc and be suggesting

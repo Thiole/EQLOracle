@@ -224,6 +224,10 @@ readily a written value is revised.
   Clarity added 2026-09-07, Spencer: "Clarity is better than boon of
   the clear mind in the mana regen line, despite being lower level"
   -- ENC 26 against ENC 42, and level is all the packs rank by.
+  The override also decides "upgrade" on a row (2026-09-07): what is on
+  you and the best party line are compared by value, not raw level, so
+  Vampiric Embrace on a Shadow Knight is never upgraded to the cleric
+  proc line (Blessing of the Page/Squire), allies or not.
 - T8. Whose job a row is (`others`) is judged on the BEST line only, and
   a line YOU can cast is never the group's. Spencer 2026-09-07: "if the
   self can cast it, dont offset it to group to cast, like if enc buff and
