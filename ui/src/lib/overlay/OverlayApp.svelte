@@ -51,6 +51,43 @@
   let ccSize = $state<CcSize>(DEFAULT_CC_SIZE);
   let buffLayout = $state<BuffLayout>(DEFAULT_BUFF_LAYOUT);
   let rootEl: HTMLDivElement | undefined = $state();
+  let stageEl = $state<HTMLDivElement | null>(null);
+  // why: the size the window opened at is the layout's base -- the
+  // Rust side opens every widget at its preset dims, and a preset
+  // change re-bases below when it calls setSize. Nothing persists a
+  // dragged size, so a fresh open is always the base.
+  let baseW = $state(0);
+  let baseH = $state(0);
+  let scale = $state(1);
+  const SCALE_MIN = 0.7;
+  const SCALE_MAX = 2.5;
+  function rescale() {
+    if (!stageEl || !baseW) return;
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    // why: the stage's own unscaled height -- offsetHeight is layout
+    // size, unaffected by the transform
+    const contentH = stageEl.offsetHeight || baseH || 1;
+    const s = Math.min(winW / baseW, winH / contentH);
+    scale = Math.max(SCALE_MIN, Math.min(SCALE_MAX, s));
+  }
+  function rebase(w: number, h: number) {
+    baseW = w;
+    baseH = h;
+    rescale();
+  }
+  $effect(() => {
+    if (!stageEl) return;
+    if (!baseW) rebase(window.innerWidth, window.innerHeight);
+    const ro = new ResizeObserver(() => rescale());
+    ro.observe(stageEl);
+    window.addEventListener('resize', rescale);
+    rescale();
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', rescale);
+    };
+  });
 
   async function refreshPrefs() {
     const p = await api.getPreferences();
@@ -186,16 +223,19 @@
       if (widget === 'group_buffs') {
         buffLayout = asBuffLayout(e.payload[1]);
         const { w, h } = BUFF_LAYOUT_WINDOW_DIMS[buffLayout];
+        rebase(w, h);
         void getCurrentWindow().setSize(new LogicalSize(w, h));
         return;
       }
       if (widget === 'dps_meter') {
         const { w, h } = DPS_LAYOUT_WINDOW_DIMS[asDpsLayout(e.payload[1])];
+        rebase(w, h);
         void getCurrentWindow().setSize(new LogicalSize(w, h));
         return;
       }
       ccSize = asCcSize(e.payload[1]);
       const { w, h } = CC_SIZE_WINDOW_DIMS[ccSize];
+      rebase(w, h);
       void getCurrentWindow().setSize(new LogicalSize(w, h));
     });
     // why: "where did that window go" -- see commands::locate_overlay's
@@ -236,7 +276,22 @@
      move the window (a resize-border drag does). set_overlay_locked
      switches to real decorations instead while unlocked, so dragging
      the actual title bar (every window manager supports that) repositions it. -->
-<div bind:this={rootEl} class="min-h-screen w-screen p-2">
+<!-- why: dynamic scaling -- "instead of having static sizes ... it just
+     scales the current layout to the size (with minimums) ... never show
+     scroll bars". The widget renders once at its base width (the size
+     the window opened at, or the preset it was last resized to) and the
+     stage is transform-scaled to fit whatever the window is now: the
+     smaller of width-fit and height-fit, so more rows shrink in place
+     rather than pushing anything off, and a dragged window fits exactly.
+     Clamped to a floor (a 10px row never goes under 7px) and a ceiling;
+     past the floor the stage is clipped, never scrolled. transform, not
+     zoom: WebKitGTK is the floor. -->
+<div bind:this={rootEl} class="h-screen w-screen overflow-hidden">
+  <div
+    bind:this={stageEl}
+    class="p-2"
+    style="width: {baseW}px; transform: scale({scale}); transform-origin: top left;"
+  >
   {#if widget === 'dps_meter'}
     <!-- why: the landing-average check lives in the Skill Tracker only --
          "you're still showing the x% of usual in dps meter. it shouldnt be
@@ -265,9 +320,17 @@
   {:else if widget === 'cc_tracker'}
     <CCTrackerWidget {status} {opacity} {overallOpacity} size={ccSize} />
   {/if}
+  </div>
 </div>
 
 <style>
+  /* why: the one place a scrollbar could still come from -- the document
+     itself. The stage is clipped by its parent; nothing scrolls. */
+  :global(html),
+  :global(body) {
+    overflow: hidden;
+  }
+
   /* why: "make it very visible" -- a full-color invert, not a border or
      a tint, so it reads at a glance regardless of the widget's own
      theme/opacity. Same hard on/off house style as every other blink in

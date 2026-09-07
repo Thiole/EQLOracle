@@ -123,11 +123,13 @@
           {#if r.active && !r.upgrade}
             <span class="truncate text-foreground/60" title="on you">{r.active}</span>
           {:else if r.active}
-            <!-- why: up, but a better rank is castable -- name it -->
+            <!-- why: up, but a better rank is castable -- name the better
+                 line only. No arrow: "overlay should never show arrows";
+                 what is on you is in the title, the line to get is the text -->
             <span
               class="truncate text-caution"
               title={`${r.active} is on you; the party can cast ${r.lines[0]?.best_spell ?? 'better'} (${r.lines[0]?.casters.join(', ') ?? ''})`}
-            >{r.active} &rarr; {r.lines[0]?.line ?? ''}</span>
+            >{r.lines[0]?.line ?? ''}</span>
           {:else}
             <!-- why: name the lines assumed missing, not just the kind --
                  ranks of a line are one entry, best rank first -->
