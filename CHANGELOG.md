@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-06 (0.18.0)
+
+### Help
+
+- Every page and every section carries a "?" instead of a paragraph. The explanation opens on click and closes on click-outside or Escape, so a page shows controls rather than prose. Settings -> Overlay went from 25 explanatory paragraphs against 12 controls down to 13, twelve of which were the same two sentences reworded once per widget; six cards now fit where three did. Settings went from 14 to 2. What stays on the page is state, not explanation: "Needs the floating overlay", "No estimate yet", counts and warnings.
+
+### Combat
+
+- An ally's charm no longer owns that mob name forever. Pet ownership is keyed by the mob's NAME and never expired, so one ally charming "An abhorrent" in August credited them with EVERY abhorrent anyone fought after that, across zones and across months. Measured on a real log: a player last seen 29 days earlier appeared in tonight's numbers with 2,185 damage, and 67 of the 89 fights holding a row for them were not theirs. A summoned pet's name is derived from its owner and is stable, and it follows you through a zone line, so those are untouched; a charmed one borrows an ordinary mob name and cannot cross a zone line, so its ownership no longer does either.
+
 ## 2026-09-06 (0.17.0)
 
 ### Maps and GPS
