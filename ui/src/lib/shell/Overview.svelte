@@ -8,6 +8,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import { Button } from '$lib/components/ui/button';
   import { api, type ZoneContextDto, type MobDto, type GroupBuffsDto } from '$lib/tauri/api';
+  import { listen } from '$lib/tauri/invoke';
   import BellOffIcon from '@lucide/svelte/icons/bell-off';
   import { toggleMutedBuffLine } from '$lib/stores/settings';
   import { activeModule } from '$lib/stores/shell';
@@ -19,6 +20,20 @@
   $effect(() => {
     void loadCharacterModule();
     void refreshSession();
+  });
+
+  // why: reported -- "if i buff it doesn't load until i reload the tab".
+  // Overview only ever loaded on mount and on the one-shot parse-settled,
+  // so a landing page about "what's going on right now" sat on whatever
+  // moment it opened at. The catalog (listMobs) stays off this: it is a
+  // catalog, not live state.
+  $effect(() => {
+    const un = listen('parse-tick', () => {
+      loadGroupBuffs();
+      void refreshSession();
+      api.getZoneContext().then((z) => (zoneCtx = z));
+    });
+    return () => void un.then((f) => f());
   });
 
   let zoneCtx = $state<ZoneContextDto | null>(null);
