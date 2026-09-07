@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-07 (0.20.0)
+
+### Class detection
+
+- A Monk is detected. Dragon Punch, Eagle Strike, Tiger Claw and Tail Rake all print "strike", and Mend is Monk-only -- neither reached detection. Skill evidence only ever fired on skill-up lines, "strike" mapped to nothing, and the first-person Mend line was filed as noise, so a Monk with maxed skills produced zero Monk evidence and an ally Monk never any. Verified on a real log before mapping "strike": 16 of 16 striker-days with a same-day /who row had MNK, none without. On the tailed log the boxed Monk went from BRD/RNG/ROG (no Monk configuration anywhere) to BRD/MNK/ROG.
+- The game revoking a class takes it off you. "The ability X is not available to your class!" was unparsed, and it is the only line in the log that ever says a class is NOT yours; a confirmed class stayed as a prior with nothing able to close the chain. Mapped through the AA catalog and acted on only when that class is currently shown; effective from the next zone.
+
+### Group Buff Tracker
+
+- A buff you can cast is yours. A line whose best rank you can cast is never handed to the group, even when a groupmate could cast it too. The minimal overlay layout carries the counts: "Buffs: Warning (2 self, 1 group)" / "Buffs: Others missing (1 group)". Self and group partition the missing rows.
+- Clarity outranks Boon of the Clear Mind in the mana regen line despite its lower level.
+
+### Overview
+
+- The landing page follows the log. It loaded once on mount and once when the backfill settled, then sat on that moment; buffs, session rates and zone context now refresh on every parse tick.
+
 ## 2026-09-07 (0.19.0)
 
 ### Combat
