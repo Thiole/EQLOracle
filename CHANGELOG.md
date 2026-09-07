@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-07 (0.22.0)
+
+### Group Buff Tracker
+
+- The game's own spell table decides what a buff is and what stacks. `spells_us.txt` column 173 is the effect list, and its rule is the one the "did not take hold (Blocked by X)" line enforces: same slot and same SPA conflict, SPA 148/149 block or evict, anything else stacks. Validated on a real log: 1,814 of 1,814 blocks explained. A buff's kind now comes from the file's SPA -- it corrects and fills, it never reorders -- and the wiki's slot prose only answers when there is no file. 64 buffs the prose could not classify now have a kind; the cleric Blessing of the Page/Squire/Knight/Lord Commander line is a new "heal on hit" kind (SPA 121) that stacks with Vampiric Embrace's lifetap proc (SPA 85), so a Shadow Knight is told to keep both.
+- A short-term buff is not a group buff. The file's duration at level 50 must be five minutes or more: Shadow Compact (a 4-tick HP transfer), bard songs, mez, roots and the short strength line are out; Berserker Spirit, Rampage, Avatar and Impart Strength stay. 29 spells dropped, all of those.
+- Innate lines fold by the game's stacking rule, not by name. Vampiric Embrace and Scream of Death are one line with Scream of Death as the better rank; Grim Aura and Dark Temptation, which stack, stay two. 14 innates became 9 on a real log.
+
+### Fixed
+
+- The benchmark probe's wall-clock reads carry the clock-exempt marker the verify gate requires.
+
 ## 2026-09-07 (0.21.0)
 
 ### Class detection
