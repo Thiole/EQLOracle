@@ -423,12 +423,10 @@ fn a_cut_chain_still_answers_for_the_fights_before_the_cut() {
         "[Tue Jul 28 15:10:00 2026] Kilja hits a skeleton for 5 points of damage.\n",
         "[Tue Jul 28 15:10:01 2026] You hit a skeleton for 5 points of damage.\n",
     ));
-    let rat_fight = eqlp_app::combat::list_encounters(&ing, None, 0, 50)
-        .into_iter()
-        .find(|e| e.target == "a rat")
-        .expect("the rat fight");
+    // why: the rat fight is 9 minutes and a second before the last line
+    let rat_fight_ms = ing.now_ms() - 9 * 60_000 - 1_000;
     let at = ing
-        .class_chain("Kilja", rat_fight.start_ms)
+        .class_chain("Kilja", rat_fight_ms)
         .expect("the old chain covers the rat fight");
     assert!(
         at.inferred().iter().any(|c| c == "Enchanter"),

@@ -182,7 +182,7 @@ fn a_swap_signal_closes_the_chain_immediately() {
     for u in 0..2 {
         cast(&mut d, u, &["Wizard"]);
     }
-    d.close_chain(1, Some(2));
+    d.close_chain(1, Some(2), ChainEnd::Swap);
     assert!(trio(&d, 2).is_empty());
     assert_eq!(trio(&d, 1), strs(&["Wizard"]));
     let chains = d.chains(1);
@@ -277,7 +277,7 @@ fn a_ding_rules_out_trios_that_are_already_past_it() {
     }
     d.observe_who(1, Some(3), 50, strs(&["Wizard", "Enchanter", "Magician"]));
     // a fresh arc: the same two casters plus a class that never dinged
-    d.close_chain(1, Some(4));
+    d.close_chain(1, Some(4), ChainEnd::Swap);
     for u in 4..7 {
         cast(&mut d, u, &["Wizard"]);
         cast(&mut d, u, &["Enchanter"]);
@@ -333,7 +333,7 @@ fn a_frozen_closed_chain_reads_the_same_as_before() {
         cast(&mut d, u, &["Magician"]);
     }
     d.observe_ding(1, Some(2), 50);
-    d.close_chain(1, Some(3));
+    d.close_chain(1, Some(3), ChainEnd::Swap);
     cast(&mut d, 3, &["Druid"]);
     let before = d.chain_at(1, Some(1)).expect("closed chain");
     let (cfg_before, _) = d.visits_by_resolved_configuration(1);
@@ -366,7 +366,7 @@ fn a_class_level_is_a_rolling_record_and_a_who_row_raises_every_class_in_it() {
     }
     d.observe_ding(1, Some(2), 50);
     // a swap, then a trio whose third class never dings again
-    d.close_chain(1, Some(3));
+    d.close_chain(1, Some(3), ChainEnd::Swap);
     for u in 3..6 {
         cast(&mut d, u, &["Wizard"]);
         cast(&mut d, u, &["Enchanter"]);

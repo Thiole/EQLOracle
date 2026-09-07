@@ -246,7 +246,7 @@ export interface AllyDto {
   class_prior: string[];
   class_candidates: string[];
   class_conflicts: number;
-  class_chain_end: '' | '??' | 'swap';
+  class_chain_end: '' | '??' | 'swap' | 'presence';
 }
 
 /** why: one source+ability line of a death recap -- see deathrecap.rs */

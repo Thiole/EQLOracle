@@ -30,7 +30,10 @@ fn main() {
     ing.mark_live();
     ing.tick(0);
     let you = ing.store.names.get("You").map(|s| s.0);
-    let (mut closed, mut empty, mut swap, mut contra) = (0, 0, 0, 0);
+    let (mut closed, mut empty, mut swap, mut contra, mut presence) = (0, 0, 0, 0, 0);
+    // why: the unit just before the cut -- a fight after the last class
+    // line must still read the chain
+    let (mut gap, mut lost_at_edge, mut leaked) = (0, 0, 0);
     let mut samples: Vec<String> = Vec::new();
     for e in ing.classes.known_entities() {
         if Some(e) == you {
@@ -43,11 +46,27 @@ fn main() {
             match end {
                 eqlp_session::classdetect::ChainEnd::Swap => swap += 1,
                 eqlp_session::classdetect::ChainEnd::Contradiction => contra += 1,
-                eqlp_session::classdetect::ChainEnd::Presence => swap += 1,
+                eqlp_session::classdetect::ChainEnd::Presence => presence += 1,
             }
             // why: ask the way the ally table does -- at a unit the chain covered
             let at = ing.classes.chain_at(e, c.first);
             let shown = at.as_ref().map(|v| v.inferred()).unwrap_or_default();
+            if c.last > c.first {
+                gap += 1;
+                let edge = ing
+                    .classes
+                    .chain_at(e, c.last)
+                    .map(|v| v.inferred())
+                    .unwrap_or_default();
+                if edge != shown {
+                    lost_at_edge += 1;
+                }
+                // why: the unit after the cut must not read the old chain
+                let after = ing.classes.chain_at(e, Some(c.last.unwrap_or(0) + 1));
+                if after.as_ref().is_some_and(|v| v.first == c.first) {
+                    leaked += 1;
+                }
+            }
             if shown.is_empty() {
                 empty += 1;
                 if samples.len() < 8 {
@@ -59,7 +78,8 @@ fn main() {
             }
         }
     }
-    println!("closed ally chains: {closed} (swap {swap}, contradiction {contra}); answering NOTHING at their own first unit: {empty}");
+    println!("closed ally chains: {closed} (presence {presence}, swap {swap}, contradiction {contra}); concluding nothing at all: {empty}");
+    println!("chains spanning >1 unit: {gap}; reading differently at the unit before the cut: {lost_at_edge}; still answering one unit past the cut: {leaked}");
     for s in samples {
         println!("  {s}");
     }
