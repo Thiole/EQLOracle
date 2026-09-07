@@ -270,6 +270,21 @@ readily a written value is revised.
   is the case the name key was originally written for. A lower rank on
   you under its old name still counts as on. Without a file nothing
   folds. Real log: 14 innates -> 9.
+- T13. Ranking within a kind, and "upgrade", use the game's own magnitude
+  when there is a file (2026-09-07): the largest beneficial slot of the
+  kind at level 50, off `spells_us.txt` column 173 (`slot|SPA|base1|
+  base2|formula|max`, classic formula table, `SlotEffect::magnitude`).
+  Shield of Words is 105 AC-points against Shadow's 65 (level said 45
+  against 48); Clarity is 9 mana a tick against Boon's 7 (level said 26
+  against 42). Checked against every block in a real log where both
+  sides share a slot: 1,627 consistent, 83 not (damage-shield and slow
+  lines under formula 109). A hand-ranked override (T6) still wins;
+  without a file the level rule (T5) and override stand as before.
+- T14. A landing text shared by a line resolves to the rank a caster was
+  seen casting within 12 s; otherwise every candidate stays. "A cool
+  breeze slips through your mind" is Clarity, Clarity II and Boon, and
+  keeping all three read Boon as on you and Clarity as its upgrade while
+  Clarity was what had landed.
 - T7. A muted line (`Preferences::muted_buff_lines`, set in Settings ->
   Overlay -> Group Buffs) leaves the tracker entirely -- rows, innates,
   maybes and the T4 verdict alike. Muting is per LINE, rank-stripped, so

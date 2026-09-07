@@ -600,6 +600,50 @@ const VALUE_OVERRIDE: &[(&str, u32)] = &[
     ("Clarity", 60),
 ];
 
+/// why: the file's own number for what a spell does for a KIND -- the
+/// largest of its beneficial slots that map to that kind, at the cap.
+/// Shield of Words 105 against Shadow 65; Clarity 9 against Boon 7. None
+/// without a file, or for a formula the table does not model.
+fn magnitude_for(
+    file: Option<&crate::spelltimers::SpellFile>,
+    spell: &str,
+    kind: BuffKind,
+) -> Option<f64> {
+    let entry = crate::spelltimers::entry_of(file?, spell)?;
+    entry
+        .slots
+        .iter()
+        .filter(|s| !s.is_spacer() && s.is_beneficial() && kind_of_spa(s.spa) == Some(kind))
+        .filter_map(|s| s.magnitude(MAINTAINED_AT_LEVEL))
+        .map(f64::abs)
+        .reduce(f64::max)
+}
+
+/// why: one number to rank and to judge an upgrade by -- the hand-ranked
+/// override when the line has one, else the game's own magnitude for
+/// this kind, else the level requirement the wiki gives. Reported real:
+/// Shadow (ENC 48) ranked above Shield of Words (CLR 45) on level while
+/// the file says 65 against 105; Boon (42) read as an upgrade over
+/// Clarity (26) while the file says 7 against 9.
+fn line_value(
+    file: Option<&crate::spelltimers::SpellFile>,
+    kind: BuffKind,
+    line: &str,
+    spell: &str,
+    level: u32,
+) -> f64 {
+    if let Some((_, v)) = VALUE_OVERRIDE
+        .iter()
+        .find(|(n, _)| n.eq_ignore_ascii_case(line))
+    {
+        return f64::from(*v);
+    }
+    // why: magnitudes and levels are different scales; a magnitude wins
+    // whenever both sides have one (the caller only mixes within a kind,
+    // where the file either covers the line or does not)
+    magnitude_for(file, spell, kind).unwrap_or(f64::from(level))
+}
+
 /// why: the sort key for "which of these is better" -- the override when
 /// a line has one, its level requirement otherwise
 fn value_of(line: &str, level: u32) -> u32 {
@@ -979,9 +1023,11 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
                 .collect();
             // why: same value model the innates use -- the level
             // requirement unless the line carries an override
+            let file = ing.spell_file();
             lines.sort_by(|a, b| {
-                value_of(&b.1.line, b.0)
-                    .cmp(&value_of(&a.1.line, a.0))
+                line_value(file, kind, &b.1.line, &b.1.best_spell, b.0)
+                    .partial_cmp(&line_value(file, kind, &a.1.line, &a.1.best_spell, a.0))
+                    .unwrap_or(std::cmp::Ordering::Equal)
                     .then_with(|| a.1.line.cmp(&b.1.line))
             });
             let best_level = lines.first().map(|(r, _)| *r).unwrap_or(0);
@@ -1000,11 +1046,21 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
             // Comparing the names settles it without disturbing either
             // number, both of which are right for what they are used for
             // elsewhere -- castability, and the level shown on the row.
-            let upgrade = is_upgrade(
-                on_you.as_ref().map(|(n, l)| (n.as_str(), *l)),
-                lines.first().map(|(_, l)| l.best_spell.as_str()),
-                best_level,
-            );
+            // why: with a file, the game's own magnitudes decide; without
+            // one, the level-and-override rule the tests pin
+            let upgrade = match (file, &on_you, lines.first()) {
+                (Some(_), Some((name, lvl)), Some((_, best))) => {
+                    !best.best_spell.eq_ignore_ascii_case(name)
+                        && line_value(file, kind, base_name(name), name, *lvl)
+                            < line_value(file, kind, &best.line, &best.best_spell, best_level)
+                }
+                (None, _, _) => is_upgrade(
+                    on_you.as_ref().map(|(n, l)| (n.as_str(), *l)),
+                    lines.first().map(|(_, l)| l.best_spell.as_str()),
+                    best_level,
+                ),
+                _ => false,
+            };
             BuffRowDto {
                 kind,
                 label: kind.label(),

@@ -324,3 +324,32 @@ fn a_strike_a_frenzy_and_a_mend_each_put_their_one_class_on_the_row() {
         shown(&mender, "You")
     );
 }
+
+/// why: "Clarity needs to replace Boon of the clear mind, when clarity
+/// is already active" -- one landing text for the whole line, and the
+/// cast line a few seconds earlier says which rank it was
+#[test]
+fn a_shared_landing_text_resolves_to_the_rank_a_groupmate_just_cast() {
+    let ing = run(concat!(
+        "[Mon Sep 07 15:11:38 2026] Kilja begins casting Clarity.\n",
+        "[Mon Sep 07 15:11:41 2026] A cool breeze slips through your mind.\n",
+    ));
+    let on_you: Vec<&String> = ing.self_buffs.keys().collect();
+    assert!(
+        on_you.iter().any(|n| n.as_str() == "Clarity"),
+        "Clarity landed -- got {on_you:?}"
+    );
+    assert!(
+        !on_you
+            .iter()
+            .any(|n| n.as_str() == "Boon of the Clear Mind"),
+        "Boon was never cast -- got {on_you:?}"
+    );
+    // why: with no cast line to go on, every candidate stays -- the text
+    // alone cannot tell them apart
+    let blind = run("[Mon Sep 07 15:11:41 2026] A cool breeze slips through your mind.\n");
+    assert!(
+        blind.self_buffs.contains_key("Clarity")
+            && blind.self_buffs.contains_key("Boon of the Clear Mind")
+    );
+}

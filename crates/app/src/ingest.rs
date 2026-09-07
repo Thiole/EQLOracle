@@ -858,6 +858,11 @@ const RECENT_CAST_RETENTION_MS: Millis = 35_000;
 /// why: real per-entity "who's recently been casting" log, all entities
 /// (not just "You" -- unlike classdetect's own pet exclusion, a pet's
 /// real cast is real information here, not misleading class evidence)
+/// why: a cast line to its landing on you -- the longest buff cast is a
+/// few seconds, plus travel; a caster named longer ago than this did not
+/// cause this landing
+const LANDING_RESOLVE_MS: Millis = 12_000;
+
 #[derive(Debug, Clone, Default)]
 struct RecentCasts {
     entries: Vec<RecentCast>,
@@ -4221,7 +4226,29 @@ impl Ingest {
                     .observe_cast(you, self.units.current(), &*BARD_ONLY);
             }
         }
-        for name in crate::spelltext::landing_candidates(text) {
+        // why: one landing text can belong to a whole line -- "A cool
+        // breeze slips through your mind." is Clarity, Clarity II and Boon
+        // of the Clear Mind -- and keeping every candidate read Boon as
+        // the one on you (highest level) and Clarity as its upgrade while
+        // Clarity was what just landed. The log said who cast what a few
+        // seconds earlier; when it names exactly one candidate, only that
+        // one landed. Reported real: "Clarity needs to replace Boon of
+        // the clear mind, when clarity is already active".
+        let candidates = crate::spelltext::landing_candidates(text);
+        let named: Vec<&&str> = candidates
+            .iter()
+            .filter(|n| {
+                self.recent_casts.entries.iter().rev().any(|e| {
+                    ts.saturating_sub(e.ts) <= LANDING_RESOLVE_MS && e.spell.eq_ignore_ascii_case(n)
+                })
+            })
+            .collect();
+        let resolved: Vec<&str> = if named.len() == 1 {
+            vec![*named[0]]
+        } else {
+            candidates.to_vec()
+        };
+        for name in resolved {
             let Some(spell) = crate::spelldata::spell_by_name(name) else {
                 continue;
             };
@@ -4229,7 +4256,7 @@ impl Ingest {
                 || spell.target_type.as_deref() == Some("Self")
             {
                 let expires = crate::groupbuffs::expiry_for(spell, ts);
-                self.self_buffs.insert((*name).to_string(), (ts, expires));
+                self.self_buffs.insert(name.to_string(), (ts, expires));
             }
         }
     }

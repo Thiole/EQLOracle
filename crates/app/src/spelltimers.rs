@@ -49,16 +49,19 @@ const FILE_CLASSES: [&str; 16] = [
 /// why: the file's "no" value for a class column
 const NOT_CASTABLE: u8 = 255;
 
-/// why: one effect slot off the file. SPA is the effect type (15 mana
-/// regen, 11 haste, 1 AC, 69 max HP, 85 add proc, 121 heal on hit ...).
+/// why: one effect slot off the file, `slot|SPA|base1|base2|formula|max`.
+/// SPA is the effect type (15 mana regen, 11 haste, 1 AC, 69 max HP, 85
+/// add proc, 121 heal on hit ...). Field order verified against the
+/// log's own outcomes: read the other way round, 369 of the blocks it
+/// reports contradict the values; this way round, 83 of 1,710.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SlotEffect {
     pub slot: u8,
     pub spa: u16,
     pub base1: f64,
     pub base2: f64,
-    pub max: f64,
     pub formula: u32,
+    pub max: f64,
 }
 
 impl SlotEffect {
@@ -66,7 +69,47 @@ impl SlotEffect {
     /// chosen slot number -- 15,740 spells use it. A real CHA buff is SPA
     /// 10 with a nonzero base, and does conflict.
     pub fn is_spacer(&self) -> bool {
-        self.spa == 10 && self.base1 == 0.0 && self.base2 == 0.0 && self.formula == 0
+        self.spa == 10 && self.base1 == 0.0 && self.base2 == 0.0
+    }
+
+    /// why: the effect's value at a caster level -- the number the game
+    /// compares when two buffs meet in a slot, and the honest ranking
+    /// within a kind (Shield of Words 105 AC-points against Shadow 65,
+    /// Clarity 9 mana a tick against Boon of the Clear Mind 7). The
+    /// classic formula table, capped at `max`; None for a formula this
+    /// table does not know, so a caller falls back rather than guesses.
+    /// Checked against every "did not take hold (Blocked by X)" in a
+    /// real log where both sides share a slot: 1,627 consistent, 83 not,
+    /// the 83 all damage-shield and slow lines under formula 109.
+    pub fn magnitude(&self, level: u32) -> Option<f64> {
+        let (b, l) = (self.base1, f64::from(level));
+        let step = |n: f64| b + (l / n).floor();
+        let ramp = |k: f64, from: f64| b + k * (l - from).max(0.0);
+        let r = match self.formula {
+            0 | 100 | 123 | 128 | 130 => b,
+            101 => step(2.0),
+            102 => b + l,
+            103 => b + l * 2.0,
+            104 => b + l * 3.0,
+            105 => b + l * 4.0,
+            107 => step(2.0),
+            108 => step(3.0),
+            109 | 122 => step(4.0),
+            110 => step(6.0),
+            111 => ramp(6.0, 16.0),
+            112 => ramp(8.0, 24.0),
+            113 => ramp(10.0, 34.0),
+            114 => ramp(15.0, 44.0),
+            119 => step(8.0),
+            121 => step(3.0),
+            1..=99 => b + l * f64::from(self.formula),
+            _ => return None,
+        };
+        Some(if self.max > 0.0 && r.abs() > self.max {
+            self.max.copysign(r)
+        } else {
+            r
+        })
     }
 
     /// why: the sign is the difference between a buff and its debuff --
@@ -227,8 +270,8 @@ fn parse_slots(text: &str) -> Vec<SlotEffect> {
                 spa: f[1].parse().ok()?,
                 base1: f[2].parse().unwrap_or(0.0),
                 base2: f[3].parse().unwrap_or(0.0),
-                max: f[4].parse().unwrap_or(0.0),
-                formula: f[5].parse().unwrap_or(0),
+                formula: f[4].parse::<f64>().unwrap_or(0.0) as u32,
+                max: f[5].parse().unwrap_or(0.0),
             })
         })
         .collect()
@@ -366,6 +409,35 @@ mod tests {
             "spacers never conflict"
         );
         assert!(e("Clarity").has_duration && e("Clarity").slots.len() == 2);
+    }
+
+    /// why: the values the game compares, off the real slot strings --
+    /// what Spencer reported by eye ("Shield of Words is 3 AC better
+    /// than Shadow", "Clarity is better than boon") and the log confirms
+    #[test]
+    fn magnitude_reads_the_files_own_values_at_the_cap() {
+        let slot = |s: &str| {
+            parse_slots(s)
+                .into_iter()
+                .find(|x| !x.is_spacer())
+                .expect("a real slot")
+        };
+        let at50 = |s: &str| slot(s).magnitude(50).expect("modelled");
+        assert_eq!(at50("4|1|105|0|100|0"), 105.0, "Shield of Words: flat");
+        assert_eq!(at50("4|1|65|0|100|65"), 65.0, "Shadow");
+        assert_eq!(at50("4|1|11|0|102|55"), 55.0, "Shade: base+level, capped");
+        assert_eq!(at50("2|15|1|0|109|9"), 9.0, "Clarity");
+        assert_eq!(
+            at50("2|15|1|0|119|9"),
+            7.0,
+            "Boon of the Clear Mind: level/8, under the cap"
+        );
+        assert_eq!(at50("2|15|1|0|109|6"), 6.0, "Breeze");
+        assert!(parse_slots("1|10|0|0|100|0").first().unwrap().is_spacer());
+        assert!(
+            !parse_slots("1|10|40|0|100|40").first().unwrap().is_spacer(),
+            "a real CHA buff"
+        );
     }
 
     /// why: the file's own numbers for the durations that decide what
