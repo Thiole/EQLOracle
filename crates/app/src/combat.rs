@@ -736,6 +736,15 @@ pub fn summarize(
 
 // ---------------------------------------------------------------- allies
 
+/// why: one charmed pet folded into an ally's row -- kept as its own
+/// part so expanding the ally can show whose damage came from where
+#[derive(Debug, Clone, Serialize)]
+pub struct AllyPetDto {
+    pub name: String,
+    pub total: u64,
+    pub hits: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AllyDto {
     pub name: String,
@@ -750,6 +759,11 @@ pub struct AllyDto {
     /// why: None (not 0%) when this ally never threw a melee-avoidable
     /// swing -- a pure caster has nothing to report here, distinct from
     /// "landed everything"
+    /// why: charmed pets folded into this row. The total above already
+    /// includes them; these say which part came from which pet, so
+    /// expanding an ally shows "you 61.3k + an abhorrent 2.2k" rather
+    /// than one number you cannot break down. Empty for almost everyone.
+    pub pets: Vec<AllyPetDto>,
     pub hit_pct: Option<f64>,
     /// why: None when this ally never cast a resistable spell, same
     /// reasoning as hit_pct
@@ -826,22 +840,42 @@ pub fn list_allies(
 
     let now = ing.now_ms();
     let mut acc: HashMap<Sym, (u64, u64, u64)> = HashMap::new();
+    // why: a charmed pet's damage FOLDS into its owner's row, but is kept
+    // as its own part so expanding the owner can show it. The store keeps
+    // the pet a separate entity -- that is what stops two charmers of the
+    // same mob name collapsing into one -- and only the presentation
+    // rolls it up.
+    let mut parts: HashMap<String, HashMap<String, (u64, u64)>> = HashMap::new();
 
     for &id in &ids {
         if ing.store.encounter(id).is_none() {
             continue;
         }
         for (sym, dmg, hits, crits) in by_actor(&ing.store, &Filter::encounter(id).damage()) {
-            let name = ing.store.name(sym);
+            let name = ing.store.name(sym).to_string();
             // why: one composition of kind/charm/group belief -- see
             // Ingest::allegiance_at for why this isn't effective_kind+of
-            if ing.allegiance_at(name, now).is_enemy() {
+            if ing.allegiance_at(&name, now).is_enemy() {
                 continue;
             }
-            let e = acc.entry(sym).or_insert((0, 0, 0));
+            let owner = ing.pet_of(&name).map(str::to_string);
+            let into = match owner.as_deref().and_then(|o| ing.store.names.get(o)) {
+                Some(osym) => osym,
+                None => sym,
+            };
+            let e = acc.entry(into).or_insert((0, 0, 0));
             e.0 += dmg;
             e.1 += hits;
             e.2 += crits;
+            if let Some(o) = owner {
+                let p = parts
+                    .entry(o)
+                    .or_default()
+                    .entry(name.clone())
+                    .or_insert((0, 0));
+                p.0 += dmg;
+                p.1 += hits;
+            }
         }
     }
 
@@ -1003,6 +1037,23 @@ pub fn list_allies(
                 None => "",
             };
             AllyDto {
+                // why: biggest part first, so expanding reads top-down
+                pets: {
+                    let mut v: Vec<AllyPetDto> = parts
+                        .get(&name)
+                        .map(|m| {
+                            m.iter()
+                                .map(|(n, (total, hits))| AllyPetDto {
+                                    name: n.clone(),
+                                    total: *total,
+                                    hits: *hits,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    v.sort_by_key(|p| (std::cmp::Reverse(p.total), p.name.clone()));
+                    v
+                },
                 classes,
                 class_confirmed,
                 class_source,
@@ -1540,17 +1591,22 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> 
                 // ally-on-ally or enemy-on-enemy -- not meter damage
                 continue;
             };
-            // why: kind is read off the REAL name -- the label below is
-            // for the row, and nothing in the model would resolve it
+            // why: kind is read off the REAL name -- the fold below is
+            // presentation, and nothing in the model would resolve a
+            // folded label
             let kind = ing.effective_kind(&actor_name, ts);
-            // why: a charmed pet keeps its own bucket, and the row says
-            // whose it is -- "an abhorrent (Sidhe's pet)". Two people
-            // charming abhorrents stay two rows instead of one player
-            // collecting every abhorrent in the room.
-            let actor_name = match ing.pet_of(&actor_name) {
-                Some(owner) => format!("{actor_name} ({owner}'s pet)"),
-                None => actor_name,
-            };
+            // why: a charmed pet's damage counts for its owner, but the
+            // FOLD happens here at aggregation rather than by rewriting
+            // the pet's identity in the store. That distinction is the
+            // whole fix: the store keeps them separate, so two people
+            // charming abhorrents stay two entities and neither collects
+            // the room -- while the row you read still totals yours.
+            // The overlay has no expansion, so it folds and stops there;
+            // the Combat tab carries the parts (see list_allies).
+            let actor_name = ing
+                .pet_of(&actor_name)
+                .map(str::to_string)
+                .unwrap_or(actor_name);
             let e = acc.entry(actor_name).or_insert(Acc {
                 total: 0,
                 first_ts: ts,
@@ -2673,6 +2729,36 @@ mod live_meter_window_tests {
         let lines = framed_lines(text.as_bytes());
         backfill_lines(&mut ing, &engine, &lines, 1);
         ing
+    }
+
+    /// why: folded but separated -- a charmed pet's damage counts for its
+    /// owner's row, and the row can still say which part was the pet.
+    /// The FOLD is presentation only: the store keeps the pet its own
+    /// entity, which is what stops two people charming the same kind of
+    /// mob collapsing into whichever of them was recorded last.
+    #[test]
+    fn a_charmed_pets_damage_folds_into_its_owner_but_stays_a_part() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:00 2026] Kaeus begins casting Allure.\n\
+             [Tue Jul 28 15:01:01 2026] an abhorrent has been charmed.\n\
+             [Tue Jul 28 15:01:02 2026] Kaeus hits a gnoll for 50 points of damage.\n\
+             [Tue Jul 28 15:01:05 2026] an abhorrent hits a gnoll for 40 points of damage.\n\
+             [Tue Jul 28 15:01:06 2026] You hit a gnoll for 10 points of fire damage by Burst of Flame.\n",
+        );
+        let allies = list_allies(&ing, None, None, false);
+        let kaeus = allies
+            .iter()
+            .find(|a| a.name == "Kaeus")
+            .expect("the charmer's row");
+        assert_eq!(kaeus.total, 90, "50 of his own plus the pet's 40");
+        assert_eq!(kaeus.pets.len(), 1, "and the part is kept");
+        assert_eq!(kaeus.pets[0].name, "an abhorrent");
+        assert_eq!(kaeus.pets[0].total, 40);
+        assert!(
+            !allies.iter().any(|a| a.name == "an abhorrent"),
+            "folded, so not also a row of its own"
+        );
     }
 
     /// why: the census counts how many entities share a NAME in one

@@ -185,6 +185,14 @@ export interface CombatSummaryDto {
   enemy_heal: number;
 }
 
+/** why: one charmed pet folded into an ally's row -- the ally's total
+ * already includes it; this says which part came from which pet. */
+export interface AllyPetDto {
+  name: string;
+  total: number;
+  hits: number;
+}
+
 export interface AllyDto {
   name: string;
   is_player: boolean;
@@ -196,6 +204,9 @@ export interface AllyDto {
   dps: number;
   pct: number;
   /** null when this ally never threw a melee-avoidable swing. */
+  /** why: charmed pets folded into this row -- the total already
+   * includes them, these break it down. Empty for almost everyone. */
+  pets: AllyPetDto[];
   hit_pct: number | null;
   /** null when this ally never cast a resistable spell. */
   resist_pct: number | null;

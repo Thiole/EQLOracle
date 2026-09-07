@@ -19,18 +19,28 @@
   // have to wrap a sentence in a snippet to hide it.
   let {
     label = 'What is this?',
-    align = 'right',
     text,
     children,
   }: {
     label?: string;
-    align?: 'right' | 'left';
     text?: string;
     children?: Snippet;
   } = $props();
 
   let open = $state(false);
   let root: HTMLSpanElement | undefined = $state();
+  let btn: HTMLButtonElement | undefined = $state();
+  // why: FIXED, not absolute -- an absolute panel is clipped by any
+  // overflow ancestor (a Card, <main>'s own scroller) and can be painted
+  // under a sibling that owns a stacking context, which is why it did not
+  // draw over the sidebar. Fixed escapes both; the cost is measuring the
+  // button, which is one read on open.
+  let pos = $state({ top: 0, right: 0 });
+  function place() {
+    if (!btn) return;
+    const r = btn.getBoundingClientRect();
+    pos = { top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) };
+  }
 
   function onDocPointerDown(e: PointerEvent) {
     if (open && root && !root.contains(e.target as Node)) open = false;
@@ -43,12 +53,16 @@
 
 <span bind:this={root} class="relative inline-flex shrink-0">
   <button
+    bind:this={btn}
     type="button"
     aria-label={label}
     aria-expanded={open}
     title={label}
     class="rounded-full p-0.5 text-muted-foreground hover:text-foreground {open ? 'text-foreground' : ''}"
-    onclick={() => (open = !open)}
+    onclick={() => {
+      open = !open;
+      if (open) place();
+    }}
   >
     <HelpCircleIcon class="size-3.5" />
   </button>
@@ -58,18 +72,22 @@
          dense text is unreadable regardless. -->
     <div
       role="note"
-      class="absolute top-6 z-50 w-72 rounded-sm border border-border bg-background p-2 text-[11px] leading-relaxed text-muted-foreground shadow-md {align ===
-      'right'
-        ? 'right-0'
-        : 'left-0'}"
+      style:top="{pos.top}px"
+      style:right="{pos.right}px"
+      class="fixed z-[200] w-72 rounded-sm border border-border bg-background p-2 text-[11px] leading-relaxed text-muted-foreground shadow-md"
     >
       {#if text}{text}{/if}{#if children}{@render children()}{/if}
     </div>
   {/if}
 </span>
 
+<!-- why: a fixed panel keeps its screen position while the page moves
+     under it, so scrolling or resizing closes it rather than leaving it
+     pointing at nothing -->
 <svelte:window
   onkeydown={(e) => {
     if (e.key === 'Escape') open = false;
   }}
+  onresize={() => (open = false)}
+  onscrollcapture={() => (open = false)}
 />

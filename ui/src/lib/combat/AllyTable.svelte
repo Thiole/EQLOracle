@@ -71,6 +71,33 @@
           <Table.Row>
             <Table.Cell colspan={7} class="bg-muted/40 p-0">
               <div class="grid grid-cols-2 gap-3 p-3">
+                <!-- why: the row's total already includes these; this
+                     says which part came from which charmed pet, so a
+                     folded number can still be broken down. The store
+                     keeps the pet a separate entity -- only the row
+                     folds -- which is what stops two people charming the
+                     same kind of mob collapsing into one of them. -->
+                {#if a.pets.length}
+                  <div class="col-span-2 text-[11px]">
+                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      folded in
+                    </h4>
+                    {#each a.pets as p (p.name)}
+                      <p class="flex justify-between gap-3">
+                        <span class="truncate">{p.name}</span>
+                        <span class="shrink-0 font-mono tabular-nums text-muted-foreground">
+                          {p.total.toLocaleString()} · {p.hits} hit{p.hits === 1 ? '' : 's'}
+                        </span>
+                      </p>
+                    {/each}
+                    <p class="mt-0.5 flex justify-between gap-3 text-muted-foreground">
+                      <span>{a.name} directly</span>
+                      <span class="shrink-0 font-mono tabular-nums">
+                        {(a.total - a.pets.reduce((n, p) => n + p.total, 0)).toLocaleString()}
+                      </span>
+                    </p>
+                  </div>
+                {/if}
                 {#if a.class_source !== 'who' && (a.classes.length < 3 || a.class_prior.length || a.class_conflicts || a.class_chain_end)}
                   <!-- why: Q34 -- what the open slot is stuck between, and the chain's state -->
                   <div class="col-span-2 text-[11px]">
