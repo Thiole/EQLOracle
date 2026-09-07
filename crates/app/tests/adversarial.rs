@@ -281,3 +281,35 @@ fn the_game_saying_an_ability_is_not_yours_takes_that_class_off_you() {
         shown(&revoked)
     );
 }
+
+/// why: Spencer -- Dragon Punch, Eagle Strike, Tiger Claw and Tail Rake
+/// all print "strike", and Mend is Monk-only; both were invisible to
+/// class detection (Mend was filed as noise, "strike" mapped to nothing).
+/// Real lines from a Monk's own log.
+#[test]
+fn a_strike_and_a_mend_both_put_monk_on_the_row() {
+    let shown = |ing: &Ingest, who: &str| {
+        ing.class_chain(who, ing.now_ms())
+            .map(|c| c.inferred())
+            .unwrap_or_default()
+    };
+    let striker = run(concat!(
+        "[Thu Jul 02 08:34:00 2026] Kaeus tells the group, 'inc'\n",
+        "[Thu Jul 02 08:34:25 2026] Kaeus strikes skeleton L`rodd for 29 points of damage. (Critical)\n",
+        "[Thu Jul 02 08:34:40 2026] Kaeus tries to strike skeleton L`rodd, but misses!\n",
+    ));
+    assert!(
+        shown(&striker, "Kaeus").iter().any(|c| c == "Monk"),
+        "an ally striking is a Monk -- got {:?}",
+        shown(&striker, "Kaeus")
+    );
+    let mender = run(concat!(
+        "[Wed Jul 01 20:47:00 2026] You tell your party, 'ready'\n",
+        "[Wed Jul 01 20:47:45 2026] You mend your wounds and heal some damage.\n",
+    ));
+    assert!(
+        shown(&mender, "You").iter().any(|c| c == "Monk"),
+        "mending is a Monk -- got {:?}",
+        shown(&mender, "You")
+    );
+}

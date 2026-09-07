@@ -217,6 +217,14 @@ impl UnitTrack {
 static BARD_ONLY: std::sync::LazyLock<[String; 1]> =
     std::sync::LazyLock::new(|| ["Bard".to_string()]);
 
+/// why: "strike" is the verb every Monk special prints -- Dragon Punch,
+/// Eagle Strike, Tiger Claw, Tail Rake all log "X strikes Y". Verified on
+/// a real log: 16 of 16 striker-days with a same-day /who row had MNK in
+/// the trio, none without; the one apparent counterexample was a /who
+/// row from a different day, i.e. a swap.
+static MONK_ONLY: std::sync::LazyLock<[String; 1]> =
+    std::sync::LazyLock::new(|| ["Monk".to_string()]);
+
 /// why: a class pick's spell grants land in the same second -- see
 /// `note_spell_granted`; a single grant is a scribe, not a pick
 const GRANT_CLUSTER_MS: Millis = 2_000;
@@ -1720,6 +1728,14 @@ impl Ingest {
         self.record_class_evidence(ts, who, classes);
     }
 
+    /// why: a melee verb that only one class can produce is class
+    /// evidence for whoever swung it, landed or not -- see MONK_ONLY
+    fn note_melee_class_evidence(&mut self, ts: Millis, src: &str, ability: &str) {
+        if ability == "Strike" {
+            self.note_class_evidence(ts, src, &*MONK_ONLY);
+        }
+    }
+
     /// why: an ability ACTIVATION is itself proof of a player -- no mob
     /// activates a poison or a discipline -- so this gate is only the pet
     /// exclusion (C9/P7), looser than `tracks_classes`. The one deliberate
@@ -2158,6 +2174,9 @@ impl Ingest {
                 flags,
             } => {
                 self.record_damage(ts, &src, &dst, &ability, tags, amount, flags);
+                if tags & tag::MELEE != 0 {
+                    self.note_melee_class_evidence(ts, &src, &ability);
+                }
                 // why: a resisted spell deals no damage, so damage is
                 // unambiguous proof of landing; a no-op outside SPELL tags
                 if tags & tag::SPELL != 0 {
@@ -2509,6 +2528,9 @@ impl Ingest {
                 let pool = crate::stancedata::classes_for(&stance);
                 self.note_class_evidence(ts, "You", pool);
                 self.stance_pool = (!pool.is_empty()).then_some(pool);
+            }
+            Action::Mend => {
+                self.note_class_evidence(ts, "You", crate::skilldata::classes_for("Mend"));
             }
             Action::AbilityNotYours { ability } => {
                 self.note_ability_not_yours(ts, &ability);
@@ -3268,6 +3290,7 @@ impl Ingest {
         // alive -- same proof-of-life as record_damage's target clear
         self.clear_dead_if_acting(ts, t);
         let canonical = canonical_melee_ability(verb);
+        self.note_melee_class_evidence(ts, src, canonical);
         // why: an avoided real special attack -- see record_damage's own
         // matching hook, and skilltracker.rs's own doc
         if src.eq_ignore_ascii_case("you") {
@@ -5033,6 +5056,9 @@ enum Action {
     AbilityNotYours {
         ability: String,
     },
+    /// why: the first-person Mend use line -- a Monk-only skill, so its
+    /// use is Monk evidence the same way a skill-up in it is
+    Mend,
     /// "You begin reciting the <invocation> invocation." -- self only,
     /// same evidence role as `Stance`; see `invocationdata`.
     Invocation {
@@ -5530,6 +5556,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "class.ability_unavailable" => Some(Action::AbilityNotYours {
             ability: str_field("name")?,
         }),
+        "skill.mend" => Some(Action::Mend),
         "skill.up" => Some(Action::SkillUp {
             skill: str_field("skill")?,
             level: u64_field("level")?.min(u32::MAX as u64) as u32,

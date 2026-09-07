@@ -967,6 +967,17 @@ examples = [
 name = { from = "name", as = "str" }
 
 [[rule]]
+id = "skill.mend"
+kind = "skill"
+priority = 40
+# why: Mend is a Monk-only skill and this is its first-person use line.
+# It sat in the noise rule, so 644 mends in a real Monk log proved
+# nothing. Spencer: "monk is also a mend only class. so mend verifies monk".
+anchors = ["You mend your wounds"]
+pattern = '''^You mend your wounds and heal some damage\.$'''
+examples = ["[Wed Jul 01 20:47:45 2026] You mend your wounds and heal some damage."]
+
+[[rule]]
 id = "skill.up"
 kind = "skill"
 priority = 40
@@ -2275,7 +2286,7 @@ anchors = [" "]
 # that don't share enough with any single existing rule to justify
 # their own -- same "one alternation, not one rule per phrase" call
 # noise.stunned already makes.
-pattern = '''^(?:You have been knocked unconscious!|Your target cannot be mesmerized\.|Your target cannot be mesmerized \(with this spell\)\.|Your target has been stunned too recently for your stun to have full effect\.|You are encumbered!|You are no longer encumbered\.|You cannot have more than one pet at a time\.|You cannot remove this effect\.|Your target is immune to the stun portion of this effect\.|This NPC cannot be charmed\.|You must be standing to cast a spell\.|You must be standing to attack!|This spell only works on the undead\.|Your will is not sufficient to command this weapon\.|Your attempt to disarm failed\.|You feel an aura of vigorous protection surrounding you\.|Your song ends\.|Your melody has been interrupted!|A mystical path appears before you\.|Your attack failed because your target is Encounter Locked to someone else\.|The aria lifts you into the air\.|You mend your wounds and heal some damage\.|You feel torn between life and death\.|You are engulfed in a blinding rage\.|You are surrounded by a shield of songs\.|YOU are burning!|You feel a healing touch\.|Your mind clouds as your concentration bleeds away\.|This creature would take an army to defeat!|You have momentarily ducked away from the main combat\.|The heal within you blooms\.|Your skin erupts with festering sores\.|For a few heartbeats, further stuns will not take hold\.|You bear a curse of broken oaths\.)$'''
+pattern = '''^(?:You have been knocked unconscious!|Your target cannot be mesmerized\.|Your target cannot be mesmerized \(with this spell\)\.|Your target has been stunned too recently for your stun to have full effect\.|You are encumbered!|You are no longer encumbered\.|You cannot have more than one pet at a time\.|You cannot remove this effect\.|Your target is immune to the stun portion of this effect\.|This NPC cannot be charmed\.|You must be standing to cast a spell\.|You must be standing to attack!|This spell only works on the undead\.|Your will is not sufficient to command this weapon\.|Your attempt to disarm failed\.|You feel an aura of vigorous protection surrounding you\.|Your song ends\.|Your melody has been interrupted!|A mystical path appears before you\.|Your attack failed because your target is Encounter Locked to someone else\.|The aria lifts you into the air\.|You feel torn between life and death\.|You are engulfed in a blinding rage\.|You are surrounded by a shield of songs\.|YOU are burning!|You feel a healing touch\.|Your mind clouds as your concentration bleeds away\.|This creature would take an army to defeat!|You have momentarily ducked away from the main combat\.|The heal within you blooms\.|Your skin erupts with festering sores\.|For a few heartbeats, further stuns will not take hold\.|You bear a curse of broken oaths\.)$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] You have been knocked unconscious!",
   "[Tue Jul 28 15:02:15 2026] You are encumbered!",
@@ -2297,7 +2308,6 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] A mystical path appears before you.",
   "[Tue Jul 28 15:02:15 2026] Your attack failed because your target is Encounter Locked to someone else.",
   "[Tue Jul 28 15:02:15 2026] The aria lifts you into the air.",
-  "[Tue Jul 28 15:02:15 2026] You mend your wounds and heal some damage.",
   "[Tue Jul 28 15:02:15 2026] You feel torn between life and death.",
   "[Tue Jul 28 15:02:15 2026] You are engulfed in a blinding rage.",
   "[Tue Jul 28 15:02:15 2026] You are surrounded by a shield of songs.",
