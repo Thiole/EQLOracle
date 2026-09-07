@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-07 (0.20.1)
+
+### Community
+
+- The Info screen links the EQL Oracle Discord (discord.gg/mN6fwhBBk2): release and testing-build announcements, help, bug reports, feature requests.
+- External links open in your browser on Linux. Every "↗" link in the app (wiki pages, the update banner) was silently dropped by WebKitGTK; on Windows it spawned a bare popup. They now open in the system browser.
+
 ## 2026-09-07 (0.20.0)
 
 ### Class detection
