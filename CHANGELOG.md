@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-07 (0.19.0)
+
+### Combat
+
+- A charmed pet is its own entity, not a name. Ownership used to be keyed by the mob's name, so two people charming the same kind of mob collapsed into one of them. The store now keeps the pet separate and only the presentation folds it: an ally's row still shows the combined total, and expanding it breaks out each pet's damage and hits against what the ally did directly.
+- Expanding an ally shows an observed melee swing rate: mean seconds between swing rounds, and swings per round. A round is a second, because the log has no finer resolution -- so swings per round above 1 is dual wield or double attack, which is exactly what makes a raw swing count misleading. Specials are excluded; Bash, Kick, Backstab and Frenzy run on their own timers. This is a measured cadence, not the weapon's delay, and it does not claim to be one.
+- Enemies get the same table as allies, collapsed behind "list all" and off by default. Totals, dps, hits, crit rate, and on expanding a mob its abilities, casts and swing rate. Nothing is fetched until it is opened -- one Plane of Hate pull is 28 distinct mobs against 3-6 allies. Class, "suggested" and the class-detection readout stay on the ally side, where they mean something.
+
 ## 2026-09-06 (0.18.0)
 
 ### Help
