@@ -92,10 +92,46 @@ pub struct SpellFileEntry {
     pub levels: [u8; 16],
     /// why: false is an instant -- a heal, a nuke, Harvest -- never a buff
     pub has_duration: bool,
+    /// why: columns 12/13, see `duration_ticks`
+    pub duration_formula: u32,
+    pub duration_base: u32,
     pub slots: Vec<SlotEffect>,
 }
 
 impl SpellFileEntry {
+    /// why: the file's own duration, in ticks (6 s), at a given caster
+    /// level -- columns 12/13 are a formula id and a base, the classic
+    /// table (EQEmu's CalcBuffDuration_formula). Verified on the real
+    /// file: Clarity 3/270 -> 270 at 50, Spirit of Wolf 3/360 -> 360,
+    /// Berserker Spirit 7/50 -> 50, Shadow Compact 1/4 -> 4, Selo's
+    /// 5/2 -> 2, Vampiric Embrace 50/0 -> permanent, Harvest 0/0 -> 0.
+    pub fn duration_ticks(&self, level: u32) -> u32 {
+        let (f, b) = (self.duration_formula, self.duration_base);
+        let capped = |i: u32| if b > 0 { i.min(b) } else { i };
+        match f {
+            0 => 0,
+            1 => capped(level.div_ceil(2)),
+            2 => capped(if level > 3 { level.div_ceil(2) + 5 } else { 6 }),
+            3 => capped(level * 30),
+            4 => capped(50),
+            5 => capped(2),
+            6 => capped(level / 2 + 2),
+            7 => capped(level),
+            8 => capped(level + 10),
+            9 => capped(level * 2 + 10),
+            10 => capped(level * 3 + 10),
+            50 => 72_000,
+            3600 => {
+                if b > 0 {
+                    b
+                } else {
+                    3600
+                }
+            }
+            _ => b,
+        }
+    }
+
     /// why: the game's own stacking rule, the one the "did not take hold"
     /// line enforces: a shared slot number carrying the same SPA, or a
     /// 148/149 blocker on either side aimed at the other's SPA and slot.
@@ -155,6 +191,8 @@ fn parse(text: &str) -> HashMap<String, SpellFileEntry> {
             timer: num(TIMER_ID_COL),
             levels,
             has_duration: num(DURATION_FORMULA_COL - 1) != 0 || num(DURATION_COL - 1) != 0,
+            duration_formula: num(DURATION_FORMULA_COL - 1),
+            duration_base: num(DURATION_COL - 1),
             slots,
         };
         // why: the file repeats some names, the later row often a
@@ -328,6 +366,30 @@ mod tests {
             "spacers never conflict"
         );
         assert!(e("Clarity").has_duration && e("Clarity").slots.len() == 2);
+    }
+
+    /// why: the file's own numbers for the durations that decide what
+    /// the tracker admits -- see groupbuffs::MIN_BUFF_TICKS
+    #[test]
+    fn duration_ticks_follows_the_classic_formula_table() {
+        let e = |f: u32, b: u32| SpellFileEntry {
+            duration_formula: f,
+            duration_base: b,
+            ..Default::default()
+        };
+        assert_eq!(e(3, 270).duration_ticks(50), 270, "Clarity");
+        assert_eq!(e(3, 360).duration_ticks(50), 360, "Spirit of Wolf");
+        assert_eq!(e(3, 360).duration_ticks(5), 150, "SoW at 5: level*30");
+        assert_eq!(e(7, 50).duration_ticks(50), 50, "Berserker Spirit");
+        assert_eq!(e(1, 4).duration_ticks(50), 4, "Shadow Compact");
+        assert_eq!(e(5, 2).duration_ticks(50), 2, "Selo's");
+        assert_eq!(e(9, 110).duration_ticks(50), 110, "Alacrity");
+        assert_eq!(
+            e(50, 0).duration_ticks(50),
+            72_000,
+            "Vampiric Embrace: permanent"
+        );
+        assert_eq!(e(0, 0).duration_ticks(50), 0, "Harvest: instant");
     }
 
     /// why: the real columns, the real groups Spencer named

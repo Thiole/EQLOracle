@@ -97,7 +97,12 @@ pub fn kind_of_with(
     let Some(entry) = file.and_then(|f| crate::spelltimers::entry_of(f, &spell.name)) else {
         return text;
     };
-    if !entry.has_duration {
+    // why: Spencer -- "short term buffs should not be in here. group
+    // buffs should be tracking buffs you cast out of combat". A 4-tick HP
+    // transfer (Shadow Compact), a 2-tick song, a mez, a root: things you
+    // fire, not things you keep up. Judged at the cap so the answer does
+    // not move with the caster's level.
+    if entry.duration_ticks(MAINTAINED_AT_LEVEL) < MIN_BUFF_TICKS {
         return None;
     }
     let spas: Vec<u16> = entry
@@ -121,6 +126,17 @@ pub fn kind_of_with(
     }
     spas.iter().find_map(|&spa| kind_of_spa(spa)).or(text)
 }
+
+/// why: five minutes. Measured on the real file across every buff the
+/// tracker could admit: everything it should track is 10 min or more
+/// (Alacrity 110 ticks, Clarity 270, Spirit of Wolf 360), one real band
+/// sits at 50-60 (Berserker Spirit, Rampage, Avatar, Impart Strength --
+/// cast out of combat, re-cast on a timer), and under 50 it is heals,
+/// songs, mez, roots and debuffs. 50 keeps that band and drops the rest.
+const MIN_BUFF_TICKS: u32 = 50;
+/// why: the cap -- a buff's length grows with level, and "is this a
+/// maintained buff" should not depend on who is casting it today
+const MAINTAINED_AT_LEVEL: u32 = 50;
 
 /// why: the SPA ids the tracker has a kind for -- classic-EQ effect ids,
 /// each verified on the real file (Clarity 15, Celerity 11, Shield of
@@ -1471,19 +1487,36 @@ mod tests {
     /// file does not know still gets the prose answer
     #[test]
     fn the_games_spa_outranks_the_wikis_prose() {
-        let row = |name: &str, dur: &str, slots: &str| {
+        let row2 = |name: &str, formula: &str, base: &str, slots: &str| {
             let mut f = vec![String::new(); 173];
             f[1] = name.to_string();
-            f[11] = dur.to_string();
+            f[11] = formula.to_string();
+            f[12] = base.to_string();
             f[172] = slots.to_string();
             f.join("^")
         };
+        // why: formula 3 with no base reads as level*30 -- a long buff
+        let row = |name: &str, formula: &str, slots: &str| row2(name, formula, "0", slots);
         let file = crate::spelltimers::parse_text(
             &[
                 row("Vampiric Embrace", "50", "1|85|821|0|100|0$2|10|0|0|100|0"),
                 row("Blessing of the Squire", "3", "1|121|2|0|100|0"),
                 row("Clarity", "3", "1|10|0|0|100|0$2|15|1|0|109|9"),
                 row("Harvest", "0", "1|15|1|0|5|0"),
+                // why: formula 1 base 4 -- a 4-tick HP transfer, not a buff
+                row2(
+                    "Shadow Compact",
+                    "1",
+                    "4",
+                    "1|10|0|0|100|0$2|10|0|0|100|0$3|10|0|0|100|0$4|0|20|0|100|0",
+                ),
+                // why: formula 7 base 50 -- five minutes, re-cast on a timer, kept
+                row2(
+                    "Berserker Spirit",
+                    "7",
+                    "50",
+                    "1|4|40|0|100|40$2|55|200|0|100|250$3|6|-20|0|100|20",
+                ),
             ]
             .join("\n"),
         );
@@ -1512,6 +1545,16 @@ mod tests {
             kind_of_with(by("Harvest"), f),
             None,
             "an instant is never a buff"
+        );
+        assert_eq!(
+            kind_of_with(by("Shadow Compact"), f),
+            None,
+            "a 4-tick heal is not a buff"
+        );
+        assert_eq!(
+            kind_of_with(by("Berserker Spirit"), f),
+            Some(BuffKind::Strength),
+            "five minutes is a maintained buff"
         );
         assert_eq!(
             kind_of_with(by("Celerity"), f),

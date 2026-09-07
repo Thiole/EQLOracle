@@ -245,6 +245,15 @@ readily a written value is revised.
   An instant (no duration, columns 12/13 both 0) is never a buff. A
   negative base is a debuff and never counts; attack speed's line is 100.
   Measured on the real file: 64 buffs gained a kind, 2 changed, 0 others.
+- T11. A short-term buff is not a group buff. Spencer 2026-09-07: "Shadow
+  Compact is a heal spell, not a health regen. and its a short term buff.
+  short term buffs should not be in here. group buffs should be tracking
+  buffs you cast out of combat". The file's duration (columns 12/13,
+  classic formula table, `SpellFileEntry::duration_ticks`) at level 50
+  must be at least 50 ticks (5 min). Measured: everything the tracker
+  should hold is 10 min+; Berserker Spirit / Rampage / Avatar / Impart
+  Strength sit at 5-6 min and stay; under 5 min is heals, bard songs,
+  mez, roots and debuffs -- 29 catalog spells dropped, all of those.
 - T10. Stacking is the file's slot rule, validated against every "did
   not take hold (Blocked by X)" in a real log, 1,814 of 1,814: the same
   slot number carrying the same SPA conflicts (higher value overwrites,
