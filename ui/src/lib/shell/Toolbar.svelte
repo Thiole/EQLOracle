@@ -4,6 +4,9 @@
   import { status } from '$lib/stores/status';
   import { minimizeWindow, toggleMaximizeWindow, closeWindow } from '$lib/tauri/window';
   import OverlayQuickMenu from '$lib/overlay/OverlayQuickMenu.svelte';
+  import { HelpTip } from '$lib/components/ui/help';
+  import { PAGE_HELP } from '$lib/shell/pageHelp';
+  import { activeModule } from '$lib/stores/shell';
   import MinusIcon from '@lucide/svelte/icons/minus';
   import SquareIcon from '@lucide/svelte/icons/square';
   import XIcon from '@lucide/svelte/icons/x';
@@ -38,6 +41,10 @@
        Tauri's drag handler fires only when the mousedown target itself
        carries the attribute, so the interactive children (change folder,
        quick menu, window controls) stay clickable without opting out. -->
+  <!-- why: the page "?" lives here, not over <main> -- absolutely
+       positioned inside the page it collided with whatever that page put
+       in its own top-right corner (Combat's fight picker). This row is
+       always free and is still the top right of the window. -->
   <div class="flex min-w-0 flex-1 items-center gap-3 self-stretch">
     <span class="shrink-0 font-medium text-foreground">EQL Oracle</span>
     {#if $status}
@@ -68,6 +75,9 @@
       <button type="button" class="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline" onclick={changeFolder}>
         change folder
       </button>
+    {/if}
+    {#if PAGE_HELP[$activeModule]}
+      <HelpTip label="About this page" text={PAGE_HELP[$activeModule]} />
     {/if}
     <OverlayQuickMenu />
     {#if customTitlebar}

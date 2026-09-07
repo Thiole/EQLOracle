@@ -339,8 +339,7 @@
 
 <div class="flex flex-col gap-3">
   <p class="rounded-sm border border-border bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
-    Use the in-game command <code class="text-foreground">/outputfile inventory</code> to pull your currently equipped gear into the doll below.
-    Race and active classes are shared with the Character tab.
+    Run <code class="text-foreground">/outputfile inventory</code> in game to pull your equipped gear into the doll below.
   </p>
 
   {#if $equippedInventory}

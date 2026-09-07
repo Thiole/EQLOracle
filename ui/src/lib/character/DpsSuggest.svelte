@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Card, CardContent } from '$lib/components/ui/card';
+  import { HelpTip } from '$lib/components/ui/help';
   import { Checkbox } from '$lib/components/ui/checkbox';
   import { ICON_BASE, ALL_CLASSES, MAX_CHARACTER_LEVEL } from '$lib/character/constants';
   import { activeClasses, damageSpells } from '$lib/stores/character';
@@ -214,10 +215,13 @@
     <button type="button" class="flex w-full items-center gap-1.5 text-left" onclick={() => (open = !open)}>
       <span class="w-6 text-[26px] leading-none font-bold text-foreground">{open ? '▾' : '▸'}</span>
       <h2 class="panel-title">DPS auto-suggest</h2>
+      <HelpTip
+        label="About DPS auto-suggest"
+        text={`Damage and mana math for every damage spell you can currently cast, at the level ${MAX_CHARACTER_LEVEL} cap. Worn foci and AA are folded in, and the era ceiling in Settings decides which spells are eligible.`}
+      />
     </button>
     {#if open}
     <p class="mb-2 mt-1.5 text-[11px] text-muted-foreground">
-      Damage/mana math for every damage spell you can currently cast (level {MAX_CHARACTER_LEVEL} cap, same as the picker above).
       {#if equippedFocus?.length}
         Worn foci applied: {equippedFocus.map((f) => `${f.name} (${f.item}${f.lo === f.hi ? `, ${f.lo}%` : `, ${f.lo}-${f.hi}%, counted as ${(f.lo + f.hi) / 2}%`})`).join('; ')}.
       {:else if equippedFocus}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as Select from '$lib/components/ui/select';
+  import { HelpTip } from '$lib/components/ui/help';
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
@@ -71,10 +72,13 @@
 <div class="flex flex-col gap-3">
   <Card>
     <CardContent class="px-3 py-2">
-      <h2 class="text-[11px] uppercase tracking-wide text-muted-foreground">Character</h2>
-      <p class="mb-2 text-[11px] text-muted-foreground">
-        What's confirmed from your own parsed log, plus race — the log never states that directly, so it's set here by hand.
-      </p>
+      <div class="mb-2 flex items-start justify-between gap-2">
+        <h2 class="text-[11px] uppercase tracking-wide text-muted-foreground">Character</h2>
+        <HelpTip
+          label="About Character"
+          text="What's confirmed from your own parsed log, plus race -- the log never states that directly, so it's set here by hand."
+        />
+      </div>
       <label class="flex max-w-xs items-center gap-2 text-[12px]">
         <span class="shrink-0 {$race ? 'text-muted-foreground' : 'font-medium text-primary'}">race</span>
         <Select.Root type="single" value={$race} onValueChange={(v) => setRace(v ?? '')}>
@@ -100,6 +104,10 @@
     <CardContent class="px-3 py-2">
       <div class="mb-2 flex items-center justify-between">
         <h2 class="text-[11px] uppercase tracking-wide text-muted-foreground">Character Planner</h2>
+        <HelpTip
+          label="About the Character Planner"
+          text={'A dot marks a level you set by hand -- those are kept across launches, and "Estimate levels" resets all of them. Everything else is estimated fresh from the log each launch.'}
+        />
         <Button
           size="sm"
           variant="secondary"
@@ -156,7 +164,7 @@
       {#if Object.keys($userLevels).length}
         <p class="mt-1.5 text-[10px] text-muted-foreground">
           <span class="mr-0.5 inline-block size-1.5 rounded-full bg-primary align-middle"></span>
-          set by you — kept across launches; “Estimate levels” resets all of them
+          set by you
         </p>
       {/if}
 
