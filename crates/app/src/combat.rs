@@ -1540,7 +1540,17 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> 
                 // ally-on-ally or enemy-on-enemy -- not meter damage
                 continue;
             };
+            // why: kind is read off the REAL name -- the label below is
+            // for the row, and nothing in the model would resolve it
             let kind = ing.effective_kind(&actor_name, ts);
+            // why: a charmed pet keeps its own bucket, and the row says
+            // whose it is -- "an abhorrent (Sidhe's pet)". Two people
+            // charming abhorrents stay two rows instead of one player
+            // collecting every abhorrent in the room.
+            let actor_name = match ing.pet_of(&actor_name) {
+                Some(owner) => format!("{actor_name} ({owner}'s pet)"),
+                None => actor_name,
+            };
             let e = acc.entry(actor_name).or_insert(Acc {
                 total: 0,
                 first_ts: ts,
