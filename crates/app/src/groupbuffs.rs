@@ -255,7 +255,7 @@ pub fn kind_of(spell: &Spell) -> Option<BuffKind> {
 /// per-spell list: three in the pack, and two name a real parent spell.
 /// One of them ("siphon strength recourse") is scraped WITH a class,
 /// which is why it reached the tracker at all.
-fn is_recourse(spell: &Spell) -> bool {
+pub fn is_recourse(spell: &Spell) -> bool {
     spell.name.to_ascii_lowercase().ends_with(" recourse")
 }
 
@@ -400,7 +400,7 @@ pub fn benefits(kind: BuffKind, my_classes: &[String]) -> bool {
 /// An era the scrape never stated PASSES: 196 such spells sit at or under
 /// the cap and are ordinary Classic buffs, so refusing them would hide
 /// real recommendations to catch a few. The cap is what covers that gap.
-fn reachable(spell: &Spell, ceiling: Option<usize>) -> bool {
+pub fn reachable(spell: &Spell, ceiling: Option<usize>) -> bool {
     // why: the wiki says outright which spells no player casts. "Barrier
     // of Force isnt in the game i think? so that should be gone gone" --
     // it is categorised NPC Only, mana 0, no obtain path, and its Wizard
@@ -545,7 +545,7 @@ const RANK_WORDS: &[&str] = &[
     "minor", "lesser", "greater", "major", "arch", "superior", "improved",
 ];
 
-fn rank_line(name: &str) -> String {
+pub fn rank_line(name: &str) -> String {
     let stripped = base_name(name);
     match stripped.split_once(' ') {
         Some((head, rest)) if RANK_WORDS.iter().any(|w| head.eq_ignore_ascii_case(w)) => {
@@ -614,7 +614,7 @@ fn value_of(line: &str, level: u32) -> u32 {
 /// the slot, not the name: 47 spells carry an Illusion effect against 26
 /// called "Illusion: ...", and the difference is Call of Bones, Form of
 /// Bleached Bone and friends.
-fn is_illusion(spell: &Spell) -> bool {
+pub fn is_illusion(spell: &Spell) -> bool {
     spell
         .slots
         .iter()
