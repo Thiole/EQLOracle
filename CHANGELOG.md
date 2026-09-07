@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-07 (0.21.0)
+
+### Class detection
+
+- A melee frenzy is Berserker evidence. "X frenzies on Y" and "tries to frenzy on" are the Berserker skill; the spell of the same name lands with a spell tag and stays separate. Same funnel as strike -> Monk. Real log: 7 of 8 frenzier-days with a same-day /who row had BER; the eighth was a /who an hour before the swing.
+
+### Group Buff Tracker
+
+- Vampiric Embrace is never "upgraded" to the cleric proc line. Your own VE was read as the weapon proc on you at level 7, the party's best was Blessing of the Squire at 16, and the upgrade check compared raw levels -- the one comparison the hand-ranked override exists to correct, and the one place it never reached. Both sides now go through the same value model.
+
+### Docs
+
+- README carries measured benchmarks: replay, memory and read costs on two real 245 MB logs, each reproducible with a named probe.
+
 ## 2026-09-07 (0.20.1)
 
 ### Community
