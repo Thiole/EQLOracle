@@ -77,6 +77,32 @@
                      keeps the pet a separate entity -- only the row
                      folds -- which is what stops two people charming the
                      same kind of mob collapsing into one of them. -->
+                <!-- why: an observed swing rate, and labelled as one.
+                     The log timestamps whole seconds and haste, dual
+                     wield and double attack all sit on the weapon's own
+                     delay, so this cannot be that number and does not
+                     claim to be. Specials are excluded -- Bash, Kick,
+                     Backstab and Frenzy run on their own timers. -->
+                {#if a.melee_rate && a.melee_rate.rounds > 1}
+                  <div class="col-span-2 text-[11px]">
+                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      melee swing rate
+                    </h4>
+                    <p class="flex justify-between gap-3">
+                      <span>seconds between swing rounds</span>
+                      <span class="font-mono tabular-nums">{a.melee_rate.secs_between_rounds.toFixed(2)}s</span>
+                    </p>
+                    <p class="flex justify-between gap-3">
+                      <span>swings per round</span>
+                      <span class="font-mono tabular-nums">
+                        {(a.melee_rate.swings / a.melee_rate.rounds).toFixed(2)}
+                      </span>
+                    </p>
+                    <p class="flex justify-between gap-3 text-muted-foreground">
+                      <span>{a.melee_rate.swings.toLocaleString()} swings over {a.melee_rate.rounds.toLocaleString()} rounds</span>
+                    </p>
+                  </div>
+                {/if}
                 {#if a.pets.length}
                   <div class="col-span-2 text-[11px]">
                     <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">

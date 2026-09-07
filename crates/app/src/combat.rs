@@ -736,6 +736,34 @@ pub fn summarize(
 
 // ---------------------------------------------------------------- allies
 
+/// why: a weapon's DELAY cannot be read off this log -- timestamps are
+/// whole seconds and swing-round gaps are almost all 1s, with haste,
+/// dual wield and double attack all sitting on top of the weapon's own
+/// number. What is honestly measurable is the observed swing rate, so
+/// that is what this reports and what it is called. Specials are
+/// excluded: Bash, Kick, Backstab and Frenzy are skills on their own
+/// timers, not the weapon swinging.
+const PRIMARY_MELEE: &[&str] = &[
+    "Slash", "Hit", "Pierce", "Crush", "Slice", "Claw", "Bite", "Gore", "Maul", "Smash", "Strike",
+    "Punch", "Cleave", "Melee",
+];
+
+/// why: the ally expansion's own attack-rate readout -- asked for there
+/// and nowhere else
+#[derive(Debug, Clone, Serialize)]
+pub struct MeleeRateDto {
+    /// why: primary swings, specials excluded
+    pub swings: u64,
+    /// why: distinct SECONDS in which this entity swung. The log has no
+    /// sub-second resolution, so a round is a second -- swings/rounds
+    /// above 1 is dual wield or double attack, which is the part that
+    /// makes a raw swing rate misleading on its own.
+    pub rounds: u64,
+    /// why: mean seconds between consecutive swing rounds, counting only
+    /// gaps short enough to be the same engagement
+    pub secs_between_rounds: f64,
+}
+
 /// why: one charmed pet folded into an ally's row -- kept as its own
 /// part so expanding the ally can show whose damage came from where
 #[derive(Debug, Clone, Serialize)]
@@ -764,6 +792,9 @@ pub struct AllyDto {
     /// expanding an ally shows "you 61.3k + an abhorrent 2.2k" rather
     /// than one number you cannot break down. Empty for almost everyone.
     pub pets: Vec<AllyPetDto>,
+    /// why: shown only in the expansion -- see MeleeRateDto. None for
+    /// anyone who never threw a primary swing.
+    pub melee_rate: Option<MeleeRateDto>,
     pub hit_pct: Option<f64>,
     /// why: None when this ally never cast a resistable spell, same
     /// reasoning as hit_pct
@@ -846,6 +877,37 @@ pub fn list_allies(
     // same mob name collapsing into one -- and only the presentation
     // rolls it up.
     let mut parts: HashMap<String, HashMap<String, (u64, u64)>> = HashMap::new();
+    // why: swing SECONDS per ally -- a set, because the log has no
+    // sub-second resolution, so several swings in one second are one
+    // round and the count of them is what reveals dual wield
+    let mut swing_secs: HashMap<String, std::collections::BTreeSet<Millis>> = HashMap::new();
+    let mut swing_count: HashMap<String, u64> = HashMap::new();
+    for &id in &ids {
+        let Some(enc) = ing.store.encounter(id) else {
+            continue;
+        };
+        for i in enc.range() {
+            if ing.store.enc[i] != id.0 {
+                continue;
+            }
+            if !matches!(ing.store.kind[i], EventKind::Damage | EventKind::Miss) {
+                continue;
+            }
+            let ab = ing.store.ability_name(ing.store.ability[i]);
+            if !PRIMARY_MELEE.contains(&ab) {
+                continue;
+            }
+            let who = ing.effective_name(ing.store.name(ing.store.actor[i]));
+            if ing.allegiance_at(&who, now).is_enemy() {
+                continue;
+            }
+            *swing_count.entry(who.clone()).or_insert(0) += 1;
+            swing_secs
+                .entry(who)
+                .or_default()
+                .insert(ing.store.ts[i] / 1000);
+        }
+    }
 
     for &id in &ids {
         if ing.store.encounter(id).is_none() {
@@ -1037,6 +1099,31 @@ pub fn list_allies(
                 None => "",
             };
             AllyDto {
+                // why: an observed rate, never the weapon's own delay --
+                // see MeleeRateDto
+                melee_rate: swing_secs.get(&name).and_then(|secs| {
+                    let rounds = secs.len() as u64;
+                    if rounds == 0 {
+                        return None;
+                    }
+                    // why: only gaps short enough to be the same
+                    // engagement -- a pause between pulls is not a delay
+                    let gaps: Vec<Millis> = secs
+                        .iter()
+                        .zip(secs.iter().skip(1))
+                        .map(|(a, b)| b - a)
+                        .filter(|d| *d > 0 && *d <= 10)
+                        .collect();
+                    Some(MeleeRateDto {
+                        swings: swing_count.get(&name).copied().unwrap_or(0),
+                        rounds,
+                        secs_between_rounds: if gaps.is_empty() {
+                            0.0
+                        } else {
+                            gaps.iter().sum::<Millis>() as f64 / gaps.len() as f64
+                        },
+                    })
+                }),
                 // why: biggest part first, so expanding reads top-down
                 pets: {
                     let mut v: Vec<AllyPetDto> = parts
@@ -2729,6 +2816,38 @@ mod live_meter_window_tests {
         let lines = framed_lines(text.as_bytes());
         backfill_lines(&mut ing, &engine, &lines, 1);
         ing
+    }
+
+    /// why: specials are skills on their own timers, not the weapon
+    /// swinging -- counting Bash and Kick as swings makes the rate look
+    /// faster than any weapon can be. And several swings in one second
+    /// are ONE round: the log has no sub-second resolution, so the
+    /// swings-per-round figure is what exposes dual wield rather than
+    /// the rate silently absorbing it.
+    #[test]
+    fn the_melee_rate_counts_swings_not_specials() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:01 2026] Kaeus slashes a gnoll for 10 points of damage.\n\
+             [Tue Jul 28 15:01:01 2026] Kaeus slashes a gnoll for 10 points of damage.\n\
+             [Tue Jul 28 15:01:01 2026] Kaeus bashes a gnoll for 5 points of damage.\n\
+             [Tue Jul 28 15:01:03 2026] Kaeus slashes a gnoll for 10 points of damage.\n\
+             [Tue Jul 28 15:01:05 2026] Kaeus tries to slash a gnoll, but misses!\n",
+        );
+        let allies = list_allies(&ing, None, None, false);
+        let r = allies
+            .iter()
+            .find(|a| a.name == "Kaeus")
+            .and_then(|a| a.melee_rate.clone())
+            .expect("a melee rate");
+        assert_eq!(
+            r.swings, 4,
+            "three slashes and a swing that missed; no Bash"
+        );
+        assert_eq!(r.rounds, 3, "two of them landed in the same second");
+        // why: gaps of 2s and 2s between rounds at :01, :03 and :05
+        assert!((r.secs_between_rounds - 2.0).abs() < 1e-9);
     }
 
     /// why: folded but separated -- a charmed pet's damage counts for its

@@ -193,6 +193,18 @@ export interface AllyPetDto {
   hits: number;
 }
 
+/** why: an OBSERVED swing rate, never the weapon's own delay -- the log
+ * has whole-second timestamps, and haste, dual wield and double attack
+ * all sit on top of the weapon's number. Specials (Bash, Kick,
+ * Backstab, Frenzy) are excluded; they are skills on their own timers. */
+export interface MeleeRateDto {
+  swings: number;
+  /** why: distinct seconds in which this entity swung -- swings/rounds
+   * above 1 is dual wield or double attack */
+  rounds: number;
+  secs_between_rounds: number;
+}
+
 export interface AllyDto {
   name: string;
   is_player: boolean;
@@ -207,6 +219,9 @@ export interface AllyDto {
   /** why: charmed pets folded into this row -- the total already
    * includes them, these break it down. Empty for almost everyone. */
   pets: AllyPetDto[];
+  /** why: shown only in the ally expansion. null for anyone who never
+   * threw a primary swing. */
+  melee_rate: MeleeRateDto | null;
   hit_pct: number | null;
   /** null when this ally never cast a resistable spell. */
   resist_pct: number | null;
