@@ -220,7 +220,17 @@ readily a written value is revised.
   the packs carries that number -- Vampiric Embrace's whole slot text is
   "Add Proc: VampEmbraceNecro", which says nothing about a permanent
   lifetap proc being worth more than a level-39 cleric-line self-cast.
-  Current entries: Vampiric Embrace (60).
+  Current entries: Vampiric Embrace (60), Clarity (60).
+  Clarity added 2026-09-07, Spencer: "Clarity is better than boon of
+  the clear mind in the mana regen line, despite being lower level"
+  -- ENC 26 against ENC 42, and level is all the packs rank by.
+- T8. Whose job a row is (`others`) is judged on the BEST line only, and
+  a line YOU can cast is never the group's. Spencer 2026-09-07: "if the
+  self can cast it, dont offset it to group to cast, like if enc buff and
+  enc is in trio, dont say group should cast it when I can cast it". This
+  reverses the earlier reading, where a groupmate who could also cast the
+  best line owned it. Consequence: the minimal overlay layout's two counts
+  ("N self, N group") partition the missing rows and never double-count.
 - T7. A muted line (`Preferences::muted_buff_lines`, set in Settings ->
   Overlay -> Group Buffs) leaves the tracker entirely -- rows, innates,
   maybes and the T4 verdict alike. Muting is per LINE, rank-stripped, so

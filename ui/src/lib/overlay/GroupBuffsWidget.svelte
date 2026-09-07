@@ -48,15 +48,31 @@
   // three states. "Warning" is your OWN self-buffs being wrong, which
   // only you can fix, so it outranks the party half: "Others missing"
   // means your buffs are good and theirs on you are not.
+  // why: a count, not just a word -- "Warning" alone makes you open the
+  // app to find out how big the problem is. A line you can cast yourself
+  // counts as YOURS even when a groupmate could also cast it (see
+  // groupbuffs.rs's own cast_by_others), so these two never double-count.
+  const selfMissing = $derived(
+    missingInnates.length +
+      (data ? data.rows.filter((r) => (!r.active || r.upgrade) && !r.others).length : 0),
+  );
+  const groupMissing = $derived(
+    data ? data.rows.filter((r) => (!r.active || r.upgrade) && r.others).length : 0,
+  );
+  const counts = $derived(
+    [selfMissing && `${selfMissing} self`, groupMissing && `${groupMissing} group`]
+      .filter(Boolean)
+      .join(', '),
+  );
   const verdict = $derived(
     !data
       ? { text: 'Buffs: …', tone: 'text-foreground/60' }
       : !data.rows.length && !data.innates.length
         ? { text: 'Buffs: unknown', tone: 'text-foreground/60' }
         : missingInnates.length || ownRowsMissing
-          ? { text: 'Buffs: Warning', tone: 'text-bad' }
+          ? { text: `Buffs: Warning (${counts})`, tone: 'text-bad' }
           : missing || upgrades
-            ? { text: 'Buffs: Others missing', tone: 'text-caution' }
+            ? { text: `Buffs: Others missing (${groupMissing} group)`, tone: 'text-caution' }
             : { text: 'Buffs: OK', tone: 'text-foreground/70' },
   );
 </script>

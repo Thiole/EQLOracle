@@ -483,7 +483,13 @@ fn is_upgrade(active: Option<(&str, u32)>, best_spell: Option<&str>, best_level:
 /// entry per line that needs it, keyed by the same `rank_line` name the
 /// rows and innates are grouped under. Documented in
 /// docs/class-and-level-rules.md.
-const VALUE_OVERRIDE: &[(&str, u32)] = &[("Vampiric Embrace", 60)];
+const VALUE_OVERRIDE: &[(&str, u32)] = &[
+    ("Vampiric Embrace", 60),
+    // why: Spencer -- "Clarity is better than boon of the clear mind
+    // in the mana regen line, despite being lower level". ENC 26
+    // against ENC 42, and level is the only thing the packs rank by.
+    ("Clarity", 60),
+];
 
 /// why: the sort key for "which of these is better" -- the override when
 /// a line has one, its level requirement otherwise
@@ -934,15 +940,18 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
     }
 }
 
-/// why: whose job the buff is. You are a source like any groupmate, so a
-/// row can name nobody but you, and calling that "others missing" is a
-/// lie. Judged on the BEST line alone: a groupmate who can only cast a
-/// worse rank of the same kind does not make the rank you should
-/// actually have their job.
+/// why: whose job the buff is. Judged on the BEST line alone: a groupmate
+/// who can only cast a worse rank of the same kind does not make the rank
+/// you should actually have their job. And a line YOU can cast is never
+/// theirs -- Spencer: "if the self can cast it, dont offset it to group
+/// to cast, like if enc buff and enc is in trio, dont say group should
+/// cast it when I can cast it". So a row you can cover yourself reads as
+/// your own shortfall even when a groupmate could also cast it.
 fn cast_by_others(lines: &[BuffLineDto]) -> bool {
-    lines
-        .first()
-        .is_some_and(|l| l.casters.iter().any(|c| !c.eq_ignore_ascii_case("You")))
+    lines.first().is_some_and(|l| {
+        !l.casters.iter().any(|c| c.eq_ignore_ascii_case("You"))
+            && l.casters.iter().any(|c| !c.eq_ignore_ascii_case("You"))
+    })
 }
 
 /// why: a muted line is not a suggestion and not a shortfall -- it
@@ -1027,9 +1036,10 @@ mod tests {
     }
 
     /// why: "Others missing" means party members who can buff you have
-    /// not. A line only YOU can cast is your own problem, and a groupmate
-    /// who can only manage a worse rank of the kind does not own the rank
-    /// you should actually have.
+    /// not. A line YOU can cast is your own problem even when a groupmate
+    /// could cast it too (Spencer: "if the self can cast it, dont offset
+    /// it to group to cast"), and a groupmate who can only manage a worse
+    /// rank of the kind does not own the rank you should actually have.
     #[test]
     fn only_the_best_lines_caster_decides_whose_job_it_is() {
         let line = |n: &str, casters: &[&str]| BuffLineDto {
@@ -1042,8 +1052,8 @@ mod tests {
         assert!(!cast_by_others(&[line("Berserker Spirit", &["You"])]));
         assert!(cast_by_others(&[line("Aegolism", &["Sorien"])]));
         assert!(
-            cast_by_others(&[line("Aegolism", &["You", "Sorien"])]),
-            "a groupmate who can cast the best line owns it"
+            !cast_by_others(&[line("Aegolism", &["You", "Sorien"])]),
+            "you can cast it, so it is not offset to the group"
         );
         assert!(
             !cast_by_others(&[
