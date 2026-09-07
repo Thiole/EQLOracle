@@ -262,6 +262,14 @@ readily a written value is revised.
   conflicts, and different slots or different SPAs in one slot stack.
   `SpellFileEntry::conflicts` is that rule. `Resources/SpellStackingGroups.txt`
   is a partial overlay (3,127 rows, mostly newer spells), not the rule.
+- T12. Innate lines fold by the game's stacking rule, not by name
+  (2026-09-07). Two self-buffs that conflict (T10) are one line -- named
+  by the lowest rank, best is the highest -- and two that stack stay two.
+  Vampiric Embrace and Scream of Death (both slot 1, SPA 85) are one line;
+  Grim Aura and Dark Temptation (SPA 2 in slots 1 and 2) stay two, which
+  is the case the name key was originally written for. A lower rank on
+  you under its old name still counts as on. Without a file nothing
+  folds. Real log: 14 innates -> 9.
 - T7. A muted line (`Preferences::muted_buff_lines`, set in Settings ->
   Overlay -> Group Buffs) leaves the tracker entirely -- rows, innates,
   maybes and the T4 verdict alike. Muting is per LINE, rank-stripped, so

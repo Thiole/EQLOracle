@@ -903,7 +903,14 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
             is_illusion(sp).then(|| name.clone())
         });
     let (mut innates, mut maybes) = (Vec::new(), Vec::new());
-    for (key, (best_level, best_spell, illusion)) in innate_by_line {
+    for entry in fold_conflicting_lines(innate_by_line, ing.spell_file()) {
+        let FoldedLine {
+            key,
+            best_level,
+            best_spell,
+            illusion,
+            members,
+        } = entry;
         let line = if illusion {
             "illusion".to_string()
         } else {
@@ -912,17 +919,21 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
         let active = if illusion {
             // why: any illusion covers them all
             active_illusion.clone()
-        } else if crate::spelldata::spell_by_name(&best_spell).and_then(kind_of)
+        } else if crate::spelldata::spell_by_name(&best_spell)
+            .and_then(|sp| kind_of_with(sp, ing.spell_file()))
             == Some(BuffKind::Familiar)
         {
             // why: a familiar lands no buff message -- "You summon forth a
             // lesser familiar." is the only confirmation it is out
             ing.familiar_since_ms.map(|_| best_spell.clone())
         } else {
-            active_self_by_line.get(&line).cloned()
+            // why: any member rank of the folded line counts as on
+            members
+                .iter()
+                .find_map(|m| active_self_by_line.get(m).cloned())
         };
         let label = crate::spelldata::spell_by_name(&best_spell)
-            .and_then(kind_of)
+            .and_then(|sp| kind_of_with(sp, ing.spell_file()))
             .map_or("", |k| k.label());
         let dto = SelfBuffDto {
             active,
@@ -1048,6 +1059,76 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
         maybes,
         catalog,
         extra_active,
+    }
+}
+
+/// why: one innate line after folding -- `members` are the name-keyed
+/// lines it absorbed, so an active lower rank under its old name still
+/// counts as on
+struct FoldedLine {
+    key: String,
+    best_level: u32,
+    best_spell: String,
+    illusion: bool,
+    members: Vec<String>,
+}
+
+/// why: the name key only strips numerals, and EQ renames ranks --
+/// Vampiric Embrace (SHD 15) and Scream of Death (SHD 37) are one line
+/// by the game's own rule (both slot 1, SPA 85, they conflict) and read
+/// as two things to keep up. The game's rule is the key that is right
+/// in both directions: two self-buffs that CONFLICT are one line, two
+/// that STACK are two -- Grim Aura and Dark Temptation both raise ATK
+/// in different slots and stay two entries, which is the case the name
+/// key was written for. The folded line keeps the lowest rank's name
+/// (the one an override or a mute is keyed by) and the highest rank as
+/// best. Without a file nothing folds. ponytail: pairwise over a dozen
+/// innates, fine until someone has a hundred.
+fn fold_conflicting_lines(
+    lines: BTreeMap<String, (u32, String, bool)>,
+    file: Option<&crate::spelltimers::SpellFile>,
+) -> Vec<FoldedLine> {
+    let mut out: Vec<FoldedLine> = lines
+        .into_iter()
+        .map(|(key, (best_level, best_spell, illusion))| FoldedLine {
+            members: vec![key.clone()],
+            key,
+            best_level,
+            best_spell,
+            illusion,
+        })
+        .collect();
+    let Some(file) = file else {
+        return out;
+    };
+    let entry = |name: &str| crate::spelltimers::entry_of(file, name);
+    'again: loop {
+        for i in 0..out.len() {
+            for j in (i + 1)..out.len() {
+                if out[i].illusion || out[j].illusion {
+                    continue;
+                }
+                let (Some(a), Some(b)) = (entry(&out[i].best_spell), entry(&out[j].best_spell))
+                else {
+                    continue;
+                };
+                if !a.conflicts(&b) {
+                    continue;
+                }
+                let j = out.remove(j);
+                let i = &mut out[i];
+                // why: the lowest rank names the line, the highest is best
+                if j.best_level < i.best_level {
+                    i.key = j.key.clone();
+                } else {
+                    i.best_level = j.best_level;
+                    i.best_spell = j.best_spell;
+                }
+                i.members.extend(j.members);
+                continue 'again;
+            }
+        }
+        return out;
     }
 }
 
@@ -1480,6 +1561,67 @@ mod tests {
             Some("Blessing of the Squire"),
             16
         ));
+    }
+
+    /// why: the game's rule folds renamed ranks and keeps stacking pairs
+    /// apart -- real slot strings off the real file
+    #[test]
+    fn conflicting_self_buffs_fold_into_one_line_and_stacking_ones_stay_two() {
+        let row = |name: &str, slots: &str| {
+            let mut f = vec![String::new(); 173];
+            f[1] = name.to_string();
+            f[11] = "50".to_string();
+            f[172] = slots.to_string();
+            f.join("^")
+        };
+        let file = crate::spelltimers::parse_text(
+            &[
+                row("Vampiric Embrace", "1|85|821|0|100|0$2|10|0|0|100|0"),
+                row("Scream of Death", "1|85|2718|0|100|0$2|10|0|0|100|0"),
+                row("Grim Aura", "1|2|5|0|101|10"),
+                row("Dark Temptation", "1|10|0|0|100|0$2|2|25|0|100|0"),
+            ]
+            .join("\n"),
+        );
+        let mut lines = BTreeMap::new();
+        lines.insert(
+            "Vampiric Embrace".to_string(),
+            (15, "Vampiric Embrace".to_string(), false),
+        );
+        lines.insert(
+            "Scream of Death".to_string(),
+            (37, "Scream of Death".to_string(), false),
+        );
+        lines.insert("Grim Aura".to_string(), (3, "Grim Aura".to_string(), false));
+        lines.insert(
+            "Dark Temptation".to_string(),
+            (32, "Dark Temptation".to_string(), false),
+        );
+        let folded = fold_conflicting_lines(lines.clone(), Some(&file));
+        assert_eq!(
+            folded.len(),
+            3,
+            "VE + Scream fold, the two ATK buffs stay apart"
+        );
+        let ve = folded
+            .iter()
+            .find(|l| l.key == "Vampiric Embrace")
+            .expect("named by its lowest rank");
+        assert_eq!(
+            ve.best_spell, "Scream of Death",
+            "the higher rank is the best"
+        );
+        assert_eq!(ve.best_level, 37);
+        assert!(ve.members.contains(&"Scream of Death".to_string()));
+        assert!(
+            folded.iter().any(|l| l.key == "Grim Aura")
+                && folded.iter().any(|l| l.key == "Dark Temptation")
+        );
+        assert_eq!(
+            fold_conflicting_lines(lines, None).len(),
+            4,
+            "no file, nothing folds"
+        );
     }
 
     /// why: the file decides -- the cleric heal-on-hit line and Vampiric
