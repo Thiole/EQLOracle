@@ -225,6 +225,15 @@ static BARD_ONLY: std::sync::LazyLock<[String; 1]> =
 static MONK_ONLY: std::sync::LazyLock<[String; 1]> =
     std::sync::LazyLock::new(|| ["Monk".to_string()]);
 
+/// why: the melee "frenzy" verb ("X frenzies on Y", "tries to frenzy
+/// on") is the Berserker skill, not the spell of the same name -- the
+/// spell lands with a SPELL tag. Spencer: "this shape is for 100%
+/// confirming the entity is Berserker class". Real log: 7 of 8
+/// frenzier-days with a same-day /who row had BER; the eighth was a /who
+/// an hour before the swing, a swap window.
+static BERSERKER_ONLY: std::sync::LazyLock<[String; 1]> =
+    std::sync::LazyLock::new(|| ["Berserker".to_string()]);
+
 /// why: a class pick's spell grants land in the same second -- see
 /// `note_spell_granted`; a single grant is a scribe, not a pick
 const GRANT_CLUSTER_MS: Millis = 2_000;
@@ -1729,11 +1738,16 @@ impl Ingest {
     }
 
     /// why: a melee verb that only one class can produce is class
-    /// evidence for whoever swung it, landed or not -- see MONK_ONLY
+    /// evidence for whoever swung it, landed or not -- see MONK_ONLY and
+    /// BERSERKER_ONLY. Mobs frenzy and strike too; the funnel's own
+    /// player gate keeps them out.
     fn note_melee_class_evidence(&mut self, ts: Millis, src: &str, ability: &str) {
-        if ability == "Strike" {
-            self.note_class_evidence(ts, src, &*MONK_ONLY);
-        }
+        let classes: &[String] = match ability {
+            "Strike" => &*MONK_ONLY,
+            "Frenzy" => &*BERSERKER_ONLY,
+            _ => return,
+        };
+        self.note_class_evidence(ts, src, classes);
     }
 
     /// why: an ability ACTIVATION is itself proof of a player -- no mob

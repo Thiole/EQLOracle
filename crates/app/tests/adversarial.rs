@@ -287,7 +287,7 @@ fn the_game_saying_an_ability_is_not_yours_takes_that_class_off_you() {
 /// class detection (Mend was filed as noise, "strike" mapped to nothing).
 /// Real lines from a Monk's own log.
 #[test]
-fn a_strike_and_a_mend_both_put_monk_on_the_row() {
+fn a_strike_a_frenzy_and_a_mend_each_put_their_one_class_on_the_row() {
     let shown = |ing: &Ingest, who: &str| {
         ing.class_chain(who, ing.now_ms())
             .map(|c| c.inferred())
@@ -302,6 +302,17 @@ fn a_strike_and_a_mend_both_put_monk_on_the_row() {
         shown(&striker, "Kaeus").iter().any(|c| c == "Monk"),
         "an ally striking is a Monk -- got {:?}",
         shown(&striker, "Kaeus")
+    );
+    // why: the melee frenzy, not the spell -- real shapes, hit and parried
+    let frenzier = run(concat!(
+        "[Fri Aug 21 12:06:00 2026] Hemang tells the group, 'inc'\n",
+        "[Fri Aug 21 12:06:21 2026] Hemang tries to frenzy on a froglok shin knight, but a froglok shin knight parries!\n",
+        "[Fri Aug 21 12:06:25 2026] Hemang frenzies on a froglok shin knight for 52 points of damage.\n",
+    ));
+    assert!(
+        shown(&frenzier, "Hemang").iter().any(|c| c == "Berserker"),
+        "an ally frenzying is a Berserker -- got {:?}",
+        shown(&frenzier, "Hemang")
     );
     let mender = run(concat!(
         "[Wed Jul 01 20:47:00 2026] You tell your party, 'ready'\n",
