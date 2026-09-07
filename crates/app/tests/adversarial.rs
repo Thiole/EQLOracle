@@ -367,3 +367,40 @@ fn every_ability_point_payout_shape_reaches_the_aa_ledger() {
     let gained: Vec<(u64, u64)> = ing.aa_points.iter().map(|&(_, g, t)| (g, t)).collect();
     assert_eq!(gained, vec![(1, 9), (1, 1), (2, 3)]);
 }
+
+/// why: "they leave and come back with same party member, with new
+/// class loadouts, and it thinks the allies are the same loadout as
+/// before". An ally proven Enchanter, then your zone line, then the
+/// same ally only swinging -- no class line of theirs at all. The old
+/// chain must not answer for the new visit.
+#[test]
+fn an_ally_seen_again_after_your_zone_line_does_not_keep_the_old_trio_on_swings_alone() {
+    let before = concat!(
+        "[Tue Jul 28 15:00:00 2026] Kilja tells the group, 'inc'\n",
+        "[Tue Jul 28 15:00:05 2026] Kilja begins casting Clarity.\n",
+        "[Tue Jul 28 15:00:08 2026] Kilja hits a gnoll for 5 points of damage.\n",
+        "[Tue Jul 28 15:00:20 2026] You have entered Befallen.\n",
+    );
+    let ing = run(&format!(
+        "{before}[Tue Jul 28 15:10:00 2026] Kilja hits a skeleton for 5 points of damage.\n[Tue Jul 28 15:10:02 2026] You hit a skeleton for 5 points of damage.\n"
+    ));
+    let now = ing.now_ms();
+    let shown = ing
+        .class_chain("Kilja", now)
+        .map(|c| c.inferred())
+        .unwrap_or_default();
+    assert!(
+        !shown.iter().any(|c| c == "Enchanter"),
+        "the Enchanter chain is from before your zone line -- got {shown:?}"
+    );
+    // why: premise -- before the zone line the cast did prove Enchanter
+    let old = run(before);
+    let was = old
+        .class_chain("Kilja", old.now_ms())
+        .map(|c| c.inferred())
+        .unwrap_or_default();
+    assert!(
+        was.iter().any(|c| c == "Enchanter"),
+        "premise: Clarity proves Enchanter -- got {was:?}"
+    );
+}

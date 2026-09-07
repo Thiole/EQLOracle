@@ -1760,6 +1760,24 @@ impl Ingest {
         self.note_class_evidence(ts, src, classes);
     }
 
+    /// why: reported -- "they leave and come back with same party member,
+    /// with new class loadouts, and it thinks the allies are the same
+    /// loadout as before". The chain cut ran only when the ally produced
+    /// CLASS EVIDENCE or a /who row; an ally back after your zone line, a
+    /// 5-minute absence or a group leave who then only swung a weapon
+    /// never tripped it, and an open chain covers every later unit, so
+    /// the old trio stayed. Any action of theirs is a sighting. Called
+    /// from the action handlers, after the encounter graph has run, so
+    /// the cut lands on the unit the action belongs to -- from inside
+    /// record_damage it landed on the previous, still-open unit and
+    /// restarted the old chain in place instead of splitting it.
+    fn note_ally_sighting(&mut self, ts: Millis, who: &str) {
+        if who.eq_ignore_ascii_case("You") || !self.is_ally(who, ts) {
+            return;
+        }
+        self.cut_ally_chain_if_absent(ts, who);
+    }
+
     /// why: an ability ACTIVATION is itself proof of a player -- no mob
     /// activates a poison or a discipline -- so this gate is only the pet
     /// exclusion (C9/P7), looser than `tracks_classes`. The one deliberate
@@ -2198,6 +2216,7 @@ impl Ingest {
                 flags,
             } => {
                 self.record_damage(ts, &src, &dst, &ability, tags, amount, flags);
+                self.note_ally_sighting(ts, &src);
                 if tags & tag::MELEE != 0 {
                     self.note_melee_class_evidence(ts, &src, &ability);
                 }
@@ -3314,6 +3333,7 @@ impl Ingest {
         // alive -- same proof-of-life as record_damage's target clear
         self.clear_dead_if_acting(ts, t);
         let canonical = canonical_melee_ability(verb);
+        self.note_ally_sighting(ts, src);
         self.note_melee_class_evidence(ts, src, canonical);
         // why: an avoided real special attack -- see record_damage's own
         // matching hook, and skilltracker.rs's own doc
