@@ -121,7 +121,8 @@ rules below are ally-specific, and they only decide where a chain breaks.
 - A6. A kill's party size is distinct people who damaged the mob: pets
   fold onto their owner (your own onto "You"), a pet nobody claims and
   a bestiary mob that turned on the boss are not bodies, and a name is
-  judged enemy or ally at the fight's own time, never "now".
+  judged enemy or ally at the fight's own time, never "now". Bands:
+  1 is solo, 2-4 is group, 5-8 is raid (Spencer, 2026-09-08).
 
 ## Your level
 

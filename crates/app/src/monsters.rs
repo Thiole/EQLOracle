@@ -96,10 +96,11 @@ pub struct MobHpRowDto {
     pub max_hp: u64,
 }
 
+/// why: Spencer -- "raid is 5-8 players"; a group is up to 4
 fn band_of(party_size: u32) -> &'static str {
     match party_size {
         0 | 1 => "solo",
-        2..=6 => "group",
+        2..=4 => "group",
         _ => "raid",
     }
 }
