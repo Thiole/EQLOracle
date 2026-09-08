@@ -644,6 +644,39 @@ fn line_value(
     magnitude_for(file, spell, kind).unwrap_or(f64::from(level))
 }
 
+/// why: an upgrade is a better line that would REPLACE the active one --
+/// the game's own stacking rule decides that, not the kind. Reported:
+/// "Clarity and Gift of Brilliance are not in the same spell line ...
+/// yet it says one overrides another". Clarity's regen sits in slot 2,
+/// Gift of Brilliance's in slot 3: they stack, so neither upgrades the
+/// other. A line the file does not know keeps the old answer (conflict
+/// assumed), and the same spell is never an upgrade over itself.
+fn upgrade_available(
+    file: &crate::spelltimers::SpellFile,
+    kind: BuffKind,
+    active: &str,
+    active_level: u32,
+    lines: &[(u32, BuffLineDto)],
+) -> bool {
+    let active_entry = crate::spelltimers::entry_of(file, active);
+    let active_value = line_value(Some(file), kind, base_name(active), active, active_level);
+    lines.iter().any(|(rank, l)| {
+        if l.best_spell.eq_ignore_ascii_case(active) {
+            return false;
+        }
+        if line_value(Some(file), kind, &l.line, &l.best_spell, *rank) <= active_value {
+            return false;
+        }
+        match (
+            active_entry.as_ref(),
+            crate::spelltimers::entry_of(file, &l.best_spell),
+        ) {
+            (Some(a), Some(b)) => a.conflicts(&b),
+            _ => true,
+        }
+    })
+}
+
 /// why: the sort key for "which of these is better" -- the override when
 /// a line has one, its level requirement otherwise
 fn value_of(line: &str, level: u32) -> u32 {
@@ -1048,13 +1081,9 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
             // elsewhere -- castability, and the level shown on the row.
             // why: with a file, the game's own magnitudes decide; without
             // one, the level-and-override rule the tests pin
-            let upgrade = match (file, &on_you, lines.first()) {
-                (Some(_), Some((name, lvl)), Some((_, best))) => {
-                    !best.best_spell.eq_ignore_ascii_case(name)
-                        && line_value(file, kind, base_name(name), name, *lvl)
-                            < line_value(file, kind, &best.line, &best.best_spell, best_level)
-                }
-                (None, _, _) => is_upgrade(
+            let upgrade = match (file, &on_you) {
+                (Some(f), Some((name, lvl))) => upgrade_available(f, kind, name, *lvl, &lines),
+                (None, _) => is_upgrade(
                     on_you.as_ref().map(|(n, l)| (n.as_str(), *l)),
                     lines.first().map(|(_, l)| l.best_spell.as_str()),
                     best_level,
@@ -1683,6 +1712,75 @@ mod tests {
     /// why: the file decides -- the cleric heal-on-hit line and Vampiric
     /// Embrace are two kinds, an instant is no kind, and a spell the
     /// file does not know still gets the prose answer
+    /// why: Spencer -- "Clarity and Gift of Brilliance are not in the same
+    /// spell line, they handle different buffs. yet it says one overrides
+    /// another". Real slot data off the game file: Breeze and Clarity
+    /// carry their regen in slot 2, Gift of Brilliance in slot 3. Breeze
+    /// stands in for the active side because the Clarity line carries a
+    /// hand override that values every rank of it the same.
+    #[test]
+    fn a_stacking_line_is_not_an_upgrade_but_a_conflicting_line_is() {
+        let row = |name: &str, slots: &str| {
+            let mut f = vec![String::new(); 173];
+            f[1] = name.to_string();
+            f[11] = "50".to_string();
+            f[172] = slots.to_string();
+            f.join("^")
+        };
+        let file = crate::spelltimers::parse_text(
+            &[
+                row("Breeze", "1|10|0|0|100|0$2|15|1|0|109|6"),
+                row("Clarity", "1|10|0|0|100|0$2|15|1|0|109|9"),
+                row(
+                    "Gift of Brilliance",
+                    "1|97|150|0|100|0$2|10|0|0|100|0$3|15|2|0|100|0",
+                ),
+            ]
+            .join("\n"),
+        );
+        let line = |name: &str, level: u32| {
+            (
+                level,
+                BuffLineDto {
+                    line: name.to_string(),
+                    best_spell: name.to_string(),
+                    best_level: level,
+                    casters: vec!["You".to_string()],
+                },
+            )
+        };
+        assert!(
+            !upgrade_available(
+                &file,
+                BuffKind::ManaRegen,
+                "Breeze",
+                16,
+                &[line("Gift of Brilliance", 57)]
+            ),
+            "Gift of Brilliance stacks with Breeze -- not an upgrade over it"
+        );
+        assert!(
+            upgrade_available(
+                &file,
+                BuffKind::ManaRegen,
+                "Breeze",
+                16,
+                &[line("Clarity", 26)]
+            ),
+            "Clarity shares slot 2 and replaces Breeze"
+        );
+        assert!(
+            !upgrade_available(
+                &file,
+                BuffKind::ManaRegen,
+                "Breeze",
+                16,
+                &[line("Breeze", 16)]
+            ),
+            "never over itself"
+        );
+    }
+
     #[test]
     fn the_games_spa_outranks_the_wikis_prose() {
         let row2 = |name: &str, formula: &str, base: &str, slots: &str| {
