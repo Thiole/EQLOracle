@@ -189,85 +189,7 @@
         {#if $expandedAlly === a.name && $allySummary}
           <Table.Row>
             <Table.Cell colspan={cols} class="bg-muted/40 p-0">
-              <div class="grid grid-cols-2 gap-3 p-3">
-                <!-- why: the row's total already includes these; this
-                     says which part came from which charmed pet, so a
-                     folded number can still be broken down. The store
-                     keeps the pet a separate entity -- only the row
-                     folds -- which is what stops two people charming the
-                     same kind of mob collapsing into one of them. -->
-                <!-- why: an observed swing rate, and labelled as one.
-                     The log timestamps whole seconds and haste, dual
-                     wield and double attack all sit on the weapon's own
-                     delay, so this cannot be that number and does not
-                     claim to be. Specials are excluded -- Bash, Kick,
-                     Backstab and Frenzy run on their own timers. -->
-                {#if a.melee_rate && a.melee_rate.rounds > 1}
-                  <div class="col-span-2 text-[11px]">
-                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      melee swing rate
-                    </h4>
-                    <p class="flex justify-between gap-3">
-                      <span>seconds between swing rounds</span>
-                      <span class="font-mono tabular-nums">{a.melee_rate.secs_between_rounds.toFixed(2)}s</span>
-                    </p>
-                    <p class="flex justify-between gap-3">
-                      <span>swings per round</span>
-                      <span class="font-mono tabular-nums">
-                        {(a.melee_rate.swings / a.melee_rate.rounds).toFixed(2)}
-                      </span>
-                    </p>
-                    <p class="flex justify-between gap-3 text-muted-foreground">
-                      <span>{a.melee_rate.swings.toLocaleString()} swings over {a.melee_rate.rounds.toLocaleString()} rounds</span>
-                    </p>
-                  </div>
-                {/if}
-                {#if a.pets.length}
-                  <div class="col-span-2 text-[11px]">
-                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      folded in
-                    </h4>
-                    {#each a.pets as p (p.name)}
-                      <p class="flex justify-between gap-3">
-                        <span class="truncate">{p.name}</span>
-                        <span class="shrink-0 font-mono tabular-nums text-muted-foreground">
-                          {p.total.toLocaleString()} · {p.hits} hit{p.hits === 1 ? '' : 's'}
-                        </span>
-                      </p>
-                    {/each}
-                    <p class="mt-0.5 flex justify-between gap-3 text-muted-foreground">
-                      <span>{a.name} directly</span>
-                      <span class="shrink-0 font-mono tabular-nums">
-                        {(a.total - a.pets.reduce((n, p) => n + p.total, 0)).toLocaleString()}
-                      </span>
-                    </p>
-                  </div>
-                {/if}
-                {#if allySide && a.class_source !== 'who' && (a.classes.length < 3 || a.class_prior.length || a.class_conflicts || a.class_chain_end)}
-                  <!-- why: Q34 -- what the open slot is stuck between, and the chain's state -->
-                  <div class="col-span-2 text-[11px]">
-                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">class detection</h4>
-                    {#if a.classes.length < 3}
-                      <p>open slot{a.class_candidates.length ? `, between: ${a.class_candidates.join(', ')}` : ': no candidates yet'}</p>
-                    {/if}
-                    {#if a.class_prior.length}
-                      <p>carried as prior, reconfirming: {a.class_prior.join(', ')}</p>
-                    {/if}
-                    {#if a.class_conflicts}
-                      <p class="text-caution">{a.class_conflicts} conflicting encounter{a.class_conflicts === 1 ? '' : 's'} running (3 close the chain)</p>
-                    {/if}
-                    {#if a.class_chain_end === '??'}
-                      <p class="text-bad">chain closed by contradiction -- a new one is confirming</p>
-                    {:else if a.class_chain_end === 'swap'}
-                      <p class="text-caution">chain closed by a loadout swap signal</p>
-                    {:else if a.class_chain_end === 'presence'}
-                      <!-- why: not a swap: a new presence (absence, your zone
-                           line, a group change). This fight keeps what was known
-                           in it; detection since then started clean. -->
-                      <p class="text-muted-foreground">this presence ended (absence, your zone line or a group change) -- detection restarted after it</p>
-                    {/if}
-                  </div>
-                {/if}
+              <div class="flex flex-col gap-3 p-3">
                 <div>
                   <h4 class="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
                     <span>abilities</span>
@@ -320,7 +242,7 @@
                   </table>
                 </div>
                 <div>
-                  <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">casts</h4>
+                  <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">spells cast</h4>
                   <table class="w-full text-[11px]">
                     <tbody>
                       {#each $allySummary.casts as c (c.spell)}
@@ -337,6 +259,84 @@
                     </tbody>
                   </table>
                 </div>
+                <!-- why: the row's total already includes these; this
+                     says which part came from which charmed pet, so a
+                     folded number can still be broken down. The store
+                     keeps the pet a separate entity -- only the row
+                     folds -- which is what stops two people charming the
+                     same kind of mob collapsing into one of them. -->
+                <!-- why: an observed swing rate, and labelled as one.
+                     The log timestamps whole seconds and haste, dual
+                     wield and double attack all sit on the weapon's own
+                     delay, so this cannot be that number and does not
+                     claim to be. Specials are excluded -- Bash, Kick,
+                     Backstab and Frenzy run on their own timers. -->
+                {#if a.melee_rate && a.melee_rate.rounds > 1}
+                  <div class="text-[11px]">
+                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      melee swing rate
+                    </h4>
+                    <p class="flex justify-between gap-3">
+                      <span>seconds between swing rounds</span>
+                      <span class="font-mono tabular-nums">{a.melee_rate.secs_between_rounds.toFixed(2)}s</span>
+                    </p>
+                    <p class="flex justify-between gap-3">
+                      <span>swings per round</span>
+                      <span class="font-mono tabular-nums">
+                        {(a.melee_rate.swings / a.melee_rate.rounds).toFixed(2)}
+                      </span>
+                    </p>
+                    <p class="flex justify-between gap-3 text-muted-foreground">
+                      <span>{a.melee_rate.swings.toLocaleString()} swings over {a.melee_rate.rounds.toLocaleString()} rounds</span>
+                    </p>
+                  </div>
+                {/if}
+                {#if a.pets.length}
+                  <div class="text-[11px]">
+                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      folded in
+                    </h4>
+                    {#each a.pets as p (p.name)}
+                      <p class="flex justify-between gap-3">
+                        <span class="truncate">{p.name}</span>
+                        <span class="shrink-0 font-mono tabular-nums text-muted-foreground">
+                          {p.total.toLocaleString()} · {p.hits} hit{p.hits === 1 ? '' : 's'}
+                        </span>
+                      </p>
+                    {/each}
+                    <p class="mt-0.5 flex justify-between gap-3 text-muted-foreground">
+                      <span>{a.name} directly</span>
+                      <span class="shrink-0 font-mono tabular-nums">
+                        {(a.total - a.pets.reduce((n, p) => n + p.total, 0)).toLocaleString()}
+                      </span>
+                    </p>
+                  </div>
+                {/if}
+                {#if allySide && a.class_source !== 'who' && (a.classes.length < 3 || a.class_prior.length || a.class_conflicts || a.class_chain_end)}
+                  <!-- why: Q34 -- what the open slot is stuck between, and the chain's state -->
+                  <div class="text-[11px]">
+                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">class detection</h4>
+                    {#if a.classes.length < 3}
+                      <p>open slot{a.class_candidates.length ? `, between: ${a.class_candidates.join(', ')}` : ': no candidates yet'}</p>
+                    {/if}
+                    {#if a.class_prior.length}
+                      <p>carried as prior, reconfirming: {a.class_prior.join(', ')}</p>
+                    {/if}
+                    {#if a.class_conflicts}
+                      <p class="text-caution">{a.class_conflicts} conflicting encounter{a.class_conflicts === 1 ? '' : 's'} running (3 close the chain)</p>
+                    {/if}
+                    {#if a.class_chain_end === '??'}
+                      <p class="text-bad">chain closed by contradiction -- a new one is confirming</p>
+                    {:else if a.class_chain_end === 'swap'}
+                      <p class="text-caution">chain closed by a loadout swap signal</p>
+                    {:else if a.class_chain_end === 'presence'}
+                      <!-- why: not a swap: a new presence (absence, your zone
+                           line, a group change). This fight keeps what was known
+                           in it; detection since then started clean. -->
+                      <p class="text-muted-foreground">this presence ended (absence, your zone line or a group change) -- detection restarted after it</p>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             </Table.Cell>
           </Table.Row>
