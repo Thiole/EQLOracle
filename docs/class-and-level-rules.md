@@ -70,6 +70,11 @@ Code: `crates/session/src/classdetect.rs` (your classes),
 - C9. Pets' casts are never class evidence for anyone.
 - C10. AA names with a ": Enabled"/": Disabled" suffix fall back to the
   bare catalog name.
+- C11. Harm Touch and Reaving Strike are Shadow Knight-only evidence, for
+  You (cast line) and for allies ("by Harm Touch" / "by Reaving Strike"
+  damage lines). Spencer 2026-09-08: "harm touch or Reaving Strike (not
+  reave) is 100% a shadowknight confirmation". Reaving Strike is a
+  hand-verified spell_classes entry; Reave is untouched (skill_classes).
 
 ## Bard through Symphonic Aura
 

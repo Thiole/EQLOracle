@@ -6,8 +6,9 @@
 //! Build script drops empty/bogus `classes` fields and folds
 //! Shadowknight/Shadow Knight spelling variants.
 //!
-//! 4 hand-verified exceptions layered on top (Harm Touch, Leech,
-//! Malaisement, Blast of Cold -- real spells missing from the scrape).
+//! 5 hand-verified exceptions layered on top (Harm Touch, Leech,
+//! Malaisement, Blast of Cold -- real spells missing from the scrape;
+//! Reaving Strike -- a Shadow Knight ability with no wiki spell page).
 //! `Origin` deliberately excluded: an every-class AA, not real evidence.
 //!
 //! Case-folded only: "Ice Strike" (Shaman) and "Icestrike" (Wizard) are

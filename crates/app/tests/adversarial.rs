@@ -282,6 +282,47 @@ fn the_game_saying_an_ability_is_not_yours_takes_that_class_off_you() {
     );
 }
 
+/// why: Spencer 2026-09-08 -- "harm touch or Reaving Strike (not reave)
+/// is 100% a shadowknight confirmation". Real lines from the live log.
+#[test]
+fn harm_touch_and_reaving_strike_put_shadow_knight_on_the_row() {
+    let shown = |ing: &Ingest, who: &str| {
+        ing.class_chain(who, ing.now_ms())
+            .map(|c| c.inferred())
+            .unwrap_or_default()
+    };
+    let ht = run(concat!(
+        "[Tue Jul 28 15:27:00 2026] Libaner tells the group, 'inc'\n",
+        "[Tue Jul 28 15:27:49 2026] Libaner hit a dune spiderling for 12 points of magic damage by Harm Touch.\n",
+    ));
+    assert!(
+        shown(&ht, "Libaner").iter().any(|c| c == "Shadow Knight"),
+        "an ally's Harm Touch is a Shadow Knight -- got {:?}",
+        shown(&ht, "Libaner")
+    );
+    let rs = run(concat!(
+        "[Wed Jul 29 16:14:00 2026] Bravesirrobin tells the group, 'inc'\n",
+        "[Wed Jul 29 16:14:56 2026] Bravesirrobin hit a boisterous gnoll for 40 points of magic damage by Reaving Strike.\n",
+    ));
+    assert!(
+        shown(&rs, "Bravesirrobin")
+            .iter()
+            .any(|c| c == "Shadow Knight"),
+        "an ally's Reaving Strike is a Shadow Knight -- got {:?}",
+        shown(&rs, "Bravesirrobin")
+    );
+    let you = run(concat!(
+        "[Sun Aug 16 09:17:00 2026] You tell your party, 'ready'\n",
+        "[Sun Aug 16 09:17:48 2026] You begin casting Harm Touch X.\n",
+        "[Sun Aug 16 09:17:48 2026] You hit Master of Spite for 921 points of unresistable damage by Harm Touch X.\n",
+    ));
+    assert!(
+        shown(&you, "You").iter().any(|c| c == "Shadow Knight"),
+        "your own Harm Touch is a Shadow Knight -- got {:?}",
+        shown(&you, "You")
+    );
+}
+
 /// why: Spencer -- Dragon Punch, Eagle Strike, Tiger Claw and Tail Rake
 /// all print "strike", and Mend is Monk-only; both were invisible to
 /// class detection (Mend was filed as noise, "strike" mapped to nothing).
