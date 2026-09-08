@@ -116,7 +116,11 @@ pub fn all(app: &AppHandle) -> Vec<ParseRecord> {
 
 /// why: pure filter, shared by file-backed path and fixture dumping
 pub fn filter_for_target(records: Vec<ParseRecord>, target: &str) -> Vec<ParseRecord> {
-    records.into_iter().filter(|r| r.target == target).collect()
+    // why: asked by wiki name from the mob page, by log name from Combat
+    records
+        .into_iter()
+        .filter(|r| crate::mobalias::mob_matches(&r.target, target))
+        .collect()
 }
 
 /// why: narrows to confirmed kills only

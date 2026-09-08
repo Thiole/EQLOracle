@@ -372,7 +372,7 @@ pub fn list_mob_encounters(ing: &Ingest, mob_name: &str, limit: usize) -> Vec<Zo
 
     let mut matched: Vec<&Encounter> = Vec::with_capacity(limit.min(256));
     for e in ing.store.encounters.iter().rev() {
-        if ing.store.name(e.target).eq_ignore_ascii_case(mob_name) {
+        if crate::mobalias::mob_matches(ing.store.name(e.target), mob_name) {
             matched.push(e);
             if matched.len() >= limit {
                 break;

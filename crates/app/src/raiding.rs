@@ -132,21 +132,10 @@ fn find_npc(name: &str) -> Option<&'static npcdata::Npc> {
     npcdata::npcs().iter().find(|n| n.name == name)
 }
 
-/// why: wiki name doesn't always match the real log entity name --
-/// confirmed "Cazic Thule"/"Innoruuk" log as "Cazic-Thule"/"Innoruuk,
-/// the Prince of Hate". This is what kills/loot look up under; `find_npc`
-/// still uses the wiki name unchanged. Absent means the two already agree.
-const LOG_NAME_ALIASES: &[(&str, &str)] = &[
-    ("Cazic Thule", "Cazic-Thule"),
-    ("Innoruuk", "Innoruuk, the Prince of Hate"),
-];
-
+/// why: wiki name doesn't always match the real log entity name -- one
+/// table for that, shared with the mob page (mobalias)
 fn log_name(curated_name: &str) -> &str {
-    LOG_NAME_ALIASES
-        .iter()
-        .find(|&&(wiki, _)| wiki == curated_name)
-        .map(|&(_, log)| log)
-        .unwrap_or(curated_name)
+    crate::mobalias::log_name(curated_name)
 }
 
 /// why: real log names of every curated boss/miniboss, case-insensitive

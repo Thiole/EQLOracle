@@ -3,6 +3,7 @@
   import { Badge } from '$lib/components/ui/badge';
   import { type RaidDto, type RaidTargetDto, type BestTimeDto } from '$lib/tauri/api';
   import { raidRows, raidRowsError, refreshRaidRows } from '$lib/stores/raiding';
+  import GdLink from '$lib/gamedata/GdLink.svelte';
 
   // why: same fixed 5-tier scale `zone::zone_tier` parses out of a zone
   // name everywhere else in the app -- index 0 is the base/untiered zone,
@@ -118,7 +119,8 @@
         {#if kind === 'boss'}
           <Badge class="h-4 px-1.5 text-[9px] uppercase tracking-wide">boss</Badge>
         {/if}
-        <span class="text-[13px] font-medium text-foreground">{t.name}</span>
+        <!-- why: the boss is a wiki entry -- open it, don't just name it -->
+        <span class="text-[13px] font-medium"><GdLink kind="npc" name={t.name} bell={false} /></span>
         {#if t.level}
           <span class="text-[11px] text-muted-foreground">lvl {t.level}</span>
         {/if}

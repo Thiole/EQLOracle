@@ -5,7 +5,21 @@
 //! "Innoruuk" -- the "(God)" disambiguator lives only in the id slug.
 
 /// why: log name -> wiki `Npc::name`, add only on a confirmed mismatch
-const MOB_ALIASES: &[(&str, &str)] = &[("Innoruuk, the Prince of Hate", "Innoruuk")];
+const MOB_ALIASES: &[(&str, &str)] = &[
+    ("Innoruuk, the Prince of Hate", "Innoruuk"),
+    ("Cazic-Thule", "Cazic Thule"),
+];
+
+/// why: the other direction -- what the log calls a wiki mob; the wiki
+/// name itself when the two agree. The raid tab and the mob page both
+/// look kills up under this.
+pub fn log_name(wiki_name: &str) -> &str {
+    MOB_ALIASES
+        .iter()
+        .find(|&&(_, w)| w.eq_ignore_ascii_case(wiki_name))
+        .map(|&(log, _)| log)
+        .unwrap_or(wiki_name)
+}
 
 /// why: the one function anything should call to match log mob to wiki mob
 pub fn mob_matches(raw: &str, wiki_name: &str) -> bool {
