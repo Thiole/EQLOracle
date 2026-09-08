@@ -264,6 +264,68 @@ channel = { from = "channel", as = "str" }
 
 # ============================================================ combat
 
+
+[[rule]]
+id = "noise.song_missed_note"
+kind = "noise"
+priority = 50
+anchors = ["A missed note brings"]
+# why: a bard's song ending early -- known, not yet consumed
+pattern = '''^A missed note brings (?P<who>.+?)'s (?P<song>.+?) to a close!$'''
+examples = ["[Tue Sep 08 12:00:00 2026] A missed note brings Murgledoo's Chords of Dissonance to a close!"]
+[rule.fields]
+who = { from = "who", as = "str" }
+song = { from = "song", as = "str" }
+
+[[rule]]
+id = "noise.fishing_cast"
+kind = "noise"
+priority = 50
+anchors = ["You cast your line"]
+pattern = '''^You cast your line\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] You cast your line."]
+
+[[rule]]
+id = "noise.stolen_thoughts"
+kind = "noise"
+priority = 50
+anchors = ["thoughts enter your mind"]
+# why: a landing message on you with no spell named
+pattern = '''^Stolen thoughts enter your mind\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Stolen thoughts enter your mind."]
+
+[[rule]]
+id = "noise.line_of_sight"
+kind = "noise"
+priority = 50
+anchors = ["distorts your view of the target"]
+pattern = '''^(?P<what>.+?) distorts your view of the target, try casting your spell from a different location\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Liquid distorts your view of the target, try casting your spell from a different location."]
+[rule.fields]
+what = { from = "what", as = "str" }
+
+[[rule]]
+id = "noise.mob_charge_howl"
+kind = "noise"
+priority = 50
+anchors = ["charges into battle with an echoing howl"]
+# why: a mob emote; no trailing period on the line
+pattern = '''^(?P<who>.+?) growls viciously and charges into battle with an echoing howl$'''
+examples = ["[Tue Sep 08 12:00:00 2026] A rabid kobold growls viciously and charges into battle with an echoing howl"]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "noise.stun_refresh_failed"
+kind = "noise"
+priority = 50
+anchors = ["fails to take hold"]
+pattern = '''^You (?:are almost stunned again, but it|remain stunned, but another stun) fails to take hold\.$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] You are almost stunned again, but it fails to take hold.",
+  "[Tue Sep 08 12:00:00 2026] You remain stunned, but another stun fails to take hold.",
+]
+
 [[rule]]
 id = "melee.hit"
 kind = "damage"
@@ -928,6 +990,16 @@ examples = [
 ]
 [rule.fields]
 scope = { from = "scope", as = "str" }
+
+
+[[rule]]
+id = "xp.raid_none"
+kind = "xp"
+priority = 40
+anchors = ["as you are in a raid"]
+# why: the game's own word that this kill happened in a raid
+pattern = '''^You receive no experience for defeating this creature as you are in a raid\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] You receive no experience for defeating this creature as you are in a raid."]
 
 [[rule]]
 id = "level.up"
@@ -1991,9 +2063,11 @@ anchors = [" "]
 # kept (self "You writhe..." vs third-person "X writhes...", same
 # grammatical shape, different conjugation) rather than trying to fold
 # person into the pattern itself.
-pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better|winces|writhes in the grip of agony|writhe in the grip of agony|is surrounded by a traveling spirit|is healed from within|begins to sway|has fallen to the ground|sinks into the ground|is engulfed by a swarm|regains concentration and continues casting|feels a healing touch|is protected by a vortex of shadows|creates a mystic portal|is entwined by roots|is burning|is stung by a dozen flashes of the blade|is torn between life and death|stumbles, clutching their head|looks glamorous|blinks, looking confused|starts limping|is bound by chords of music|is bound by strands of force|begins to move faster|floats into the air|rises on a gust of hot wind|enters an accelerated frenzy|suffers a blow to the head|looks dazed|channels pure magic into the form of an improved familiar)[.!]$'''
+pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better|winces|writhes in the grip of agony|writhe in the grip of agony|is surrounded by a traveling spirit|is healed from within|begins to sway|has fallen to the ground|sinks into the ground|is engulfed by a swarm|regains concentration and continues casting|feels a healing touch|is protected by a vortex of shadows|creates a mystic portal|is entwined by roots|is burning|is stung by a dozen flashes of the blade|is torn between life and death|stumbles, clutching their head|looks glamorous|blinks, looking confused|starts limping|is bound by chords of music|is bound by strands of force|begins to move faster|floats into the air|rises on a gust of hot wind|enters an accelerated frenzy|suffers a blow to the head|looks dazed|channels pure magic into the form of an improved familiar|is bathed in healing water|is healed by the spirit of the slug)[.!]$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Splitpaw Sentry staggers.",
+  "[Tue Sep 08 12:00:00 2026] Dippinsauce is bathed in healing water.",
+  "[Tue Sep 08 12:00:00 2026] Kermitzalot is healed by the spirit of the slug.",
   "[Tue Jul 28 15:02:15 2026] Rallo rages.",
   "[Tue Jul 28 15:02:15 2026] Horror fades away.",
   "[Tue Jul 28 15:02:15 2026] Tranixx Darkpaw feels much better.",
@@ -2028,6 +2102,25 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] Iceduya is torn between life and death.",
   "[Tue Jul 28 15:02:15 2026] Kaeus stumbles, clutching their head!",
   "[Tue Jul 28 15:02:15 2026] Myana looks glamorous.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+state = { from = "state", as = "str" }
+
+
+[[rule]]
+id = "mob.state_possessive"
+kind = "mobstate"
+priority = 20
+anchors = ["'s "]
+# why: same family as mob.state, but the game writes these as "<who>'s
+# body ..." -- the possessive must come off so `who` is the entity.
+# Only pings the spell catalog cannot derive: "body pulses with energy"
+# stays with the flavor dictionary (Inner Fire's own you-text)
+pattern = '''^(?P<who>.+?)'s (?P<state>body pulses with corruption|face glows radiantly)\.$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] Iceduya's body pulses with corruption.",
+  "[Tue Sep 08 12:00:00 2026] Rebs's face glows radiantly.",
 ]
 [rule.fields]
 who = { from = "who", as = "str" }
@@ -2761,6 +2854,19 @@ examples = [
 [rule.fields]
 who = { from = "who", as = "str" }
 flavor = { from = "flavor", as = "str" }
+
+
+[[rule]]
+id = "pet.warder_attuned"
+kind = "pet"
+priority = 40
+anchors = ["attunes with their warder"]
+# why: a Beastlord's warder arriving; the warder itself logs as "<who>`s
+# warder", so ownership needs no bridging -- this is class evidence
+pattern = '''^(?P<who>.+?) attunes with their warder\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Skywarp attunes with their warder."]
+[rule.fields]
+who = { from = "who", as = "str" }
 
 [[rule]]
 id = "ability.quickbuff"
