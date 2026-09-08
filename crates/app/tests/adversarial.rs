@@ -428,6 +428,29 @@ fn a_mobs_hp_is_what_it_took_to_kill_it_by_party_size() {
         (scout.hp[0].party_size, scout.hp[0].band, scout.hp[0].avg_hp),
         (2, "group", 80)
     );
+    assert_eq!(
+        (gnoll.hp[0].difficulty, gnoll.hp[0].instance),
+        (0, "open"),
+        "no zone line: open world, d0"
+    );
+
+    // why: the zone label carries the d0-d4 tier and the instance marker
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:00:00 2026] You have entered The Plane of Hate - Solo 2 (Adaptive).\n",
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:05 2026] You have slain a gnoll!\n",
+    ));
+    let gnoll = monsters::mob_stats(&ing, "a gnoll");
+    assert_eq!(gnoll.hp.len(), 1);
+    assert_eq!(
+        (
+            gnoll.hp[0].party_size,
+            gnoll.hp[0].difficulty,
+            gnoll.hp[0].instance,
+            gnoll.hp[0].avg_hp
+        ),
+        (1, 2, "solo", 100)
+    );
 }
 
 /// why: a visit files under the day its first line fell on -- the zone

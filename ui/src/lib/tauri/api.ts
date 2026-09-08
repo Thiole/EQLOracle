@@ -1467,6 +1467,10 @@ export interface MobStatsDto {
 export interface MobHpRowDto {
   party_size: number;
   band: 'solo' | 'group' | 'raid';
+  /** why: the zone label's d0-d4 tier the fight happened in */
+  difficulty: number;
+  /** why: the zone's own " - Solo" / " - Group" instance marker, or open world */
+  instance: 'solo' | 'group' | 'open';
   kills: number;
   avg_hp: number;
   median_hp: number;

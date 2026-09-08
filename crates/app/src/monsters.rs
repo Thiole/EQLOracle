@@ -79,12 +79,16 @@ pub struct MobStatsDto {
     pub hp: Vec<MobHpRowDto>,
 }
 
-/// why: one party size -- distinct allies who dealt damage, pets folded
-/// into their owners; band names the difficulty tier a server scales by
+/// why: one (party size, zone difficulty, instance kind) -- party size is
+/// distinct allies who dealt damage, pets folded into their owners;
+/// difficulty is the zone label's d0-d4 tier; instance says whether the
+/// zone was a " - Solo" or " - Group" instance or open world
 #[derive(Debug, Clone, Serialize)]
 pub struct MobHpRowDto {
     pub party_size: u32,
     pub band: &'static str,
+    pub difficulty: u8,
+    pub instance: &'static str,
     pub kills: u64,
     pub avg_hp: u64,
     pub median_hp: u64,
@@ -100,6 +104,22 @@ fn band_of(party_size: u32) -> &'static str {
     }
 }
 
+/// why: the game's own instance markers in the zone label, and the d0-d4 suffix
+fn instance_of(zone: Option<&str>) -> (u8, &'static str) {
+    let Some(zone) = zone else {
+        return (0, "open");
+    };
+    let (base, tier) = crate::zone::zone_tier(zone);
+    let instance = if base.ends_with(" - Solo") {
+        "solo"
+    } else if base.ends_with(" - Group") {
+        "group"
+    } else {
+        "open"
+    };
+    (tier, instance)
+}
+
 /// why: every fight this mob died in, anchor or not -- the damage it
 /// took there is its HP, grouped by how many allies were hitting
 fn hp_rows(ing: &Ingest, name: &str) -> Vec<MobHpRowDto> {
@@ -107,11 +127,12 @@ fn hp_rows(ing: &Ingest, name: &str) -> Vec<MobHpRowDto> {
         return Vec::new();
     };
     let now = ing.now_ms();
-    let mut by_size: HashMap<u32, Vec<u64>> = HashMap::new();
+    let mut by_size: HashMap<(u32, u8, &'static str), Vec<u64>> = HashMap::new();
     for e in &ing.store.encounters {
         if e.absorbed || e.is_open() {
             continue;
         }
+        let (difficulty, instance) = instance_of(ing.zone.at(e.start_ms));
         let present = ing
             .entities_by_enc
             .get(&e.id)
@@ -146,17 +167,19 @@ fn hp_rows(ing: &Ingest, name: &str) -> Vec<MobHpRowDto> {
             allies.insert(ing.pet_of(&who).map(str::to_string).unwrap_or(who));
         }
         by_size
-            .entry(allies.len().max(1) as u32)
+            .entry((allies.len().max(1) as u32, difficulty, instance))
             .or_default()
             .push(hp);
     }
     let mut rows: Vec<MobHpRowDto> = by_size
         .into_iter()
-        .map(|(party_size, mut hps)| {
+        .map(|((party_size, difficulty, instance), mut hps)| {
             hps.sort_unstable();
             MobHpRowDto {
                 party_size,
                 band: band_of(party_size),
+                difficulty,
+                instance,
                 kills: hps.len() as u64,
                 avg_hp: hps.iter().sum::<u64>() / hps.len() as u64,
                 median_hp: hps[hps.len() / 2],
@@ -165,7 +188,7 @@ fn hp_rows(ing: &Ingest, name: &str) -> Vec<MobHpRowDto> {
             }
         })
         .collect();
-    rows.sort_by_key(|r| r.party_size);
+    rows.sort_by_key(|r| (r.difficulty, r.instance, r.party_size));
     rows
 }
 

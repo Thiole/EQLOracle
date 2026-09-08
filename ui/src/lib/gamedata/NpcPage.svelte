@@ -144,6 +144,7 @@
           <thead>
             <tr class="border-b border-border text-muted-foreground">
               <th class="py-0.5 text-left font-normal">party</th>
+              <th class="py-0.5 text-left font-normal">difficulty</th>
               <th class="py-0.5 text-right font-normal">kills</th>
               <th class="py-0.5 text-right font-normal">avg hp</th>
               <th class="py-0.5 text-right font-normal">median</th>
@@ -151,9 +152,10 @@
             </tr>
           </thead>
           <tbody>
-            {#each stats.hp as r (r.party_size)}
+            {#each stats.hp as r (`${r.difficulty}-${r.instance}-${r.party_size}`)}
               <tr class="border-b border-border/50">
                 <td class="py-0.5">{r.party_size} · <span class="text-muted-foreground">{r.band}</span></td>
+                <td class="py-0.5">d{r.difficulty}{#if r.instance !== 'open'} · <span class="text-caution">{r.instance} instance</span>{/if}</td>
                 <td class="py-0.5 text-right tabular-nums">{r.kills.toLocaleString()}</td>
                 <td class="py-0.5 text-right tabular-nums">{r.avg_hp.toLocaleString()}</td>
                 <td class="py-0.5 text-right tabular-nums text-muted-foreground">{r.median_hp.toLocaleString()}</td>

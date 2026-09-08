@@ -26,8 +26,16 @@ fn main() {
         println!("{name}: kills={} pulls={}", s.kills, s.pulls);
         for r in s.hp {
             println!(
-                "  party {:>2} ({:<5}) kills={:>4} avg={:>8} median={:>8} range={}..{}",
-                r.party_size, r.band, r.kills, r.avg_hp, r.median_hp, r.min_hp, r.max_hp
+                "  d{} {:<5} party {:>2} ({:<5}) kills={:>4} avg={:>8} median={:>8} range={}..{}",
+                r.difficulty,
+                r.instance,
+                r.party_size,
+                r.band,
+                r.kills,
+                r.avg_hp,
+                r.median_hp,
+                r.min_hp,
+                r.max_hp
             );
         }
     }
