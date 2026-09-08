@@ -20,6 +20,10 @@ pub struct ZoneVisitDto {
     pub fight_count: usize,
     /// why: most recent visit with no successor, presumably where the player still is
     pub current: bool,
+    /// why: when the visit began -- the zone line's own time, or the
+    /// earliest fight for the "unknown" bucket; the day a visit files
+    /// under, never split
+    pub start_ms: Millis,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -119,8 +123,13 @@ fn matches_visit(ing: &Ingest, start_ms: Millis, want: Option<i64>) -> bool {
 /// why: shared by two callers so both agree on "fight count" from one scan
 fn zone_visit_dtos(ing: &Ingest) -> Vec<ZoneVisitDto> {
     let mut counts: HashMap<Option<usize>, usize> = HashMap::new();
+    let mut unknown_start: Option<Millis> = None;
     for e in &ing.store.encounters {
-        *counts.entry(zone_visit_of(ing, e.start_ms)).or_insert(0) += 1;
+        let zi = zone_visit_of(ing, e.start_ms);
+        *counts.entry(zi).or_insert(0) += 1;
+        if zi.is_none() {
+            unknown_start = Some(unknown_start.map_or(e.start_ms, |s| s.min(e.start_ms)));
+        }
     }
     let last_zone_index = if ing.zone.is_empty() {
         None
@@ -131,20 +140,21 @@ fn zone_visit_dtos(ing: &Ingest) -> Vec<ZoneVisitDto> {
     counts
         .into_iter()
         .map(|(zi, fight_count)| {
-            let label = match zi {
+            let (start_ms, label) = match zi {
                 Some(i) => ing
                     .zone
                     .iter()
                     .nth(i)
-                    .map(|(_, l)| l.to_string())
-                    .unwrap_or_else(|| "?".to_string()),
-                None => "Unknown".to_string(),
+                    .map(|(t, l)| (t, l.to_string()))
+                    .unwrap_or((0, "?".to_string())),
+                None => (unknown_start.unwrap_or(0), "Unknown".to_string()),
             };
             ZoneVisitDto {
                 index: zi,
                 label,
                 fight_count,
                 current: zi.is_some() && zi == last_zone_index,
+                start_ms,
             }
         })
         .collect()

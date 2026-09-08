@@ -24,6 +24,20 @@ export const visitArg = (visit: number | null) => (visit === null ? -1 : visit);
 /** fights per visit, loaded when a visit is expanded (or followed) */
 export const visitFights = writable<Record<string, EncounterDto[]>>({});
 export const expandedVisits = writable<Set<string>>(new Set());
+/** why: visits bundle by the log-time day their first line fell on; a
+ * visit never splits across two days */
+export const dayOf = (startMs: number) => {
+  const d = new Date(startMs);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+};
+export const expandedDays = writable<Set<string>>(new Set());
+export function toggleDayExpanded(day: string) {
+  const next = new Set(get(expandedDays));
+  if (next.has(day)) next.delete(day);
+  else next.add(day);
+  expandedDays.set(next);
+}
 /** mobs per fight, loaded when a fight is expanded */
 export const encounterMobs = writable<Record<number, MobRowDto[]>>({});
 export const expandedEncounters = writable<Set<number>>(new Set());
@@ -33,6 +47,7 @@ export const expandedEncounters = writable<Set<number>>(new Set());
  * fights from anywhere combine. Whole visits and log-time ranges are
  * members like fights are. */
 export type Member =
+  | { kind: 'day'; day: string }
   | { kind: 'visit'; visit: number | null }
   | { kind: 'encounter'; id: number; visit: number | null; target: string }
   | { kind: 'mob'; id: number; visit: number | null; name: string }
@@ -45,7 +60,9 @@ export const ranges = writable<{ since: number; until: number }[]>([]);
 export const followCurrentFight = writable(true);
 
 export const memberKey = (m: Member) =>
-  m.kind === 'visit'
+  m.kind === 'day'
+    ? `d:${m.day}`
+    : m.kind === 'visit'
     ? `v:${visitKey(m.visit)}`
     : m.kind === 'encounter'
       ? `e:${m.id}`
@@ -91,10 +108,13 @@ export function singleMob(sel: Member[] = get(selection)): Extract<Member, { kin
 }
 
 export function selectionOf(sel: Member[]): SelectionDto {
+  // why: a day is every visit filed under it -- resolved here, the backend knows visits
+  const days = new Set(sel.flatMap((m) => (m.kind === 'day' ? [m.day] : [])));
+  const dayVisits = days.size ? get(zoneVisits).filter((v) => days.has(dayOf(v.start_ms))).map((v) => visitArg(v.index)) : [];
   return {
     encounters: sel.flatMap((m) => (m.kind === 'encounter' ? [m.id] : [])),
     ranges: sel.flatMap((m) => (m.kind === 'range' ? [[m.since, m.until] as [number, number]] : [])),
-    visits: sel.flatMap((m) => (m.kind === 'visit' ? [visitArg(m.visit)] : [])),
+    visits: [...new Set([...sel.flatMap((m) => (m.kind === 'visit' ? [visitArg(m.visit)] : [])), ...dayVisits])],
     mobs: sel.flatMap((m) => (m.kind === 'mob' ? [[m.id, m.name] as [number, string]] : [])),
   };
 }
@@ -223,6 +243,7 @@ export async function followCurrent() {
     return;
   }
   const k = visitKey(v.index);
+  expandedDays.update((s) => new Set(s).add(dayOf(v.start_ms)));
   expandedVisits.update((s) => new Set(s).add(k));
   const list = get(visitFights)[k] ?? (await loadVisitFights(v.index));
   const e = newestFight(list);
@@ -234,6 +255,8 @@ export async function followCurrent() {
 export async function jumpToEncounter(zoneVisit: number | null, encounterId: number, target: string) {
   followCurrentFight.set(false);
   const k = visitKey(zoneVisit);
+  const v = get(zoneVisits).find((x) => x.index === zoneVisit);
+  if (v) expandedDays.update((s) => new Set(s).add(dayOf(v.start_ms)));
   expandedVisits.update((s) => new Set(s).add(k));
   if (!get(visitFights)[k]) await loadVisitFights(zoneVisit);
   await applySelection([{ kind: 'encounter', id: encounterId, visit: zoneVisit, target }]);
@@ -367,6 +390,7 @@ export async function onCombatTick() {
   const fights = get(visitFights);
   const open = get(selection).some((m) => {
     if (m.kind === 'range') return false;
+    if (m.kind === 'day') return Object.values(fights).some((list) => list.some((e) => e.open));
     if (m.kind === 'visit') return (fights[visitKey(m.visit)] ?? []).some((e) => e.open);
     return (fights[visitKey(m.visit)] ?? []).find((e) => e.id === m.id)?.open ?? false;
   });

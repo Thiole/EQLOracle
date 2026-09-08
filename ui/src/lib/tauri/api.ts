@@ -147,6 +147,8 @@ export interface ZoneVisitDto {
   label: string;
   fight_count: number;
   current: boolean;
+  /** why: when the visit began, log time -- the day it files under, never split */
+  start_ms: number;
 }
 
 export interface EncounterDto {

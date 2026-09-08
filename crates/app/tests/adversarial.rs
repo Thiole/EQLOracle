@@ -371,6 +371,43 @@ fn a_selection_clips_ranges_and_never_double_counts() {
     assert_eq!(s.total_damage, 401);
 }
 
+/// why: a visit files under the day its first line fell on -- the zone
+/// line's own time, or the earliest fight for the pre-zone bucket
+#[test]
+fn a_visit_carries_the_time_it_began() {
+    use eqlp_app::combat;
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:05 2026] You have slain a gnoll!\n",
+        "[Tue Jul 28 15:01:20 2026] You have entered Blackburrow.\n",
+        "[Tue Jul 28 15:01:25 2026] You hit an orc for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:28 2026] You have slain an orc!\n",
+    ));
+    let visits = combat::list_zone_visits(&ing);
+    let gnoll_start = combat::list_encounters(&ing, None, 0, 50)
+        .into_iter()
+        .find(|e| e.target.eq_ignore_ascii_case("a gnoll"))
+        .map(|e| e.start_ms)
+        .expect("gnoll fight");
+    let unknown = visits
+        .iter()
+        .find(|v| v.index.is_none())
+        .expect("the pre-zone bucket");
+    assert_eq!(
+        unknown.start_ms, gnoll_start,
+        "earliest fight of the bucket"
+    );
+    let bb = visits
+        .iter()
+        .find(|v| v.label.contains("Blackburrow"))
+        .expect("the zone visit");
+    assert_eq!(
+        bb.start_ms,
+        gnoll_start + 20_000,
+        "the zone line's own time"
+    );
+}
+
 /// why: "recent 1-8 seconds when I click on graph" -- an entity's own
 /// actions inside the window, newest first, nothing older than it
 #[test]

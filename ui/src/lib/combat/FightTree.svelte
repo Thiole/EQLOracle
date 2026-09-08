@@ -4,6 +4,7 @@
   // toggles; shift spans; dragging a box selects what it covers.
   import ChevronIcon from '@lucide/svelte/icons/chevron-right';
   import FolderIcon from '@lucide/svelte/icons/folder';
+  import CalendarIcon from '@lucide/svelte/icons/calendar';
   import SwordsIcon from '@lucide/svelte/icons/swords';
   import SkullIcon from '@lucide/svelte/icons/skull';
   import ClockIcon from '@lucide/svelte/icons/clock';
@@ -11,6 +12,9 @@
     zoneVisits,
     visitFights,
     expandedVisits,
+    expandedDays,
+    toggleDayExpanded,
+    dayOf,
     encounterMobs,
     expandedEncounters,
     toggleEncounterExpanded,
@@ -32,15 +36,34 @@
   import { fmtLogTime, logMsToLocalInput, localInputToLogMs } from '$lib/utils';
 
   // ---------------------------------------------------------------- rows
-  type Row = { key: string; member: Member; depth: 0 | 1 | 2; label: string; detail: string; tag: string; open: boolean };
+  type Row = { key: string; member: Member; depth: 0 | 1 | 2 | 3; label: string; detail: string; tag: string; open: boolean };
+  const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayLabel = (day: string) => `${WEEKDAY[new Date(`${day}T00:00:00Z`).getUTCDay()]} ${day}`;
   const rows = $derived.by((): Row[] => {
     const out: Row[] = [];
+    // why: visits arrive newest first; a day opens when its first visit does
+    let openDay: string | null = null;
     for (const v of $zoneVisits) {
+      const day = dayOf(v.start_ms);
+      if (day !== openDay) {
+        openDay = day;
+        const inDay = $zoneVisits.filter((x) => dayOf(x.start_ms) === day);
+        out.push({
+          key: `d:${day}`,
+          member: { kind: 'day', day },
+          depth: 0,
+          label: dayLabel(day),
+          detail: `${inDay.length} · ${inDay.reduce((n, x) => n + x.fight_count, 0)}`,
+          tag: inDay.some((x) => x.current) ? 'now' : '',
+          open: false,
+        });
+      }
+      if (!$expandedDays.has(day)) continue;
       const k = visitKey(v.index);
       out.push({
         key: `v:${k}`,
         member: { kind: 'visit', visit: v.index },
-        depth: 0,
+        depth: 1,
         label: v.label,
         detail: `${v.fight_count}`,
         tag: v.current ? 'now' : '',
@@ -52,7 +75,7 @@
         out.push({
           key: `e:${e.id}`,
           member: { kind: 'encounter', id: e.id, visit: v.index, target: e.target },
-          depth: 1,
+          depth: 2,
           label: `${e.target}${others}`,
           detail: `${fmtDuration(e.duration_ms)} · ${e.total_damage.toLocaleString()}`,
           tag: e.open ? 'live' : e.slain ? 'kill' : e.wiped ? 'wipe' : 'reset',
@@ -64,7 +87,7 @@
           out.push({
             key: `m:${e.id}:${m.name}`,
             member: { kind: 'mob', id: e.id, visit: v.index, name: m.name },
-            depth: 2,
+            depth: 3,
             label: m.name,
             detail: `${m.damage_taken.toLocaleString()} · ${m.damage_dealt.toLocaleString()}`,
             tag: m.slain ? 'slain' : '',
@@ -256,7 +279,21 @@
           }
         }}
       >
-        {#if row.member.kind === 'visit'}
+        {#if row.member.kind === 'day'}
+          {@const day = row.member.day}
+          <button
+            type="button"
+            class="rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+            title={$expandedDays.has(day) ? 'Collapse' : 'Expand'}
+            onclick={(e) => {
+              e.stopPropagation();
+              toggleDayExpanded(day);
+            }}
+          >
+            <ChevronIcon class="size-3 transition-transform {$expandedDays.has(day) ? 'rotate-90' : ''}" />
+          </button>
+          <CalendarIcon class="size-3.5 shrink-0 text-muted-foreground" />
+        {:else if row.member.kind === 'visit'}
           <button
             type="button"
             class="rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
@@ -289,7 +326,7 @@
           <ClockIcon class="size-3.5 shrink-0 text-caution" />
         {/if}
         <span class="min-w-0 flex-1 truncate">{row.label}</span>
-        <span class="shrink-0 tabular-nums text-muted-foreground" title={row.member.kind === 'mob' ? 'damage taken · damage dealt' : undefined}>{row.detail}</span>
+        <span class="shrink-0 tabular-nums text-muted-foreground" title={row.member.kind === 'mob' ? 'damage taken · damage dealt' : row.member.kind === 'day' ? 'visits · fights' : undefined}>{row.detail}</span>
         {#if row.tag}
           <span
             class="w-9 shrink-0 text-right text-[10px] {row.tag === 'live' || row.tag === 'now'
