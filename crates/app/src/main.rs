@@ -36,6 +36,18 @@ fn prefer_x11_backend() {
     }
 }
 
+/// why: the bundled WebKitGTK asks rtkit for SCHED_RR on its IPC threads
+/// and caps RLIMIT_RTTIME at 200ms -- one long IPC burst then has the
+/// kernel SIGKILL the whole app, silently. rtkit lives on the system bus
+/// and nothing of ours does, so WebKit gets a bus that isn't there.
+#[cfg(target_os = "linux")]
+fn keep_webkit_off_realtime() {
+    std::env::set_var(
+        "DBUS_SYSTEM_BUS_ADDRESS",
+        "unix:path=/nonexistent/eqlp-no-rtkit",
+    );
+}
+
 fn main() {
     // why: generated up front (pure data, touches nothing) -- selfinstall
     // needs the context's version, the one CI's --config override sets on
@@ -53,6 +65,8 @@ fn main() {
     );
     #[cfg(target_os = "linux")]
     prefer_x11_backend();
+    #[cfg(target_os = "linux")]
+    keep_webkit_off_realtime();
 
     tauri::Builder::default()
         // why: registered FIRST, upstream's own requirement, so the
