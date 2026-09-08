@@ -69,20 +69,20 @@ fn main() {
         .min();
 
     timed("summarize(all zones, aggregate)", || {
-        combat::summarize(&ing, None, None, None, false)
+        combat::summarize(&ing, None, None, None, false, None)
     });
     timed("list_allies(all zones, aggregate)", || {
-        combat::list_allies(&ing, None, None, false)
+        combat::list_allies(&ing, None, None, false, None)
     });
     timed("list_enemies(all zones, aggregate)", || {
-        combat::list_enemies(&ing, None, None, false)
+        combat::list_enemies(&ing, None, None, false, None)
     });
     if let Some(id) = one {
         timed("summarize(most recent fight)", || {
-            combat::summarize(&ing, None, Some(id), None, false)
+            combat::summarize(&ing, None, Some(id), None, false, None)
         });
         timed("list_allies(most recent fight)", || {
-            combat::list_allies(&ing, None, Some(id), false)
+            combat::list_allies(&ing, None, Some(id), false, None)
         });
         timed("fight_timeline(most recent fight)", || {
             combat::fight_timeline(&ing, id)
@@ -90,7 +90,7 @@ fn main() {
     }
     if let Some(id) = first {
         timed("summarize(oldest fight)", || {
-            combat::summarize(&ing, None, Some(id), None, false)
+            combat::summarize(&ing, None, Some(id), None, false, None)
         });
     }
     timed("live_meter (overlay poll)", || combat::live_meter(&ing));

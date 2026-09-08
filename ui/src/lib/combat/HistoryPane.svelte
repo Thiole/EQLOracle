@@ -3,7 +3,7 @@
   // why: past parses vs the selected fight's target, from parse_history.jsonl
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Checkbox } from '$lib/components/ui/checkbox';
-  import { historyTarget, historyConfirmedOnly, historyRecords, loadoutSummaries, setHistoryConfirmedOnly } from '$lib/stores/combat';
+  import { historyTarget, historyConfirmedOnly, historyRecords, loadoutSummaries, setHistoryConfirmedOnly, jumpToParse } from '$lib/stores/combat';
   import { fmtDuration } from '$lib/format';
 
   function fmtLoadout(loadout: string[]): string {
@@ -85,7 +85,12 @@
             </thead>
             <tbody>
               {#each $historyRecords as r, i (`${r.start_ms}-${i}`)}
-                <tr class="border-b border-border/50">
+                <!-- why: a parse IS an encounter -- the row opens that fight -->
+                <tr
+                  class="border-b border-border/50 {r.encounter_id != null ? 'cursor-pointer hover:bg-muted/40' : ''}"
+                  title={r.encounter_id != null ? 'Open this fight' : 'Recorded before fights were linked'}
+                  onclick={() => void jumpToParse(r)}
+                >
                   <td class="px-2 py-0.5 whitespace-nowrap text-muted-foreground">{new Date(r.start_ms).toLocaleString()}</td>
                   <td class="px-2 py-0.5">{r.zone || '—'}</td>
                   <td class="px-2 py-0.5">{fmtLoadout(r.loadout)}</td>

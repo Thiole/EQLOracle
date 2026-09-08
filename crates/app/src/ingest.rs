@@ -4985,6 +4985,7 @@ impl Ingest {
             zone,
             loadout,
             zone_visit,
+            encounter_id: Some(store_id.0),
             unit,
             start_ms: c.start_ms,
             duration_ms,
@@ -8491,11 +8492,11 @@ mod stance_evidence_tests {
         let refs: Vec<&[u8]> = lines.iter().map(Vec::as_slice).collect();
         backfill_lines(&mut ing, &engine, &refs, 1);
         let enc = ing.store.encounters.len() - 1;
-        let before = crate::combat::summarize(&ing, None, Some(enc as u32), None, false);
+        let before = crate::combat::summarize(&ing, None, Some(enc as u32), None, false, None);
         let rows_before = ing.store.len();
         let zone: Vec<&[u8]> = vec![b"[Tue Jul 28 15:05:00 2026] You have entered West Karana."];
         backfill_lines(&mut ing, &engine, &zone, 1);
-        let after = crate::combat::summarize(&ing, None, Some(enc as u32), None, false);
+        let after = crate::combat::summarize(&ing, None, Some(enc as u32), None, false, None);
         assert!(
             ing.store.len() < rows_before,
             "{} -> {}",

@@ -10,7 +10,76 @@ import {
   type EntityStateDto,
   type ParseRecordDto,
   type LoadoutSummaryDto,
+  type SelectionDto,
 } from '../tauri/api';
+
+// ---------------------------------------------------------------- bucket
+/** why: the bucket -- any fights (from any visit) plus any log-time
+ * ranges. Non-empty, it is what every number on the page describes and
+ * the zone/fight pickers above become a way to browse and add. */
+export type BucketMember =
+  | { kind: 'encounter'; id: number; target: string; duration_ms: number }
+  | { kind: 'range'; since: number; until: number };
+export const bucket = writable<BucketMember[]>([]);
+
+export function selectionOf(members: BucketMember[]): SelectionDto | null {
+  if (!members.length) return null;
+  return {
+    encounters: members.flatMap((m) => (m.kind === 'encounter' ? [m.id] : [])),
+    ranges: members.flatMap((m) => (m.kind === 'range' ? [[m.since, m.until] as [number, number]] : [])),
+  };
+}
+
+/** why: one answer to "what is on screen" -- the bucket when it has
+ * members, else the zone/fight pair */
+function scope(): { zv: number | null; enc: number | null; sel: SelectionDto | null } {
+  const sel = selectionOf(get(bucket));
+  return sel ? { zv: null, enc: null, sel } : { zv: get(selectedZoneVisit), enc: get(selectedEncounterId), sel: null };
+}
+
+/** why: the timeline is per fight -- a bucket of exactly one fight still has one */
+function timelineEncounter(): number | null {
+  const members = get(bucket);
+  if (!members.length) return get(selectedEncounterId);
+  const [only] = members;
+  return members.length === 1 && only.kind === 'encounter' ? only.id : null;
+}
+
+export async function addToBucket(...added: BucketMember[]) {
+  const cur = get(bucket);
+  const next = [...cur];
+  for (const m of added) {
+    const dupe =
+      m.kind === 'encounter'
+        ? next.some((x) => x.kind === 'encounter' && x.id === m.id)
+        : next.some((x) => x.kind === 'range' && x.since === m.since && x.until === m.until);
+    if (!dupe) next.push(m);
+  }
+  if (next.length === cur.length) return;
+  bucket.set(next);
+  expandedAlly.set(null);
+  await refreshSelection();
+}
+
+export async function removeBucketMember(index: number) {
+  bucket.update((b) => b.filter((_, i) => i !== index));
+  expandedAlly.set(null);
+  await refreshSelection();
+}
+
+export async function clearBucket() {
+  if (!get(bucket).length) return;
+  bucket.set([]);
+  expandedAlly.set(null);
+  await refreshSelection();
+}
+
+/** why: a past-parse row IS an encounter -- open exactly that fight */
+export async function jumpToParse(r: ParseRecordDto) {
+  if (r.encounter_id == null) return;
+  bucket.set([]);
+  await jumpToEncounter(r.zone_visit, r.encounter_id, r.target);
+}
 
 export const zoneVisits = writable<ZoneVisitDto[]>([]);
 export const encounters = writable<EncounterDto[]>([]);
@@ -207,7 +276,8 @@ export async function toggleEnemies() {
     enemies.set([]);
     return;
   }
-  enemies.set((await api.listEnemies(get(selectedZoneVisit), get(selectedEncounterId))) ?? []);
+  const { zv, enc, sel } = scope();
+  enemies.set((await api.listEnemies(zv, enc, false, sel)) ?? []);
 }
 
 export async function toggleAlly(name: string) {
@@ -218,13 +288,12 @@ export async function toggleAlly(name: string) {
     return;
   }
   expandedAlly.set(name);
-  const zv = get(selectedZoneVisit);
-  const enc = get(selectedEncounterId);
-  allySummary.set(await api.getCombatSummary(zv, enc, name));
+  const { zv, enc, sel } = scope();
+  allySummary.set(await api.getCombatSummary(zv, enc, name, false, sel));
 }
 
 export async function scrubTo(tsMs: number) {
-  const enc = get(selectedEncounterId);
+  const enc = timelineEncounter();
   if (enc == null) return;
   stateAt.set({ tsMs, entities: await api.getFightStateAt(enc, tsMs) });
 }
@@ -243,16 +312,16 @@ export async function scrubTo(tsMs: number) {
  * was showing before. Only onCombatTick's own "still the same fight,
  * just a live refresh" paths pass true. */
 async function refreshSelection(preserveScrub = false) {
-  const zv = get(selectedZoneVisit);
-  const enc = get(selectedEncounterId);
-  const [s, a] = await Promise.all([api.getCombatSummary(zv, enc, null), api.listAllies(zv, enc)]);
+  const { zv, enc, sel } = scope();
+  const [s, a] = await Promise.all([api.getCombatSummary(zv, enc, null, false, sel), api.listAllies(zv, enc, false, sel)]);
   summary.set(s);
   allies.set(a ?? []); // defensive -- invoke<T>()'s type is an assertion, not a guarantee
-  if (get(showEnemies)) enemies.set((await api.listEnemies(zv, enc)) ?? []);
-  timeline.set(enc != null ? await api.getFightTimeline(enc) : null);
+  if (get(showEnemies)) enemies.set((await api.listEnemies(zv, enc, false, sel)) ?? []);
+  const tl = timelineEncounter();
+  timeline.set(tl != null ? await api.getFightTimeline(tl) : null);
   if (!preserveScrub) stateAt.set(null);
   const expanded = get(expandedAlly);
-  if (expanded) allySummary.set(await api.getCombatSummary(zv, enc, expanded));
+  if (expanded) allySummary.set(await api.getCombatSummary(zv, enc, expanded, false, sel));
 }
 
 // why: refetch open selection only; closed fights untouched, no teardown
@@ -270,6 +339,13 @@ export async function onCombatTick() {
 
   // why: cheap, so refresh History unconditionally when a target is selected
   if (get(historyTarget) != null) void refreshHistory();
+
+  // why: a bucket is a fixed pick -- live-poll it (an open fight in it
+  // still grows), never re-point it
+  if (get(bucket).length) {
+    await refreshSelection(true);
+    return;
+  }
 
   if (get(followCurrentFight)) {
     // why: re-point to whatever's most recent *now* -- a new fight

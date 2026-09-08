@@ -282,6 +282,76 @@ fn the_game_saying_an_ability_is_not_yours_takes_that_class_off_you() {
     );
 }
 
+/// why: a bucket is any fights plus any log-time windows -- a window
+/// counts only what fell inside it, a fight listed whole stays whole,
+/// and per-ability dps runs on the bucket's combined fight time
+#[test]
+fn a_selection_clips_ranges_and_never_double_counts() {
+    use eqlp_app::combat::{self, SelectionDto};
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:03 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:05 2026] You have slain a gnoll!\n",
+        "[Tue Jul 28 15:01:20 2026] You hit an orc for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:22 2026] You hit an orc for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:24 2026] You have slain an orc!\n",
+    ));
+    let t = |hms: &str| {
+        let (h, m, sec) = (&hms[0..2], &hms[3..5], &hms[6..8]);
+        let secs: i64 = h.parse::<i64>().unwrap() * 3600
+            + m.parse::<i64>().unwrap() * 60
+            + sec.parse::<i64>().unwrap();
+        // why: the log clock is epoch ms; anchor on the gnoll fight's own start
+        let gnoll = combat::list_encounters(&ing, None, 0, 50)
+            .into_iter()
+            .find(|e| e.target == "a gnoll")
+            .expect("gnoll fight");
+        gnoll.start_ms + (secs - (15 * 3600 + 60)) * 1000
+    };
+    // why: 15:01:02 .. 15:01:21 -- the gnoll's second hit and the orc's first
+    let range = SelectionDto {
+        encounters: vec![],
+        ranges: vec![(t("15:01:02"), t("15:01:21"))],
+    };
+    let s = combat::summarize(&ing, None, None, None, false, Some(&range));
+    assert_eq!(s.fight_count, 2, "both fights touch the window");
+    assert_eq!(s.total_damage, 200, "one hit from each fight inside it");
+    assert_eq!(
+        s.duration_ms,
+        3_000 + 1_000,
+        "gnoll :02-:05 plus orc :20-:21"
+    );
+    let bof = s
+        .abilities
+        .iter()
+        .find(|a| a.ability == "Burst of Flame")
+        .expect("row");
+    assert!(
+        (bof.dps - 200.0 / 4.0).abs() < 1e-9,
+        "ability dps over the bucket's fight time"
+    );
+
+    let gnoll_id = combat::list_encounters(&ing, None, 0, 50)
+        .into_iter()
+        .find(|e| e.target == "a gnoll")
+        .map(|e| e.id)
+        .expect("gnoll id");
+    let both = SelectionDto {
+        encounters: vec![gnoll_id],
+        ranges: vec![(t("15:01:02"), t("15:01:21"))],
+    };
+    let s = combat::summarize(&ing, None, None, None, false, Some(&both));
+    assert_eq!(s.fight_count, 2, "the gnoll fight is not counted twice");
+    assert_eq!(
+        s.total_damage, 300,
+        "gnoll whole (200) plus the orc's clipped hit"
+    );
+    assert_eq!(s.duration_ms, 5_000 + 1_000);
+    let allies = combat::list_allies(&ing, None, None, false, Some(&both));
+    let you = allies.iter().find(|a| a.name == "You").expect("You row");
+    assert_eq!(you.total, 300);
+}
+
 /// why: Spencer 2026-09-08 -- "harm touch or Reaving Strike (not reave)
 /// is 100% a shadowknight confirmation". Real lines from the live log.
 #[test]

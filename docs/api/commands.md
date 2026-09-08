@@ -223,7 +223,7 @@ why: L9 -- the rolling per-class level record, which the Character Planner fills
 
 ## `get_combat_summary` (stateful)
 
-- args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `actor: Option<String>`; `confirmed_only: Option<bool>`
+- args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `actor: Option<String>`; `confirmed_only: Option<bool>`; `selection: Option<combat::SelectionDto>`
 - returns: `CombatSummaryDto`
 
 ## `get_configuration_zone_visits` (stateful)
@@ -504,7 +504,7 @@ why: Maps module's zone-identity + entrance-guess input; `current_map_zones` con
 
 ## `list_allies` (stateful)
 
-- args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `confirmed_only: Option<bool>`
+- args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `confirmed_only: Option<bool>`; `selection: Option<combat::SelectionDto>`
 - returns: `Vec<AllyDto>`
 
 ## `list_debug_encounters` (stateful)
@@ -520,7 +520,7 @@ why: Combat module's second dropdown, defaults to the whole list -- a rendering 
 
 ## `list_enemies` (stateful)
 
-- args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `confirmed_only: Option<bool>`
+- args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `confirmed_only: Option<bool>`; `selection: Option<combat::SelectionDto>`
 - returns: `Vec<AllyDto>`
 
 ## `list_map_packs` (stateful)

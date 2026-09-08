@@ -31,7 +31,7 @@ fn main() {
     ing.mark_live();
     ing.tick(0);
 
-    for a in combat::list_allies(&ing, None, None, false) {
+    for a in combat::list_allies(&ing, None, None, false, None) {
         if a.name == who {
             println!(
                 "{who}: classes={:?} confirmed={} prior={:?} candidates={:?} source={} chain_end={:?} evidence={}",

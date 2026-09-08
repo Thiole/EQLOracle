@@ -4,6 +4,8 @@
   import { allies, expandedAlly, allySummary, toggleAlly } from '$lib/stores/combat';
   import { trackedSkills, toggleTrackedSkill } from '$lib/stores/settings';
   import TargetIcon from '@lucide/svelte/icons/target';
+  import { sortRows, nextSort, loadCols, saveCols, type Dir } from './grid';
+  import type { AbilityRowDto } from '$lib/tauri/api';
 
   // why: the enemy listing is the same rows minus the ally-side concepts
   // -- a mob's detected class is noise, its chain never confirms, and
@@ -11,7 +13,105 @@
   let { rows = null, allySide = true, empty = 'No fights parsed for this selection yet.' }:
     { rows?: AllyDto[] | null; allySide?: boolean; empty?: string } = $props();
   const list = $derived(rows ?? $allies);
-  const cols = $derived(allySide ? 7 : 6);
+
+  // ---------------------------------------------------------------- grid
+  // why: every numeric column the row carries; the default set is what
+  // the table always showed, the rest is a click away
+  type AllyCol = 'total' | 'pct' | 'dps' | 'hits' | 'crits' | 'crit_pct' | 'hit_pct' | 'resist_pct' | 'pet_total';
+  const ALLY_COLS: { key: AllyCol; label: string; def: boolean }[] = [
+    { key: 'total', label: 'total', def: true },
+    { key: 'pct', label: '%', def: true },
+    { key: 'dps', label: 'dps', def: true },
+    { key: 'hits', label: 'hits', def: true },
+    { key: 'crits', label: 'crits', def: false },
+    { key: 'crit_pct', label: 'crit%', def: true },
+    { key: 'hit_pct', label: 'hit%', def: false },
+    { key: 'resist_pct', label: 'resist%', def: false },
+    { key: 'pet_total', label: 'pet dmg', def: false },
+  ];
+  const store = $derived(allySide ? 'ally' : 'enemy');
+  // svelte-ignore state_referenced_locally -- a table is one side for its whole life
+  let visible = $state(loadCols(allySide ? 'ally' : 'enemy', [...(allySide ? ['class'] : []), ...ALLY_COLS.filter((c) => c.def).map((c) => c.key)]));
+  function toggleCol(key: string) {
+    const next = new Set(visible);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    visible = next;
+    saveCols(store, next);
+  }
+  const shown = $derived(ALLY_COLS.filter((c) => visible.has(c.key)));
+  const cols = $derived(1 + (allySide && visible.has('class') ? 1 : 0) + shown.length);
+  let sort = $state<{ key: AllyCol | 'name'; dir: Dir }>({ key: 'total', dir: -1 });
+  const sorted = $derived(sortRows(list, sort.key, sort.dir));
+  const arrow = (key: string, cur: { key: string; dir: Dir }) => (cur.key === key ? (cur.dir === -1 ? ' ▼' : ' ▲') : '');
+  const pctCell = (v: number | null) => (v == null ? '—' : `${v.toFixed(1)}%`);
+  function allyCell(a: AllyDto, key: AllyCol): string {
+    switch (key) {
+      case 'total':
+      case 'hits':
+      case 'crits':
+      case 'pet_total':
+        return a[key].toLocaleString();
+      case 'dps':
+        return a.dps.toFixed(1);
+      default:
+        return pctCell(a[key]);
+    }
+  }
+  let colsOpen = $state(false);
+
+  // why: the ability grid under an expanded row -- sorted, drilled-down
+  // specific data per ability; dps runs on the selection's fight time
+  type AbilityCol = 'total' | 'pct' | 'dps' | 'hits' | 'avg_hit' | 'avg_crit' | 'crits' | 'min' | 'max' | 'avoided';
+  const ABILITY_COLS: { key: AbilityCol; label: string; def: boolean }[] = [
+    { key: 'total', label: 'total', def: true },
+    { key: 'pct', label: 'share', def: true },
+    { key: 'dps', label: 'dps', def: true },
+    { key: 'hits', label: 'hits', def: true },
+    { key: 'avg_hit', label: 'avg', def: true },
+    { key: 'avg_crit', label: 'crit avg', def: true },
+    { key: 'crits', label: 'crits', def: false },
+    { key: 'min', label: 'min', def: false },
+    { key: 'max', label: 'max', def: false },
+    { key: 'avoided', label: 'avoided', def: true },
+  ];
+  type AbilityGridRow = AbilityRowDto & { avoided: number };
+  let abilityVisible = $state(loadCols('ability', ABILITY_COLS.filter((c) => c.def).map((c) => c.key)));
+  function toggleAbilityCol(key: string) {
+    const next = new Set(abilityVisible);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    abilityVisible = next;
+    saveCols('ability', next);
+  }
+  const abilityShown = $derived(ABILITY_COLS.filter((c) => abilityVisible.has(c.key)));
+  let abilitySort = $state<{ key: AbilityCol | 'ability'; dir: Dir }>({ key: 'total', dir: -1 });
+  const abilityRows = $derived.by((): AbilityGridRow[] => {
+    const rows = ($allySummary?.abilities ?? []).map((ab) => ({ ...ab, avoided: ab.missed + ab.blocked + ab.dodged + ab.parried }));
+    return sortRows(rows, abilitySort.key, abilitySort.dir);
+  });
+  let abilityColsOpen = $state(false);
+  function abilityCell(ab: AbilityGridRow, key: AbilityCol): string {
+    switch (key) {
+      case 'pct':
+        return `${ab.pct.toFixed(1)}%`;
+      case 'dps':
+        return (ab.dps ?? 0).toFixed(1);
+      case 'avg_hit':
+        return ab.avg_hit.toFixed(0);
+      case 'avg_crit':
+        return ab.crits > 0 ? ab.avg_crit.toFixed(0) : '—';
+      case 'avoided':
+        return ab.avoided ? String(ab.avoided) : '';
+      default:
+        return ab[key].toLocaleString();
+    }
+  }
+  function avoidedTitle(ab: AbilityGridRow): string {
+    return [ab.missed && `${ab.missed} miss`, ab.blocked && `${ab.blocked} blocked`, ab.dodged && `${ab.dodged} dodged`, ab.parried && `${ab.parried} parried`]
+      .filter(Boolean)
+      .join(', ');
+  }
   // why: the game's own three-letter codes, as /who prints them
   const ABBR: Record<string, string> = {
     Warrior: 'WAR', Cleric: 'CLR', Paladin: 'PAL', Ranger: 'RNG', 'Shadow Knight': 'SHD', Druid: 'DRU',
@@ -24,20 +124,30 @@
 {#if list.length === 0}
   <p class="py-4 text-[12px] text-muted-foreground">{empty}</p>
 {:else}
+  <!-- why: native details/checkboxes -- a column chooser needs no library -->
+  <details class="mb-1 text-[11px]" bind:open={colsOpen}>
+    <summary class="cursor-pointer select-none text-muted-foreground hover:text-foreground">columns</summary>
+    <div class="flex flex-wrap gap-x-3 gap-y-1 py-1">
+      {#if allySide}
+        <label class="flex items-center gap-1"><input type="checkbox" checked={visible.has('class')} onchange={() => toggleCol('class')} /> class</label>
+      {/if}
+      {#each ALLY_COLS as c (c.key)}
+        <label class="flex items-center gap-1"><input type="checkbox" checked={visible.has(c.key)} onchange={() => toggleCol(c.key)} /> {c.label}</label>
+      {/each}
+    </div>
+  </details>
   <Table.Root>
     <Table.Header>
       <Table.Row>
-        <Table.Head>name</Table.Head>
-        {#if allySide}<Table.Head title="one class model for you and for them: a /who row is ground truth, otherwise evidence per encounter chain. Green once a class clears the bar, yellow while it is still a guess. A chain restarts when they leave, or you zone.">class</Table.Head>{/if}
-        <Table.Head class="text-right">total</Table.Head>
-        <Table.Head class="text-right">%</Table.Head>
-        <Table.Head class="text-right">dps</Table.Head>
-        <Table.Head class="text-right">hits</Table.Head>
-        <Table.Head class="text-right">crit%</Table.Head>
+        <Table.Head><button type="button" class="select-none" onclick={() => (sort = nextSort(sort, 'name', false))}>name{arrow('name', sort)}</button></Table.Head>
+        {#if allySide && visible.has('class')}<Table.Head title="one class model for you and for them: a /who row is ground truth, otherwise evidence per encounter chain. Green once a class clears the bar, yellow while it is still a guess. A chain restarts when they leave, or you zone.">class</Table.Head>{/if}
+        {#each shown as c (c.key)}
+          <Table.Head class="text-right"><button type="button" class="select-none" onclick={() => (sort = nextSort(sort, c.key, true))}>{c.label}{arrow(c.key, sort)}</button></Table.Head>
+        {/each}
       </Table.Row>
     </Table.Header>
     <Table.Body>
-      {#each list as a (a.name)}
+      {#each sorted as a (a.name)}
         <Table.Row
           class="cursor-pointer bg-no-repeat"
           style="background-image: linear-gradient(to right, color-mix(in srgb, var(--color-primary) 14%, transparent) {a.pct}%, transparent {a.pct}%)"
@@ -56,7 +166,7 @@
                 title="Damage contributed by this ally's pet">(pet {a.pet_total.toLocaleString()})</span
               >{/if}
           </Table.Cell>
-          {#if allySide}
+          {#if allySide && visible.has('class')}
           <!-- why: a /who row from THIS presence confirms (green, with
                level); else inferred through combat -- green once a dozen
                votes back it, yellow with a "?" before. Both reset when
@@ -72,11 +182,9 @@
             {/if}
           </Table.Cell>
           {/if}
-          <Table.Cell class="text-right tabular-nums">{a.total.toLocaleString()}</Table.Cell>
-          <Table.Cell class="text-right tabular-nums">{a.pct.toFixed(1)}%</Table.Cell>
-          <Table.Cell class="text-right tabular-nums">{a.dps.toFixed(1)}</Table.Cell>
-          <Table.Cell class="text-right tabular-nums">{a.hits.toLocaleString()}</Table.Cell>
-          <Table.Cell class="text-right tabular-nums">{a.crit_pct.toFixed(1)}%</Table.Cell>
+          {#each shown as c (c.key)}
+            <Table.Cell class="text-right tabular-nums">{allyCell(a, c.key)}</Table.Cell>
+          {/each}
         </Table.Row>
         {#if $expandedAlly === a.name && $allySummary}
           <Table.Row>
@@ -161,19 +269,34 @@
                   </div>
                 {/if}
                 <div>
-                  <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">abilities</h4>
+                  <h4 class="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <span>abilities</span>
+                    <button type="button" class="normal-case tracking-normal hover:text-foreground" onclick={() => (abilityColsOpen = !abilityColsOpen)}>columns</button>
+                  </h4>
+                  {#if abilityColsOpen}
+                    <div class="mb-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                      {#each ABILITY_COLS as c (c.key)}
+                        <label class="flex items-center gap-1"><input type="checkbox" checked={abilityVisible.has(c.key)} onchange={() => toggleAbilityCol(c.key)} /> {c.label}</label>
+                      {/each}
+                    </div>
+                  {/if}
                   <table class="w-full text-[11px]">
+                    <thead>
+                      <tr class="border-b border-border text-muted-foreground">
+                        <th class="py-0.5 text-left font-normal"><button type="button" class="select-none" onclick={() => (abilitySort = nextSort(abilitySort, 'ability', false))}>ability{arrow('ability', abilitySort)}</button></th>
+                        {#each abilityShown as c (c.key)}
+                          <th class="py-0.5 text-right font-normal"><button type="button" class="select-none" onclick={() => (abilitySort = nextSort(abilitySort, c.key, true))}>{c.label}{arrow(c.key, abilitySort)}</button></th>
+                        {/each}
+                      </tr>
+                    </thead>
                     <tbody>
-                      {#each $allySummary.abilities as ab (ab.ability)}
-                        {@const avoided = ab.missed + ab.blocked + ab.dodged + ab.parried}
-                        {@const attempts = ab.hits + avoided}
+                      {#each abilityRows as ab (ab.ability)}
                         <tr class="group border-b border-border/50">
                           <td class="py-0.5">
                             <span class="inline-flex items-center gap-1">
                               {ab.ability}
-                              <!-- why: "track" from wherever an ability shows up;
-                                   adds/removes it from the Skill Tracker
-                                   overlay's cooldowns section -->
+                              <!-- why: the target icon adds/removes it from
+                                   the Skill Tracker overlay's cooldowns section -->
                               <button
                                 type="button"
                                 class="rounded-sm p-0.5 {$trackedSkills.includes(ab.ability)
@@ -188,26 +311,9 @@
                               </button>
                             </span>
                           </td>
-                          <td class="py-0.5 text-right tabular-nums">{ab.total.toLocaleString()}</td>
-                          <td class="py-0.5 text-right tabular-nums text-muted-foreground"
-                            >{ab.hits}x{avoided > 0 ? `/${attempts}` : ''}</td
-                          >
-                          <td class="py-0.5 text-right tabular-nums text-muted-foreground">avg {ab.avg_hit.toFixed(0)}</td>
-                          <td class="py-0.5 text-right tabular-nums text-muted-foreground">
-                            {#if ab.crits > 0}crit {ab.avg_crit.toFixed(0)}{/if}
-                          </td>
-                          <td class="py-0.5 text-right tabular-nums text-bad">
-                            {#if avoided > 0}
-                              {[
-                                ab.missed && `${ab.missed} miss`,
-                                ab.blocked && `${ab.blocked} blk`,
-                                ab.dodged && `${ab.dodged} dge`,
-                                ab.parried && `${ab.parried} par`,
-                              ]
-                                .filter(Boolean)
-                                .join(' ')}
-                            {/if}
-                          </td>
+                          {#each abilityShown as c (c.key)}
+                            <td class="py-0.5 text-right tabular-nums {c.key === 'avoided' ? 'text-bad' : c.key === 'total' || c.key === 'dps' ? '' : 'text-muted-foreground'}" title={c.key === 'avoided' ? avoidedTitle(ab) : undefined}>{abilityCell(ab, c.key)}</td>
+                          {/each}
                         </tr>
                       {/each}
                     </tbody>

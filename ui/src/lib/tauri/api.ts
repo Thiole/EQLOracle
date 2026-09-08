@@ -122,6 +122,13 @@ export interface StatusDto {
 
 // ---------------------------------------------------------------- combat
 
+/** why: a bucket -- any set of fights plus any log-time windows, from
+ * anywhere; non-empty, it overrides the zone-visit/encounter pair */
+export interface SelectionDto {
+  encounters: number[];
+  ranges: [number, number][];
+}
+
 export interface ZoneVisitDto {
   index: number | null;
   label: string;
@@ -156,6 +163,8 @@ export interface AbilityRowDto {
   avg_hit: number;
   avg_crit: number;
   pct: number;
+  /** why: this ability's total over the selection's fight time -- the one clock every dps on the page uses */
+  dps: number;
   missed: number;
   blocked: number;
   dodged: number;
@@ -1646,6 +1655,8 @@ export interface ParseRecordDto {
    * to re-resolve `loadout` against live class evidence; frontend has no
    * use for the raw index itself. */
   zone_visit: number | null;
+  /** why: the store encounter this parse is; null only on pre-field records */
+  encounter_id: number | null;
   start_ms: number;
   duration_ms: number;
   player_damage: number;
@@ -1746,15 +1757,16 @@ export const api = {
     encounterId: number | null,
     actor: string | null = null,
     confirmedOnly = false,
-  ) => invoke<CombatSummaryDto>('get_combat_summary', { zoneVisit, encounterId, actor, confirmedOnly }),
+    selection: SelectionDto | null = null,
+  ) => invoke<CombatSummaryDto>('get_combat_summary', { zoneVisit, encounterId, actor, confirmedOnly, selection }),
 
-  listAllies: (zoneVisit: number | null, encounterId: number | null, confirmedOnly = false) =>
-    invoke<AllyDto[]>('list_allies', { zoneVisit, encounterId, confirmedOnly }),
+  listAllies: (zoneVisit: number | null, encounterId: number | null, confirmedOnly = false, selection: SelectionDto | null = null) =>
+    invoke<AllyDto[]>('list_allies', { zoneVisit, encounterId, confirmedOnly, selection }),
 
   /** The same rows for the other side of the fight -- Combat's collapsed
    * "list all", off by default. Class columns are noise on a mob. */
-  listEnemies: (zoneVisit: number | null, encounterId: number | null, confirmedOnly = false) =>
-    invoke<AllyDto[]>('list_enemies', { zoneVisit, encounterId, confirmedOnly }),
+  listEnemies: (zoneVisit: number | null, encounterId: number | null, confirmedOnly = false, selection: SelectionDto | null = null) =>
+    invoke<AllyDto[]>('list_enemies', { zoneVisit, encounterId, confirmedOnly, selection }),
 
   getFightTimeline: (encounterId: number) => invoke<FightTimelineDto | null>('get_fight_timeline', { encounterId }),
 

@@ -54,7 +54,8 @@ function keyFor(cmd: string, args: Record<string, unknown> | undefined): string 
     case 'get_combat_summary':
     case 'list_allies':
     case 'list_enemies':
-      return `zoneVisit=${norm(a.zoneVisit)}&encounterId=${norm(a.encounterId)}`;
+      // why: a bucket keys separately; without one the legacy key stays byte-identical
+      return `zoneVisit=${norm(a.zoneVisit)}&encounterId=${norm(a.encounterId)}${a.selection ? `&selection=${JSON.stringify(a.selection)}` : ''}`;
     case 'get_fight_timeline':
       return `encounterId=${norm(a.encounterId)}`;
     case 'get_fight_state_at':

@@ -9,7 +9,7 @@ use eqlp_store::{
     by_ability, by_actor, dps_window, flag, tag, total, AbilityId, AbilityRow, Encounter,
     EncounterId, EventKind, Filter, Sym, NO_ENCOUNTER,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize)]
@@ -51,11 +51,13 @@ pub struct AbilityRowDto {
     pub min: u64,
     pub max: u64,
     pub crits: u64,
-    /// why: avg of non-crit hits, matches real EQ parsers -- a per-ability
-    /// dps figure used to live here but says more about fight length than the ability
+    /// why: avg of non-crit hits, matches real EQ parsers
     pub avg_hit: f64,
     pub avg_crit: f64,
     pub pct: f64,
+    /// why: this ability's total over the selection's fight time -- the
+    /// one clock every other dps on the page uses
+    pub dps: f64,
     /// why: fully-avoided swings of this attack type, broken out by how
     pub missed: u64,
     pub blocked: u64,
@@ -459,6 +461,91 @@ pub fn encounter_detail(ing: &Ingest, encounter_id: u32) -> Option<EncounterDeta
 }
 
 /// why: shared by `summarize`/`list_allies`, both aggregate the current selection differently
+/// why: a bucket -- any set of fights plus any log-time windows, from
+/// anywhere. Overrides the zone-visit/encounter pair when non-empty.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SelectionDto {
+    #[serde(default)]
+    pub encounters: Vec<u32>,
+    #[serde(default)]
+    pub ranges: Vec<(Millis, Millis)>,
+}
+
+impl SelectionDto {
+    pub fn is_empty(&self) -> bool {
+        self.encounters.is_empty() && self.ranges.is_empty()
+    }
+}
+
+/// why: one fight in a selection, optionally clipped to a window -- a
+/// range member counts only what fell inside it
+#[derive(Debug, Clone, Copy)]
+struct Member {
+    id: EncounterId,
+    window: Option<(Millis, Millis)>,
+}
+
+impl Member {
+    fn filter(&self) -> Filter {
+        match self.window {
+            Some((s, u)) => Filter::encounter(self.id).window(s, u),
+            None => Filter::encounter(self.id),
+        }
+    }
+    fn contains(&self, ts: Millis) -> bool {
+        self.window.is_none_or(|(s, u)| (s..=u).contains(&ts))
+    }
+    fn duration_ms(&self, enc: &Encounter, now: Millis) -> Millis {
+        let end = enc.end_ms.unwrap_or(now);
+        match self.window {
+            Some((s, u)) => (end.min(u) - enc.start_ms.max(s)).max(0),
+            None => enc.duration_ms(now).max(0),
+        }
+    }
+}
+
+fn resolve_members(
+    ing: &Ingest,
+    zone_visit: Option<i64>,
+    encounter_id: Option<u32>,
+    confirmed_only: bool,
+    selection: Option<&SelectionDto>,
+) -> Vec<Member> {
+    let Some(sel) = selection.filter(|s| !s.is_empty()) else {
+        return resolve_ids(ing, zone_visit, encounter_id, confirmed_only)
+            .into_iter()
+            .map(|id| Member { id, window: None })
+            .collect();
+    };
+    let now = ing.now_ms();
+    let mut out: Vec<Member> = sel
+        .encounters
+        .iter()
+        .filter(|&&eid| ing.store.encounter(EncounterId(eid)).is_some())
+        .map(|&eid| Member {
+            id: EncounterId(eid),
+            window: None,
+        })
+        .collect();
+    // why: a range takes every fight of yours it touches, clipped; a fight
+    // already listed whole stays whole (no double count)
+    for &(since, until) in &sel.ranges {
+        for e in &ing.store.encounters {
+            let overlaps = e.involves_you
+                && !e.absorbed
+                && e.start_ms <= until
+                && e.end_ms.unwrap_or(now) >= since;
+            if overlaps && !out.iter().any(|m| m.id == e.id) {
+                out.push(Member {
+                    id: e.id,
+                    window: Some((since, until)),
+                });
+            }
+        }
+    }
+    out
+}
+
 fn resolve_ids(
     ing: &Ingest,
     zone_visit: Option<i64>,
@@ -546,14 +633,18 @@ fn subtract_ability_rows(
 /// why: every cast, grouped by ability and outcome. Walks raw store
 /// columns not `by_ability` -- that only tracks one OR'd flags bitmask,
 /// can't recover landed/resisted/interrupted counts.
-fn cast_rows(ing: &Ingest, ids: &[EncounterId], actor_sym: Option<Sym>) -> Vec<CastRowDto> {
+fn cast_rows(ing: &Ingest, members: &[Member], actor_sym: Option<Sym>) -> Vec<CastRowDto> {
     let mut acc: HashMap<AbilityId, CastRowDto> = HashMap::new();
-    for &id in ids {
+    for m in members {
+        let id = m.id;
         let Some(enc) = ing.store.encounter(id) else {
             continue;
         };
         for i in enc.range() {
-            if ing.store.kind[i] != EventKind::Cast || ing.store.enc[i] != id.0 {
+            if ing.store.kind[i] != EventKind::Cast
+                || ing.store.enc[i] != id.0
+                || !m.contains(ing.store.ts[i])
+            {
                 continue;
             }
             let row_actor = ing.store.actor[i];
@@ -609,10 +700,11 @@ pub fn summarize(
     encounter_id: Option<u32>,
     actor: Option<&str>,
     confirmed_only: bool,
+    selection: Option<&SelectionDto>,
 ) -> CombatSummaryDto {
     let now = ing.now_ms();
-    let ids = resolve_ids(ing, zone_visit, encounter_id, confirmed_only);
-    if ids.is_empty() {
+    let members = resolve_members(ing, zone_visit, encounter_id, confirmed_only, selection);
+    if members.is_empty() {
         return CombatSummaryDto::default();
     }
     let actor_sym = actor.and_then(|n| ing.store.names.get(n));
@@ -625,15 +717,16 @@ pub fn summarize(
     let mut per_fight_dps: Vec<f64> = Vec::new();
     let mut per_fight_enemy_dps: Vec<f64> = Vec::new();
 
-    for &id in &ids {
+    for m in &members {
+        let id = m.id;
         let Some(enc) = ing.store.encounter(id) else {
             continue;
         };
-        let dur = enc.duration_ms(now).max(0);
+        let dur = m.duration_ms(enc, now);
         let fight_secs = (dur as f64 / 1000.0).max(0.001);
         duration_ms += dur;
 
-        let enemy_rows = by_ability(&ing.store, &Filter::encounter(id).damage().by(enc.target));
+        let enemy_rows = by_ability(&ing.store, &m.filter().damage().by(enc.target));
         let fight_enemy: u64 = enemy_rows.iter().map(|r| r.total).sum();
         enemy_damage += fight_enemy;
         per_fight_enemy_dps.push(fight_enemy as f64 / fight_secs);
@@ -642,36 +735,29 @@ pub fn summarize(
         // actually make stick
         enemy_heal += total(
             &ing.store,
-            &Filter::encounter(id)
-                .kind(EventKind::Heal)
-                .target(enc.target),
+            &m.filter().kind(EventKind::Heal).target(enc.target),
         );
 
         if let Some(sym) = actor_sym {
             // why: one specific ally, own rows only -- never their own target
-            let rows = by_ability(&ing.store, &Filter::encounter(id).damage().by(sym));
+            let rows = by_ability(&ing.store, &m.filter().damage().by(sym));
             let fight_total: u64 = rows.iter().map(|r| r.total).sum();
             per_fight_dps.push(fight_total as f64 / fight_secs);
             merge_ability_rows(&mut merged, rows);
             // why: separate query -- Filter narrows to one kind, avoided
             // swings are Miss not Damage; merges onto the same row below
-            let avoided = by_ability(
-                &ing.store,
-                &Filter::encounter(id).kind(EventKind::Miss).by(sym),
-            );
+            let avoided = by_ability(&ing.store, &m.filter().kind(EventKind::Miss).by(sym));
             merge_ability_rows(&mut merged, avoided);
         } else {
             // why: everyone minus the target's own contribution; reuses enemy_rows above
-            let all = by_ability(&ing.store, &Filter::encounter(id).damage());
+            let all = by_ability(&ing.store, &m.filter().damage());
             let all_total: u64 = all.iter().map(|r| r.total).sum();
             per_fight_dps.push(all_total.saturating_sub(fight_enemy) as f64 / fight_secs);
             merge_ability_rows(&mut merged, all);
             subtract_ability_rows(&mut merged, enemy_rows);
-            let all_avoided = by_ability(&ing.store, &Filter::encounter(id).kind(EventKind::Miss));
-            let enemy_avoided = by_ability(
-                &ing.store,
-                &Filter::encounter(id).kind(EventKind::Miss).by(enc.target),
-            );
+            let all_avoided = by_ability(&ing.store, &m.filter().kind(EventKind::Miss));
+            let enemy_avoided =
+                by_ability(&ing.store, &m.filter().kind(EventKind::Miss).by(enc.target));
             merge_ability_rows(&mut merged, all_avoided);
             subtract_ability_rows(&mut merged, enemy_avoided);
         }
@@ -706,6 +792,7 @@ pub fn summarize(
             } else {
                 0.0
             },
+            dps: r.total as f64 / (duration_ms as f64 / 1000.0).max(0.001),
             missed: r.missed,
             blocked: r.blocked,
             dodged: r.dodged,
@@ -722,14 +809,14 @@ pub fn summarize(
     };
 
     CombatSummaryDto {
-        fight_count: ids.len(),
+        fight_count: members.len(),
         total_damage,
         duration_ms,
         dps: mean(&per_fight_dps),
         enemy_damage,
         enemy_dps: mean(&per_fight_enemy_dps),
         abilities,
-        casts: cast_rows(ing, &ids, actor_sym),
+        casts: cast_rows(ing, &members, actor_sym),
         enemy_heal,
     }
 }
@@ -848,8 +935,16 @@ pub fn list_allies(
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
     confirmed_only: bool,
+    selection: Option<&SelectionDto>,
 ) -> Vec<AllyDto> {
-    list_side(ing, zone_visit, encounter_id, confirmed_only, false)
+    list_side(
+        ing,
+        zone_visit,
+        encounter_id,
+        confirmed_only,
+        selection,
+        false,
+    )
 }
 
 /// why: the same figures for the other side -- totals, hits, crit rate,
@@ -862,8 +957,16 @@ pub fn list_enemies(
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
     confirmed_only: bool,
+    selection: Option<&SelectionDto>,
 ) -> Vec<AllyDto> {
-    list_side(ing, zone_visit, encounter_id, confirmed_only, true)
+    list_side(
+        ing,
+        zone_visit,
+        encounter_id,
+        confirmed_only,
+        selection,
+        true,
+    )
 }
 
 fn list_side(
@@ -871,9 +974,10 @@ fn list_side(
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
     confirmed_only: bool,
+    selection: Option<&SelectionDto>,
     want_enemies: bool,
 ) -> Vec<AllyDto> {
-    let ids = resolve_ids(ing, zone_visit, encounter_id, confirmed_only);
+    let members = resolve_members(ing, zone_visit, encounter_id, confirmed_only, selection);
     // why: class evidence is per activity chain -- read at the time of the
     // fight being looked at (a selected encounter's start, else the latest
     // of the selected fights, else now), so an old fight shows the
@@ -884,13 +988,13 @@ fn list_side(
             .encounter(EncounterId(eid))
             .map(|e| e.start_ms)
             .unwrap_or_else(|| ing.now_ms()),
-        None => ids
+        None => members
             .iter()
-            .filter_map(|id| ing.store.encounter(*id).map(|e| e.start_ms))
+            .filter_map(|m| ing.store.encounter(m.id).map(|e| e.start_ms))
             .max()
             .unwrap_or_else(|| ing.now_ms()),
     };
-    if ids.is_empty() {
+    if members.is_empty() {
         return Vec::new();
     }
 
@@ -907,12 +1011,13 @@ fn list_side(
     // round and the count of them is what reveals dual wield
     let mut swing_secs: HashMap<String, std::collections::BTreeSet<Millis>> = HashMap::new();
     let mut swing_count: HashMap<String, u64> = HashMap::new();
-    for &id in &ids {
+    for m in &members {
+        let id = m.id;
         let Some(enc) = ing.store.encounter(id) else {
             continue;
         };
         for i in enc.range() {
-            if ing.store.enc[i] != id.0 {
+            if ing.store.enc[i] != id.0 || !m.contains(ing.store.ts[i]) {
                 continue;
             }
             if !matches!(ing.store.kind[i], EventKind::Damage | EventKind::Miss) {
@@ -934,11 +1039,11 @@ fn list_side(
         }
     }
 
-    for &id in &ids {
-        if ing.store.encounter(id).is_none() {
+    for m in &members {
+        if ing.store.encounter(m.id).is_none() {
             continue;
         }
-        for (sym, dmg, hits, crits) in by_actor(&ing.store, &Filter::encounter(id).damage()) {
+        for (sym, dmg, hits, crits) in by_actor(&ing.store, &m.filter().damage()) {
             let name = ing.store.name(sym).to_string();
             // why: one composition of kind/charm/group belief -- see
             // Ingest::allegiance_at for why this isn't effective_kind+of
@@ -976,19 +1081,21 @@ fn list_side(
     // point tracking a mob's own casts/misses here
     let mut avoided: HashMap<Sym, u64> = HashMap::new();
     let mut casts: HashMap<Sym, (u64, u64)> = HashMap::new(); // (attempts, resisted)
-    for &id in &ids {
+    for m in &members {
+        let id = m.id;
         let Some(enc) = ing.store.encounter(id) else {
             continue;
         };
-        for (sym, _amt, n, _crits) in
-            by_actor(&ing.store, &Filter::encounter(id).kind(EventKind::Miss))
-        {
+        for (sym, _amt, n, _crits) in by_actor(&ing.store, &m.filter().kind(EventKind::Miss)) {
             if acc.contains_key(&sym) {
                 *avoided.entry(sym).or_insert(0) += n;
             }
         }
         for i in enc.range() {
-            if ing.store.enc[i] != id.0 || ing.store.kind[i] != EventKind::Cast {
+            if ing.store.enc[i] != id.0
+                || ing.store.kind[i] != EventKind::Cast
+                || !m.contains(ing.store.ts[i])
+            {
                 continue;
             }
             let actor = ing.store.actor[i];
@@ -1004,10 +1111,9 @@ fn list_side(
         }
     }
 
-    let duration_ms: Millis = ids
+    let duration_ms: Millis = members
         .iter()
-        .filter_map(|&id| ing.store.encounter(id))
-        .map(|e| e.duration_ms(now).max(0))
+        .filter_map(|m| ing.store.encounter(m.id).map(|e| m.duration_ms(e, now)))
         .sum();
     let dur_secs = (duration_ms.max(0) as f64 / 1000.0).max(0.001);
     let total_damage: u64 = acc.values().map(|(dmg, _, _)| dmg).sum();
@@ -2720,7 +2826,7 @@ mod ability_mitigation_dto_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let summary = summarize(&ing, None, None, Some("You"), false);
+        let summary = summarize(&ing, None, None, Some("You"), false, None);
         let punch = summary
             .abilities
             .iter()
@@ -2750,7 +2856,7 @@ mod ability_mitigation_dto_tests {
         ];
         backfill_lines(&mut ing, &engine, &lines, 1);
 
-        let summary = summarize(&ing, None, None, None, false);
+        let summary = summarize(&ing, None, None, None, false, None);
         let punch = summary
             .abilities
             .iter()
@@ -2791,7 +2897,7 @@ mod ally_report_tests {
             "[Tue Jul 28 15:01:00 2026] You punch a target for 5 points of damage.",
             "[Tue Jul 28 15:01:01 2026] You try to punch a target, but a target blocks!",
         ]);
-        let allies = list_allies(&ing, None, None, false);
+        let allies = list_allies(&ing, None, None, false, None);
         let you = allies
             .iter()
             .find(|a| a.name == "You")
@@ -2811,8 +2917,8 @@ mod ally_report_tests {
             "[Tue Jul 28 15:01:01 2026] A gnoll hits YOU for 12 points of damage.",
             "[Tue Jul 28 15:01:02 2026] A gnoll hits YOU for 8 points of damage.",
         ]);
-        let allies = list_allies(&ing, None, None, false);
-        let enemies = list_enemies(&ing, None, None, false);
+        let allies = list_allies(&ing, None, None, false, None);
+        let enemies = list_enemies(&ing, None, None, false, None);
         let gnoll = enemies
             .iter()
             .find(|e| e.name.eq_ignore_ascii_case("a gnoll"))
@@ -2841,7 +2947,7 @@ mod ally_report_tests {
             "[Tue Jul 28 15:01:03 2026] You begin casting Lifetap.",
             "[Tue Jul 28 15:01:05 2026] a target resisted your Lifetap!",
         ]);
-        let allies = list_allies(&ing, None, None, false);
+        let allies = list_allies(&ing, None, None, false, None);
         let you = allies
             .iter()
             .find(|a| a.name == "You")
@@ -2855,7 +2961,7 @@ mod ally_report_tests {
             "[Tue Jul 28 15:01:00 2026] You punch a target for 5 points of damage.",
             "[Tue Jul 28 15:01:01 2026] a target healed itself for 20 hit points by Lifetap.",
         ]);
-        let summary = summarize(&ing, None, None, None, false);
+        let summary = summarize(&ing, None, None, None, false, None);
         assert_eq!(
             summary.enemy_heal, 20,
             "healing landed on the target, not folded into total_damage"
@@ -2894,7 +3000,7 @@ mod live_meter_window_tests {
              [Tue Jul 28 15:01:03 2026] Kaeus slashes a gnoll for 10 points of damage.\n\
              [Tue Jul 28 15:01:05 2026] Kaeus tries to slash a gnoll, but misses!\n",
         );
-        let allies = list_allies(&ing, None, None, false);
+        let allies = list_allies(&ing, None, None, false, None);
         let r = allies
             .iter()
             .find(|a| a.name == "Kaeus")
@@ -2924,7 +3030,7 @@ mod live_meter_window_tests {
              [Tue Jul 28 15:01:05 2026] an abhorrent hits a gnoll for 40 points of damage.\n\
              [Tue Jul 28 15:01:06 2026] You hit a gnoll for 10 points of fire damage by Burst of Flame.\n",
         );
-        let allies = list_allies(&ing, None, None, false);
+        let allies = list_allies(&ing, None, None, false, None);
         let kaeus = allies
             .iter()
             .find(|a| a.name == "Kaeus")

@@ -228,12 +228,14 @@ pub fn list_allies(
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
     confirmed_only: Option<bool>,
+    selection: Option<combat::SelectionDto>,
 ) -> Vec<AllyDto> {
     combat::list_allies(
         &state.ingest.lock_recover(),
         zone_visit,
         encounter_id,
         confirmed_only.unwrap_or(false),
+        selection.as_ref(),
     )
 }
 
@@ -246,12 +248,14 @@ pub fn list_enemies(
     zone_visit: Option<i64>,
     encounter_id: Option<u32>,
     confirmed_only: Option<bool>,
+    selection: Option<combat::SelectionDto>,
 ) -> Vec<AllyDto> {
     combat::list_enemies(
         &state.ingest.lock_recover(),
         zone_visit,
         encounter_id,
         confirmed_only.unwrap_or(false),
+        selection.as_ref(),
     )
 }
 
@@ -264,6 +268,7 @@ pub fn get_combat_summary(
     encounter_id: Option<u32>,
     actor: Option<String>,
     confirmed_only: Option<bool>,
+    selection: Option<combat::SelectionDto>,
 ) -> CombatSummaryDto {
     combat::summarize(
         &state.ingest.lock_recover(),
@@ -271,6 +276,7 @@ pub fn get_combat_summary(
         encounter_id,
         actor.as_deref(),
         confirmed_only.unwrap_or(false),
+        selection.as_ref(),
     )
 }
 

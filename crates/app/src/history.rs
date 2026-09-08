@@ -34,6 +34,10 @@ pub struct ParseRecord {
     /// why: zone visit index, kept for the zone-visit drill-downs
     #[serde(default)]
     pub zone_visit: Option<usize>,
+    /// why: the store encounter this parse IS -- stable per run (the store
+    /// replays the log and history is purged at every start together)
+    #[serde(default)]
+    pub encounter_id: Option<u32>,
     pub start_ms: i64,
     pub duration_ms: i64,
     /// why: player's own damage/DPS, not the team's combined total
@@ -197,6 +201,7 @@ mod tests {
             zone: "Befallen".to_string(),
             loadout: strs(loadout),
             unit: zone_visit,
+            encounter_id: None,
             zone_visit,
             start_ms: 0,
             duration_ms: 1_000,

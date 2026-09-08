@@ -25,10 +25,51 @@
     selectEncounter,
     followCurrent,
     loadZoneVisitsThenJumpOrReset,
+    bucket,
+    selectionOf,
+    addToBucket,
+    removeBucketMember,
+    clearBucket,
+    type BucketMember,
   } from '$lib/stores/combat';
   import { api } from '$lib/tauri/api';
   import { get } from 'svelte/store';
   import { fmtDuration } from '$lib/format';
+  import { fmtLogTime, logMsToLocalInput, localInputToLogMs } from '$lib/utils';
+
+  // ---------------------------------------------------------------- bucket
+  const pickedFight = $derived($selectedEncounterId === null ? null : ($encounters.find((e) => e.id === $selectedEncounterId) ?? null));
+  function memberLabel(m: BucketMember): string {
+    return m.kind === 'encounter' ? `${m.target} · ${fmtDuration(m.duration_ms)}` : `${fmtLogTime(m.since)} → ${fmtLogTime(m.until)}`;
+  }
+  function memberKey(m: BucketMember): string {
+    return m.kind === 'encounter' ? `e${m.id}` : `r${m.since}-${m.until}`;
+  }
+  function addPickedFight() {
+    const e = pickedFight;
+    if (!e) return;
+    void addToBucket({ kind: 'encounter', id: e.id, target: e.target, duration_ms: e.duration_ms });
+  }
+  function addWholeVisit() {
+    void addToBucket(...$encounters.map((e) => ({ kind: 'encounter' as const, id: e.id, target: e.target, duration_ms: e.duration_ms })));
+  }
+  let ranging = $state(false);
+  let rangeStart = $state('');
+  let rangeEnd = $state('');
+  function openRange() {
+    // why: seeded from the picked fight so a range usually starts as "this fight, trimmed"
+    const e = pickedFight;
+    rangeStart = e ? logMsToLocalInput(e.start_ms) : '';
+    rangeEnd = e?.end_ms != null ? logMsToLocalInput(e.end_ms) : '';
+    ranging = true;
+  }
+  function addRange() {
+    const since = rangeStart ? localInputToLogMs(rangeStart) : null;
+    const until = rangeEnd ? localInputToLogMs(rangeEnd) : null;
+    if (since == null || until == null || until <= since) return;
+    void addToBucket({ kind: 'range', since, until });
+    ranging = false;
+  }
 
   // why: also the entry point for Game Data's "open in Combat →" -- see
   // that function's own doc for why the jump-or-reset choice lives here
@@ -167,14 +208,16 @@
     // title says so. A single-fight copy stays exactly what's on screen.
     let sum = $summary;
     let allyRows = $allies;
-    const aggregate = $selectedEncounterId === null;
+    // why: a bucket is always an aggregate copy, whatever the fight picker says
+    const sel = selectionOf(get(bucket));
+    const aggregate = sel !== null || $selectedEncounterId === null;
     if (aggregate) {
       // get(), not $ -- a store read after an await inside this async
       // handler is a scoped subscription Svelte rejects at compile time
-      const zv = get(selectedZoneVisit);
+      const zv = sel ? null : get(selectedZoneVisit);
       const [s, a] = await Promise.all([
-        api.getCombatSummary(zv, null, null, true),
-        api.listAllies(zv, null, true),
+        api.getCombatSummary(zv, null, null, true, sel),
+        api.listAllies(zv, null, true, sel),
       ]);
       if (s) sum = s;
       if (a) allyRows = a;
@@ -253,6 +296,59 @@
         </Select.Content>
       </Select.Root>
     </label>
+  </div>
+
+  <!-- why: the bucket -- fights from any visit plus log-time ranges;
+       non-empty, it is what every number below describes -->
+  <div class="flex flex-wrap items-center gap-2 rounded-sm border border-border bg-card px-3 py-2 text-[12px]" data-testid="combat-bucket">
+    <span class="shrink-0 text-muted-foreground">bucket</span>
+    {#if $bucket.length === 0}
+      <span class="text-muted-foreground">empty — showing the fight picked above</span>
+    {/if}
+    {#each $bucket as m, i (memberKey(m))}
+      <span class="inline-flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 {m.kind === 'range' ? 'text-caution' : ''}">
+        {memberLabel(m)}
+        <button type="button" class="text-muted-foreground hover:text-foreground" title="Remove from bucket" onclick={() => void removeBucketMember(i)}>×</button>
+      </span>
+    {/each}
+    <span class="ml-auto flex items-center gap-1">
+      <button
+        type="button"
+        class="rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+        disabled={pickedFight === null}
+        title="Add the fight picked above"
+        onclick={addPickedFight}>+ fight</button
+      >
+      <button
+        type="button"
+        class="rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+        disabled={$encounters.length === 0}
+        title="Add every fight in the zone / instance picked above"
+        onclick={addWholeVisit}>+ visit</button
+      >
+      <button
+        type="button"
+        class="rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+        title="Add a log-time range -- counts what fell inside it, fight by fight"
+        onclick={() => (ranging ? (ranging = false) : openRange())}>+ range</button
+      >
+      {#if $bucket.length}
+        <button
+          type="button"
+          class="rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+          onclick={() => void clearBucket()}>clear</button
+        >
+      {/if}
+    </span>
+    {#if ranging}
+      <span class="flex w-full items-center gap-1 text-[11px]">
+        <input type="datetime-local" step="1" bind:value={rangeStart} class="h-6 rounded-sm border border-border bg-background px-1" />
+        <span class="text-muted-foreground">→</span>
+        <input type="datetime-local" step="1" bind:value={rangeEnd} class="h-6 rounded-sm border border-border bg-background px-1" />
+        <button type="button" class="rounded-sm border border-border px-1.5 py-0.5 text-muted-foreground hover:text-foreground" onclick={addRange}>add</button>
+        <span class="text-muted-foreground">log time</span>
+      </span>
+    {/if}
   </div>
 
   {#if stats.length}
