@@ -39,15 +39,37 @@
   type Row = { key: string; member: Member; depth: 0 | 1 | 2 | 3; label: string; detail: string; tag: string; open: boolean };
   const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const dayLabel = (day: string) => `${WEEKDAY[new Date(`${day}T00:00:00Z`).getUTCDay()]} ${day}`;
+  // why: "Hide empty visits" -- a zone you passed through with no fight
+  // is noise in a list about fights; the current visit stays so "now"
+  // never vanishes. Remembered per browser, on by default
+  const HIDE_EMPTY_KEY = 'eqlp.tree.hideEmpty';
+  const loadHideEmpty = () => {
+    try {
+      const raw = localStorage.getItem(HIDE_EMPTY_KEY);
+      if (raw !== null) return raw === '1';
+    } catch {
+      // why: blocked storage -- the default is fine
+    }
+    return true;
+  };
+  let hideEmpty = $state(loadHideEmpty());
+  $effect(() => {
+    try {
+      localStorage.setItem(HIDE_EMPTY_KEY, hideEmpty ? '1' : '0');
+    } catch {
+      // why: nothing to do
+    }
+  });
+  const visits = $derived(hideEmpty ? $zoneVisits.filter((v) => v.fight_count > 0 || v.current) : $zoneVisits);
   const rows = $derived.by((): Row[] => {
     const out: Row[] = [];
     // why: visits arrive newest first; a day opens when its first visit does
     let openDay: string | null = null;
-    for (const v of $zoneVisits) {
+    for (const v of visits) {
       const day = dayOf(v.start_ms);
       if (day !== openDay) {
         openDay = day;
-        const inDay = $zoneVisits.filter((x) => dayOf(x.start_ms) === day);
+        const inDay = visits.filter((x) => dayOf(x.start_ms) === day);
         out.push({
           key: `d:${day}`,
           member: { kind: 'day', day },
@@ -220,6 +242,9 @@
     <span class="panel-title shrink-0">fights</span>
     <span class="min-w-0 truncate text-[11px] text-muted-foreground">{selectedCount ? `${selectedCount} selected` : 'none selected'}</span>
     <span class="ml-auto flex shrink-0 items-center gap-1">
+      <label class="flex items-center gap-1 text-[10px] text-muted-foreground" title="Visits with no fights are left out; the current one always shows">
+        <input type="checkbox" bind:checked={hideEmpty} /> Hide empty visits
+      </label>
       <button
         type="button"
         class="rounded-sm border px-1 py-0.5 text-[10px] {$followCurrentFight ? 'border-primary text-primary' : 'border-border text-muted-foreground hover:text-foreground'}"
