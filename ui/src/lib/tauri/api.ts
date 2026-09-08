@@ -1460,6 +1460,18 @@ export interface SpellEffectsEntryDto {
 export interface MobStatsDto {
   kills: number;
   pulls: number;
+  /** why: what it took to kill it, per party size -- solo / group / raid bands */
+  hp: MobHpRowDto[];
+}
+
+export interface MobHpRowDto {
+  party_size: number;
+  band: 'solo' | 'group' | 'raid';
+  kills: number;
+  avg_hp: number;
+  median_hp: number;
+  min_hp: number;
+  max_hp: number;
 }
 
 export interface EncounterPreviewDto {

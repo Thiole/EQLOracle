@@ -74,6 +74,99 @@ pub(crate) fn xp_credited_encounters(ing: &Ingest) -> std::collections::HashSet<
 pub struct MobStatsDto {
     pub kills: u64,
     pub pulls: u64,
+    /// why: "average hp per mob ... solo vs group (player party size)" --
+    /// what it took to kill it, per party size, from every fight it died in
+    pub hp: Vec<MobHpRowDto>,
+}
+
+/// why: one party size -- distinct allies who dealt damage, pets folded
+/// into their owners; band names the difficulty tier a server scales by
+#[derive(Debug, Clone, Serialize)]
+pub struct MobHpRowDto {
+    pub party_size: u32,
+    pub band: &'static str,
+    pub kills: u64,
+    pub avg_hp: u64,
+    pub median_hp: u64,
+    pub min_hp: u64,
+    pub max_hp: u64,
+}
+
+fn band_of(party_size: u32) -> &'static str {
+    match party_size {
+        0 | 1 => "solo",
+        2..=6 => "group",
+        _ => "raid",
+    }
+}
+
+/// why: every fight this mob died in, anchor or not -- the damage it
+/// took there is its HP, grouped by how many allies were hitting
+fn hp_rows(ing: &Ingest, name: &str) -> Vec<MobHpRowDto> {
+    let Some(sym) = ing.store.names.get(name) else {
+        return Vec::new();
+    };
+    let now = ing.now_ms();
+    let mut by_size: HashMap<u32, Vec<u64>> = HashMap::new();
+    for e in &ing.store.encounters {
+        if e.absorbed || e.is_open() {
+            continue;
+        }
+        let present = ing
+            .entities_by_enc
+            .get(&e.id)
+            .is_some_and(|names| names.iter().any(|n| n.eq_ignore_ascii_case(name)));
+        if !present {
+            continue;
+        }
+        let end = e.end_ms.unwrap_or(now);
+        let died = matches!(
+            ing.timeline.state_at(sym.0, end),
+            Some((eqlp_session::State::Dead, _))
+        );
+        if !died {
+            continue;
+        }
+        let hp = eqlp_store::total(
+            &ing.store,
+            &eqlp_store::Filter::encounter(e.id).damage().target(sym),
+        );
+        if hp == 0 {
+            continue;
+        }
+        let mut allies: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (actor, _, _, _) in eqlp_store::by_actor(
+            &ing.store,
+            &eqlp_store::Filter::encounter(e.id).damage().target(sym),
+        ) {
+            let who = ing.store.name(actor).to_string();
+            if ing.allegiance_at(&who, now).is_enemy() {
+                continue;
+            }
+            allies.insert(ing.pet_of(&who).map(str::to_string).unwrap_or(who));
+        }
+        by_size
+            .entry(allies.len().max(1) as u32)
+            .or_default()
+            .push(hp);
+    }
+    let mut rows: Vec<MobHpRowDto> = by_size
+        .into_iter()
+        .map(|(party_size, mut hps)| {
+            hps.sort_unstable();
+            MobHpRowDto {
+                party_size,
+                band: band_of(party_size),
+                kills: hps.len() as u64,
+                avg_hp: hps.iter().sum::<u64>() / hps.len() as u64,
+                median_hp: hps[hps.len() / 2],
+                min_hp: hps[0],
+                max_hp: hps[hps.len() - 1],
+            }
+        })
+        .collect();
+    rows.sort_by_key(|r| r.party_size);
+    rows
 }
 
 /// why: `list_mobs`' counting scoped to one mob -- skips the loot pass
@@ -81,7 +174,11 @@ pub struct MobStatsDto {
 /// but on-demand per NPC page, not a per-tick refresh
 pub fn mob_stats(ing: &Ingest, name: &str) -> MobStatsDto {
     let Some(you) = ing.store.names.get("You") else {
-        return MobStatsDto { kills: 0, pulls: 0 };
+        return MobStatsDto {
+            kills: 0,
+            pulls: 0,
+            hp: Vec::new(),
+        };
     };
     let xp_credited = xp_credited_encounters(ing);
     let mut kills = 0u64;
@@ -100,7 +197,11 @@ pub fn mob_stats(ing: &Ingest, name: &str) -> MobStatsDto {
             kills += 1;
         }
     }
-    MobStatsDto { kills, pulls }
+    MobStatsDto {
+        kills,
+        pulls,
+        hp: hp_rows(ing, name),
+    }
 }
 
 /// why: single pass grouping Xp rows by mob (same shape as loot's

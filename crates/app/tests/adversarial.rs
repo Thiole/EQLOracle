@@ -392,6 +392,44 @@ fn overlays_hide_after_thirty_quiet_seconds_unless_settings_touched_them() {
     ));
 }
 
+/// why: "average hp per mob ... solo vs group (player party size)" --
+/// what a mob took to die, in every fight it died in, by party size;
+/// a mob that died as a non-anchor of a pull counts too
+#[test]
+fn a_mobs_hp_is_what_it_took_to_kill_it_by_party_size() {
+    use eqlp_app::monsters;
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:00:00 2026] Kaeus tells the group, 'inc'\n",
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:02 2026] You hit a gnoll scout for 50 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:03 2026] Kaeus hits a gnoll scout for 30 points of damage.\n",
+        "[Tue Jul 28 15:01:05 2026] You have slain a gnoll!\n",
+        "[Tue Jul 28 15:01:06 2026] You have slain a gnoll scout!\n",
+        "[Tue Jul 28 15:03:00 2026] You hit a gnoll for 120 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:03:05 2026] You have slain a gnoll!\n",
+    ));
+    let gnoll = monsters::mob_stats(&ing, "a gnoll");
+    assert_eq!(gnoll.hp.len(), 1, "both gnoll kills were solo");
+    assert_eq!(
+        (gnoll.hp[0].party_size, gnoll.hp[0].band, gnoll.hp[0].kills),
+        (1, "solo", 2)
+    );
+    assert_eq!(
+        (gnoll.hp[0].avg_hp, gnoll.hp[0].min_hp, gnoll.hp[0].max_hp),
+        (110, 100, 120)
+    );
+    let scout = monsters::mob_stats(&ing, "a gnoll scout");
+    assert_eq!(
+        scout.hp.len(),
+        1,
+        "the scout died as a non-anchor, still counted"
+    );
+    assert_eq!(
+        (scout.hp[0].party_size, scout.hp[0].band, scout.hp[0].avg_hp),
+        (2, "group", 80)
+    );
+}
+
 /// why: a visit files under the day its first line fell on -- the zone
 /// line's own time, or the earliest fight for the pre-zone bucket
 #[test]

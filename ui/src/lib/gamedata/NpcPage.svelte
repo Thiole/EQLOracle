@@ -136,6 +136,33 @@
           ? ''
           : 's'}.
       </p>
+      <!-- why: "average hp per mob ... solo vs group" -- damage it took in
+           every fight it died in, by how many allies were hitting -->
+      {#if (stats.hp ?? []).length}
+        <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">hp by party size</h4>
+        <table class="mb-2 w-full text-[11px]">
+          <thead>
+            <tr class="border-b border-border text-muted-foreground">
+              <th class="py-0.5 text-left font-normal">party</th>
+              <th class="py-0.5 text-right font-normal">kills</th>
+              <th class="py-0.5 text-right font-normal">avg hp</th>
+              <th class="py-0.5 text-right font-normal">median</th>
+              <th class="py-0.5 text-right font-normal">range</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each stats.hp as r (r.party_size)}
+              <tr class="border-b border-border/50">
+                <td class="py-0.5">{r.party_size} · <span class="text-muted-foreground">{r.band}</span></td>
+                <td class="py-0.5 text-right tabular-nums">{r.kills.toLocaleString()}</td>
+                <td class="py-0.5 text-right tabular-nums">{r.avg_hp.toLocaleString()}</td>
+                <td class="py-0.5 text-right tabular-nums text-muted-foreground">{r.median_hp.toLocaleString()}</td>
+                <td class="py-0.5 text-right tabular-nums text-muted-foreground">{r.min_hp.toLocaleString()}–{r.max_hp.toLocaleString()}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
       <EncounterHistory kind="npc" id={npc.name} showZone={true} />
     {/if}
   </CardContent>
