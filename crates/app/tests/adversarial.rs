@@ -453,6 +453,69 @@ fn a_mobs_hp_is_what_it_took_to_kill_it_by_party_size() {
     );
 }
 
+/// why: Spencer -- "theres no 10 man raid. max party size is 8". A
+/// warder is its owner's hand, and "frenzies on X" must not spawn a
+/// second mob called "on X"
+#[test]
+fn a_mobs_party_size_folds_pets_and_a_frenzy_names_no_phantom() {
+    use eqlp_app::{combat, monsters};
+    let mut ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll scout for 10 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:01 2026] Bob`s warder slashes a gnoll for 50 points of damage.\n",
+        "[Tue Jul 28 15:01:01 2026] Manipulator`s pet slashes a gnoll for 20 points of damage.\n",
+        "[Tue Jul 28 15:01:02 2026] Bob tries to frenzy on a gnoll, but a gnoll parries!\n",
+        "[Tue Jul 28 15:01:02 2026] a gnoll scout hits a gnoll for 5 points of damage.\n",
+        "[Tue Jul 28 15:01:03 2026] Bob tries to frenzy on a gnoll, but a gnoll dodges!\n",
+        "[Tue Jul 28 15:01:03 2026] Innoruuk`s Chosen hits a gnoll for 5 points of damage.\n",
+        "[Tue Jul 28 15:01:04 2026] Bob frenzies on a gnoll for 30 points of damage.\n",
+        "[Tue Jul 28 15:01:05 2026] You have slain a gnoll!\n",
+    ));
+    ing.character = Some("Manipulator".to_string());
+    let s = monsters::mob_stats(&ing, "a gnoll");
+    assert_eq!(s.hp.len(), 1);
+    assert_eq!(
+        (s.hp[0].party_size, s.hp[0].avg_hp),
+        (2, 210),
+        "You and Bob: the warder is Bob's, the pet is yours, the scout was an enemy, the Chosen is a bestiary mob"
+    );
+    let fight = combat::list_encounters(&ing, None, 0, 50)
+        .into_iter()
+        .find(|e| e.target.eq_ignore_ascii_case("a gnoll"))
+        .expect("the fight");
+    assert!(
+        !fight.entities.iter().any(|n| n.starts_with("on ")),
+        "no phantom 'on a gnoll' entity: {:?}",
+        fight.entities
+    );
+}
+
+/// why: Spencer -- "Innoruuk, I dont believe is hooking up correctly to
+/// the game data". The wiki calls him "Innoruuk", the log "Innoruuk, the
+/// Prince of Hate"; the mob page asks by the wiki name
+#[test]
+fn a_mob_page_finds_its_kills_under_the_logs_own_name() {
+    use eqlp_app::{combat, monsters};
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] You hit Innoruuk, the Prince of Hate for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:05 2026] You have slain Innoruuk, the Prince of Hate!\n",
+    ));
+    let s = monsters::mob_stats(&ing, "Innoruuk");
+    assert_eq!(
+        (s.kills, s.pulls),
+        (1, 1),
+        "the wiki name finds the log's kill"
+    );
+    assert_eq!(s.hp.len(), 1);
+    assert_eq!(s.hp[0].avg_hp, 100);
+    assert_eq!(combat::list_mob_encounters(&ing, "Innoruuk", 10).len(), 1);
+    assert_eq!(
+        monsters::mob_stats(&ing, "Innoruuk, the Prince of Hate").kills,
+        1,
+        "the log name still works"
+    );
+}
+
 /// why: a visit files under the day its first line fell on -- the zone
 /// line's own time, or the earliest fight for the pre-zone bucket
 #[test]

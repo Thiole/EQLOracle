@@ -342,8 +342,9 @@ anchors = [" block"]
 # expected to equal `dst` (the target blocking its own attacker); captured
 # as a separate group rather than a backreference since this engine's
 # regex has none. Trailing flag same as melee.miss's own note.
-pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<blocker>.+?) block(?:s)?!(?: \((?P<flag>[^()]+)\))?$'''
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?:on )?(?P<dst>.+?), but (?P<blocker>.+?) block(?:s)?!(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
+  "[Wed Jul 29 16:31:31 2026] Sabertooth Overseer tries to frenzy on Kaeus, but Kaeus blocks!",
   "[Tue Jul 28 15:02:15 2026] Refuse tries to punch Refugee Splitpaw, but Refugee Splitpaw blocks!",
   "[Tue Jul 28 15:02:15 2026] Refuse tries to kick Refugee Splitpaw, but Refugee Splitpaw blocks!",
   "[Tue Jul 28 15:02:15 2026] A seafury cyclops tries to hit YOU, but YOU block!",
@@ -364,8 +365,9 @@ anchors = ["dodge"]
 # person) and "dodge" (the "YOU dodge!"/self form) both appear for real --
 # same tr(?:ies|y) split covers the attacker's own conjugation already.
 # Trailing flag same as melee.miss's own note.
-pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<dodger>.+?) dodges?!(?: \((?P<flag>[^()]+)\))?$'''
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?:on )?(?P<dst>.+?), but (?P<dodger>.+?) dodges?!(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
+  "[Tue Jul 28 15:34:16 2026] Saiin tries to frenzy on a young puma, but a young puma dodges!",
   "[Tue Jul 28 15:02:15 2026] Ice boned skeleton tries to punch YOU, but YOU dodge!",
   "[Tue Jul 28 15:02:15 2026] Baron Telyx V`Zher tries to slash YOU, but YOU dodge!",
   "[Tue Jul 28 15:02:15 2026] A leering gargoyle tries to hit Bravesirrobin, but Bravesirrobin dodges!",
@@ -388,8 +390,9 @@ anchors = ["parr"]
 # distinction melee.dodged's own `dodges?` already made; anchor
 # loosened from the literal "parries!" to "parr" since "parry!" alone
 # doesn't contain that substring.
-pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<parrier>.+?) (?:parries|parry)!(?: \((?P<flag>[^()]+)\))?$'''
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?:on )?(?P<dst>.+?), but (?P<parrier>.+?) (?:parries|parry)!(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
+  "[Tue Jul 28 15:55:50 2026] Leviathan tries to frenzy on an armadillo, but an armadillo parries!",
   "[Tue Jul 28 15:02:15 2026] a rattlesnake tries to bite Kabn, but Kabn parries!",
   "[Tue Jul 28 15:02:15 2026] a rattlesnake tries to slash Vonektik, but Vonektik parries!",
   "[Fri Aug 07 22:11:54 2026] Orc centurion tries to cleave YOU, but YOU parry!",
@@ -413,8 +416,9 @@ anchors = ["riposte"]
 # specific log (0 real occurrences of the YOU form found), kept anyway
 # since it's the same real grammatical rule the other 3 avoidance types
 # already need, not a guess at new content.
-pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<riposter>.+?) (?:ripostes|riposte)!(?: \((?P<flag>[^()]+)\))?$'''
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?:on )?(?P<dst>.+?), but (?P<riposter>.+?) (?:ripostes|riposte)!(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
+  "[Thu Aug 06 00:04:02 2026] Terror tries to frenzy on Dune, but Dune ripostes!",
   "[Wed Jul 29 20:19:55 2026] A Teir`Dal ranger tries to slash Kaeus, but Kaeus ripostes!",
   "[Wed Jul 29 20:29:09 2026] A Teir`Dal rogue tries to pierce Bravesirrobin, but Bravesirrobin ripostes!",
 ]
@@ -614,8 +618,11 @@ anchors = ["magical skin absorbs the blow!"]
 # -- a magical damage-absorb, not a defender's own evasion skill -- but
 # same "attack landed, no damage got through" bucket, same reason
 # ds.damage's own kind groups a damage-shield's damage with plain hits.
-pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?P<dst>.+?), but (?P<dst2>.+?)'s magical skin absorbs the blow!$'''
-examples = ["[Tue Jul 28 15:02:15 2026] Bravesirrobin tries to hit Kahaptra Z`Taj, but Kahaptra Z`Taj's magical skin absorbs the blow!"]
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?:on )?(?P<dst>.+?), but (?P<dst2>.+?)'s magical skin absorbs the blow!$'''
+examples = [
+  "[Thu Jul 30 17:20:58 2026] Dippinsauce tries to frenzy on The Blood Artist, but The Blood Artist's magical skin absorbs the blow!",
+  "[Tue Jul 28 15:02:15 2026] Bravesirrobin tries to hit Kahaptra Z`Taj, but Kahaptra Z`Taj's magical skin absorbs the blow!",
+]
 [rule.fields]
 source = { from = "src", as = "str" }
 target = { from = "dst", as = "str" }

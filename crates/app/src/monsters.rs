@@ -120,10 +120,23 @@ fn instance_of(zone: Option<&str>) -> (u8, &'static str) {
     (tier, instance)
 }
 
+/// why: your own pet's owner is your character name; the log calls you "You"
+fn as_you(ing: &Ingest, name: String) -> String {
+    match &ing.character {
+        Some(c) if c.eq_ignore_ascii_case(&name) => "You".to_string(),
+        _ => name,
+    }
+}
+
 /// why: every fight this mob died in, anchor or not -- the damage it
 /// took there is its HP, grouped by how many allies were hitting
 fn hp_rows(ing: &Ingest, name: &str) -> Vec<MobHpRowDto> {
-    let Some(sym) = ing.store.names.get(name) else {
+    let Some(sym) = ing
+        .store
+        .names
+        .get(name)
+        .or_else(|| ing.store.names.get(crate::mobalias::log_name(name)))
+    else {
         return Vec::new();
     };
     let now = ing.now_ms();
@@ -136,7 +149,7 @@ fn hp_rows(ing: &Ingest, name: &str) -> Vec<MobHpRowDto> {
         let present = ing
             .entities_by_enc
             .get(&e.id)
-            .is_some_and(|names| names.iter().any(|n| n.eq_ignore_ascii_case(name)));
+            .is_some_and(|names| names.iter().any(|n| crate::mobalias::mob_matches(n, name)));
         if !present {
             continue;
         }
@@ -161,10 +174,38 @@ fn hp_rows(ing: &Ingest, name: &str) -> Vec<MobHpRowDto> {
             &eqlp_store::Filter::encounter(e.id).damage().target(sym),
         ) {
             let who = ing.store.name(actor).to_string();
-            if ing.allegiance_at(&who, now).is_enemy() {
+            if who.eq_ignore_ascii_case("You") {
+                allies.insert("You".to_string());
                 continue;
             }
-            allies.insert(ing.pet_of(&who).map(str::to_string).unwrap_or(who));
+            // why: an add that turned on the boss was still an enemy during the fight
+            if ing.allegiance_at(&who, e.start_ms).is_enemy()
+                || ing.allegiance_at(&who, end).is_enemy()
+            {
+                continue;
+            }
+            // why: "X`s pet"/"X`s warder" is X's hand, not a 9th body
+            let owner = ing
+                .encounters
+                .entities
+                .owner_of(&who)
+                .or_else(|| ing.pet_of(&who))
+                .map(str::to_string);
+            match owner {
+                Some(o) => {
+                    allies.insert(as_you(ing, o));
+                }
+                // why: a pet nobody claims is still not a body; a bestiary mob
+                // hitting the boss is someone's charm. A proven player keeps
+                // their slot whatever they're named
+                None if ing.encounters.entities.kind(&who) != eqlp_session::Kind::Player
+                    && (ing.encounters.entities.kind(&who) == eqlp_session::Kind::Pet
+                        || eqlp_session::is_pet_suffixed(&who)
+                        || crate::npcdata::npc_for(&who).is_some()) => {}
+                None => {
+                    allies.insert(as_you(ing, who));
+                }
+            }
         }
         by_size
             .entry((allies.len().max(1) as u32, difficulty, instance))
@@ -210,7 +251,8 @@ pub fn mob_stats(ing: &Ingest, name: &str) -> MobStatsDto {
         if e.absorbed {
             continue;
         }
-        if !ing.store.name(e.target).eq_ignore_ascii_case(name)
+        // why: the page asks by wiki name, the log wrote its own (mobalias)
+        if !crate::mobalias::mob_matches(ing.store.name(e.target), name)
             || !counts_as_pull(ing, e, you, &xp_credited)
         {
             continue;
