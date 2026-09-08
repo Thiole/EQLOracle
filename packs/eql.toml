@@ -233,6 +233,123 @@ pattern = '''^You are now the leader of your group\.$'''
 examples = ["[Tue Jul 28 15:02:15 2026] You are now the leader of your group."]
 
 [[rule]]
+id = "group.leader_other"
+kind = "group"
+priority = 50
+anchors = ["is now the leader of your group"]
+pattern = '''^(?P<who>.+?) is now the leader of your group\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Dippinsauce is now the leader of your group."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "group.role"
+kind = "group"
+priority = 50
+anchors = ["is now group "]
+pattern = '''^(?P<who>.+?) is now group (?P<role>.+)$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Bravesirrobin is now group Main Assist"]
+[rule.fields]
+who = { from = "who", as = "str" }
+role = { from = "role", as = "str" }
+
+[[rule]]
+id = "group.invite_prompt"
+kind = "group"
+priority = 50
+anchors = ["To join the group, click"]
+pattern = '''^To join the group, click on the 'FOLLOW' option, or 'DECLINE' to cancel\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] To join the group, click on the 'FOLLOW' option, or 'DECLINE' to cancel."]
+
+[[rule]]
+id = "group.invite_sent"
+kind = "group"
+priority = 50
+anchors = ["Sending an invitation to: "]
+pattern = '''^Sending an invitation to: (?P<who>.+?)\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Sending an invitation to: Bravesirrobin."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "group.expedition_accepted"
+kind = "group"
+priority = 50
+anchors = ["has accepted your offer to join your expedition"]
+pattern = '''^(?P<who>.+?) has accepted your offer to join your expedition\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Bravesirrobin has accepted your offer to join your expedition."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "instance.created"
+kind = "instance"
+priority = 50
+anchors = ["creating instance "]
+# why: the game's own record of who opened which instance
+pattern = '''^Player (?P<who>.+?) creating instance (?P<zone>.+?) (?P<num>[0-9]+)\.$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] Player Manipulator creating instance The Lair of the Splitpaw 6396.",
+  "[Tue Sep 08 12:00:00 2026] Player Manipulator creating instance Najena 2293.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+zone = { from = "zone", as = "str" }
+
+[[rule]]
+id = "instance.available"
+kind = "instance"
+priority = 50
+anchors = ["is now available to you"]
+pattern = '''^(?P<zone>.+?) is now available to you\.$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] The Permafrost Caverns - Group is now available to you.",
+  "[Tue Sep 08 12:00:00 2026] The Lair of the Splitpaw is now available to you.",
+  "[Tue Sep 08 12:00:00 2026] Najena is now available to you.",
+]
+[rule.fields]
+zone = { from = "zone", as = "str" }
+
+[[rule]]
+id = "instance.added"
+kind = "instance"
+priority = 50
+anchors = ["has been added to The "]
+pattern = '''^(?P<who>.+?) has been added to (?P<zone>The .+?)\.$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] Manipulator has been added to The Ruins of Old Guk.",
+  "[Tue Sep 08 12:00:00 2026] Manipulator has been added to The Permafrost Caverns - Group.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+zone = { from = "zone", as = "str" }
+
+[[rule]]
+id = "instance.removed"
+kind = "instance"
+priority = 50
+anchors = ["has been removed from The "]
+pattern = '''^(?P<who>.+?) has been removed from (?P<zone>The .+?)\.$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] Manipulator has been removed from The Permafrost Caverns - Group.",
+  "[Tue Sep 08 12:00:00 2026] Manipulator has been removed from The Liberated Citadel of Runnyeye.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+zone = { from = "zone", as = "str" }
+
+[[rule]]
+id = "instance.invited"
+kind = "instance"
+priority = 50
+anchors = ["has asked you to join the instance: "]
+pattern = '''^(?P<who>.+?) has asked you to join the instance: (?P<zone>.+?)\. Would you like to join\? Accepting will incur you a charge or replay timer\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Dippinsauce has asked you to join the instance: The Ruins of Old Guk 0 (Normal). Would you like to join? Accepting will incur you a charge or replay timer."]
+[rule.fields]
+who = { from = "who", as = "str" }
+zone = { from = "zone", as = "str" }
+
+[[rule]]
 id = "group.other_invites_you"
 kind = "group"
 priority = 50
@@ -264,6 +381,192 @@ channel = { from = "channel", as = "str" }
 
 # ============================================================ combat
 
+
+[[rule]]
+id = "noise.ability_timer_reset"
+kind = "noise"
+priority = 50
+anchors = ["Your ability failed. Timer has been reset"]
+pattern = '''^Your ability failed\. Timer has been reset\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Your ability failed. Timer has been reset."]
+
+[[rule]]
+id = "noise.welcome"
+kind = "noise"
+priority = 50
+anchors = ["Welcome to EverQuest Legends"]
+pattern = '''^Welcome to EverQuest Legends!$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Welcome to EverQuest Legends!"]
+
+[[rule]]
+id = "noise.fishing_caught"
+kind = "noise"
+priority = 50
+anchors = ["You caught "]
+pattern = '''^You caught (?P<item>.+?)!$'''
+examples = ["[Tue Sep 08 12:00:00 2026] You caught Tattered Cloth Sandal!"]
+[rule.fields]
+item = { from = "item", as = "str" }
+
+[[rule]]
+id = "noise.fishing_misc"
+kind = "noise"
+priority = 50
+anchors = ["You"]
+pattern = '''^You (?:didn't catch anything|spill your beer while bringing in your line|can't fish while holding something)\.$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] You didn't catch anything.",
+  "[Tue Sep 08 12:00:00 2026] You spill your beer while bringing in your line.",
+  "[Tue Sep 08 12:00:00 2026] You can't fish while holding something.",
+]
+
+[[rule]]
+id = "noise.drink_take"
+kind = "noise"
+priority = 50
+anchors = ["You take a drink from your "]
+pattern = '''^You take a drink from your (?P<item>.+?)\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] You take a drink from your Skin of Milk."]
+[rule.fields]
+item = { from = "item", as = "str" }
+
+[[rule]]
+id = "noise.food_drink"
+kind = "noise"
+priority = 50
+anchors = [" "]
+pattern = '''^(?:Ahhh\. That was (?:refreshing|tasty)|You are low on drink|You could not possibly eat any more, you would explode)[.!]$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] Ahhh. That was refreshing.",
+  "[Tue Sep 08 12:00:00 2026] Ahhh. That was tasty.",
+  "[Tue Sep 08 12:00:00 2026] You are low on drink.",
+  "[Tue Sep 08 12:00:00 2026] You could not possibly eat any more, you would explode!",
+]
+
+[[rule]]
+id = "noise.not_online"
+kind = "noise"
+priority = 50
+anchors = [" is not online at this time"]
+pattern = '''^(?P<who>.+?) is not online at this time\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Newplayers:1 is not online at this time."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "noise.systemwide"
+kind = "noise"
+priority = 50
+anchors = ["<SYSTEMWIDE_MESSAGE>:"]
+pattern = '''^<SYSTEMWIDE_MESSAGE>: (?P<msg>.+)$'''
+examples = ["[Tue Sep 08 12:00:00 2026] <SYSTEMWIDE_MESSAGE>: Server coming down in 25 minutes. Please plan accordingly."]
+[rule.fields]
+msg = { from = "msg", as = "str" }
+
+[[rule]]
+id = "noise.action_refused"
+kind = "noise"
+priority = 50
+anchors = [" "]
+# why: the game refusing something you tried -- no state changes
+pattern = '''^(?:That is not a valid command\. Please use /help|You are not on any channels|You cannot perform that action right now\. Please try again in a moment|You cannot memorize a spell you already have memorized|You are too distracted to cast a spell now|You can not use this ability while in combat|This pet may not be made invisible|You cannot loot this item no room in your inventory|Your target has no mana to affect|Mysterious forces prevent you from finding your destination easily)[.!]?$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] That is not a valid command. Please use /help.",
+  "[Tue Sep 08 12:00:00 2026] You are not on any channels",
+  "[Tue Sep 08 12:00:00 2026] You cannot perform that action right now. Please try again in a moment.",
+  "[Tue Sep 08 12:00:00 2026] You cannot memorize a spell you already have memorized.",
+  "[Tue Sep 08 12:00:00 2026] You are too distracted to cast a spell now!",
+  "[Tue Sep 08 12:00:00 2026] You can not use this ability while in combat.",
+  "[Tue Sep 08 12:00:00 2026] This pet may not be made invisible.",
+  "[Tue Sep 08 12:00:00 2026] You cannot loot this item no room in your inventory.",
+  "[Tue Sep 08 12:00:00 2026] Your target has no mana to affect",
+  "[Tue Sep 08 12:00:00 2026] Mysterious forces prevent you from finding your destination easily.",
+]
+
+[[rule]]
+id = "noise.combat_ability_interrupted"
+kind = "noise"
+priority = 50
+anchors = [" combat ability is interrupted"]
+pattern = '''^(?:Your|(?P<who>.+?)'s) (?P<ability>.+?) combat ability is interrupted\.$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] Your Quick Buff combat ability is interrupted.",
+  "[Tue Sep 08 12:00:00 2026] Dippinsauce's Quick Buff combat ability is interrupted.",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+ability = { from = "ability", as = "str" }
+
+[[rule]]
+id = "noise.inspect_too_far"
+kind = "noise"
+priority = 50
+anchors = [" is too far away to inspect"]
+pattern = '''^(?P<who>.+?) is too far away to inspect\. Get closer\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Seaborn is too far away to inspect. Get closer."]
+[rule.fields]
+who = { from = "who", as = "str" }
+
+[[rule]]
+id = "noise.equip_ineligible"
+kind = "noise"
+priority = 50
+anchors = ["has an eligible class to equip "]
+pattern = '''^Neither you nor your pet has an eligible class to equip (?P<item>.+?)\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Neither you nor your pet has an eligible class to equip Verishe Mal Greataxe +2."]
+[rule.fields]
+item = { from = "item", as = "str" }
+
+[[rule]]
+id = "noise.tombstone"
+kind = "noise"
+priority = 50
+anchors = ["what would you like your tombstone to say"]
+pattern = '''^(?P<who>.+?) judges you amiably -- what would you like your tombstone to say\? \(Lvl: (?P<level>[0-9]+)\)$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Heart harpie judges you amiably -- what would you like your tombstone to say? (Lvl: 58)"]
+[rule.fields]
+who = { from = "who", as = "str" }
+level = { from = "level", as = "u64" }
+
+[[rule]]
+id = "noise.social_emote"
+kind = "noise"
+priority = 50
+anchors = [" "]
+pattern = '''^(?P<who>.+?) (?P<emote>waves at|bows before|cheers at|freaks out at) (?P<target>.+?)[.!]$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] Jadyn waves at Manipulator.",
+  "[Tue Sep 08 12:00:00 2026] Jadyn bows before Manipulator.",
+  "[Tue Sep 08 12:00:00 2026] Morfiend cheers at Ihop.",
+  "[Tue Sep 08 12:00:00 2026] Painess freaks out at Anadaria!",
+]
+[rule.fields]
+who = { from = "who", as = "str" }
+target = { from = "target", as = "str" }
+
+[[rule]]
+id = "noise.mob_flavor"
+kind = "noise"
+priority = 50
+anchors = [" "]
+# why: scripted mob flavor lines, one shape each, all real
+pattern = '''^(?:(?P<who>.+?) resumes his patrol, his keyring jangling noisily at his side\.|a rock golem is leapt upon\.|A revultant rat's corpse spurts foul smelling blood, and is still\.)$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] Moosh resumes his patrol, his keyring jangling noisily at his side.",
+  "[Tue Sep 08 12:00:00 2026] a rock golem is leapt upon.",
+  "[Tue Sep 08 12:00:00 2026] A revultant rat's corpse spurts foul smelling blood, and is still.",
+]
+
+[[rule]]
+id = "noise.inventory_dump_done"
+kind = "noise"
+priority = 50
+anchors = ["inventory dump just finished writing"]
+pattern = '''^(?P<who>.+?)'s inventory dump just finished writing \((?P<file>.+?)\)\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Manipulator's inventory dump just finished writing (Manipulator_rivervale-Inventory.txt)."]
+[rule.fields]
+who = { from = "who", as = "str" }
+file = { from = "file", as = "str" }
 
 [[rule]]
 id = "noise.song_missed_note"
@@ -497,10 +800,11 @@ priority = 30
 anchors = ["has captured "]
 # why: a full taunt success -- target's own name always ends "'s
 # attention!" in the real log, no bare-plural edge case found (checked).
-pattern = '''^(?P<src>.+?) has captured (?P<dst>.+?)'s attention!$'''
+pattern = '''^(?P<src>.+?) has captured (?P<dst>.+?)'s attention(?: with an unparalleled approach)?!$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Gnommie has captured a dune spiderling's attention!",
   "[Tue Jul 28 15:02:15 2026] Bravesirrobin has captured a gnoll pet's attention!",
+  "[Tue Sep 08 12:00:00 2026] Bravesirrobin has captured Socho Darkpaw's attention with an unparalleled approach!",
 ]
 [rule.fields]
 source = { from = "src", as = "str" }
@@ -661,11 +965,12 @@ anchors = ["'s magical skin absorbs the damage of "]
 # possessive on its own) has no "'s" the way a real name's own
 # possessive ("Bravesirrobin's thorns") does. Same real gap ds.damage's
 # own doc already found and fixed for this exact source-name shape.
-pattern = '''^(?P<who>.+?)'s magical skin absorbs the damage of (?P<source>.+?)(?:'s)? (?:flames|thorns)\.$'''
+pattern = '''^(?P<who>.+?)'s magical skin absorbs the damage of (?P<source>.+?)(?:'s)? (?:flames|thorns|frost)\.$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Kahaptra Z`Taj's magical skin absorbs the damage of Bravesirrobin's thorns.",
   "[Tue Jul 28 15:02:15 2026] Konarer's magical skin absorbs the damage of Nisch Val Torash Mashk's flames.",
   "[Tue Jul 28 15:02:15 2026] A yun ghoul wizard's magical skin absorbs the damage of YOUR flames.",
+  "[Tue Sep 08 12:00:00 2026] A fire giant warrior's magical skin absorbs the damage of Aegiisfang's frost.",
 ]
 [rule.fields]
 who = { from = "who", as = "str" }
@@ -680,12 +985,14 @@ anchors = ["magical skin absorbs the blow!"]
 # -- a magical damage-absorb, not a defender's own evasion skill -- but
 # same "attack landed, no damage got through" bucket, same reason
 # ds.damage's own kind groups a damage-shield's damage with plain hits.
-pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?:on )?(?P<dst>.+?), but (?P<dst2>.+?)'s magical skin absorbs the blow!$'''
+pattern = '''^(?P<src>.+?) tr(?:ies|y) to (?P<verb>[a-z]+) (?:on )?(?P<dst>.+?), but (?P<dst2>.+?)'s magical skin absorbs the blow!(?: \((?P<flag>[^()]+)\))?$'''
 examples = [
+  "[Tue Sep 08 12:00:00 2026] Quag Maelstrom tries to hit Xasartik, but Xasartik's magical skin absorbs the blow! (Riposte)",
   "[Thu Jul 30 17:20:58 2026] Dippinsauce tries to frenzy on The Blood Artist, but The Blood Artist's magical skin absorbs the blow!",
   "[Tue Jul 28 15:02:15 2026] Bravesirrobin tries to hit Kahaptra Z`Taj, but Kahaptra Z`Taj's magical skin absorbs the blow!",
 ]
 [rule.fields]
+flag = { from = "flag", as = "str" }
 source = { from = "src", as = "str" }
 target = { from = "dst", as = "str" }
 verb = { from = "verb", as = "str" }
@@ -1055,6 +1362,66 @@ priority = 40
 anchors = ["You mend your wounds"]
 pattern = '''^You mend your wounds and heal some damage\.$'''
 examples = ["[Wed Jul 01 20:47:45 2026] You mend your wounds and heal some damage."]
+
+[[rule]]
+id = "skill.gained"
+kind = "skill"
+priority = 40
+anchors = ["You have gained the ability to use "]
+pattern = '''^You have gained the ability to use (?P<skill>.+?)\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] You have gained the ability to use Archery."]
+[rule.fields]
+skill = { from = "skill", as = "str" }
+
+[[rule]]
+id = "loot.given"
+kind = "loot"
+priority = 40
+anchors = ["You have been given: "]
+pattern = '''^You have been given: (?P<item>.+)$'''
+examples = ["[Tue Sep 08 12:00:00 2026] You have been given: Hamed's Ring of Tears"]
+[rule.fields]
+item = { from = "item", as = "str" }
+
+[[rule]]
+id = "craft.created"
+kind = "craft"
+priority = 40
+anchors = ["You create a new "]
+pattern = '''^You create a new (?P<item>.+)$'''
+examples = ["[Tue Sep 08 12:00:00 2026] You create a new Unholy Steed Bridle"]
+[rule.fields]
+item = { from = "item", as = "str" }
+
+[[rule]]
+id = "craft.fashioned_other"
+kind = "craft"
+priority = 40
+anchors = [" has fashioned "]
+pattern = '''^(?P<who>.+?) has fashioned (?P<item>.+?)\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Gibmund has fashioned Kilva's Skin of Flame."]
+[rule.fields]
+who = { from = "who", as = "str" }
+item = { from = "item", as = "str" }
+
+[[rule]]
+id = "craft.missing_components"
+kind = "craft"
+priority = 40
+anchors = ["everything you need for this recipe"]
+pattern = '''^Sorry, but you don't have everything you need for this recipe in your general inventory\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Sorry, but you don't have everything you need for this recipe in your general inventory."]
+
+[[rule]]
+id = "depot.taken"
+kind = "trade"
+priority = 40
+anchors = ["from your personal depot"]
+pattern = '''^You have taken (?P<qty>[0-9]+) (?P<item>.+?) from your personal depot\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] You have taken 1 Pearl from your personal depot."]
+[rule.fields]
+qty = { from = "qty", as = "u64" }
+item = { from = "item", as = "str" }
 
 [[rule]]
 id = "skill.up"
@@ -1735,8 +2102,12 @@ anchors = ["growls fiercely; saliva foaming"]
 # why: a scripted aggro monologue -- who/command/legion captured for
 # real even though nothing downstream reads them yet, same stance as
 # pet.summoned's own doc on capturing what's real regardless of current use.
-pattern = '''^A (?P<who>.+?) growls fiercely; saliva foaming around its ferocious, jagged maw, 'This is our home now!\s+(?P<command>.+?), or the legions of (?P<legion>.+?) shall slay you all!'$'''
-examples = ["[Tue Jul 28 15:02:15 2026] A Lteth Mas Gnoll growls fiercely; saliva foaming around its ferocious, jagged maw, 'This is our home now!  Begone, or the legions of TornEar shall slay you all!'"]
+pattern = '''^(?:A )?(?P<who>.+?) growls fiercely; saliva foaming around its ferocious, jagged maw, 'This is our home now!\s+(?P<command>.+?), or the legions of (?P<legion>.+?) shall slay you all!'$'''
+# why: named mobs carry no article -- "Tesch Val Kadvem growls fiercely"
+examples = [
+  "[Tue Jul 28 15:02:15 2026] A Lteth Mas Gnoll growls fiercely; saliva foaming around its ferocious, jagged maw, 'This is our home now!  Begone, or the legions of TornEar shall slay you all!'",
+  "[Tue Sep 08 12:00:00 2026] Tesch Val Kadvem growls fiercely; saliva foaming around its ferocious, jagged maw, 'This is our home now! Begone, or the legions of TornEar shall slay you all!'",
+]
 [rule.fields]
 who = { from = "who", as = "str" }
 command = { from = "command", as = "str" }
@@ -2063,11 +2434,22 @@ anchors = [" "]
 # kept (self "You writhe..." vs third-person "X writhes...", same
 # grammatical shape, different conjugation) rather than trying to fold
 # person into the pattern itself.
-pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better|winces|writhes in the grip of agony|writhe in the grip of agony|is surrounded by a traveling spirit|is healed from within|begins to sway|has fallen to the ground|sinks into the ground|is engulfed by a swarm|regains concentration and continues casting|feels a healing touch|is protected by a vortex of shadows|creates a mystic portal|is entwined by roots|is burning|is stung by a dozen flashes of the blade|is torn between life and death|stumbles, clutching their head|looks glamorous|blinks, looking confused|starts limping|is bound by chords of music|is bound by strands of force|begins to move faster|floats into the air|rises on a gust of hot wind|enters an accelerated frenzy|suffers a blow to the head|looks dazed|channels pure magic into the form of an improved familiar|is bathed in healing water|is healed by the spirit of the slug)[.!]$'''
+pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better|winces|writhes in the grip of agony|writhe in the grip of agony|is surrounded by a traveling spirit|is healed from within|begins to sway|has fallen to the ground|sinks into the ground|is engulfed by a swarm|regains concentration and continues casting|feels a healing touch|is protected by a vortex of shadows|creates a mystic portal|is entwined by roots|is burning|is stung by a dozen flashes of the blade|is torn between life and death|stumbles, clutching their head|looks glamorous|blinks, looking confused|starts limping|is bound by chords of music|is bound by strands of force|begins to move faster|floats into the air|rises on a gust of hot wind|enters an accelerated frenzy|suffers a blow to the head|looks dazed|channels pure magic into the form of an improved familiar|is bathed in healing water|is healed by the spirit of the slug|is healed by the spirit of the snail|becomes a paragon of spirit|embodies the elements|goes mad with the power of the spirits|becomes entwined in roots|is struck by divine retribution|enters a meditative trance|goes into a berserker frenzy|is no longer berserk|lets loose a berserk yell|freaks out)[.!]$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Splitpaw Sentry staggers.",
   "[Tue Sep 08 12:00:00 2026] Dippinsauce is bathed in healing water.",
   "[Tue Sep 08 12:00:00 2026] Kermitzalot is healed by the spirit of the slug.",
+  "[Tue Sep 08 12:00:00 2026] Bravesirrobin is healed by the spirit of the snail.",
+  "[Tue Sep 08 12:00:00 2026] Xasarn becomes a paragon of spirit.",
+  "[Tue Sep 08 12:00:00 2026] Bravesirrobin embodies the elements.",
+  "[Tue Sep 08 12:00:00 2026] Bravesirrobin goes mad with the power of the spirits.",
+  "[Tue Sep 08 12:00:00 2026] Bravesirrobin becomes entwined in roots.",
+  "[Tue Sep 08 12:00:00 2026] Innoruuk`s Chosen is struck by divine retribution.",
+  "[Tue Sep 08 12:00:00 2026] Gibmund enters a meditative trance.",
+  "[Tue Sep 08 12:00:00 2026] Dragons goes into a berserker frenzy!",
+  "[Tue Sep 08 12:00:00 2026] Volask is no longer berserk.",
+  "[Tue Sep 08 12:00:00 2026] Labaner lets loose a berserk yell.",
+  "[Tue Sep 08 12:00:00 2026] Anadaria freaks out!",
   "[Tue Jul 28 15:02:15 2026] Rallo rages.",
   "[Tue Jul 28 15:02:15 2026] Horror fades away.",
   "[Tue Jul 28 15:02:15 2026] Tranixx Darkpaw feels much better.",
@@ -2117,13 +2499,96 @@ anchors = ["'s "]
 # body ..." -- the possessive must come off so `who` is the entity.
 # Only pings the spell catalog cannot derive: "body pulses with energy"
 # stays with the flavor dictionary (Inner Fire's own you-text)
-pattern = '''^(?P<who>.+?)'s (?P<state>body pulses with corruption|face glows radiantly)\.$'''
+pattern = '''^(?P<who>.+?)'s (?P<state>body pulses with corruption|face glows radiantly|wounds turn black)\.$'''
 examples = [
   "[Tue Sep 08 12:00:00 2026] Iceduya's body pulses with corruption.",
   "[Tue Sep 08 12:00:00 2026] Rebs's face glows radiantly.",
+  "[Tue Sep 08 12:00:00 2026] Knight V`Tal's wounds turn black.",
 ]
 [rule.fields]
 who = { from = "who", as = "str" }
+state = { from = "state", as = "str" }
+
+[[rule]]
+id = "mobstate.magical_skin_absorbs_you"
+kind = "mobstate"
+priority = 20
+anchors = ["YOUR magical skin absorbs the damage of "]
+# why: your own rune eating a damage shield -- the game says YOUR, no "'s"
+pattern = '''^YOUR magical skin absorbs the damage of (?P<source>.+?)'s (?:flames|thorns|frost)\.$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] YOUR magical skin absorbs the damage of Gorgalosk's thorns.",
+  "[Tue Sep 08 12:00:00 2026] YOUR magical skin absorbs the damage of Protector of Sky's flames.",
+]
+[rule.fields]
+source = { from = "source", as = "str" }
+
+[[rule]]
+id = "state.cured"
+kind = "state"
+priority = 30
+anchors = [" is cured of "]
+pattern = '''^(?P<who>.+?) is cured of (?P<effect>.+?) by (?P<by>.+?)\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Aradiel is cured of Sha's Lethargy by Aradiel."]
+[rule.fields]
+who = { from = "who", as = "str" }
+effect = { from = "effect", as = "str" }
+by = { from = "by", as = "str" }
+
+[[rule]]
+id = "state.living_shield"
+kind = "state"
+priority = 30
+anchors = [" as a living shield!"]
+pattern = '''^(?P<who>.+?) begins to use (?P<target>.+?) as a living shield!$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Dippinsauce begins to use Gann as a living shield!"]
+[rule.fields]
+who = { from = "who", as = "str" }
+target = { from = "target", as = "str" }
+
+[[rule]]
+id = "state.living_shield_ends"
+kind = "state"
+priority = 30
+anchors = [" ceases protecting "]
+pattern = '''^(?P<who>.+?) ceases protecting (?P<target>.+?)\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Gann ceases protecting Dippinsauce."]
+[rule.fields]
+who = { from = "who", as = "str" }
+target = { from = "target", as = "str" }
+
+[[rule]]
+id = "state.you_ping"
+kind = "state"
+priority = 30
+anchors = [" "]
+# why: landing texts on you that the spell catalog cannot derive (checked
+# one by one against packs/spells.json); the ones it can stay with the
+# flavor dictionary
+pattern = '''^(?P<state>The heal within you effloresces|You feel as if you are about to look like yourself again|You feel a shadow empower you|You being to feel healed by the slug|You being to feel healed by the snail|You feel the slug spirit depart|You feel the snail spirit depart|You feel glamorous|You feel your blood begin to freeze|Your skin is rent by massive shards of deadly ice|You are caught in a vortex|You embody the elements|You are now an elemental|You enter a meditative trance|You come out of the meditative trance|The promise of divine renewal is fulfilled|You are thrown backwards by a sudden force|You have entered an area where levitation effects do not function|You prepare the misdirection|You spring the misdirection)\.?$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] The heal within you effloresces.",
+  "[Tue Sep 08 12:00:00 2026] You feel as if you are about to look like yourself again.",
+  "[Tue Sep 08 12:00:00 2026] You feel a shadow empower you.",
+  "[Tue Sep 08 12:00:00 2026] You being to feel healed by the slug.",
+  "[Tue Sep 08 12:00:00 2026] You being to feel healed by the snail.",
+  "[Tue Sep 08 12:00:00 2026] You feel the slug spirit depart.",
+  "[Tue Sep 08 12:00:00 2026] You feel the snail spirit depart.",
+  "[Tue Sep 08 12:00:00 2026] You feel glamorous.",
+  "[Tue Sep 08 12:00:00 2026] You feel your blood begin to freeze.",
+  "[Tue Sep 08 12:00:00 2026] Your skin is rent by massive shards of deadly ice.",
+  "[Tue Sep 08 12:00:00 2026] You are caught in a vortex.",
+  "[Tue Sep 08 12:00:00 2026] You embody the elements.",
+  "[Tue Sep 08 12:00:00 2026] You are now an elemental.",
+  "[Tue Sep 08 12:00:00 2026] You enter a meditative trance.",
+  "[Tue Sep 08 12:00:00 2026] You come out of the meditative trance.",
+  "[Tue Sep 08 12:00:00 2026] The promise of divine renewal is fulfilled.",
+  "[Tue Sep 08 12:00:00 2026] You are thrown backwards by a sudden force.",
+  "[Tue Sep 08 12:00:00 2026] You have entered an area where levitation effects do not function.",
+  "[Tue Sep 08 12:00:00 2026] You prepare the misdirection.",
+  "[Tue Sep 08 12:00:00 2026] You spring the misdirection",
+]
+[rule.fields]
 state = { from = "state", as = "str" }
 
 [[rule]]
