@@ -1,5 +1,17 @@
 <script lang="ts">
   import { Card, CardContent } from '$lib/components/ui/card';
+  import { sortRows, nextSort, type Dir } from '$lib/combat/grid';
+  import type { MobHpRowDto } from '$lib/tauri/api';
+
+  // why: click any header to sort; no pick means difficulty first, then
+  // party size within it -- the order the table reads naturally in
+  type HpCol = 'party_size' | 'difficulty' | 'kills' | 'avg_hp' | 'median_hp' | 'min_hp';
+  let hpSort = $state<{ key: HpCol; dir: Dir } | null>(null);
+  const hpArrow = (key: HpCol) => (hpSort?.key === key ? (hpSort.dir === -1 ? ' ▼' : ' ▲') : '');
+  function hpRows(rows: MobHpRowDto[]): MobHpRowDto[] {
+    if (hpSort) return sortRows(rows, hpSort.key, hpSort.dir);
+    return [...rows].sort((a, b) => a.difficulty - b.difficulty || a.party_size - b.party_size || a.instance.localeCompare(b.instance));
+  }
   import NavigationIcon from '@lucide/svelte/icons/navigation';
   import { api, type NpcDto, type MobStatsDto, type NpcNavPointDto } from '$lib/tauri/api';
   import { navigateToNpc } from '$lib/stores/maps';
@@ -143,16 +155,16 @@
         <table class="mb-2 w-full text-[11px]">
           <thead>
             <tr class="border-b border-border text-muted-foreground">
-              <th class="py-0.5 text-left font-normal">party</th>
-              <th class="py-0.5 text-left font-normal">difficulty</th>
-              <th class="py-0.5 text-right font-normal">kills</th>
-              <th class="py-0.5 text-right font-normal">avg hp</th>
-              <th class="py-0.5 text-right font-normal">median</th>
-              <th class="py-0.5 text-right font-normal">range</th>
+              <th class="py-0.5 text-left font-normal"><button type="button" class="select-none" onclick={() => (hpSort = nextSort(hpSort ?? { key: 'party_size', dir: 1 }, 'party_size', false))}>party{hpArrow('party_size')}</button></th>
+              <th class="py-0.5 text-left font-normal"><button type="button" class="select-none" onclick={() => (hpSort = nextSort(hpSort ?? { key: 'difficulty', dir: 1 }, 'difficulty', false))}>difficulty{hpArrow('difficulty')}</button></th>
+              <th class="py-0.5 text-right font-normal"><button type="button" class="select-none" onclick={() => (hpSort = nextSort(hpSort ?? { key: 'kills', dir: 1 }, 'kills', true))}>kills{hpArrow('kills')}</button></th>
+              <th class="py-0.5 text-right font-normal"><button type="button" class="select-none" onclick={() => (hpSort = nextSort(hpSort ?? { key: 'avg_hp', dir: 1 }, 'avg_hp', true))}>avg hp{hpArrow('avg_hp')}</button></th>
+              <th class="py-0.5 text-right font-normal"><button type="button" class="select-none" onclick={() => (hpSort = nextSort(hpSort ?? { key: 'median_hp', dir: 1 }, 'median_hp', true))}>median{hpArrow('median_hp')}</button></th>
+              <th class="py-0.5 text-right font-normal"><button type="button" class="select-none" onclick={() => (hpSort = nextSort(hpSort ?? { key: 'min_hp', dir: 1 }, 'min_hp', true))}>range{hpArrow('min_hp')}</button></th>
             </tr>
           </thead>
           <tbody>
-            {#each stats.hp as r (`${r.difficulty}-${r.instance}-${r.party_size}`)}
+            {#each hpRows(stats.hp) as r (`${r.difficulty}-${r.instance}-${r.party_size}`)}
               <tr class="border-b border-border/50">
                 <td class="py-0.5">{r.party_size} · <span class="text-muted-foreground">{r.band}</span></td>
                 <td class="py-0.5">d{r.difficulty}{#if r.instance !== 'open'} · <span class="text-caution">{r.instance} instance</span>{/if}</td>
