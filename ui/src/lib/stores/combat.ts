@@ -12,6 +12,7 @@ import {
   type ParseRecordDto,
   type LoadoutSummaryDto,
   type SelectionDto,
+  type MobRowDto,
 } from '../tauri/api';
 
 // ---------------------------------------------------------------- tree
@@ -23,6 +24,9 @@ export const visitArg = (visit: number | null) => (visit === null ? -1 : visit);
 /** fights per visit, loaded when a visit is expanded (or followed) */
 export const visitFights = writable<Record<string, EncounterDto[]>>({});
 export const expandedVisits = writable<Set<string>>(new Set());
+/** mobs per fight, loaded when a fight is expanded */
+export const encounterMobs = writable<Record<number, MobRowDto[]>>({});
+export const expandedEncounters = writable<Set<number>>(new Set());
 
 // ---------------------------------------------------------------- selection
 /** why: the persistent selection -- survives browsing other visits, so
@@ -31,6 +35,7 @@ export const expandedVisits = writable<Set<string>>(new Set());
 export type Member =
   | { kind: 'visit'; visit: number | null }
   | { kind: 'encounter'; id: number; visit: number | null; target: string }
+  | { kind: 'mob'; id: number; visit: number | null; name: string }
   | { kind: 'range'; since: number; until: number };
 export const selection = writable<Member[]>([]);
 /** ranges the user has defined; listed in the tree, selectable like fights */
@@ -40,7 +45,13 @@ export const ranges = writable<{ since: number; until: number }[]>([]);
 export const followCurrentFight = writable(true);
 
 export const memberKey = (m: Member) =>
-  m.kind === 'visit' ? `v:${visitKey(m.visit)}` : m.kind === 'encounter' ? `e:${m.id}` : `r:${m.since}-${m.until}`;
+  m.kind === 'visit'
+    ? `v:${visitKey(m.visit)}`
+    : m.kind === 'encounter'
+      ? `e:${m.id}`
+      : m.kind === 'mob'
+        ? `m:${m.id}:${m.name}`
+        : `r:${m.since}-${m.until}`;
 export function isSelected(m: Member, sel: Member[] = get(selection)): boolean {
   const k = memberKey(m);
   return sel.some((x) => memberKey(x) === k);
@@ -73,11 +84,18 @@ export function singleEncounter(sel: Member[] = get(selection)): Extract<Member,
   return sel.length === 1 && sel[0].kind === 'encounter' ? sel[0] : null;
 }
 
+/** why: one mob and nothing else -- the fight's timeline still applies,
+ * and the past-parses pane keys on the mob's name */
+export function singleMob(sel: Member[] = get(selection)): Extract<Member, { kind: 'mob' }> | null {
+  return sel.length === 1 && sel[0].kind === 'mob' ? sel[0] : null;
+}
+
 export function selectionOf(sel: Member[]): SelectionDto {
   return {
     encounters: sel.flatMap((m) => (m.kind === 'encounter' ? [m.id] : [])),
     ranges: sel.flatMap((m) => (m.kind === 'range' ? [[m.since, m.until] as [number, number]] : [])),
     visits: sel.flatMap((m) => (m.kind === 'visit' ? [visitArg(m.visit)] : [])),
+    mobs: sel.flatMap((m) => (m.kind === 'mob' ? [[m.id, m.name] as [number, string]] : [])),
   };
 }
 
@@ -100,6 +118,19 @@ export async function loadVisitFights(visit: number | null) {
   const list = (await api.listEncounters(visitArg(visit))) ?? [];
   visitFights.update((m) => ({ ...m, [visitKey(visit)]: list }));
   return list;
+}
+
+export async function toggleEncounterExpanded(id: number) {
+  const next = new Set(get(expandedEncounters));
+  if (next.has(id)) next.delete(id);
+  else {
+    next.add(id);
+    if (!get(encounterMobs)[id]) {
+      const mobs = (await api.listEncounterMobs(id)) ?? [];
+      encounterMobs.update((m) => ({ ...m, [id]: mobs }));
+    }
+  }
+  expandedEncounters.set(next);
 }
 
 export async function toggleVisitExpanded(visit: number | null) {
@@ -152,8 +183,7 @@ function toMember(e: EncounterDto, visit: number | null): Member {
 async function applySelection(next: Member[], preserveScrub = false) {
   selection.set(next);
   expandedAlly.set(null);
-  const one = singleEncounter(next);
-  historyTarget.set(one?.target ?? null);
+  historyTarget.set(singleEncounter(next)?.target ?? singleMob(next)?.name ?? null);
   await refreshSelection(preserveScrub);
   await refreshHistory();
 }
@@ -259,8 +289,12 @@ export async function toggleAlly(name: string) {
   allySummary.set(await api.getCombatSummary(zv, enc, name, false, sel));
 }
 
+function timelineEncounter(): number | null {
+  return singleEncounter()?.id ?? singleMob()?.id ?? null;
+}
+
 export async function scrubTo(tsMs: number) {
-  const enc = singleEncounter()?.id;
+  const enc = timelineEncounter();
   if (enc == null) return;
   stateAt.set({ tsMs, entities: await api.getFightStateAt(enc, tsMs) });
 }
@@ -287,7 +321,8 @@ async function refreshSelection(preserveScrub = false) {
   summary.set(s);
   allies.set(a ?? []); // defensive -- invoke<T>()'s type is an assertion, not a guarantee
   if (get(showEnemies)) enemies.set((await api.listEnemies(zv, enc, false, sel)) ?? []);
-  timeline.set(enc != null ? await api.getFightTimeline(enc) : null);
+  const tl = timelineEncounter();
+  timeline.set(tl != null ? await api.getFightTimeline(tl) : null);
   if (!preserveScrub) stateAt.set(null);
   const expanded = get(expandedAlly);
   if (expanded) allySummary.set(await api.getCombatSummary(zv, enc, expanded, false, sel));
@@ -324,5 +359,13 @@ export async function onCombatTick() {
     if (m.kind === 'visit') return (fights[visitKey(m.visit)] ?? []).some((e) => e.open);
     return (fights[visitKey(m.visit)] ?? []).find((e) => e.id === m.id)?.open ?? false;
   });
+  // why: an open fight's mob list grows too
+  if (open) {
+    const ids = [...get(expandedEncounters)];
+    await Promise.all(ids.map(async (id) => {
+      const mobs = (await api.listEncounterMobs(id)) ?? [];
+      encounterMobs.update((m) => ({ ...m, [id]: mobs }));
+    }));
+  }
   if (open) await refreshSelection(true);
 }

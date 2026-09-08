@@ -5,11 +5,15 @@
   import ChevronIcon from '@lucide/svelte/icons/chevron-right';
   import FolderIcon from '@lucide/svelte/icons/folder';
   import SwordsIcon from '@lucide/svelte/icons/swords';
+  import SkullIcon from '@lucide/svelte/icons/skull';
   import ClockIcon from '@lucide/svelte/icons/clock';
   import {
     zoneVisits,
     visitFights,
     expandedVisits,
+    encounterMobs,
+    expandedEncounters,
+    toggleEncounterExpanded,
     selection,
     ranges,
     followCurrentFight,
@@ -28,7 +32,7 @@
   import { fmtLogTime, logMsToLocalInput, localInputToLogMs } from '$lib/utils';
 
   // ---------------------------------------------------------------- rows
-  type Row = { key: string; member: Member; depth: 0 | 1; label: string; detail: string; tag: string; open: boolean };
+  type Row = { key: string; member: Member; depth: 0 | 1 | 2; label: string; detail: string; tag: string; open: boolean };
   const rows = $derived.by((): Row[] => {
     const out: Row[] = [];
     for (const v of $zoneVisits) {
@@ -54,6 +58,19 @@
           tag: e.open ? 'live' : e.slain ? 'kill' : e.wiped ? 'wipe' : 'reset',
           open: e.open,
         });
+        if (!$expandedEncounters.has(e.id)) continue;
+        // why: every enemy in the pull -- what it took, what it dealt
+        for (const m of $encounterMobs[e.id] ?? []) {
+          out.push({
+            key: `m:${e.id}:${m.name}`,
+            member: { kind: 'mob', id: e.id, visit: v.index, name: m.name },
+            depth: 2,
+            label: m.name,
+            detail: `${m.damage_taken.toLocaleString()} · ${m.damage_dealt.toLocaleString()}`,
+            tag: m.slain ? 'slain' : '',
+            open: false,
+          });
+        }
       }
     }
     for (const r of $ranges) {
@@ -210,10 +227,10 @@
       <span class="text-muted-foreground">log time</span>
     </div>
   {/if}
-  <!-- why: twelve rows tall, then it scrolls -- a list, not a page -->
+  <!-- why: full length -- the page scrolls, the list does not -->
   <div
     bind:this={list}
-    class="relative max-h-[312px] select-none overflow-y-auto"
+    class="relative select-none"
     role="listbox"
     aria-multiselectable="true"
     tabindex="-1"
@@ -253,17 +270,31 @@
           </button>
           <FolderIcon class="size-3.5 shrink-0 text-muted-foreground" />
         {:else if row.member.kind === 'encounter'}
+          {@const eid = row.member.id}
+          <button
+            type="button"
+            class="rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+            title={$expandedEncounters.has(eid) ? 'Collapse' : 'Show the mobs in this fight'}
+            onclick={(e) => {
+              e.stopPropagation();
+              void toggleEncounterExpanded(eid);
+            }}
+          >
+            <ChevronIcon class="size-3 transition-transform {$expandedEncounters.has(eid) ? 'rotate-90' : ''}" />
+          </button>
           <SwordsIcon class="size-3.5 shrink-0 {row.open ? 'text-primary' : 'text-muted-foreground'}" />
+        {:else if row.member.kind === 'mob'}
+          <SkullIcon class="size-3.5 shrink-0 text-muted-foreground" />
         {:else}
           <ClockIcon class="size-3.5 shrink-0 text-caution" />
         {/if}
         <span class="min-w-0 flex-1 truncate">{row.label}</span>
-        <span class="shrink-0 tabular-nums text-muted-foreground">{row.detail}</span>
+        <span class="shrink-0 tabular-nums text-muted-foreground" title={row.member.kind === 'mob' ? 'damage taken · damage dealt' : undefined}>{row.detail}</span>
         {#if row.tag}
           <span
             class="w-9 shrink-0 text-right text-[10px] {row.tag === 'live' || row.tag === 'now'
               ? 'text-primary'
-              : row.tag === 'kill'
+              : row.tag === 'kill' || row.tag === 'slain'
                 ? 'text-good'
                 : row.tag === 'wipe'
                   ? 'text-bad'

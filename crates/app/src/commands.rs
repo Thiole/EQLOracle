@@ -158,6 +158,12 @@ pub fn list_encounters(
     )
 }
 
+/// why: the fight tree's rows under an expanded fight -- every enemy in it
+#[tauri::command]
+pub fn list_encounter_mobs(state: State<AppState>, encounter_id: u32) -> Vec<combat::MobRowDto> {
+    combat::list_encounter_mobs(&state.ingest.lock_recover(), encounter_id)
+}
+
 /// why: zone page's recent fights, keyed by `zone_id` not display name;
 /// cheap on its own, no damage/drops -- see `get_encounter_detail`
 #[tauri::command]

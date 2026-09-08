@@ -472,12 +472,90 @@ pub struct SelectionDto {
     /// why: whole zone visits as members; -1 is the pre-first-zone "Unknown" bucket
     #[serde(default)]
     pub visits: Vec<i64>,
+    /// why: one mob inside one fight -- (encounter id, mob name); the
+    /// scope is what allies did to it and what it did to them, over its
+    /// own span in the fight
+    #[serde(default)]
+    pub mobs: Vec<(u32, String)>,
 }
 
 impl SelectionDto {
     pub fn is_empty(&self) -> bool {
-        self.encounters.is_empty() && self.ranges.is_empty() && self.visits.is_empty()
+        self.encounters.is_empty()
+            && self.ranges.is_empty()
+            && self.visits.is_empty()
+            && self.mobs.is_empty()
     }
+}
+
+/// why: the tree's rows under an expanded fight -- every enemy in it
+#[derive(Debug, Clone, Serialize)]
+pub struct MobRowDto {
+    pub name: String,
+    pub damage_taken: u64,
+    pub hits_taken: u64,
+    pub damage_dealt: u64,
+    pub slain: bool,
+}
+
+pub fn list_encounter_mobs(ing: &Ingest, encounter_id: u32) -> Vec<MobRowDto> {
+    let Some(enc) = ing.store.encounter(EncounterId(encounter_id)) else {
+        return Vec::new();
+    };
+    let now = ing.now_ms();
+    let mut rows: HashMap<Sym, MobRowDto> = HashMap::new();
+    let mut is_enemy: HashMap<Sym, bool> = HashMap::new();
+    let mut enemy = |sym: Sym| -> bool {
+        *is_enemy
+            .entry(sym)
+            .or_insert_with(|| ing.allegiance_at(ing.store.name(sym), now).is_enemy())
+    };
+    for i in enc.range() {
+        if ing.store.enc[i] != enc.id.0 {
+            continue;
+        }
+        let (actor, target) = (ing.store.actor[i], ing.store.target[i]);
+        if ing.store.kind[i] != EventKind::Damage {
+            continue;
+        }
+        if enemy(target) {
+            let r = rows.entry(target).or_insert_with(|| MobRowDto {
+                name: ing.store.name(target).to_string(),
+                damage_taken: 0,
+                hits_taken: 0,
+                damage_dealt: 0,
+                slain: false,
+            });
+            r.damage_taken += ing.store.amount[i];
+            r.hits_taken += ing.store.count[i] as u64;
+        }
+        if enemy(actor) {
+            rows.entry(actor)
+                .or_insert_with(|| MobRowDto {
+                    name: ing.store.name(actor).to_string(),
+                    damage_taken: 0,
+                    hits_taken: 0,
+                    damage_dealt: 0,
+                    slain: false,
+                })
+                .damage_dealt += ing.store.amount[i];
+        }
+    }
+    // why: deaths live on the timeline, not as store rows
+    let end = enc.end_ms.unwrap_or(now);
+    for (sym, r) in rows.iter_mut() {
+        r.slain = matches!(
+            ing.timeline.state_at(sym.0, end),
+            Some((eqlp_session::timeline::State::Dead, _))
+        );
+    }
+    let mut out: Vec<MobRowDto> = rows.into_values().collect();
+    out.sort_by(|a, b| {
+        b.damage_taken
+            .cmp(&a.damage_taken)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    out
 }
 
 /// why: one fight in a selection, optionally clipped to a window -- a
@@ -486,6 +564,8 @@ impl SelectionDto {
 struct Member {
     id: EncounterId,
     window: Option<(Millis, Millis)>,
+    /// why: Some scopes the member to one mob of the fight
+    mob: Option<Sym>,
 }
 
 impl Member {
@@ -494,6 +574,28 @@ impl Member {
             Some((s, u)) => Filter::encounter(self.id).window(s, u),
             None => Filter::encounter(self.id),
         }
+    }
+    /// why: the ally side of the scope -- into one mob, or the whole fight
+    fn ally_side(&self) -> Filter {
+        match self.mob {
+            Some(m) => self.filter().target(m),
+            None => self.filter(),
+        }
+    }
+    /// why: the enemy side -- one mob's own actions, else the fight's target's
+    fn enemy_sym(&self, enc: &Encounter) -> Sym {
+        self.mob.unwrap_or(enc.target)
+    }
+    /// why: index-loop twin of the two filters above
+    fn involves(&self, ing: &Ingest, i: usize, want_enemies: bool) -> bool {
+        self.contains(ing.store.ts[i])
+            && self.mob.is_none_or(|m| {
+                if want_enemies {
+                    ing.store.actor[i] == m
+                } else {
+                    ing.store.target[i] == m
+                }
+            })
     }
     fn contains(&self, ts: Millis) -> bool {
         self.window.is_none_or(|(s, u)| (s..=u).contains(&ts))
@@ -517,7 +619,11 @@ fn resolve_members(
     let Some(sel) = selection.filter(|s| !s.is_empty()) else {
         return resolve_ids(ing, zone_visit, encounter_id, confirmed_only)
             .into_iter()
-            .map(|id| Member { id, window: None })
+            .map(|id| Member {
+                id,
+                window: None,
+                mob: None,
+            })
             .collect();
     };
     let now = ing.now_ms();
@@ -528,6 +634,7 @@ fn resolve_members(
         .map(|&eid| Member {
             id: EncounterId(eid),
             window: None,
+            mob: None,
         })
         .collect();
     // why: a visit is every fight of yours in it, whole
@@ -541,8 +648,36 @@ fn resolve_members(
                 out.push(Member {
                     id: e.id,
                     window: None,
+                    mob: None,
                 });
             }
+        }
+    }
+    // why: a mob inside a fight, over its own span there; skipped when
+    // its whole fight is already a member (it would count twice)
+    for (eid, name) in &sel.mobs {
+        let id = EncounterId(*eid);
+        let (Some(enc), Some(sym)) = (ing.store.encounter(id), ing.store.names.get(name)) else {
+            continue;
+        };
+        if out.iter().any(|m| m.id == id && m.mob.is_none()) {
+            continue;
+        }
+        let mut span: Option<(Millis, Millis)> = None;
+        for i in enc.range() {
+            if ing.store.enc[i] != id.0 || (ing.store.actor[i] != sym && ing.store.target[i] != sym)
+            {
+                continue;
+            }
+            let ts = ing.store.ts[i];
+            span = Some(span.map_or((ts, ts), |(a, b)| (a.min(ts), b.max(ts))));
+        }
+        if let Some(window) = span {
+            out.push(Member {
+                id,
+                window: Some(window),
+                mob: Some(sym),
+            });
         }
     }
     // why: a range takes every fight of yours it touches, clipped; a fight
@@ -557,6 +692,7 @@ fn resolve_members(
                 out.push(Member {
                     id: e.id,
                     window: Some((since, until)),
+                    mob: None,
                 });
             }
         }
@@ -744,7 +880,7 @@ pub fn summarize(
         let fight_secs = (dur as f64 / 1000.0).max(0.001);
         duration_ms += dur;
 
-        let enemy_rows = by_ability(&ing.store, &m.filter().damage().by(enc.target));
+        let enemy_rows = by_ability(&ing.store, &m.filter().damage().by(m.enemy_sym(enc)));
         let fight_enemy: u64 = enemy_rows.iter().map(|r| r.total).sum();
         enemy_damage += fight_enemy;
         per_fight_enemy_dps.push(fight_enemy as f64 / fight_secs);
@@ -753,19 +889,27 @@ pub fn summarize(
         // actually make stick
         enemy_heal += total(
             &ing.store,
-            &m.filter().kind(EventKind::Heal).target(enc.target),
+            &m.filter().kind(EventKind::Heal).target(m.enemy_sym(enc)),
         );
 
         if let Some(sym) = actor_sym {
             // why: one specific ally, own rows only -- never their own target
-            let rows = by_ability(&ing.store, &m.filter().damage().by(sym));
+            let rows = by_ability(&ing.store, &m.ally_side().damage().by(sym));
             let fight_total: u64 = rows.iter().map(|r| r.total).sum();
             per_fight_dps.push(fight_total as f64 / fight_secs);
             merge_ability_rows(&mut merged, rows);
             // why: separate query -- Filter narrows to one kind, avoided
             // swings are Miss not Damage; merges onto the same row below
-            let avoided = by_ability(&ing.store, &m.filter().kind(EventKind::Miss).by(sym));
+            let avoided = by_ability(&ing.store, &m.ally_side().kind(EventKind::Miss).by(sym));
             merge_ability_rows(&mut merged, avoided);
+        } else if m.mob.is_some() {
+            // why: a mob scope -- what landed ON it is the ally side, whole
+            let all = by_ability(&ing.store, &m.ally_side().damage());
+            let all_total: u64 = all.iter().map(|r| r.total).sum();
+            per_fight_dps.push(all_total as f64 / fight_secs);
+            merge_ability_rows(&mut merged, all);
+            let all_avoided = by_ability(&ing.store, &m.ally_side().kind(EventKind::Miss));
+            merge_ability_rows(&mut merged, all_avoided);
         } else {
             // why: everyone minus the target's own contribution; reuses enemy_rows above
             let all = by_ability(&ing.store, &m.filter().damage());
@@ -1035,7 +1179,7 @@ fn list_side(
             continue;
         };
         for i in enc.range() {
-            if ing.store.enc[i] != id.0 || !m.contains(ing.store.ts[i]) {
+            if ing.store.enc[i] != id.0 || !m.involves(ing, i, want_enemies) {
                 continue;
             }
             if !matches!(ing.store.kind[i], EventKind::Damage | EventKind::Miss) {
@@ -1057,11 +1201,20 @@ fn list_side(
         }
     }
 
-    for m in &members {
-        if ing.store.encounter(m.id).is_none() {
-            continue;
+    // why: a mob scope narrows each side to that mob -- into it for
+    // allies, by it for the enemy list
+    let side = |m: &Member, enc: &Encounter| -> Filter {
+        match (m.mob, want_enemies) {
+            (Some(_), true) => m.filter().by(m.enemy_sym(enc)),
+            (Some(_), false) => m.ally_side(),
+            (None, _) => m.filter(),
         }
-        for (sym, dmg, hits, crits) in by_actor(&ing.store, &m.filter().damage()) {
+    };
+    for m in &members {
+        let Some(enc) = ing.store.encounter(m.id) else {
+            continue;
+        };
+        for (sym, dmg, hits, crits) in by_actor(&ing.store, &side(m, enc).damage()) {
             let name = ing.store.name(sym).to_string();
             // why: one composition of kind/charm/group belief -- see
             // Ingest::allegiance_at for why this isn't effective_kind+of
@@ -1104,7 +1257,7 @@ fn list_side(
         let Some(enc) = ing.store.encounter(id) else {
             continue;
         };
-        for (sym, _amt, n, _crits) in by_actor(&ing.store, &m.filter().kind(EventKind::Miss)) {
+        for (sym, _amt, n, _crits) in by_actor(&ing.store, &side(m, enc).kind(EventKind::Miss)) {
             if acc.contains_key(&sym) {
                 *avoided.entry(sym).or_insert(0) += n;
             }

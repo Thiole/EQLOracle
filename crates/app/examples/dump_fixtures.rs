@@ -628,6 +628,10 @@ fn main() {
         "get_encounter_detail".to_string(),
         json!({ format!("encounterId={richest_id}"): combat::encounter_detail(&ing, richest_id) }),
     );
+    out.insert(
+        "list_encounter_mobs".to_string(),
+        json!({ format!("encounterId={richest_id}"): combat::list_encounter_mobs(&ing, richest_id) }),
+    );
 
     let dest = repo_root.join("ui/tests/fixtures/reference-slice.json");
     std::fs::create_dir_all(dest.parent().unwrap()).expect("create fixtures dir");

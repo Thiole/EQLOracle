@@ -129,6 +129,17 @@ export interface SelectionDto {
   ranges: [number, number][];
   /** why: whole zone visits; -1 is the pre-first-zone "Unknown" bucket */
   visits: number[];
+  /** why: one mob inside one fight: [encounter id, mob name] */
+  mobs: [number, string][];
+}
+
+/** why: a row under an expanded fight -- one enemy, what it took and dealt */
+export interface MobRowDto {
+  name: string;
+  damage_taken: number;
+  hits_taken: number;
+  damage_dealt: number;
+  slain: boolean;
 }
 
 export interface ZoneVisitDto {
@@ -1751,6 +1762,8 @@ export const api = {
    * row virtualization, which is what actually keeps this bounded now. */
   listEncounters: (zoneVisit: number | null, offset?: number, limit?: number) =>
     invoke<EncounterDto[]>('list_encounters', { zoneVisit, offset, limit }),
+
+  listEncounterMobs: (encounterId: number) => invoke<MobRowDto[]>('list_encounter_mobs', { encounterId }),
 
   /** confirmedOnly drops closed "reset" fights from an aggregate --
    * the copy-report path; on-screen views pass nothing and keep all. */

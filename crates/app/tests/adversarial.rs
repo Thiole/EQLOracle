@@ -313,6 +313,7 @@ fn a_selection_clips_ranges_and_never_double_counts() {
         encounters: vec![],
         ranges: vec![(t("15:01:02"), t("15:01:21"))],
         visits: vec![],
+        mobs: vec![],
     };
     let s = combat::summarize(&ing, None, None, None, false, Some(&range));
     assert_eq!(s.fight_count, 2, "both fights touch the window");
@@ -341,6 +342,7 @@ fn a_selection_clips_ranges_and_never_double_counts() {
         encounters: vec![gnoll_id],
         ranges: vec![(t("15:01:02"), t("15:01:21"))],
         visits: vec![],
+        mobs: vec![],
     };
     let s = combat::summarize(&ing, None, None, None, false, Some(&both));
     assert_eq!(s.fight_count, 2, "the gnoll fight is not counted twice");
@@ -360,12 +362,78 @@ fn a_selection_clips_ranges_and_never_double_counts() {
         encounters: vec![gnoll_id],
         ranges: vec![],
         visits: vec![-1],
+        mobs: vec![],
     };
     let s = combat::summarize(&ing, None, None, None, false, Some(&visit));
     // why: run_closed's own filler hit lands inside the orc fight's 6s
     // post-kill window, so it is part of that fight, not a third one
     assert_eq!(s.fight_count, 2);
     assert_eq!(s.total_damage, 401);
+}
+
+/// why: "details per mob" -- a fight lists its enemies with what they took
+/// and dealt, and one mob selected scopes the numbers to it over its own
+/// span in the fight
+#[test]
+fn a_fight_lists_its_mobs_and_one_mob_scopes_the_numbers() {
+    use eqlp_app::combat::{self, SelectionDto};
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:01 2026] A gnoll scout hits YOU for 5 points of damage.\n",
+        "[Tue Jul 28 15:01:02 2026] You hit a gnoll scout for 50 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:04 2026] You hit a gnoll scout for 30 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:05 2026] You have slain a gnoll!\n",
+        "[Tue Jul 28 15:01:06 2026] You have slain a gnoll scout!\n",
+    ));
+    let fight = combat::list_encounters(&ing, None, 0, 50)
+        .into_iter()
+        .find(|e| {
+            e.entities
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case("a gnoll scout"))
+        })
+        .expect("the pull");
+    let mobs = combat::list_encounter_mobs(&ing, fight.id);
+    let scout = mobs
+        .iter()
+        .find(|m| m.name.eq_ignore_ascii_case("a gnoll scout"))
+        .expect("scout row");
+    assert_eq!(
+        (
+            scout.damage_taken,
+            scout.hits_taken,
+            scout.damage_dealt,
+            scout.slain
+        ),
+        (80, 2, 5, true)
+    );
+    let gnoll = mobs
+        .iter()
+        .find(|m| m.name.eq_ignore_ascii_case("a gnoll"))
+        .expect("gnoll row");
+    assert_eq!(
+        (gnoll.damage_taken, gnoll.damage_dealt, gnoll.slain),
+        (100, 0, true)
+    );
+
+    let sel = SelectionDto {
+        encounters: vec![],
+        ranges: vec![],
+        visits: vec![],
+        mobs: vec![(fight.id, scout.name.clone())],
+    };
+    let s = combat::summarize(&ing, None, None, None, false, Some(&sel));
+    assert_eq!(s.total_damage, 80, "only what landed on the scout");
+    assert_eq!(s.enemy_damage, 5, "only what the scout dealt");
+    assert_eq!(s.duration_ms, 3_000, "the scout's own span, :01 to :04");
+    let allies = combat::list_allies(&ing, None, None, false, Some(&sel));
+    assert_eq!(
+        allies.iter().find(|a| a.name == "You").map(|a| a.total),
+        Some(80)
+    );
+    let enemies = combat::list_enemies(&ing, None, None, false, Some(&sel));
+    assert_eq!(enemies.len(), 1, "the scope's one mob");
+    assert_eq!(enemies[0].total, 5);
 }
 
 /// why: Spencer 2026-09-08 -- "harm touch or Reaving Strike (not reave)

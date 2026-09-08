@@ -14,6 +14,7 @@
     visitFights,
     visitKey,
     singleEncounter,
+    singleMob,
     scope,
     summary,
     allies,
@@ -56,11 +57,13 @@
     // other selection is an aggregate copy that drops reset fights
     // (abandoned/fled fragments dilute shared numbers) and says so
     const one = singleEncounter(get(selection));
+    const mob = singleMob(get(selection));
     const e = one ? ($visitFights[visitKey(one.visit)] ?? []).find((x) => x.id === one.id) : undefined;
     const tag = e ? (e.open ? 'ongoing' : e.slain ? 'kill' : e.wiped ? 'wipe' : 'reset') : null;
     let sum = $summary;
     let allyRows = $allies;
-    const aggregate = one === null;
+    // why: one fight or one mob copies what is on screen and names it
+    const aggregate = one === null && mob === null;
     if (aggregate) {
       const { zv, enc, sel } = scope();
       const [s, a] = await Promise.all([api.getCombatSummary(zv, enc, null, true, sel), api.listAllies(zv, enc, true, sel)]);
@@ -68,7 +71,7 @@
       if (a) allyRows = a;
     }
     const report = buildCombatReport(
-      { target: one?.target ?? null, tag, fightCount: sum.fight_count, resetsExcluded: aggregate },
+      { target: one?.target ?? mob?.name ?? null, tag, fightCount: sum.fight_count, resetsExcluded: aggregate },
       sum,
       allyRows,
     );
@@ -87,7 +90,7 @@
 <!-- why: two panes -- the list that is the scope on the left, the data
      it describes on the right; below ~1100px the list stacks on top,
      twelve rows tall, so nothing is hidden behind a toggle -->
-<div class="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[340px_minmax(0,1fr)]">
+<div class="grid grid-cols-1 items-start gap-4 p-4 lg:grid-cols-[340px_minmax(0,1fr)]">
   <FightTree />
 
   <div class="flex min-w-0 flex-col gap-4">

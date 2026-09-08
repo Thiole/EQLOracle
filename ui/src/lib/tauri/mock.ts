@@ -126,6 +126,7 @@ function keyFor(cmd: string, args: Record<string, unknown> | undefined): string 
     case 'list_mob_encounters':
       return `mobName=${norm(a.mobName)}&limit=${norm(a.limit)}`;
     case 'get_encounter_detail':
+    case 'list_encounter_mobs':
       return `encounterId=${norm(a.encounterId)}`;
     case 'get_era_options':
     case 'get_preferences':

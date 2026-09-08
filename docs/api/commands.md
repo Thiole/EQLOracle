@@ -11,7 +11,7 @@ and need the service layer described in README.md before external
 exposure. Parameters shown are the real API surface -- Tauri plumbing
 (`State`, `AppHandle`, `Window`) is elided.
 
-124 commands: 26 pure, 98 stateful.
+125 commands: 26 pure, 99 stateful.
 
 ## `get_changelog` (pure)
 why: the Info panel's own "what's new" -- every section, newest first
@@ -511,6 +511,12 @@ why: Maps module's zone-identity + entrance-guess input; `current_map_zones` con
 
 - args: `limit: Option<usize>`
 - returns: `Vec<DebugEncounterDto>`
+
+## `list_encounter_mobs` (stateful)
+why: the fight tree's rows under an expanded fight -- every enemy in it
+
+- args: `encounter_id: u32`
+- returns: `Vec<combat::MobRowDto>`
 
 ## `list_encounters` (stateful)
 why: Combat module's second dropdown, defaults to the whole list -- a rendering cost the frontend virtualizes, not a fetch one. `zone_visit`: None = no filter, -1 = "Unknown" bucket, else a visit index.

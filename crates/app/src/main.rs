@@ -228,6 +228,7 @@ fn main() {
             commands::set_log_directory,
             commands::list_zone_visits,
             commands::list_encounters,
+            commands::list_encounter_mobs,
             commands::list_allies,
             commands::list_enemies,
             commands::get_combat_summary,
