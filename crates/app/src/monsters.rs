@@ -128,6 +128,58 @@ fn as_you(ing: &Ingest, name: String) -> String {
     }
 }
 
+/// why: who counts toward a kill's party size -- distinct people who
+/// dealt damage to the mob, pets folded onto owners, enemies, unclaimed
+/// pets and charmed bestiary mobs dropped. Shared with the probe so it
+/// reports exactly what the page counts
+pub fn kill_bodies(
+    ing: &Ingest,
+    e: &eqlp_store::Encounter,
+    sym: Sym,
+    end: Millis,
+) -> std::collections::HashSet<String> {
+    let mut allies: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (actor, _, _, _) in eqlp_store::by_actor(
+        &ing.store,
+        &eqlp_store::Filter::encounter(e.id).damage().target(sym),
+    ) {
+        let who = ing.store.name(actor).to_string();
+        if who.eq_ignore_ascii_case("You") {
+            allies.insert("You".to_string());
+            continue;
+        }
+        // why: an add that turned on the boss was still an enemy during the fight
+        if ing.allegiance_at(&who, e.start_ms).is_enemy() || ing.allegiance_at(&who, end).is_enemy()
+        {
+            continue;
+        }
+        // why: "X`s pet"/"X`s warder" is X's hand, not a 9th body
+        let owner = ing
+            .encounters
+            .entities
+            .owner_of(&who)
+            .or_else(|| ing.pet_of(&who))
+            .map(str::to_string);
+        match owner {
+            Some(o) => {
+                allies.insert(as_you(ing, o));
+            }
+            // why: a pet nobody claims is still not a body; a bestiary mob
+            // hitting the boss is someone's charm. A proven player keeps
+            // their slot whatever they're named
+            None if ing.encounters.entities.kind(&who) != eqlp_session::Kind::Player
+                && (ing.encounters.entities.kind(&who) == eqlp_session::Kind::Pet
+                    || eqlp_session::is_pet_suffixed(&who)
+                    || ing.is_known_pet(&who)
+                    || crate::npcdata::npc_for(&who).is_some()) => {}
+            None => {
+                allies.insert(as_you(ing, who));
+            }
+        }
+    }
+    allies
+}
+
 /// why: every fight this mob died in, anchor or not -- the damage it
 /// took there is its HP, grouped by how many allies were hitting
 fn hp_rows(ing: &Ingest, name: &str) -> Vec<MobHpRowDto> {
@@ -168,45 +220,7 @@ fn hp_rows(ing: &Ingest, name: &str) -> Vec<MobHpRowDto> {
         if hp == 0 {
             continue;
         }
-        let mut allies: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for (actor, _, _, _) in eqlp_store::by_actor(
-            &ing.store,
-            &eqlp_store::Filter::encounter(e.id).damage().target(sym),
-        ) {
-            let who = ing.store.name(actor).to_string();
-            if who.eq_ignore_ascii_case("You") {
-                allies.insert("You".to_string());
-                continue;
-            }
-            // why: an add that turned on the boss was still an enemy during the fight
-            if ing.allegiance_at(&who, e.start_ms).is_enemy()
-                || ing.allegiance_at(&who, end).is_enemy()
-            {
-                continue;
-            }
-            // why: "X`s pet"/"X`s warder" is X's hand, not a 9th body
-            let owner = ing
-                .encounters
-                .entities
-                .owner_of(&who)
-                .or_else(|| ing.pet_of(&who))
-                .map(str::to_string);
-            match owner {
-                Some(o) => {
-                    allies.insert(as_you(ing, o));
-                }
-                // why: a pet nobody claims is still not a body; a bestiary mob
-                // hitting the boss is someone's charm. A proven player keeps
-                // their slot whatever they're named
-                None if ing.encounters.entities.kind(&who) != eqlp_session::Kind::Player
-                    && (ing.encounters.entities.kind(&who) == eqlp_session::Kind::Pet
-                        || eqlp_session::is_pet_suffixed(&who)
-                        || crate::npcdata::npc_for(&who).is_some()) => {}
-                None => {
-                    allies.insert(as_you(ing, who));
-                }
-            }
-        }
+        let allies = kill_bodies(ing, e, sym, end);
         by_size
             .entry((allies.len().max(1) as u32, difficulty, instance))
             .or_default()

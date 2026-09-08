@@ -27,6 +27,11 @@ fn main() {
         return;
     };
     let now = ing.now_ms();
+    for (pet, owner) in ing.inferred_pets() {
+        if owner.eq_ignore_ascii_case("Scarge") {
+            println!("inferred pet: {pet} -> {owner}");
+        }
+    }
     for e in &ing.store.encounters {
         if e.absorbed || e.is_open() {
             continue;
@@ -38,35 +43,30 @@ fn main() {
         if !present {
             continue;
         }
-        let mut allies: BTreeSet<String> = BTreeSet::new();
-        let mut raw: Vec<String> = Vec::new();
-        for (actor, _, _, _) in eqlp_store::by_actor(
+        let end = e.end_ms.unwrap_or(now);
+        let allies: BTreeSet<String> = eqlp_app::monsters::kill_bodies(&ing, e, sym, end)
+            .into_iter()
+            .collect();
+        let raw: Vec<String> = eqlp_store::by_actor(
             &ing.store,
             &eqlp_store::Filter::encounter(e.id).damage().target(sym),
-        ) {
-            let who = ing.store.name(actor).to_string();
-            let end = e.end_ms.unwrap_or(now);
-            raw.push(format!(
-                "{who} kind={:?} enemy@start={} enemy@end={} enemy@now={}",
-                ing.encounters.entities.kind(&who),
-                ing.allegiance_at(&who, e.start_ms).is_enemy(),
-                ing.allegiance_at(&who, end).is_enemy(),
-                ing.allegiance_at(&who, now).is_enemy()
-            ));
-            let owner = ing
-                .encounters
-                .entities
-                .owner_of(&who)
-                .or_else(|| ing.pet_of(&who))
-                .map(str::to_string);
-            let body = owner.unwrap_or(who);
-            let body = match &ing.character {
-                Some(c) if c.eq_ignore_ascii_case(&body) => "You".to_string(),
-                _ => body,
-            };
-            allies.insert(body);
-        }
+        )
+        .into_iter()
+        .map(|(actor, _, _, _)| ing.store.name(actor).to_string())
+        .collect();
         if allies.len() > 8 {
+            let roster = |ts| -> Vec<String> {
+                ing.groups
+                    .current_members(ts)
+                    .into_iter()
+                    .map(|(n, _, _, _)| n)
+                    .collect()
+            };
+            println!(
+                "  roster@start={:?} roster@end={:?}",
+                roster(e.start_ms),
+                roster(e.end_ms.unwrap_or(now))
+            );
             println!(
                 "enc {} start_ms={} folded={} raw={}\n  folded: {:?}\n  raw:    {:?}",
                 e.id.0,

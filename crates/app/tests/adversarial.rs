@@ -453,6 +453,70 @@ fn a_mobs_hp_is_what_it_took_to_kill_it_by_party_size() {
     );
 }
 
+/// why: Spencer -- "when you enter a new zone, previous owners of a pet
+/// including charm are cleared out". Generated pet names are reused: the
+/// Xartik that hit Innoruuk on Aug 28 was not the Xartik Scarge summoned
+/// on Aug 10, but the app credited Scarge anyway
+#[test]
+fn a_zone_line_forgets_every_pet_owner_the_log_inferred() {
+    let summon = concat!(
+        "[Tue Jul 28 15:00:00 2026] Scarge summons a companion spirit.\n",
+        "[Tue Jul 28 15:00:01 2026] Xartik begins casting Inner Fire.\n",
+        "[Tue Jul 28 15:00:05 2026] Xartik hits a gnoll for 10 points of damage.\n",
+    );
+    let ing = run(summon);
+    assert_eq!(
+        ing.inferred_pets().collect::<Vec<_>>(),
+        vec![("Xartik", "Scarge")],
+        "the summon matched"
+    );
+    assert!(
+        ing.store.names.get("Xartik").is_none(),
+        "the pet's rows land under Scarge"
+    );
+
+    let ing = run(&format!(
+        "{summon}\
+         [Tue Jul 28 15:20:00 2026] You have entered The Plane of Hate.\n\
+         [Tue Jul 28 15:21:00 2026] Xartik hits a gnoll for 10 points of damage.\n"
+    ));
+    assert_eq!(
+        ing.inferred_pets().count(),
+        0,
+        "the zone line forgot Scarge's pet"
+    );
+    assert!(
+        ing.store.names.get("Xartik").is_some(),
+        "a Xartik after the zone line is its own actor, not Scarge"
+    );
+
+    // why: "pets will zone with owners, but then you can refind it" --
+    // the owner acting in the new zone reclaims the pet that came along
+    let ing = run(&format!(
+        "{summon}\
+         [Tue Jul 28 15:20:00 2026] You have entered The Plane of Hate.\n\
+         [Tue Jul 28 15:21:00 2026] Scarge hits a gnoll for 5 points of damage.\n\
+         [Tue Jul 28 15:21:01 2026] Xartik hits a gnoll for 10 points of damage.\n"
+    ));
+    assert_eq!(
+        ing.inferred_pets().collect::<Vec<_>>(),
+        vec![("Xartik", "Scarge")],
+        "Scarge showed up, so the Xartik with him is his again"
+    );
+    let scarge = ing.store.names.get("Scarge").expect("Scarge");
+    let after_zone = ing.store.encounters.last().expect("the post-zone fight");
+    assert_eq!(
+        eqlp_store::total(
+            &ing.store,
+            &eqlp_store::Filter::encounter(after_zone.id)
+                .damage()
+                .by(scarge)
+        ),
+        15,
+        "refound pet's 10 lands under Scarge beside his own 5"
+    );
+}
+
 /// why: Spencer -- "theres no 10 man raid. max party size is 8". A
 /// warder is its owner's hand, and "frenzies on X" must not spawn a
 /// second mob called "on X"

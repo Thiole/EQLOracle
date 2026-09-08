@@ -111,6 +111,17 @@ rules below are ally-specific, and they only decide where a chain breaks.
   log's character name) lands on "You", so it reaches every surface.
 - A4. "Confirmed" means a /who row, or a class that cleared the
   detector's own bar (P2). Pets are excluded and never get a chain.
+- A5. Pet ownership does not survive your zone line as a fact (Spencer,
+  2026-09-08). Charm is gone. A summon match becomes a prior, refound
+  the moment that owner acts in the new zone ("pets will zone with
+  owners, but then you can refind it"); an owner who never shows leaves
+  the name free, because generated pet names are reused across players
+  and a match kept for the whole log credited the wrong person 18 days
+  later. Priors last one zone hop and a fresh summon replaces them.
+- A6. A kill's party size is distinct people who damaged the mob: pets
+  fold onto their owner (your own onto "You"), a pet nobody claims and
+  a bestiary mob that turned on the boss are not bodies, and a name is
+  judged enemy or ally at the fight's own time, never "now".
 
 ## Your level
 

@@ -1336,6 +1336,11 @@ pub struct Ingest {
     /// why: resolved pet -> owner; checked by sym before interning so a
     /// matched pet's actions merge into the owner's identity
     pet_owner: HashMap<String, String>,
+    /// why: owners forgotten at the last zone line, keyed by owner -- a
+    /// pet zones with its owner, so the pair is refound the moment that
+    /// owner acts in the new zone; an owner who never shows leaves the
+    /// name free for whoever's pet it is now. One zone hop deep
+    prior_pet_owner: HashMap<String, Vec<String>>,
     /// why: pet_owner is keyed by mob NAME and never expired, so an ally
     /// charming "An abhorrent" in August made every abhorrent's damage
     /// today read as theirs -- measured on the real log as a player last
@@ -1505,6 +1510,7 @@ impl Default for Ingest {
             seen_actors: HashSet::new(),
             you_confirmed_target_encs: HashSet::new(),
             pet_owner: HashMap::new(),
+            prior_pet_owner: HashMap::new(),
             charmed_pets: HashSet::new(),
             behavioral_pet_hits: HashMap::new(),
             behavioral_pets: HashSet::new(),
@@ -2269,13 +2275,24 @@ impl Ingest {
             Action::Zone { zone } => {
                 // why: stop fights bleeding across zone changes
                 self.encounters.close_all(ts);
-                // why: no charm survives a zone line, so neither does the
-                // ownership it implied. Left standing, an ally's charm of
-                // "An abhorrent" credited them with every abhorrent
-                // anyone fought for the rest of the log.
-                for pet in self.charmed_pets.drain() {
-                    self.pet_owner.remove(&pet);
+                // why: no pet ownership survives a zone line as a fact --
+                // Spencer: "previous owners of a pet including charm are
+                // cleared out ... pets will zone with owners, but then you
+                // can refind it". Summon matches become priors, refound
+                // when the owner acts here; charm is simply gone. Kept as
+                // fact, a match credited Scarge with a stranger's Xartik
+                // 18 days later. seen_actors goes too, so a first action
+                // in the new zone can be matched again.
+                let mut prior: HashMap<String, Vec<String>> = HashMap::new();
+                for (pet, owner) in std::mem::take(&mut self.pet_owner) {
+                    if !self.charmed_pets.contains(&pet) {
+                        prior.entry(owner).or_default().push(pet);
+                    }
                 }
+                self.prior_pet_owner = prior;
+                self.charmed_pets.clear();
+                self.seen_actors.clear();
+                self.pending_summons.clear();
                 self.last_zone_enter_ms = Some(ts);
                 // why: a charmed pet never follows you across a zone line --
                 // real loss even with no "spell has worn off" confirmation
@@ -3860,6 +3877,14 @@ impl Ingest {
     /// unique and cannot collide with anything.
     fn sym(&mut self, name: &str) -> Sym {
         let resolved = self.resolve_name(name);
+        // why: the owner is here -- the pets that zoned with them are theirs again
+        if !self.prior_pet_owner.is_empty() {
+            if let Some(pets) = self.prior_pet_owner.remove(&resolved) {
+                for pet in pets {
+                    self.pet_owner.insert(pet, resolved.clone());
+                }
+            }
+        }
         let effective = if self.charmed_pets.contains(&resolved) {
             resolved
         } else {
@@ -4042,6 +4067,8 @@ impl Ingest {
 
     fn note_pet_summon(&mut self, ts: Millis, owner: &str) {
         let resolved = self.resolve_name(owner);
+        // why: a fresh summon replaces whatever they zoned in with
+        self.prior_pet_owner.remove(&resolved);
         self.pending_summons.push((ts, resolved));
     }
 
@@ -4590,6 +4617,15 @@ impl Ingest {
             return None;
         }
         self.pet_owner.get(resolved).map(String::as_str)
+    }
+
+    /// why: every way the log has told us a name is a pet -- summon
+    /// match, charm, or behavior -- for callers that must not count one
+    pub fn is_known_pet(&self, name: &str) -> bool {
+        let resolved = self.encounters.entities.display_name(name);
+        self.pet_owner.contains_key(resolved)
+            || self.charmed_pets.contains(resolved)
+            || self.behavioral_pets.contains(resolved)
     }
 
     /// why: probe/audit access -- lets an example validate the pet-name
