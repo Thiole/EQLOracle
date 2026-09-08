@@ -1220,6 +1220,11 @@ pub struct Ingest {
     pending_turnin: Option<PendingTurnIn>,
     /// why: every genuinely confirmed turn-in this session, in order
     pub turn_ins: Vec<ConfirmedTurnIn>,
+    /// why: "You have completed achievement: <name>" seen live -- the
+    /// Achievements.txt dump is only as fresh as the last /outputfile;
+    /// the game says it the moment it happens (Kaeus: last Shaman
+    /// turn-in 11:52:18, "Primary Class Unlock - Shaman" at 11:52:24)
+    pub achievements_live: HashSet<String>,
     /// why: Sky Quests' own reward-ownership inference -- see
     /// skyquests.rs's doc. Names of items confirmed destroyed or sold to
     /// a vendor this session (tier-stripped, lowercased -- same fold
@@ -1470,6 +1475,7 @@ impl Default for Ingest {
             control_spell: None,
             pending_turnin: None,
             turn_ins: Vec::new(),
+            achievements_live: HashSet::new(),
             disposed_items: std::collections::HashSet::new(),
             last_inventory_dump_ts: None,
             skills: std::collections::HashMap::new(),
@@ -2960,6 +2966,9 @@ impl Ingest {
                     })
                 }
             },
+            Action::AchievementCompleted { name } => {
+                self.achievements_live.insert(name);
+            }
             Action::TradeComplete { who } => {
                 if let Some(p) = self.pending_turnin.take() {
                     if p.who == who && p.confirmed {
@@ -5392,6 +5401,10 @@ enum Action {
     TradeComplete {
         who: String,
     },
+    /// why: your own achievement landing, by its exact name
+    AchievementCompleted {
+        name: String,
+    },
     /// why: the bare ("You gain \[party \]experience!", no percentage)
     /// xp-gain shape -- deliberately NOT folded into Action::Xp/
     /// record_xp, there's no percentage here to record and this is
@@ -5817,6 +5830,9 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         }),
         "trade.complete" => Some(Action::TradeComplete {
             who: str_field("who")?,
+        }),
+        "achievement.you_completed" => Some(Action::AchievementCompleted {
+            name: str_field("name")?,
         }),
         "money.corpse" => Some(Action::Currency {
             source: "corpse".to_string(),

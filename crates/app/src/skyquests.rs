@@ -32,7 +32,7 @@ use crate::ingest::Ingest;
 use crate::inventory;
 use eqlp_store::{flag, EventKind};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::OnceLock;
 
@@ -238,6 +238,9 @@ pub(crate) struct Context {
     pub(crate) looted: HashMap<String, (u64, bool, u64)>,
     pub(crate) owned_ci: Option<HashMap<String, u32>>,
     pub(crate) achievements: Option<crate::achievements::Achievements>,
+    /// why: achievement names the log announced this session, see
+    /// Ingest::achievements_live
+    pub(crate) live_achievements: HashSet<String>,
 }
 
 /// why: None base_dir or no dump found both leave fields None (unknown), not guessed false
@@ -261,16 +264,20 @@ pub(crate) fn build_context(ing: &Ingest, base_dir: Option<&Path>) -> Context {
         looted,
         owned_ci,
         achievements,
+        live_achievements: ing.achievements_live.clone(),
     }
 }
 
+/// why: the live line alone confirms; the dump answers when there is none
 fn unlocked_status(ctx: &Context, wiki_class: &str) -> Option<bool> {
-    ctx.achievements.as_ref().and_then(|a| {
-        a.is_complete(&format!(
-            "Primary Class Unlock - {}",
-            achievement_class_name(wiki_class)
-        ))
-    })
+    let name = format!(
+        "Primary Class Unlock - {}",
+        achievement_class_name(wiki_class)
+    );
+    if ctx.live_achievements.contains(&name) {
+        return Some(true);
+    }
+    ctx.achievements.as_ref().and_then(|a| a.is_complete(&name))
 }
 
 /// why: live confirmation via a real trade+XP pair this session
@@ -583,6 +590,23 @@ mod tests {
 
     /// why: real observed log turn-in (Cilin Spellsinger, Bard Test of
     /// Voice) must mark both the quest and its reward complete with no
+    /// why: the game announces the unlock itself, six seconds after the
+    /// last turn-in on a real log -- no dump needed to read it
+    #[test]
+    fn a_live_class_unlock_line_marks_the_class_unlocked_with_no_achievements_dump() {
+        let mut ing = Ingest::default();
+        ing.achievements_live
+            .insert("Primary Class Unlock - Shadowknight".to_string());
+        let unlocks = list_class_unlocks(&ing, None);
+        let sk = unlocks
+            .iter()
+            .find(|c| c.class == "Shadow Knight")
+            .expect("Shadow Knight");
+        assert_eq!(sk.unlocked, Some(true));
+        let bard = unlocks.iter().find(|c| c.class == "Bard").expect("Bard");
+        assert_eq!(bard.unlocked, None, "no dump, no line: still unknown");
+    }
+
     /// achievements dump at all -- the live signal, not a proxy for it
     #[test]
     fn a_real_turnin_this_session_marks_its_quest_and_reward_complete_with_no_achievements_dump() {
