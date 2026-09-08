@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-09-08 (0.23.0)
+
+### Combat
+
+- The fight list is the scope. Combat is two panes: a details-style tree on the left (days, zone visits under them, fights under those, the mobs in a fight under those, log-time ranges at the bottom) and the data it describes on the right. Click picks one row, ctrl-click toggles, shift-click spans, dragging a box selects what it covers. The selection persists while you browse, so fights from different visits, whole visits, whole days, single mobs and ranges combine into one scope. "● live" follows the newest fight until any hand pick turns it off. Fifty rows tall, then it scrolls.
+- Visits bundle by the log-time day their first line fell on; a visit that runs past midnight stays whole under the day it began.
+- A fight expands to its mobs: each enemy with damage taken, damage dealt and whether it died. One mob selected scopes every number to what allies did to it and what it did to them, over its own span in the fight.
+- A log-time range counts what fell inside it, fight by fight, clipped -- a fight also listed whole is never counted twice.
+- The ally and enemy tables sort on any column and have a column chooser (crits, hit%, resist% and pet damage are the hidden extras). The ally drill-down is one column: an ability table with share, DPS per ability, avg, crit avg and avoided, then the spells cast, then the notes. DPS per ability is the ability's total over the scope's combined fight time.
+- Clicking the fight timeline shows a 1-8s "recent" window: every entity's DPS over it and, under each, what it did -- one condensed line per hit, miss, cast or heal.
+- Past-parse rows open their fight.
+
+### Encounters
+
+- Only the party's own actions keep an encounter alive: you, the group roster, and pets or charms owned by one of those. A stranger who spoke in /ooc no longer joins or refreshes your fight, and their fights stay their own. 6s of party silence closes a fight after a kill, 12s otherwise (was 5 minutes). A mez you cast holds the fight open until "has been awakened", a death, or 96s.
+
+### Class detection
+
+- Harm Touch and Reaving Strike are Shadow Knight evidence, for allies and for you. Reaving Strike had no wiki spell page and mapped to nothing; your own cast-less ability line ("You hit X ... by Reaving Strike") now counts, while a catalog spell on your damage line -- a weapon proc -- still does not.
+- An ally's chain is cut on any sighting after an absence, your zone line or a group change, not only on class evidence, and that cut is labelled as what it is (a presence cut, not a loadout swap). A closed chain answers for every fight before its end.
+
+### Group Buff Tracker
+
+- Buffs rank by the game's own magnitude from the spell file (Shield of Words at 105 AC-points over Shadow at 65), and a shared landing resolves to the rank that was actually cast.
+
+### Overlay
+
+- Widgets scale to their window instead of showing an arrow or a scrollbar.
+
+### Character
+
+- Every ability-point payout reaches the AA ledger; the single-point line shape went nowhere before (225 of 320 payouts on a real log).
+
+### Fixed
+
+- The app no longer dies with a silent SIGKILL under a desktop launch. The bundled WebKitGTK asked rtkit for realtime on its IPC threads and capped their CPU time at 200 ms; one long burst had the kernel kill the process with no log line anywhere. WebKit now gets no rtkit to ask.
+
 ## 2026-09-07 (0.22.0)
 
 ### Group Buff Tracker
