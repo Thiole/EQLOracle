@@ -3012,19 +3012,20 @@ mod live_meter_window_tests {
 
     /// why: the spec -- the encounter's own timer runs from the player's
     /// first involvement; each row carries its time in the encounter and
-    /// DPS over that; totals accumulate over the whole encounter
+    /// DPS over that; totals accumulate over the whole encounter. Swings
+    /// 10s apart: inside the 12s party-idle window
     #[test]
     fn rows_carry_time_in_encounter_under_the_encounters_timer() {
         let ing = ingest_from(
             "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
              [Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
-             [Tue Jul 28 15:01:20 2026] Kaeus hits a gnoll for 100 points of damage.\n\
-             [Tue Jul 28 15:01:40 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
-             [Tue Jul 28 15:01:40 2026] Kaeus hits a gnoll for 100 points of damage.\n",
+             [Tue Jul 28 15:01:10 2026] Kaeus hits a gnoll for 100 points of damage.\n\
+             [Tue Jul 28 15:01:20 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:20 2026] Kaeus hits a gnoll for 100 points of damage.\n",
         );
         let m = live_meter(&ing).expect("live fight");
         assert_eq!(
-            m.duration_ms, 40_000,
+            m.duration_ms, 20_000,
             "encounter timer: the player's first hit to the live edge"
         );
         let you = m
@@ -3038,9 +3039,46 @@ mod live_meter_window_tests {
             .find(|r| r.name == "Kaeus")
             .expect("Kaeus row");
         assert_eq!((you.total, kaeus.total), (200, 200));
-        assert_eq!((you.active_ms, kaeus.active_ms), (40_000, 20_000));
-        assert!((you.dps - 5.0).abs() < 1e-9);
-        assert!((kaeus.dps - 10.0).abs() < 1e-9);
+        assert_eq!((you.active_ms, kaeus.active_ms), (20_000, 10_000));
+        assert!((you.dps - 10.0).abs() < 1e-9);
+        assert!((kaeus.dps - 20.0).abs() < 1e-9);
+    }
+
+    /// why: a mez YOU cast holds the fight past the 12s window; the same
+    /// line with no party cast behind it holds nothing (it names no caster)
+    #[test]
+    fn only_a_party_mez_holds_the_fight_open() {
+        let mez = |cast: &str| {
+            ingest_from(&format!(
+                "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n\
+                 {cast}\
+                 [Tue Jul 28 15:01:03 2026] a gnoll scout has been mesmerized.\n\
+                 [Tue Jul 28 15:01:25 2026] Stranger hits an orc for 5 points of damage.\n"
+            ))
+        };
+        let held = mez("[Tue Jul 28 15:01:01 2026] You begin casting Mesmerize.\n");
+        let gnoll_end = |ing: &Ingest| {
+            ing.store
+                .encounters
+                .iter()
+                .find(|e| ing.store.names.name(e.target) == "a gnoll")
+                .expect("the gnoll fight")
+                .end_ms
+        };
+        assert_eq!(
+            gnoll_end(&held),
+            None,
+            "your mez held it past 12s of party silence"
+        );
+        assert_eq!(
+            live_meter(&held).expect("live fight").duration_ms,
+            25_000,
+            "the meter's clock runs from your first hit to now"
+        );
+        assert!(
+            gnoll_end(&mez("")).is_some(),
+            "a caster-less mez held nothing: the stranger's swing at :25 expired it"
+        );
     }
 
     /// why: "it shouldn't reset damage per entity ... so it doesn't jump

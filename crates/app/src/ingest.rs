@@ -2656,12 +2656,19 @@ impl Ingest {
                 self.note_fanout(ts, "mez", counted);
                 let sym = self.sym(&who);
                 self.timeline.observed(ts, sym.0, State::Mezzed);
-                // why: a mezzed add that never swung is still part of
-                // the pull -- see Builder::engage
-                self.encounters.engage(&who, "You", ts);
-                // why: a mezzed mob is a paused fight, not an over one --
-                // see Builder::touch_entity's own doc
-                self.encounters.touch_entity(&who, ts);
+                // why: the line names no caster -- only a mez cast by a
+                // party member puts the add in the pull and holds the
+                // fight (Builder::engage, hold_entity); a stranger's mez
+                // in a public zone is not the party's business
+                if self.recent_party_cast(ts, is_mez_spell) {
+                    self.encounters.engage(&who, "You", ts);
+                    self.encounters.hold_entity(&who, ts);
+                }
+            }
+            Action::Awakened { who } => {
+                let sym = self.sym(&who);
+                self.timeline.observed(ts, sym.0, State::Engaged);
+                self.encounters.release_entity(&who);
             }
             Action::WhoPlayer {
                 name,
@@ -4601,11 +4608,16 @@ impl Ingest {
         // an unspoken ally reads as a real mob, same known ceiling as list_allies.
         let actor_ally = self.is_ally(actor, ts);
         let target_ally = self.is_ally(target, ts);
-        // why: sides go to the graph -- its next-pull door must not
-        // mistake a late-joining player for a new mob (Builder::damage_sided)
-        let enc_id = self
-            .encounters
-            .damage_sided(ts, actor, target, actor_ally, target_ally);
+        // why: the graph gets PARTY sides, not ally sides -- a stranger
+        // who spoke in /ooc is an ally to the meter but never refreshes
+        // or joins the party's fight (Builder::damage_sided)
+        let enc_id = self.encounters.damage_sided(
+            ts,
+            actor,
+            target,
+            self.is_party(actor, ts),
+            self.is_party(target, ts),
+        );
         // why: None when both sides look like allies (self-inflicted
         // damage, ally-on-ally noise) or both look like mobs -- no opinion on which side is the mob
         let mob_side = match (actor_ally, target_ally) {
@@ -4665,6 +4677,47 @@ impl Ingest {
     /// reads as enemy for as long as that lasts. Shared by link's new-fight and retarget paths.
     fn is_ally(&self, name: &str, ts: Millis) -> bool {
         !self.allegiance_at(name, ts).is_enemy()
+    }
+
+    /// why: did a party member cast a spell matching `pred` recently
+    /// enough to be the one that just landed
+    fn recent_party_cast(&self, ts: Millis, pred: fn(&str) -> bool) -> bool {
+        self.recent_casts
+            .entries
+            .iter()
+            .rev()
+            .filter(|e| ts - e.ts <= RECENT_CAST_RETENTION_MS && pred(&e.spell))
+            .any(|e| self.is_party(self.store.names.name(Sym(e.caster)), ts))
+    }
+
+    /// why: the encounter clock's side test -- You, the group roster, and
+    /// pets or charms owned by one of those. A proven Player who is not
+    /// grouped is a stranger here, whatever the meter calls them.
+    pub fn is_party(&self, name: &str, ts: Millis) -> bool {
+        if name.eq_ignore_ascii_case("you") {
+            return true;
+        }
+        if self.groups.currently_grouped(name, ts) {
+            return true;
+        }
+        let canonical = self.encounters.entities.display_name(name);
+        if self
+            .charm
+            .as_ref()
+            .is_some_and(|c| c.active && c.who.eq_ignore_ascii_case(canonical))
+        {
+            return true;
+        }
+        if self.behavioral_pets.contains(canonical) {
+            return true;
+        }
+        self.pet_owner
+            .get(canonical)
+            .map(String::as_str)
+            .or_else(|| self.encounters.entities.owner_of(name))
+            .is_some_and(|owner| {
+                owner.eq_ignore_ascii_case("you") || self.groups.currently_grouped(owner, ts)
+            })
     }
 
     /// why: the one composition of permanent Kind, charm state, and
@@ -5178,6 +5231,10 @@ enum Action {
     Mez {
         who: String,
     },
+    /// why: "X has been awakened by Y" -- the mez broke
+    Awakened {
+        who: String,
+    },
     Charm {
         who: String,
     },
@@ -5645,6 +5702,9 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
         "state.mesmerized" => Some(Action::Mez {
             who: str_field("who")?,
         }),
+        "mobstate.awakened" => Some(Action::Awakened {
+            who: str_field("who")?,
+        }),
         "state.charmed" => Some(Action::Charm {
             who: str_field("who")?,
         }),
@@ -5932,6 +5992,14 @@ fn class_only_melee(canonical: &str) -> Option<&'static str> {
 /// why: "<name> has been charmed." names no caster, so the only way to
 /// attribute a charm is that somebody just cast one. A charm spell is one
 /// whose own slot says so -- 24 in the pack, no name list here.
+fn is_mez_spell(name: &str) -> bool {
+    crate::spelldata::spell_by_name(base_spell_name(name)).is_some_and(|sp| {
+        sp.slots
+            .iter()
+            .any(|slot| slot.effect.starts_with("Mesmerize"))
+    })
+}
+
 fn is_charm_spell(name: &str) -> bool {
     crate::spelldata::spell_by_name(base_spell_name(name))
         .is_some_and(|sp| sp.slots.iter().any(|slot| slot.effect.starts_with("Charm")))

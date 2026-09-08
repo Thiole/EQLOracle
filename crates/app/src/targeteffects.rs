@@ -486,7 +486,7 @@ mod tests {
         let ing = run(&[
             "[Tue Jul 28 15:01:00 2026] You hit a bat for 5 points of damage.",
             "[Tue Jul 28 15:01:02 2026] a rat hit a bat for 3 points of damage.",
-            // why: 13s later -- past Policy::default's own 10s idle_ms,
+            // why: 13s later -- past Policy::default's own 12s unresolved idle,
             // so the earlier bat encounter (and "a rat"'s membership in
             // it) is fully expired before this real, separate fight
             // opens a fresh one with "a rat" as its own real anchor

@@ -6,18 +6,22 @@ use eqlp_session::{Builder, Entities, Kind, Policy};
 fn policy_defaults_to_six_seconds_and_is_settable() {
     assert_eq!(Policy::default().idle_ms, 6_000);
     assert_eq!(Policy::default().idle_secs(30.0).idle_ms, 30_000);
+    assert_eq!(Policy::default().cc_hold_secs(90.0).cc_hold_ms, 90_000);
     assert_eq!(Policy::default().link_secs(2.5).link_ms, 2_500);
     assert_eq!(Policy::default().cap_entities(12).max_entities, Some(12));
     assert!(!Policy::default().no_transitive().transitive);
 }
 
+/// why: every party swing lands in one component -- Kaeus is proven a
+/// player first, since an unproven name is a bystander to the graph
 #[test]
 fn a_fight_is_one_component_regardless_of_who_swings() {
     let mut b = Builder::default();
+    b.entities.note_player_channel("Kaeus");
     b.damage(0, "You", "a gnoll");
     b.damage(1000, "a gnoll", "You");
     b.damage(2000, "Kaeus", "a gnoll");
-    b.damage(3000, "Kaeus pet", "a gnoll");
+    b.damage(3000, "Kaeus`s pet", "a gnoll");
     assert_eq!(b.live_count(), 1);
     let e = b.live_encounters().next().unwrap();
     assert_eq!(e.entities.len(), 4);
@@ -342,16 +346,84 @@ fn a_clean_kill_keeps_the_short_window() {
     assert_eq!(b.live_count(), 0);
 }
 
-/// why: no kill, no flag: a fight does not time out on the short
-/// window -- "it extends until a kill or a flag to possibly end combat"
+/// why: no kill, no flag: the fight gets the 12s unresolved window
+/// from the last party action, not the 6s post-kill one
 #[test]
-fn an_unresolved_fight_outlives_the_short_window() {
-    let mut b = Builder::new(Policy::default().idle_secs(10.0));
+fn an_unresolved_fight_closes_twelve_seconds_after_the_last_party_action() {
+    let mut b = Builder::new(Policy::default());
     b.damage(0, "You", "a drake");
-    b.expire(60_000);
-    assert_eq!(b.live_count(), 1, "still open a minute later");
-    b.expire(400_000);
-    assert_eq!(b.live_count(), 0, "the safety net closes it eventually");
+    b.expire(11_000);
+    assert_eq!(b.live_count(), 1, "still open inside 12s");
+    b.expire(12_001);
+    assert_eq!(b.live_count(), 0, "closed after 12s of party silence");
+}
+
+/// why: public zone -- a stranger's fight is its own encounter and its
+/// activity never refreshes the party's clock
+#[test]
+fn a_bystander_fight_never_refreshes_the_party_fight() {
+    let mut b = Builder::new(Policy::default());
+    let ours = b.damage(0, "You", "a gnoll");
+    let theirs = b.damage(1_000, "Stranger", "an orc");
+    assert_ne!(ours, theirs);
+    b.damage(6_000, "Stranger", "an orc");
+    b.damage(11_000, "Stranger", "an orc");
+    b.expire(12_001);
+    assert_eq!(b.live_count(), 1, "ours closed on time, theirs still open");
+    assert!(b.live(theirs).is_some());
+    assert_eq!(b.closed[0].id, ours);
+    b.expire(23_001);
+    assert_eq!(b.live_count(), 0, "theirs closes on its own clock");
+}
+
+/// why: a stranger hitting the party's mob counts toward that mob but
+/// neither joins the fight nor keeps it alive
+#[test]
+fn a_stranger_hitting_the_partys_mob_stays_out_and_does_not_refresh() {
+    let mut b = Builder::new(Policy::default());
+    let ours = b.damage(0, "You", "a gnoll");
+    assert_eq!(b.damage(5_000, "Stranger", "a gnoll"), ours);
+    let live = b.live(ours).unwrap();
+    assert!(!live.entities.iter().any(|n| n == "Stranger"));
+    assert_eq!(live.last_ms, 0, "a bystander edge moves no clock");
+    b.expire(12_001);
+    assert_eq!(b.live_count(), 0);
+}
+
+/// why: a mezzed add holds the fight open past idle until the mez
+/// breaks; a death releases the hold; the cap ends a silent wear-off
+#[test]
+fn a_party_mez_holds_the_fight_until_broken_or_capped() {
+    let mut b = Builder::new(Policy::default().cc_hold_secs(60.0));
+    b.damage(0, "You", "a dar ghoul knight");
+    b.engage("a zol ghoul knight", "You", 1_000);
+    b.hold_entity("a zol ghoul knight", 1_000);
+    b.expire(30_000);
+    assert_eq!(b.live_count(), 1, "held while mezzed");
+    b.release_entity("a zol ghoul knight");
+    b.expire(30_001);
+    assert_eq!(
+        b.live_count(),
+        0,
+        "the clock ran out the moment the mez broke"
+    );
+
+    let mut b = Builder::new(Policy::default().cc_hold_secs(60.0));
+    b.damage(0, "You", "a dar ghoul knight");
+    b.engage("a zol ghoul knight", "You", 1_000);
+    b.hold_entity("a zol ghoul knight", 1_000);
+    b.death(20_000, "a zol ghoul knight");
+    b.expire(26_001);
+    assert_eq!(b.live_count(), 0, "a death drops the hold, 6s closes it");
+
+    let mut b = Builder::new(Policy::default().cc_hold_secs(60.0));
+    b.damage(0, "You", "a dar ghoul knight");
+    b.engage("a zol ghoul knight", "You", 1_000);
+    b.hold_entity("a zol ghoul knight", 1_000);
+    b.expire(60_999);
+    assert_eq!(b.live_count(), 1, "still held just before the cap");
+    b.expire(61_000);
+    assert_eq!(b.live_count(), 0, "the cap closes a silent wear-off");
 }
 
 /// why: a charm (or a mem blur) is an end-of-combat flag: it arms the

@@ -10,24 +10,19 @@ pub type Millis = i64;
 /// why: game-grounded defaults, but every judgement call stays settable
 #[derive(Debug, Clone, Copy)]
 pub struct Policy {
-    /// why: 6s, for RESOLVED fights only (a real death in it, or an
-    /// end-of-combat flag): "no close should happen until 6 seconds
-    /// after a death, not on death". The close is decided then; the
-    /// fight's recorded end stays its last action. Closing fast here is
-    /// what keeps back-to-back pulls from merging (a flat 30s window
-    /// halved a real log's kill count). Unresolved fights use
-    /// idle_unresolved_ms instead -- see its own doc.
+    /// why: 6s after the last party action, for RESOLVED fights only (a
+    /// real death or an end-of-combat flag). Closing fast keeps
+    /// back-to-back pulls from merging.
     pub idle_ms: Millis,
 
-    /// why: 5 minutes -- a SAFETY net, not a rule. A fight with no kill
-    /// and no end-of-combat flag does not time out on its own: "it should
-    /// be 10 seconds after a kill; if there's actions, even mesmerization,
-    /// it extends until a kill or a flag to possibly end combat -- charm,
-    /// port, memwipe". Zoning already closes every fight; charm and a
-    /// mem blur arm the 10s window (see Live::flagged). This only catches
-    /// a fight the log genuinely never resolved (a mob that just walked
-    /// off), so it can't sit open forever.
+    /// why: 12s after the last PARTY action for a fight with no kill yet.
+    /// Only party members doing or taking damage refresh a fight; public
+    /// zone noise never does, so nothing sits open forever.
     pub idle_unresolved_ms: Millis,
+
+    /// why: a party mez holds its fight open past idle until broken,
+    /// capped at the longest mez the game has (silent wear-off logs nothing)
+    pub cc_hold_ms: Millis,
 
     /// why: a re-engaged fled mob within this window is one kill, not two
     pub link_ms: Millis,
@@ -48,7 +43,8 @@ impl Default for Policy {
     fn default() -> Self {
         Policy {
             idle_ms: 6_000,
-            idle_unresolved_ms: 300_000,
+            idle_unresolved_ms: 12_000,
+            cc_hold_ms: 96_000,
             link_ms: 60_000,
             dupe_grace_ms: 0,
             transitive: true,
@@ -64,6 +60,10 @@ impl Policy {
     }
     pub fn idle_unresolved_secs(mut self, s: f64) -> Self {
         self.idle_unresolved_ms = (s * 1000.0) as Millis;
+        self
+    }
+    pub fn cc_hold_secs(mut self, s: f64) -> Self {
+        self.cc_hold_ms = (s * 1000.0) as Millis;
         self
     }
     pub fn link_secs(mut self, s: f64) -> Self {
@@ -218,9 +218,9 @@ pub struct Live {
     /// why: an end-of-combat signal landed (a charm on this fight's mob,
     /// a mem blur) -- "possibly" over: arms the short window like a kill
     pub flagged: bool,
-    /// why: an ally (by the caller's own sides) acted in this fight --
-    /// what makes it the TEAM's fight for team_fight
-    pub has_ally: bool,
+    /// why: a party member (by the caller's own sides) acted in this
+    /// fight -- what makes it the party's fight for team_fight
+    pub has_party: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -260,6 +260,8 @@ pub struct Builder {
     pub closed: Vec<Closed>,
     /// why: recently closed unslain targets, for the re-engage link
     recent: HashMap<String, (EncId, Millis)>,
+    /// why: entity -> when its party mez stops holding the fight open
+    held: HashMap<String, Millis>,
 }
 
 impl Default for Builder {
@@ -278,6 +280,7 @@ impl Builder {
             live: HashMap::new(),
             closed: Vec::new(),
             recent: HashMap::new(),
+            held: HashMap::new(),
         }
     }
 
@@ -286,9 +289,15 @@ impl Builder {
     /// player channel, or "You"); the app passes its own richer answer
     /// through `damage_sided`.
     pub fn damage(&mut self, ts: Millis, actor: &str, target: &str) -> EncId {
-        let ally = |n: &str| n.eq_ignore_ascii_case("You") || self.entities.kind(n) == Kind::Player;
-        let (aa, ta) = (ally(actor), ally(target));
+        let aa = self.proven_side(actor);
+        let ta = self.proven_side(target);
         self.damage_sided(ts, actor, target, aa, ta)
+    }
+
+    /// why: observed first -- a possessive pet is proven on sight, and
+    /// `kind` alone would read an unseen name as a bystander
+    fn proven_side(&mut self, n: &str) -> bool {
+        n.eq_ignore_ascii_case("You") || self.entities.observe(n) != Kind::Unproven
     }
 
     /// why: the next-pull door (see below) must know which side a
@@ -301,12 +310,18 @@ impl Builder {
         ts: Millis,
         actor: &str,
         target: &str,
-        actor_ally: bool,
-        target_ally: bool,
+        actor_party: bool,
+        target_party: bool,
     ) -> EncId {
         self.expire(ts);
         self.entities.observe(actor);
         self.entities.observe(target);
+
+        // why: no party member on either side -- other people's fights
+        // never join, refresh, or merge into the party's
+        if !(actor_party || target_party) {
+            return self.bystander_edge(ts, actor, target);
+        }
 
         let a = self.of.get(&*fold_key(actor)).copied();
         let b = self.of.get(&*fold_key(target)).copied();
@@ -317,7 +332,6 @@ impl Builder {
         // after a kill or an end-of-combat flag (see expire). A per-pull
         // door was tried and withdrawn: chain pulls read as one fight to
         // the player, and it reset the meter on every target change.
-        let _ = (actor_ally, target_ally);
         let id = match (a, b) {
             // why: one TEAM, one encounter -- an ally engaging a mob while
             // the team already has a live fight joins that fight, even if
@@ -327,7 +341,7 @@ impl Builder {
             // over when that mob died ("encounter is showing as ended
             // instantly after a kill"). Only an ally edge does this; a
             // stray mob-on-mob edge still opens its own fight.
-            (None, None) => match self.team_fight(actor_ally, target_ally) {
+            (None, None) => match self.team_fight() {
                 Some(id) => {
                     self.attach(id, actor, ts);
                     self.attach(id, target, ts);
@@ -358,7 +372,7 @@ impl Builder {
         if let Some(e) = self.live.get_mut(&id) {
             e.last_ms = ts;
             e.events += 1;
-            e.has_ally |= actor_ally || target_ally;
+            e.has_party = true;
             // why: either side -- a "slain" name swinging again is the
             // same proof of a same-named survivor as one being hit
             if !e.dupe
@@ -372,13 +386,53 @@ impl Builder {
         id
     }
 
-    /// why: the team's live fight -- the one "You" are in, else the most
-    /// recently active live fight an ally is in. None when the edge has
-    /// no ally on either side, or no fight is live.
-    fn team_fight(&self, actor_ally: bool, target_ally: bool) -> Option<EncId> {
-        if !(actor_ally || target_ally) {
-            return None;
+    /// why: an edge with no party member on it. Lands on the party fight
+    /// only when one side already belongs to it (a stranger's damage on
+    /// the party's mob still counts toward that mob) without joining or
+    /// refreshing it; otherwise strangers get fights of their own.
+    fn bystander_edge(&mut self, ts: Millis, actor: &str, target: &str) -> EncId {
+        let a = self.of.get(&*fold_key(actor)).copied();
+        let b = self.of.get(&*fold_key(target)).copied();
+        let own = |id: Option<EncId>| id.filter(|i| self.live.get(i).is_some_and(|e| !e.has_party));
+        let id = match (own(a), own(b)) {
+            (Some(x), Some(y)) if x == y => x,
+            (Some(x), Some(y)) => {
+                if self.policy.transitive && self.may_merge(x, y) {
+                    self.merge(x, y)
+                } else {
+                    self.attach(y, actor, ts);
+                    y
+                }
+            }
+            (Some(x), None) => {
+                if b.is_none() {
+                    self.attach(x, target, ts);
+                }
+                x
+            }
+            (None, Some(y)) => {
+                if a.is_none() {
+                    self.attach(y, actor, ts);
+                }
+                y
+            }
+            (None, None) => match (a, b) {
+                (Some(x), _) => return x,
+                (None, Some(y)) => return y,
+                (None, None) => self.open(ts, actor, target),
+            },
+        };
+        if let Some(e) = self.live.get_mut(&id) {
+            e.last_ms = ts;
+            e.events += 1;
         }
+        id
+    }
+
+    /// why: the party's live fight -- the one "You" are in, else the most
+    /// recently active live fight a party member is in. None when no
+    /// party fight is live.
+    fn team_fight(&self) -> Option<EncId> {
         if let Some(&id) = self.of.get(&*fold_key("You")) {
             if self.live.contains_key(&id) {
                 return Some(id);
@@ -386,7 +440,7 @@ impl Builder {
         }
         self.live
             .values()
-            .filter(|e| e.has_ally)
+            .filter(|e| e.has_party)
             .max_by_key(|e| (e.last_ms, e.id.0))
             .map(|e| e.id)
     }
@@ -417,7 +471,7 @@ impl Builder {
                 merged: false,
                 dupe: false,
                 flagged: false,
-                has_ally: false,
+                has_party: false,
             },
         );
         self.of.insert(fold_key(a).into_owned(), id);
@@ -449,7 +503,7 @@ impl Builder {
                 dst.merged = true;
                 dst.dupe |= src.dupe;
                 dst.flagged |= src.flagged;
-                dst.has_ally |= src.has_ally;
+                dst.has_party |= src.has_party;
             }
             for n in &src.entities {
                 self.of.insert(fold_key(n).into_owned(), keep);
@@ -473,6 +527,7 @@ impl Builder {
 
     /// why: target leaves combat, fight continues if anything else is up
     pub fn death(&mut self, ts: Millis, target: &str) {
+        self.held.remove(&*fold_key(target));
         if let Some(id) = self.of.remove(&*fold_key(target)) {
             if let Some(e) = self.live.get_mut(&id) {
                 e.last_ms = ts;
@@ -520,20 +575,33 @@ impl Builder {
         }
     }
 
-    /// why: active CC on a fight's own entity means the fight is paused,
-    /// not over -- a mezzed mob writes no damage lines, and the idle
-    /// clock alone would close the fight mid-mezz as a bogus "reset"
-    /// (7.6% of a real log's resets had the target mezzed within 20s of
-    /// the close -- reset_check.rs). Refreshing last_ms buys the fight
-    /// another idle window from the CC line itself.
-    pub fn touch_entity(&mut self, name: &str, ts: Millis) {
+    /// why: a party mez on a fight's own entity pauses the fight, not
+    /// ends it -- a mezzed mob writes no damage lines. Holds the fight
+    /// past idle until the mez breaks (release_entity, death) or
+    /// cc_hold_ms runs out.
+    pub fn hold_entity(&mut self, name: &str, ts: Millis) {
         if let Some(&id) = self.of.get(&*fold_key(name)) {
             if let Some(e) = self.live.get_mut(&id) {
                 if ts > e.last_ms {
                     e.last_ms = ts;
                 }
+                self.held
+                    .insert(fold_key(name).into_owned(), ts + self.policy.cc_hold_ms);
             }
         }
+    }
+
+    /// why: the mez broke ("has been awakened") -- the idle clock runs again
+    pub fn release_entity(&mut self, name: &str) {
+        self.held.remove(&*fold_key(name));
+    }
+
+    fn is_held(&self, e: &Live, now: Millis) -> bool {
+        e.entities.iter().any(|n| {
+            self.held
+                .get(&*fold_key(n))
+                .is_some_and(|&until| now < until)
+        })
     }
 
     /// why: call every event/tick, or a quiet fight never closes.
@@ -558,7 +626,7 @@ impl Builder {
                 } else {
                     self.policy.idle_unresolved_ms
                 };
-                now - e.last_ms > idle
+                now - e.last_ms > idle && !self.is_held(e, now)
             })
             .map(|(&id, _)| id)
             .collect();
@@ -578,6 +646,7 @@ impl Builder {
             if self.of.get(&*fold_key(n)) == Some(&id) {
                 self.of.remove(&*fold_key(n));
             }
+            self.held.remove(&*fold_key(n));
         }
 
         // why: links via a surviving non-player -- players would chain everything
