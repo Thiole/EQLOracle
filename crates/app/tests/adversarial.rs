@@ -312,6 +312,7 @@ fn a_selection_clips_ranges_and_never_double_counts() {
     let range = SelectionDto {
         encounters: vec![],
         ranges: vec![(t("15:01:02"), t("15:01:21"))],
+        visits: vec![],
     };
     let s = combat::summarize(&ing, None, None, None, false, Some(&range));
     assert_eq!(s.fight_count, 2, "both fights touch the window");
@@ -339,6 +340,7 @@ fn a_selection_clips_ranges_and_never_double_counts() {
     let both = SelectionDto {
         encounters: vec![gnoll_id],
         ranges: vec![(t("15:01:02"), t("15:01:21"))],
+        visits: vec![],
     };
     let s = combat::summarize(&ing, None, None, None, false, Some(&both));
     assert_eq!(s.fight_count, 2, "the gnoll fight is not counted twice");
@@ -350,6 +352,20 @@ fn a_selection_clips_ranges_and_never_double_counts() {
     let allies = combat::list_allies(&ing, None, None, false, Some(&both));
     let you = allies.iter().find(|a| a.name == "You").expect("You row");
     assert_eq!(you.total, 300);
+
+    // why: a whole visit as a member -- no zone line in this log, so
+    // every fight sits in the "Unknown" visit (-1); a fight listed
+    // whole and its visit together still count once
+    let visit = SelectionDto {
+        encounters: vec![gnoll_id],
+        ranges: vec![],
+        visits: vec![-1],
+    };
+    let s = combat::summarize(&ing, None, None, None, false, Some(&visit));
+    // why: run_closed's own filler hit lands inside the orc fight's 6s
+    // post-kill window, so it is part of that fight, not a third one
+    assert_eq!(s.fight_count, 2);
+    assert_eq!(s.total_damage, 401);
 }
 
 /// why: Spencer 2026-09-08 -- "harm touch or Reaving Strike (not reave)

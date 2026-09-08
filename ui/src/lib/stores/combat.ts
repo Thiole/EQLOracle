@@ -1,4 +1,5 @@
-// why: single source of truth for Combat's zone/encounter selection
+// why: single source of truth for Combat's scope -- what the fight tree
+// shows, what is selected in it, and what every number describes
 import { writable, get } from 'svelte/store';
 import {
   api,
@@ -13,90 +14,40 @@ import {
   type SelectionDto,
 } from '../tauri/api';
 
-// ---------------------------------------------------------------- bucket
-/** why: the bucket -- any fights (from any visit) plus any log-time
- * ranges. Non-empty, it is what every number on the page describes and
- * the zone/fight pickers above become a way to browse and add. */
-export type BucketMember =
-  | { kind: 'encounter'; id: number; target: string; duration_ms: number }
-  | { kind: 'range'; since: number; until: number };
-export const bucket = writable<BucketMember[]>([]);
-
-export function selectionOf(members: BucketMember[]): SelectionDto | null {
-  if (!members.length) return null;
-  return {
-    encounters: members.flatMap((m) => (m.kind === 'encounter' ? [m.id] : [])),
-    ranges: members.flatMap((m) => (m.kind === 'range' ? [[m.since, m.until] as [number, number]] : [])),
-  };
-}
-
-/** why: one answer to "what is on screen" -- the bucket when it has
- * members, else the zone/fight pair */
-function scope(): { zv: number | null; enc: number | null; sel: SelectionDto | null } {
-  const sel = selectionOf(get(bucket));
-  return sel ? { zv: null, enc: null, sel } : { zv: get(selectedZoneVisit), enc: get(selectedEncounterId), sel: null };
-}
-
-/** why: the timeline is per fight -- a bucket of exactly one fight still has one */
-function timelineEncounter(): number | null {
-  const members = get(bucket);
-  if (!members.length) return get(selectedEncounterId);
-  const [only] = members;
-  return members.length === 1 && only.kind === 'encounter' ? only.id : null;
-}
-
-export async function addToBucket(...added: BucketMember[]) {
-  const cur = get(bucket);
-  const next = [...cur];
-  for (const m of added) {
-    const dupe =
-      m.kind === 'encounter'
-        ? next.some((x) => x.kind === 'encounter' && x.id === m.id)
-        : next.some((x) => x.kind === 'range' && x.since === m.since && x.until === m.until);
-    if (!dupe) next.push(m);
-  }
-  if (next.length === cur.length) return;
-  bucket.set(next);
-  expandedAlly.set(null);
-  await refreshSelection();
-}
-
-export async function removeBucketMember(index: number) {
-  bucket.update((b) => b.filter((_, i) => i !== index));
-  expandedAlly.set(null);
-  await refreshSelection();
-}
-
-export async function clearBucket() {
-  if (!get(bucket).length) return;
-  bucket.set([]);
-  expandedAlly.set(null);
-  await refreshSelection();
-}
-
-/** why: a past-parse row IS an encounter -- open exactly that fight */
-export async function jumpToParse(r: ParseRecordDto) {
-  if (r.encounter_id == null) return;
-  bucket.set([]);
-  await jumpToEncounter(r.zone_visit, r.encounter_id, r.target);
-}
-
+// ---------------------------------------------------------------- tree
+/** `index` null is the pre-first-zone-line "Unknown" bucket; the tree
+ * keys it as 'u', the backend as -1 */
 export const zoneVisits = writable<ZoneVisitDto[]>([]);
-export const encounters = writable<EncounterDto[]>([]);
-/** `null` = no filter (every zone visit); `-1` = the "Unknown" bucket. */
-export const selectedZoneVisit = writable<number | null>(null);
-/** `null` = aggregate across whatever the zone filter allows (when
- * `followCurrentFight` is false), or "no fight yet" (when it's true). */
-export const selectedEncounterId = writable<number | null>(null);
-/** why: the "current fight" mode -- true by default (see
- * `loadZoneVisitsThenJumpOrReset`), keeps `selectedEncounterId` pointed at
- * whichever fight is most recent as new ones start (`onCombatTick`).
- * Turned off by any explicit pick (Aggregate or a specific fight) and back
- * on only by `followCurrent`. */
+export const visitKey = (visit: number | null) => (visit === null ? 'u' : String(visit));
+export const visitArg = (visit: number | null) => (visit === null ? -1 : visit);
+/** fights per visit, loaded when a visit is expanded (or followed) */
+export const visitFights = writable<Record<string, EncounterDto[]>>({});
+export const expandedVisits = writable<Set<string>>(new Set());
+
+// ---------------------------------------------------------------- selection
+/** why: the persistent selection -- survives browsing other visits, so
+ * fights from anywhere combine. Whole visits and log-time ranges are
+ * members like fights are. */
+export type Member =
+  | { kind: 'visit'; visit: number | null }
+  | { kind: 'encounter'; id: number; visit: number | null; target: string }
+  | { kind: 'range'; since: number; until: number };
+export const selection = writable<Member[]>([]);
+/** ranges the user has defined; listed in the tree, selectable like fights */
+export const ranges = writable<{ since: number; until: number }[]>([]);
+/** why: on by default -- the selection tracks the newest fight until a
+ * hand pick turns it off; `followCurrent` is the only way back on */
 export const followCurrentFight = writable(true);
+
+export const memberKey = (m: Member) =>
+  m.kind === 'visit' ? `v:${visitKey(m.visit)}` : m.kind === 'encounter' ? `e:${m.id}` : `r:${m.since}-${m.until}`;
+export function isSelected(m: Member, sel: Member[] = get(selection)): boolean {
+  const k = memberKey(m);
+  return sel.some((x) => memberKey(x) === k);
+}
+
 export const summary = writable<CombatSummaryDto | null>(null);
 export const allies = writable<AllyDto[]>([]);
-
 /** why: the other side of the same fights, off by default -- one Hate
  * pull is 28 distinct mobs against 3-6 allies, so it stays collapsed and
  * is not even fetched until asked for. */
@@ -109,140 +60,159 @@ export const expandedAlly = writable<string | null>(null);
 export const allySummary = writable<CombatSummaryDto | null>(null);
 
 // ---------------------------------------------------------------- history pane
-
-/** why: History pane's target; null for the aggregate view. A plain
- * writable, set explicitly wherever a fight gets selected (see
- * selectEncounter/jumpToEncounter) -- not derived from `encounters`,
- * since jumpToEncounter's own target can arrive before that fetch
- * resolves (see its own doc). */
+/** why: the past-parses target -- the one fight selected, else nothing */
 export const historyTarget = writable<string | null>(null);
 /** why: default true, avoids mixing resets with kills */
 export const historyConfirmedOnly = writable<boolean>(true);
 export const historyRecords = writable<ParseRecordDto[]>([]);
 export const loadoutSummaries = writable<LoadoutSummaryDto[]>([]);
 
+/** why: exactly one fight selected and nothing else -- the timeline,
+ * the history pane and the copy report's title all key on this */
+export function singleEncounter(sel: Member[] = get(selection)): Extract<Member, { kind: 'encounter' }> | null {
+  return sel.length === 1 && sel[0].kind === 'encounter' ? sel[0] : null;
+}
+
+export function selectionOf(sel: Member[]): SelectionDto {
+  return {
+    encounters: sel.flatMap((m) => (m.kind === 'encounter' ? [m.id] : [])),
+    ranges: sel.flatMap((m) => (m.kind === 'range' ? [[m.since, m.until] as [number, number]] : [])),
+    visits: sel.flatMap((m) => (m.kind === 'visit' ? [visitArg(m.visit)] : [])),
+  };
+}
+
+/** why: one fight or one visit goes through the plain zone/encounter
+ * arguments (the mock fixture keys on those); anything else is a
+ * selection the backend resolves */
+export function scope(): { zv: number | null; enc: number | null; sel: SelectionDto | null } {
+  const sel = get(selection);
+  const one = singleEncounter(sel);
+  if (one) return { zv: null, enc: one.id, sel: null };
+  if (sel.length === 1 && sel[0].kind === 'visit') return { zv: visitArg(sel[0].visit), enc: null, sel: null };
+  return { zv: null, enc: null, sel: selectionOf(sel) };
+}
+
 export async function loadZoneVisits() {
   zoneVisits.set((await api.listZoneVisits()) ?? []); // defensive -- invoke<T>()'s type is an assertion, not a guarantee
 }
 
+export async function loadVisitFights(visit: number | null) {
+  const list = (await api.listEncounters(visitArg(visit))) ?? [];
+  visitFights.update((m) => ({ ...m, [visitKey(visit)]: list }));
+  return list;
+}
+
+export async function toggleVisitExpanded(visit: number | null) {
+  const k = visitKey(visit);
+  const next = new Set(get(expandedVisits));
+  if (next.has(k)) next.delete(k);
+  else {
+    next.add(k);
+    if (!get(visitFights)[k]) await loadVisitFights(visit);
+  }
+  expandedVisits.set(next);
+}
+
 /** why: Game Data's "open in Combat →" sets this, then switches modules
  * to mount Combat.svelte -- that component's own mount effect consumes
- * this (instead of its usual "reset to All zones / Aggregate" default)
- * and clears it. A store, not a direct call to jumpToEncounter, because
- * Combat.svelte's mount effect always runs loadZoneVisits() first
- * (needed either way) and a jump landing before that resolves would just
- * get overwritten by the default reset that used to always follow it.
- * Carries `target` too -- see jumpToEncounter's own doc for why. */
+ * it instead of the plain default. */
 export const pendingJump = writable<{ zoneVisit: number | null; encounterId: number; target: string } | null>(null);
-
 export function requestJumpToEncounter(zoneVisit: number | null, encounterId: number, target: string) {
   pendingJump.set({ zoneVisit, encounterId, target });
 }
 
-/** why: Combat.svelte's own mount effect -- loads the zone list either
- * way, then either honors a pending Game Data jump or falls back to the
- * plain "All zones" default it always reset to before this existed. */
 export async function loadZoneVisitsThenJumpOrReset() {
   const jump = get(pendingJump);
   pendingJump.set(null);
   await loadZoneVisits();
   if (jump) {
     await jumpToEncounter(jump.zoneVisit, jump.encounterId, jump.target);
+  } else if (get(followCurrentFight)) {
+    await followCurrent();
   } else {
-    await selectZoneVisit(null);
+    await refreshSelection();
   }
 }
 
-// ---------------------------------------------------------------- encounters
-
-let encounterLoadToken = 0;
-
-/** why: the whole matching list, always -- fetching it turned out to be
- * cheap even for a long-lived character's thousands of fights (a single
- * sort + slice + per-row compute, see combat::list_encounters' own doc).
- * The actual cost was *rendering* that many <Select.Item>s at once, which
- * Combat.svelte now handles by virtualizing what it mounts -- not by
- * withholding data the user might scroll to. */
-async function loadEncounters(zv: number | null) {
-  const token = ++encounterLoadToken;
-  const list = (await api.listEncounters(zv)) ?? [];
-  if (token !== encounterLoadToken) return;
-  encounters.set(list);
+function currentVisit(): ZoneVisitDto | undefined {
+  const visits = get(zoneVisits);
+  return visits.find((v) => v.current) ?? visits[0];
 }
 
-/** why: `list_encounters` sorts newest-first (see its own doc) -- the
- * first entry is always the most recently *started* fight, whether it's
- * still open or already closed, which is exactly "current fight" means
- * once nothing is actively in progress. `null` when there's no fight yet
- * at all (a fresh zone, or before the log has any). */
-function mostRecentEncounterId(list: EncounterDto[]): number | null {
-  // why: a fight still in progress beats a newer-started one that has
-  // already closed -- "current" means the one you're in
-  return list.find((e) => e.open)?.id ?? list[0]?.id ?? null;
+/** why: `list_encounters` sorts newest-first -- an open fight beats a
+ * newer-started closed one; "current" means the one you're in */
+function newestFight(list: EncounterDto[]): EncounterDto | undefined {
+  return list.find((e) => e.open) ?? list[0];
 }
 
-export async function selectZoneVisit(zv: number | null) {
-  selectedZoneVisit.set(zv);
+function toMember(e: EncounterDto, visit: number | null): Member {
+  return { kind: 'encounter', id: e.id, visit, target: e.target };
+}
+
+async function applySelection(next: Member[], preserveScrub = false) {
+  selection.set(next);
   expandedAlly.set(null);
-  await loadEncounters(zv);
-  if (get(followCurrentFight)) {
-    const id = mostRecentEncounterId(get(encounters));
-    selectedEncounterId.set(id);
-    historyTarget.set(id !== null ? (get(encounters).find((e) => e.id === id)?.target ?? null) : null);
-  } else {
-    selectedEncounterId.set(null);
-    historyTarget.set(null);
-  }
-  await refreshSelection();
+  const one = singleEncounter(next);
+  historyTarget.set(one?.target ?? null);
+  await refreshSelection(preserveScrub);
   await refreshHistory();
 }
 
-/** why: `targetOverride` is set by jumpToEncounter, whose caller already
- * knows the real target name (Game Data's own ZoneEncounterDto) -- faster
- * than waiting on `encounters` to (re)load after selectZoneVisit before
- * looking the id up there. The normal dropdown-pick path (no override)
- * still looks it up from `encounters`, safe there since `id` always comes
- * from an entry the dropdown is currently showing. */
-/** why: the dropdown's "Aggregate" and specific-fight rows both go through
- * here -- either one is an explicit, fixed pick, so `followCurrentFight`
- * turns off; `followCurrent` is the only way back on. */
-export async function selectEncounter(id: number | null, targetOverride?: string) {
+/** why: a hand pick -- replaces the selection and turns follow mode off */
+export async function setSelection(next: Member[]) {
   followCurrentFight.set(false);
-  selectedEncounterId.set(id);
-  expandedAlly.set(null);
-  if (id === null) {
-    historyTarget.set(null);
-  } else {
-    historyTarget.set(targetOverride ?? get(encounters).find((e) => e.id === id)?.target ?? null);
-  }
-  await refreshSelection();
-  await refreshHistory();
+  await applySelection(next);
 }
 
-/** why: the dropdown's "Current fight" row -- (re)enables follow mode and
- * snaps to whatever's most recent right now; `onCombatTick` keeps it
- * pointed at the newest fight from here on, same as the default on mount. */
+export async function clearSelection() {
+  followCurrentFight.set(false);
+  await applySelection([]);
+}
+
+export async function addRange(since: number, until: number) {
+  ranges.update((r) => (r.some((x) => x.since === since && x.until === until) ? r : [...r, { since, until }]));
+  followCurrentFight.set(false);
+  const m: Member = { kind: 'range', since, until };
+  await applySelection(isSelected(m) ? get(selection) : [...get(selection), m]);
+}
+
+export async function removeRange(since: number, until: number) {
+  ranges.update((r) => r.filter((x) => !(x.since === since && x.until === until)));
+  const k = memberKey({ kind: 'range', since, until });
+  const next = get(selection).filter((m) => memberKey(m) !== k);
+  if (next.length !== get(selection).length) await applySelection(next);
+}
+
+/** why: (re)arms follow mode and snaps to the newest fight of the
+ * current visit; `onCombatTick` keeps it there from here on */
 export async function followCurrent() {
   followCurrentFight.set(true);
-  const id = mostRecentEncounterId(get(encounters));
-  selectedEncounterId.set(id);
-  expandedAlly.set(null);
-  historyTarget.set(id !== null ? (get(encounters).find((e) => e.id === id)?.target ?? null) : null);
-  await refreshSelection();
-  await refreshHistory();
+  const v = currentVisit();
+  if (!v) {
+    await applySelection([]);
+    return;
+  }
+  const k = visitKey(v.index);
+  expandedVisits.update((s) => new Set(s).add(k));
+  const list = get(visitFights)[k] ?? (await loadVisitFights(v.index));
+  const e = newestFight(list);
+  await applySelection(e ? [toMember(e, v.index)] : []);
 }
 
-/** why: Game Data's "open in Combat →" -- `zoneVisit` is a
- * `ZoneEncounterDto`'s own field, where `null` means the pre-first-zone-
- * line "Unknown" bucket; `selectZoneVisit`'s own convention for that same
- * bucket is the sentinel `-1`, not `null` (its `null` means "no filter,
- * every visit" instead) -- translated here so callers never have to know
- * the two stores disagree on what `null` means. `target` is passed
- * through to selectEncounter -- see its own doc for why that beats
- * looking it up locally. */
+/** why: Game Data's "open in Combat →" and a past-parse row -- a
+ * `ZoneEncounterDto`'s own `zone_visit`, where null means the "Unknown" bucket */
 export async function jumpToEncounter(zoneVisit: number | null, encounterId: number, target: string) {
-  await selectZoneVisit(zoneVisit ?? -1);
-  await selectEncounter(encounterId, target);
+  followCurrentFight.set(false);
+  const k = visitKey(zoneVisit);
+  expandedVisits.update((s) => new Set(s).add(k));
+  if (!get(visitFights)[k]) await loadVisitFights(zoneVisit);
+  await applySelection([{ kind: 'encounter', id: encounterId, visit: zoneVisit, target }]);
+}
+
+/** why: a past-parse row IS an encounter -- open exactly that fight */
+export async function jumpToParse(r: ParseRecordDto) {
+  if (r.encounter_id == null) return;
+  await jumpToEncounter(r.zone_visit, r.encounter_id, r.target);
 }
 
 export async function setHistoryConfirmedOnly(v: boolean) {
@@ -251,8 +221,6 @@ export async function setHistoryConfirmedOnly(v: boolean) {
 }
 
 let historyToken = 0;
-
-/** why: refetch History pane for current target; output: void, clears if none */
 async function refreshHistory() {
   const target = get(historyTarget);
   if (target == null) {
@@ -264,7 +232,6 @@ async function refreshHistory() {
   const confirmedOnly = get(historyConfirmedOnly);
   const [records, loadouts] = await Promise.all([api.getMobHistory(target, confirmedOnly), api.getLoadoutSummary(target, confirmedOnly)]);
   if (token !== historyToken) return;
-  // defensive -- invoke<T>()'s type is an assertion, not a guarantee
   historyRecords.set(records ?? []);
   loadoutSummaries.set(loadouts ?? []);
 }
@@ -293,82 +260,69 @@ export async function toggleAlly(name: string) {
 }
 
 export async function scrubTo(tsMs: number) {
-  const enc = timelineEncounter();
+  const enc = singleEncounter()?.id;
   if (enc == null) return;
   stateAt.set({ tsMs, entities: await api.getFightStateAt(enc, tsMs) });
 }
 
-/** why: `preserveScrub` -- a user-picked timeline scrub point (`stateAt`,
- * see scrubTo's own doc) names a fixed, already-past `tsMs`; the data at
- * that instant never changes, so there's nothing to refetch, only a
- * reason NOT to blow it away. Real bug, caught live: onCombatTick's own
- * periodic re-poll while still watching the SAME open fight called this
- * unconditionally, clearing a just-picked scrub point a few seconds
- * after clicking it -- "selecting a point on the fight timeline loads
- * the data below it, but after a few seconds it goes away". Defaults to
- * clearing (false) for every call site that's an actual selection
- * change (a different zone/encounter, or Current Fight re-armed) --
- * that scrub point really is stale then, it belongs to whatever fight
- * was showing before. Only onCombatTick's own "still the same fight,
- * just a live refresh" paths pass true. */
+/** why: `preserveScrub` -- a picked timeline instant never changes, so a
+ * live re-poll of the same fight must not clear it; a real selection
+ * change does (see the incident in git history: the scrub point vanished
+ * seconds after clicking it) */
+let selectionToken = 0;
 async function refreshSelection(preserveScrub = false) {
+  if (!get(selection).length) {
+    summary.set(null);
+    allies.set([]);
+    enemies.set([]);
+    timeline.set(null);
+    stateAt.set(null);
+    allySummary.set(null);
+    return;
+  }
+  const token = ++selectionToken;
   const { zv, enc, sel } = scope();
   const [s, a] = await Promise.all([api.getCombatSummary(zv, enc, null, false, sel), api.listAllies(zv, enc, false, sel)]);
+  if (token !== selectionToken) return;
   summary.set(s);
   allies.set(a ?? []); // defensive -- invoke<T>()'s type is an assertion, not a guarantee
   if (get(showEnemies)) enemies.set((await api.listEnemies(zv, enc, false, sel)) ?? []);
-  const tl = timelineEncounter();
-  timeline.set(tl != null ? await api.getFightTimeline(tl) : null);
+  timeline.set(enc != null ? await api.getFightTimeline(enc) : null);
   if (!preserveScrub) stateAt.set(null);
   const expanded = get(expandedAlly);
   if (expanded) allySummary.set(await api.getCombatSummary(zv, enc, expanded, false, sel));
 }
 
-// why: refetch open selection only; closed fights untouched, no teardown
+// why: refetch what is on screen; closed fights untouched, no teardown
 export async function onCombatTick() {
-  // why: real bug, exposed by app restarts -- zoneVisits used to load
-  // ONLY on Combat mount, and Combat is the launch default, so a fresh
-  // instance snapshotted the zone list at second zero (mid-backfill,
-  // empty) and the picker read "All zones (0)" forever until a module
-  // switch happened to remount it. The fight list below always
-  // refreshed per tick; the zone list now does too -- one cheap IPC,
-  // same cadence, selection untouched.
+  // why: the zone list refreshes every tick too -- a fresh instance used
+  // to snapshot it mid-backfill and read "All zones (0)" forever
   void loadZoneVisits();
-  const zv = get(selectedZoneVisit);
-  encounters.set((await api.listEncounters(zv)) ?? []); // defensive -- invoke<T>() is an assertion, not a guarantee
-
-  // why: cheap, so refresh History unconditionally when a target is selected
+  const v = currentVisit();
+  const keys = new Set(get(expandedVisits));
+  if (v) keys.add(visitKey(v.index));
+  await Promise.all(
+    [...keys].map((k) => loadVisitFights(k === 'u' ? null : Number(k))),
+  );
   if (get(historyTarget) != null) void refreshHistory();
 
-  // why: a bucket is a fixed pick -- live-poll it (an open fight in it
-  // still grows), never re-point it
-  if (get(bucket).length) {
-    await refreshSelection(true);
-    return;
-  }
-
   if (get(followCurrentFight)) {
-    // why: re-point to whatever's most recent *now* -- a new fight
-    // starting is exactly the case this mode exists to follow, not just
-    // "keep refreshing the one already selected".
-    const id = mostRecentEncounterId(get(encounters));
-    const changedFight = id !== get(selectedEncounterId);
-    if (changedFight) {
-      selectedEncounterId.set(id);
-      historyTarget.set(id !== null ? (get(encounters).find((e) => e.id === id)?.target ?? null) : null);
-    }
-    // why: preserve a scrub point unless this tick actually moved to a
-    // different fight -- see refreshSelection's own doc
-    await refreshSelection(!changedFight);
+    // why: re-point to whatever's newest *now* -- a new fight starting
+    // is exactly the case this mode exists to follow
+    if (!v) return;
+    const e = newestFight(get(visitFights)[visitKey(v.index)] ?? []);
+    const next = e ? [toMember(e, v.index)] : [];
+    const changed = next.map(memberKey).join() !== get(selection).map(memberKey).join();
+    if (changed) await applySelection(next);
+    else await refreshSelection(true);
     return;
   }
-
-  const enc = get(selectedEncounterId);
-  if (enc != null) {
-    const current = get(encounters).find((e) => e.id === enc);
-    if (!current?.open) return;
-  }
-  // why: same fight throughout this branch -- selectedEncounterId never
-  // changes here, only a live poll of its still-open data
-  await refreshSelection(true);
+  // why: a hand-picked selection is live-polled only while something in it is still open
+  const fights = get(visitFights);
+  const open = get(selection).some((m) => {
+    if (m.kind === 'range') return false;
+    if (m.kind === 'visit') return (fights[visitKey(m.visit)] ?? []).some((e) => e.open);
+    return (fights[visitKey(m.visit)] ?? []).find((e) => e.id === m.id)?.open ?? false;
+  });
+  if (open) await refreshSelection(true);
 }

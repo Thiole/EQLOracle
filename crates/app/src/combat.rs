@@ -469,11 +469,14 @@ pub struct SelectionDto {
     pub encounters: Vec<u32>,
     #[serde(default)]
     pub ranges: Vec<(Millis, Millis)>,
+    /// why: whole zone visits as members; -1 is the pre-first-zone "Unknown" bucket
+    #[serde(default)]
+    pub visits: Vec<i64>,
 }
 
 impl SelectionDto {
     pub fn is_empty(&self) -> bool {
-        self.encounters.is_empty() && self.ranges.is_empty()
+        self.encounters.is_empty() && self.ranges.is_empty() && self.visits.is_empty()
     }
 }
 
@@ -527,6 +530,21 @@ fn resolve_members(
             window: None,
         })
         .collect();
+    // why: a visit is every fight of yours in it, whole
+    for &v in &sel.visits {
+        for e in &ing.store.encounters {
+            if e.involves_you
+                && !e.absorbed
+                && matches_visit(ing, e.start_ms, Some(v))
+                && !out.iter().any(|m| m.id == e.id)
+            {
+                out.push(Member {
+                    id: e.id,
+                    window: None,
+                });
+            }
+        }
+    }
     // why: a range takes every fight of yours it touches, clipped; a fight
     // already listed whole stays whole (no double count)
     for &(since, until) in &sel.ranges {

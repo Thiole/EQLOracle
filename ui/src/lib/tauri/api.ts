@@ -127,6 +127,8 @@ export interface StatusDto {
 export interface SelectionDto {
   encounters: number[];
   ranges: [number, number][];
+  /** why: whole zone visits; -1 is the pre-first-zone "Unknown" bucket */
+  visits: number[];
 }
 
 export interface ZoneVisitDto {
