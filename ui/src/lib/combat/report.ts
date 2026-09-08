@@ -13,6 +13,9 @@ export interface ReportHeader {
   target: string | null;
   tag: 'kill' | 'wipe' | 'reset' | 'ongoing' | null;
   fightCount: number;
+  /** why: an encounter is itself an aggregate of entities -- the title
+   * says how many rode along with the named one, as the fight list does */
+  others?: number;
   /** why: aggregates copy with reset fights dropped (see Combat.svelte's
    * copyReport) -- said in the title so pasted numbers are honest about
    * what they cover. */
@@ -35,7 +38,7 @@ export function buildCombatReport(header: ReportHeader, summary: CombatSummaryDt
   const title =
     header.target === null
       ? `Aggregate (${header.fightCount} fight${header.fightCount === 1 ? '' : 's'}, ${fmtDuration(summary.duration_ms)}${header.resetsExcluded ? ', resets excluded' : ''})`
-      : `${header.target} (${header.tag ?? '?'}, ${fmtDuration(summary.duration_ms)})`;
+      : `${header.target}${header.others ? ` +${header.others}` : ''} (${header.tag ?? '?'}, ${fmtDuration(summary.duration_ms)})`;
 
   const teamLine = `Team ${fmtCompact(summary.total_damage)} dmg, ${fmtCompact(summary.dps)} dps`;
   const incoming = summary.enemy_damage > 0 ? `, incoming ${fmtCompact(summary.enemy_damage)} dmg` : '';

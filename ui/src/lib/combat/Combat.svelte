@@ -71,7 +71,13 @@
       if (a) allyRows = a;
     }
     const report = buildCombatReport(
-      { target: one?.target ?? mob?.name ?? null, tag, fightCount: sum.fight_count, resetsExcluded: aggregate },
+      {
+        target: one?.target ?? mob?.name ?? null,
+        others: e ? Math.max(0, e.entities.length - 1) : 0,
+        tag,
+        fightCount: sum.fight_count,
+        resetsExcluded: aggregate,
+      },
       sum,
       allyRows,
     );
