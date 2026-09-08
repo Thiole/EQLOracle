@@ -41,7 +41,41 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
+
+/// why: "30 seconds of no lines detected in log, Overlay should go
+/// invisible" -- the game is closed or idle, the overlays get out of the way
+const OVERLAY_IDLE_MS: i64 = 30_000;
+/// why: how long a Settings touch (enable, locate, resize) keeps them showing
+pub const OVERLAY_WAKE_MS: i64 = 30_000;
+
+/// why: pure so it is testable -- idle means no line for the window AND
+/// no recent Settings touch
+pub fn overlay_should_hide(now_ms: i64, last_line_wall_ms: i64, wake_until_ms: i64) -> bool {
+    now_ms - last_line_wall_ms >= OVERLAY_IDLE_MS && now_ms >= wake_until_ms
+}
+
+/// why: hides every visible overlay window while idle and shows the ones
+/// it hid once lines resume; a widget disabled meanwhile is simply gone
+fn sync_overlay_idle(app: &AppHandle, idle: bool, hidden: &mut Vec<String>) {
+    if idle {
+        for (label, w) in app.webview_windows() {
+            if label.starts_with("overlay-")
+                && w.is_visible().unwrap_or(false)
+                && w.hide().is_ok()
+                && !hidden.contains(&label)
+            {
+                hidden.push(label);
+            }
+        }
+    } else if !hidden.is_empty() {
+        for label in hidden.drain(..) {
+            if let Some(w) = app.get_webview_window(&label) {
+                let _ = w.show();
+            }
+        }
+    }
+}
 
 /// why: directory rescan interval; character switches are rare vs line growth
 const RESCAN_MS: i64 = 5_000;
@@ -273,6 +307,8 @@ fn run(
 
     let mut last_rescan = clock.now_ms() - RESCAN_MS;
     let mut last_emit = clock.now_ms() - HEARTBEAT_MS;
+    let mut last_line_wall = clock.now_ms();
+    let mut overlay_hidden: Vec<String> = Vec::new();
 
     // why: how much of a batch is at or before the freeze point
     let keep_upto = |batch: &[Vec<u8>], until: i64| -> usize {
@@ -490,6 +526,22 @@ fn run(
             }
         }
 
+        // why: the overlay idle clock -- live tailing only, a backfill's
+        // own growth is not the game writing
+        if !backfilling {
+            if tail_status == "grew" {
+                last_line_wall = now;
+            }
+            let wake = app
+                .state::<crate::state::AppState>()
+                .overlay_wake_until_ms
+                .load(Ordering::Relaxed);
+            sync_overlay_idle(
+                &app,
+                overlay_should_hide(now, last_line_wall, wake),
+                &mut overlay_hidden,
+            );
+        }
         let has_news = switched || !matches!(tail_status, "idle" | "missing");
         if has_news || now - last_emit >= HEARTBEAT_MS {
             last_emit = now;

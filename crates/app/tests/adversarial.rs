@@ -371,6 +371,27 @@ fn a_selection_clips_ranges_and_never_double_counts() {
     assert_eq!(s.total_damage, 401);
 }
 
+/// why: "30 seconds of no lines detected in log, Overlay should go
+/// invisible" -- and a Settings touch holds them for its own window
+#[test]
+fn overlays_hide_after_thirty_quiet_seconds_unless_settings_touched_them() {
+    use eqlp_app::tail_worker::{overlay_should_hide, OVERLAY_WAKE_MS};
+    let last_line = 1_000_000;
+    assert!(!overlay_should_hide(last_line + 29_999, last_line, 0));
+    assert!(overlay_should_hide(last_line + 30_000, last_line, 0));
+    let touched_at = last_line + 30_000;
+    assert!(!overlay_should_hide(
+        touched_at + 1,
+        last_line,
+        touched_at + OVERLAY_WAKE_MS
+    ));
+    assert!(overlay_should_hide(
+        touched_at + OVERLAY_WAKE_MS,
+        last_line,
+        touched_at + OVERLAY_WAKE_MS
+    ));
+}
+
 /// why: a visit files under the day its first line fell on -- the zone
 /// line's own time, or the earliest fight for the pre-zone bucket
 #[test]

@@ -38,6 +38,10 @@ pub struct AppState {
     /// Update itself carries the download URL/signature, no reason to
     /// re-check just to install what was already found
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
+    /// why: until this wall-clock ms the overlay idle-hide stays off --
+    /// enabling, locating or resizing a widget from Settings arms it, so
+    /// overlays can be set up with the game closed
+    pub overlay_wake_until_ms: std::sync::atomic::AtomicI64,
 }
 
 impl AppState {
@@ -48,6 +52,7 @@ impl AppState {
             ingest: Arc::new(Mutex::new(Ingest::default())),
             status: Arc::new(Mutex::new(TailStatus::default())),
             pending_update: Mutex::new(None),
+            overlay_wake_until_ms: std::sync::atomic::AtomicI64::new(0),
         }
     }
 }

@@ -783,6 +783,15 @@ fn overlay_label(widget: &str) -> String {
     format!("overlay-{widget}")
 }
 
+/// why: a Settings touch keeps the overlays showing for a while even with
+/// no log lines -- see tail_worker's idle hide
+fn wake_overlay(app: &AppHandle) {
+    let until = eqlp_source::SystemClock.now_ms() + crate::tail_worker::OVERLAY_WAKE_MS;
+    app.state::<AppState>()
+        .overlay_wake_until_ms
+        .store(until, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// why: CC Tracker's own layout knob -- "small"/"medium"/"large" mapped
 /// to a logical-pixel (width, height) just big enough for 3 squares at
 /// that size plus the shared panel chrome (CCTrackerWidget's own p-2,
@@ -849,6 +858,7 @@ pub async fn set_overlay_enabled(
         return Ok(());
     }
     crate::overlaydiag::trace(format!("enable {widget}: begin"));
+    wake_overlay(&app);
     if app.get_webview_window(&label).is_some() {
         crate::overlaydiag::trace(format!("enable {widget}: already open"));
         return Ok(());
@@ -1113,6 +1123,7 @@ pub fn set_overlay_overall_opacity(app: AppHandle, widget: String, opacity: f64)
 /// see its own doc.
 #[tauri::command]
 pub fn set_overlay_size(app: AppHandle, widget: String, size: String) {
+    wake_overlay(&app);
     let label = overlay_label(&widget);
     if app.get_webview_window(&label).is_some() {
         let _ = app.emit_to(&label, "overlay-size", (widget, size));
@@ -1130,6 +1141,7 @@ pub fn set_overlay_size(app: AppHandle, widget: String, size: String) {
 /// the widget's window isn't open.
 #[tauri::command]
 pub fn locate_overlay(app: AppHandle, widget: String) {
+    wake_overlay(&app);
     let label = overlay_label(&widget);
     if let Some(w) = app.get_webview_window(&label) {
         let _ = w.set_focus();
