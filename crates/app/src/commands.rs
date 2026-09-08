@@ -299,8 +299,9 @@ pub fn get_fight_state_at(
     state: State<AppState>,
     encounter_id: u32,
     ts_ms: i64,
+    window_ms: Option<i64>,
 ) -> Vec<EntityStateDto> {
-    combat::fight_state_at(&state.ingest.lock_recover(), encounter_id, ts_ms)
+    combat::fight_state_at(&state.ingest.lock_recover(), encounter_id, ts_ms, window_ms)
 }
 
 /// why: every configuration for one entity, most zone visits first; empty if nothing confirmed yet

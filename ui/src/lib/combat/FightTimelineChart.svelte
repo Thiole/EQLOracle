@@ -11,7 +11,22 @@
   // reactivity, not a rebuild -- which is the actual "constant time"
   // property asked for, regardless of which charting approach draws the
   // SVG itself.
-  import { timeline, scrubTo, stateAt } from '$lib/stores/combat';
+  import { timeline, scrubTo, stateAt, inspectWindowS, setInspectWindow } from '$lib/stores/combat';
+
+  // why: one condensed line per action -- "hit a gnoll 120 · Burst of Flame"
+  function actionText(a: { kind: string; target: string; ability: string; amount: number; crit: boolean }): string {
+    const crit = a.crit ? ' (crit)' : '';
+    switch (a.kind) {
+      case 'hit':
+        return `hit ${a.target} ${a.amount.toLocaleString()} · ${a.ability}${crit}`;
+      case 'miss':
+        return `missed ${a.target} · ${a.ability}`;
+      case 'heal':
+        return `healed ${a.target} ${a.amount.toLocaleString()} · ${a.ability}`;
+      default:
+        return `cast ${a.ability}${a.target && a.target !== a.ability ? ` on ${a.target}` : ''}`;
+    }
+  }
 
   const VIEW_W = 960;
   const VIEW_H = 180;
@@ -118,7 +133,18 @@
 
   {#if $stateAt}
     <div class="mt-2 rounded-md border border-border bg-muted/20 p-2">
-      <div class="mb-1 text-[11px] font-medium">{fmtLogTime($stateAt.tsMs)}</div>
+      <div class="mb-1 flex items-center gap-2 text-[11px]">
+        <span class="font-medium">{fmtLogTime($stateAt.tsMs)}</span>
+        <span class="text-muted-foreground">recent</span>
+        <!-- why: the window behind "recent" -- dps and the action list both run over it -->
+        {#each [1, 2, 3, 4, 5, 6, 7, 8] as s (s)}
+          <button
+            type="button"
+            class="rounded-sm border px-1 text-[10px] {$inspectWindowS === s ? 'border-primary text-primary' : 'border-border text-muted-foreground hover:text-foreground'}"
+            onclick={() => void setInspectWindow(s)}>{s}s</button
+          >
+        {/each}
+      </div>
       <table class="w-full text-[11px]">
         <tbody>
           {#each $stateAt.entities as e (e.name)}
@@ -127,6 +153,20 @@
               <td class="py-0.5 text-muted-foreground">{e.state}{e.observed ? '' : ' (inferred)'}</td>
               <td class="py-0.5 text-right tabular-nums">{e.dps.toFixed(1)} dps</td>
             </tr>
+            {#if (e.recent_actions ?? []).length > 0}
+              <tr class="border-b border-border/50">
+                <td colspan="3" class="py-0.5 pl-3">
+                  <div class="flex flex-col gap-0.5 text-muted-foreground">
+                    {#each e.recent_actions as a, i (i)}
+                      <div class="flex gap-2">
+                        <span class="shrink-0 tabular-nums">{fmtLogTime(a.ts_ms)}</span>
+                        <span class={a.kind === 'hit' ? 'text-foreground' : ''}>{actionText(a)}</span>
+                      </div>
+                    {/each}
+                  </div>
+                </td>
+              </tr>
+            {/if}
             {#if e.recent_effects.length > 0}
               <tr class="border-b border-border/50">
                 <td colspan="3" class="py-0.5 pl-3">

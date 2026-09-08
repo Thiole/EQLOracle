@@ -293,10 +293,21 @@ function timelineEncounter(): number | null {
   return singleEncounter()?.id ?? singleMob()?.id ?? null;
 }
 
+/** why: the "recent" window behind a chart click, in seconds; 6 is the
+ * backend's own default and the fixture's key */
+export const inspectWindowS = writable(6);
+
 export async function scrubTo(tsMs: number) {
   const enc = timelineEncounter();
   if (enc == null) return;
-  stateAt.set({ tsMs, entities: await api.getFightStateAt(enc, tsMs) });
+  const w = get(inspectWindowS);
+  stateAt.set({ tsMs, entities: await api.getFightStateAt(enc, tsMs, w === 6 ? undefined : w * 1000) });
+}
+
+export async function setInspectWindow(seconds: number) {
+  inspectWindowS.set(seconds);
+  const at = get(stateAt);
+  if (at) await scrubTo(at.tsMs);
 }
 
 /** why: `preserveScrub` -- a picked timeline instant never changes, so a

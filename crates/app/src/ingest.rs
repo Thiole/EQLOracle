@@ -9075,7 +9075,7 @@ mod effect_ping_tests {
             .copied()
             .expect("one encounter should be open")
             .0;
-        let states = crate::combat::fight_state_at(&ing, enc_id, ing.now_ms());
+        let states = crate::combat::fight_state_at(&ing, enc_id, ing.now_ms(), None);
         let you_state = states
             .iter()
             .find(|s| s.name == "You")

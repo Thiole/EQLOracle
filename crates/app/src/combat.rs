@@ -1544,6 +1544,18 @@ pub struct RecentEffectDto {
     pub text: String,
 }
 
+/// why: one thing an entity did inside the inspect window -- a hit, a
+/// miss, a cast, a heal -- condensed, not the log line
+#[derive(Debug, Clone, Serialize)]
+pub struct RecentActionDto {
+    pub ts_ms: Millis,
+    pub kind: &'static str,
+    pub target: String,
+    pub ability: String,
+    pub amount: u64,
+    pub crit: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct EntityStateDto {
     pub name: String,
@@ -1559,7 +1571,13 @@ pub struct EntityStateDto {
     /// why: recognized buff/state text within EFFECT_RECENCY_MS, each
     /// with best-effort source/skill attribution
     pub recent_effects: Vec<RecentEffectDto>,
+    /// why: what this entity did in the inspect window, newest first
+    pub recent_actions: Vec<RecentActionDto>,
 }
+
+/// why: the window is what makes "recent" readable -- past ~20 rows the
+/// list says nothing a table doesn't
+const RECENT_ACTIONS_CAP: usize = 20;
 
 /// why: per-entity damage-over-time for the scrub bar; None for an unknown encounter id
 pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDto> {
@@ -1632,8 +1650,18 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
 }
 
 /// why: what clicking a timeline point shows -- every entity, state, and a snapshot DPS
-pub fn fight_state_at(ing: &Ingest, encounter_id: u32, ts_ms: Millis) -> Vec<EntityStateDto> {
-    fight_state_at_windowed(ing, encounter_id, ts_ms, INSPECT_WINDOW_MS)
+pub fn fight_state_at(
+    ing: &Ingest,
+    encounter_id: u32,
+    ts_ms: Millis,
+    window_ms: Option<Millis>,
+) -> Vec<EntityStateDto> {
+    fight_state_at_windowed(
+        ing,
+        encounter_id,
+        ts_ms,
+        window_ms.unwrap_or(INSPECT_WINDOW_MS).clamp(1_000, 60_000),
+    )
 }
 
 /// why: fight_state_at's own real body, window size pulled out -- the
@@ -1679,6 +1707,9 @@ fn fight_state_at_windowed(
                     )
                 })
                 .unwrap_or(0.0);
+            let recent_actions = sym
+                .map(|s| recent_actions(ing, id, s, ts_ms, window_ms))
+                .unwrap_or_default();
             let recent_effects = sym
                 .map(|s| {
                     ing.effects
@@ -1700,6 +1731,7 @@ fn fight_state_at_windowed(
                 observed,
                 dps,
                 recent_effects,
+                recent_actions,
                 name,
             }
         })
@@ -1709,6 +1741,49 @@ fn fight_state_at_windowed(
             .partial_cmp(&a.dps)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
+    out
+}
+
+/// why: the entity's own rows in (ts - window, ts], newest first, capped
+fn recent_actions(
+    ing: &Ingest,
+    id: EncounterId,
+    actor: Sym,
+    ts_ms: Millis,
+    window_ms: Millis,
+) -> Vec<RecentActionDto> {
+    let Some(enc) = ing.store.encounter(id) else {
+        return Vec::new();
+    };
+    let since = ts_ms - window_ms;
+    let mut out = Vec::new();
+    for i in enc.range().rev() {
+        let t = ing.store.ts[i];
+        if t > ts_ms || ing.store.enc[i] != id.0 || ing.store.actor[i] != actor {
+            continue;
+        }
+        if t <= since {
+            break;
+        }
+        let kind = match ing.store.kind[i] {
+            EventKind::Damage => "hit",
+            EventKind::Miss => "miss",
+            EventKind::Cast => "cast",
+            EventKind::Heal => "heal",
+            _ => continue,
+        };
+        out.push(RecentActionDto {
+            ts_ms: t,
+            kind,
+            target: ing.store.name(ing.store.target[i]).to_string(),
+            ability: ing.store.ability_name(ing.store.ability[i]).to_string(),
+            amount: ing.store.amount[i],
+            crit: ing.store.flags[i] & flag::CRITICAL != 0,
+        });
+        if out.len() == RECENT_ACTIONS_CAP {
+            break;
+        }
+    }
     out
 }
 

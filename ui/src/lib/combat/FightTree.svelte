@@ -227,10 +227,10 @@
       <span class="text-muted-foreground">log time</span>
     </div>
   {/if}
-  <!-- why: full length -- the page scrolls, the list does not -->
+  <!-- why: fifty rows tall, then it scrolls -->
   <div
     bind:this={list}
-    class="relative select-none"
+    class="relative max-h-[1300px] select-none overflow-y-auto"
     role="listbox"
     aria-multiselectable="true"
     tabindex="-1"

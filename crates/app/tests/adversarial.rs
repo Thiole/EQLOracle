@@ -371,6 +371,50 @@ fn a_selection_clips_ranges_and_never_double_counts() {
     assert_eq!(s.total_damage, 401);
 }
 
+/// why: "recent 1-8 seconds when I click on graph" -- an entity's own
+/// actions inside the window, newest first, nothing older than it
+#[test]
+fn a_chart_instant_lists_each_entitys_recent_actions_inside_the_window() {
+    use eqlp_app::combat;
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:02 2026] You hit a gnoll for 50 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:03 2026] A gnoll hits YOU for 5 points of damage.\n",
+        "[Tue Jul 28 15:01:04 2026] You hit a gnoll for 30 points of fire damage by Burst of Flame. (Critical)\n",
+        "[Tue Jul 28 15:01:05 2026] You have slain a gnoll!\n",
+    ));
+    let fight = combat::list_encounters(&ing, None, 0, 50)
+        .into_iter()
+        .find(|e| e.target.eq_ignore_ascii_case("a gnoll"))
+        .expect("the fight");
+    let at = fight.start_ms + 4_000;
+    let state = combat::fight_state_at(&ing, fight.id, at, Some(3_000));
+    let you = state.iter().find(|e| e.name == "You").expect("You");
+    let hits: Vec<(i64, u64, bool)> = you
+        .recent_actions
+        .iter()
+        .map(|a| (a.ts_ms - fight.start_ms, a.amount, a.crit))
+        .collect();
+    assert_eq!(
+        hits,
+        vec![(4_000, 30, true), (2_000, 50, false)],
+        "newest first, :00 is outside a 3s window ending at :04"
+    );
+    assert!(
+        (you.dps - 80.0 / 3.0).abs() < 1e-9,
+        "dps over the same window"
+    );
+    let gnoll = state
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("a gnoll"))
+        .expect("gnoll");
+    assert_eq!(gnoll.recent_actions.len(), 1);
+    assert_eq!(
+        (gnoll.recent_actions[0].kind, gnoll.recent_actions[0].amount),
+        ("hit", 5)
+    );
+}
+
 /// why: "details per mob" -- a fight lists its enemies with what they took
 /// and dealt, and one mob selected scopes the numbers to it over its own
 /// span in the fight

@@ -202,7 +202,10 @@ fn main() {
             let idx = ((i as f64 * step) as usize).min(t.buckets.len() - 1);
             let ts = t.buckets[idx];
             let key = format!("encounterId={richest_id}&tsMs={ts}");
-            state_by_ts.insert(key, json!(combat::fight_state_at(&ing, richest_id, ts)));
+            state_by_ts.insert(
+                key,
+                json!(combat::fight_state_at(&ing, richest_id, ts, None)),
+            );
         }
         out.insert("get_fight_state_at".to_string(), Value::Object(state_by_ts));
     }

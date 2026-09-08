@@ -340,6 +340,17 @@ export interface EntityStateDto {
    * line for most of these), each with best-effort source/skill
    * attribution -- see RecentEffectDto's own doc. */
   recent_effects: RecentEffectDto[];
+  /** why: what this entity did in the inspect window, newest first; condensed, not log lines */
+  recent_actions: RecentActionDto[];
+}
+
+export interface RecentActionDto {
+  ts_ms: number;
+  kind: 'hit' | 'miss' | 'cast' | 'heal';
+  target: string;
+  ability: string;
+  amount: number;
+  crit: boolean;
 }
 
 // ------------------------------------------------------------------ overlay
@@ -1785,8 +1796,9 @@ export const api = {
 
   getFightTimeline: (encounterId: number) => invoke<FightTimelineDto | null>('get_fight_timeline', { encounterId }),
 
-  getFightStateAt: (encounterId: number, tsMs: number) =>
-    invoke<EntityStateDto[]>('get_fight_state_at', { encounterId, tsMs }),
+  /** why: windowMs only travels when set -- the mock fixture keys on the bare pair */
+  getFightStateAt: (encounterId: number, tsMs: number, windowMs?: number) =>
+    invoke<EntityStateDto[]>('get_fight_state_at', windowMs === undefined ? { encounterId, tsMs } : { encounterId, tsMs, windowMs }),
 
   // -------------------------------------------------------------- character
 

@@ -284,7 +284,7 @@ why: Endgame's Epic Quests farm list -- see epicquests.rs's own doc
 ## `get_fight_state_at` (stateful)
 What clicking a point on the scrub bar shows: every entity's state and a snapshot DPS reading as of that instant.
 
-- args: `encounter_id: u32`; `ts_ms: i64`
+- args: `encounter_id: u32`; `ts_ms: i64`; `window_ms: Option<i64>`
 - returns: `Vec<EntityStateDto>`
 
 ## `get_fight_timeline` (stateful)
