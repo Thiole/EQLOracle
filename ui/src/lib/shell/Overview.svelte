@@ -276,10 +276,11 @@
                 <span class="font-mono text-[10px] text-muted-foreground" title="auto: starts after the last 30 minutes with no action by you or your party">
                   {$session?.mode === 'manual' ? 'manual timeframe' : $session?.mode === 'restart' ? 'since restart' : 'auto · 30-min gap'}
                 </span>
-                <Button size="sm" variant="ghost" class="h-6 text-[11px]" onclick={openFrame} title="Set the session's start and end yourself">
+                <!-- why: outlined, not ghost -- "to look like buttons"; ghost reads as plain text until hovered -->
+                <Button size="sm" variant="outline" class="h-6 text-[11px]" onclick={openFrame} title="Set the session's start and end yourself">
                   set timeframe
                 </Button>
-                <Button size="sm" variant="ghost" class="h-6 text-[11px]" onclick={restart} disabled={resetting} title="Zero out plat/motes/levels/AA and start counting from right now">
+                <Button size="sm" variant="outline" class="h-6 text-[11px]" onclick={restart} disabled={resetting} title="Zero out plat/motes/levels/AA and start counting from right now">
                   {resetting ? 'restarting…' : 'restart'}
                 </Button>
               </div>
