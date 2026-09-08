@@ -3094,11 +3094,19 @@ impl Ingest {
     /// why: an ally's class evidence from what they LAND -- a named
     /// spell maps to the classes that can cast it (the same table your
     /// own detection uses), a class-only melee verb to its class.
-    /// Not for "You" (your own detection stays on casts/stances/AAs)
-    /// and not for pets.
+    /// Not for pets. For "You" only a cast-less ability counts (your own
+    /// detection otherwise stays on casts/stances/AAs, and a weapon
+    /// proc's "by <spell>" line must not read as your class).
     fn note_damage_class_evidence(&mut self, ev: &Involved<'_>, ability: &str, tags: Tags) {
         let (ts, src) = (ev.0.id.ts, ev.0.id.src);
-        if ev.0.id.src_is_you || self.is_pet(src) {
+        if self.is_pet(src) {
+            return;
+        }
+        if ev.0.id.src_is_you {
+            if tags & tag::SPELL != 0 && is_castless_ability(base_spell_name(ability)) {
+                let classes = crate::classdata::classes_for(base_spell_name(ability));
+                self.note_class_evidence(ts, src, classes);
+            }
             return;
         }
         if tags & tag::SPELL != 0 {
@@ -5992,6 +6000,14 @@ fn class_only_melee(canonical: &str) -> Option<&'static str> {
 /// why: "<name> has been charmed." names no caster, so the only way to
 /// attribute a charm is that somebody just cast one. A charm spell is one
 /// whose own slot says so -- 24 in the pack, no name list here.
+/// why: Reaving Strike and Harm Touch log "You hit X ... by <name>" with
+/// no cast line -- the class pool knows them, the spell catalog doesn't.
+/// A proc is a real catalog spell, so it never passes here.
+fn is_castless_ability(base: &str) -> bool {
+    !crate::classdata::classes_for(base).is_empty()
+        && crate::spelldata::spell_by_name(base).is_none()
+}
+
 fn is_mez_spell(name: &str) -> bool {
     crate::spelldata::spell_by_name(base_spell_name(name)).is_some_and(|sp| {
         sp.slots

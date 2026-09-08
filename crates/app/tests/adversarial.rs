@@ -321,6 +321,37 @@ fn harm_touch_and_reaving_strike_put_shadow_knight_on_the_row() {
         "your own Harm Touch is a Shadow Knight -- got {:?}",
         shown(&you, "You")
     );
+    // why: Spencer's own shapes -- the ability has no cast line, the
+    // damage line is the only first-person evidence there is
+    let you_rs = run(concat!(
+        "[Thu Jul 02 10:09:00 2026] You tell your party, 'ready'\n",
+        "[Thu Jul 02 10:10:00 2026] You hit a sturdy skeleton for 34 points of magic damage by Reaving Strike.\n",
+    ));
+    assert!(
+        shown(&you_rs, "You").iter().any(|c| c == "Shadow Knight"),
+        "your own Reaving Strike is a Shadow Knight -- got {:?}",
+        shown(&you_rs, "You")
+    );
+    // why: the gate -- a catalog spell on your own damage line is what a
+    // weapon proc looks like, and must stay out of your detection
+    let proc = run(concat!(
+        "[Thu Jul 02 10:09:00 2026] You tell your party, 'ready'\n",
+        "[Thu Jul 02 10:10:00 2026] You hit a sturdy skeleton for 34 points of magic damage by Ykesha.\n",
+    ));
+    assert!(
+        shown(&proc, "You").is_empty(),
+        "a catalog spell on your damage line is not evidence -- got {:?}",
+        shown(&proc, "You")
+    );
+    let wipe = run(concat!(
+        "[Thu Jul 02 07:47:00 2026] Wipe tells the group, 'inc'\n",
+        "[Thu Jul 02 07:47:54 2026] Wipe hit a skeletal excavator for 30 points of magic damage by Reaving Strike.\n",
+    ));
+    assert!(
+        shown(&wipe, "Wipe").iter().any(|c| c == "Shadow Knight"),
+        "Wipe's Reaving Strike is a Shadow Knight -- got {:?}",
+        shown(&wipe, "Wipe")
+    );
 }
 
 /// why: Spencer -- Dragon Punch, Eagle Strike, Tiger Claw and Tail Rake

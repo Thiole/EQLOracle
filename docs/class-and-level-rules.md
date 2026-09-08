@@ -71,10 +71,16 @@ Code: `crates/session/src/classdetect.rs` (your classes),
 - C10. AA names with a ": Enabled"/": Disabled" suffix fall back to the
   bare catalog name.
 - C11. Harm Touch and Reaving Strike are Shadow Knight-only evidence, for
-  You (cast line) and for allies ("by Harm Touch" / "by Reaving Strike"
-  damage lines). Spencer 2026-09-08: "harm touch or Reaving Strike (not
-  reave) is 100% a shadowknight confirmation". Reaving Strike is a
-  hand-verified spell_classes entry; Reave is untouched (skill_classes).
+  allies ("by Harm Touch" / "by Reaving Strike" damage lines) and for You.
+  Spencer 2026-09-08: "harm touch or Reaving Strike (not reave) is 100% a
+  shadowknight confirmation"; shapes given: "Wipe hit a skeletal excavator
+  for 30 points of magic damage by Reaving Strike." and "You hit a sturdy
+  skeleton for 34 points of magic damage by Reaving Strike." Reaving
+  Strike is a hand-verified spell_classes entry; Reave is untouched.
+- C11b. Your own "by <name>" damage line is evidence only for a cast-less
+  ability: the class pool knows the name and the spell catalog does not.
+  A weapon proc is a catalog spell, so it never counts. Casts/stances/AAs
+  remain the first-person path for everything else (C1).
 
 ## Bard through Symphonic Aura
 
