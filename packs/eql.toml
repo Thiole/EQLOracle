@@ -424,10 +424,13 @@ id = "noise.friends"
 kind = "noise"
 priority = 50
 anchors = [" "]
-pattern = '''^(?:(?P<who>.+?) is now your friend\.|Ignore list was not modified\.)$'''
+pattern = '''^(?:(?P<who>.+?) is now your friend\.|Ignore list (?:was not )?modified\.|You have added (?P<added>.+?) to your (?P<list>IGNORE|FRIENDS) list\.|Friends currently on (?P<game>.+?):)$'''
 examples = [
   "[Tue Sep 08 12:00:00 2026] Iceduya is now your friend.",
   "[Tue Sep 08 12:00:00 2026] Ignore list was not modified.",
+  "[Tue Sep 08 12:00:00 2026] Ignore list modified.",
+  "[Tue Sep 08 12:00:00 2026] You have added Pryy to your IGNORE list.",
+  "[Tue Sep 08 12:00:00 2026] Friends currently on EverQuest Legends:",
 ]
 
 [[rule]]
@@ -715,7 +718,7 @@ id = "noise.social_emote"
 kind = "noise"
 priority = 50
 anchors = [" "]
-pattern = '''^(?P<who>.+?) (?P<emote>waves at|bows before|cheers at|freaks out at|hugs|thanks|nods at|whistles at) (?P<target>.+?)(?: heartily| appreciatively)?[.!]$'''
+pattern = '''^(?P<who>.+?) (?P<emote>waves at|bows before|cheers at|freaks out at|hugs|thanks|nods at|whistles at|bonks|cries over|kisses|kneels before|shares a pizza with|waves goodbye to|yells for help from) (?P<target>.+?)(?: heartily| appreciatively| on the head| on the cheek| in humility and reverence)?[.!]$'''
 examples = [
   "[Tue Sep 08 12:00:00 2026] Jadyn waves at Manipulator.",
   "[Tue Sep 08 12:00:00 2026] Jadyn bows before Manipulator.",
@@ -725,6 +728,14 @@ examples = [
   "[Tue Sep 08 12:00:00 2026] Bashems thanks Manipulator heartily.",
   "[Tue Sep 08 12:00:00 2026] Teagan nods at Hackbenjamin.",
   "[Tue Sep 08 12:00:00 2026] Nyghtwish whistles at Manipulator appreciatively.",
+  "[Tue Sep 08 12:00:00 2026] Selenity bonks Mazel on the head!",
+  "[Tue Sep 08 12:00:00 2026] Just cries over Manipulator.",
+  "[Tue Sep 08 12:00:00 2026] Painess kisses Anadaria on the cheek.",
+  "[Tue Sep 08 12:00:00 2026] Thekaos kneels before Manipulator in humility and reverence.",
+  "[Tue Sep 08 12:00:00 2026] Chancho shares a pizza with Bonez.",
+  "[Tue Sep 08 12:00:00 2026] Yushu waves goodbye to Kaien.",
+  "[Tue Sep 08 12:00:00 2026] Enchanterwill yells for help from off to the right of you.",
+  "[Tue Sep 08 12:00:00 2026] Zinzu yells for help from straight ahead of you.",
 ]
 [rule.fields]
 who = { from = "who", as = "str" }
@@ -736,7 +747,7 @@ kind = "noise"
 priority = 50
 anchors = [" "]
 # why: scripted mob flavor lines, one shape each, all real
-pattern = '''^(?:(?P<who>.+?) resumes his patrol, his keyring jangling noisily at his side\.|(?P<leapt>.+?) is leapt upon\.|A revultant rat's corpse spurts foul smelling blood, and is still\.|(?P<dancer>.+?) stands on (?:her|his|its) tip-toes and does a dance of joy!|It begins to rain\.|(?P<barker>.+?) Growls BARK! 'You will never have my eye!' BARK! BARK!|A fire beetle chitters and buzzes its translucent wings in anticipation of battle\.|A sporeling is not fully developed\. It needs a host body to feed upon\. Yours!|A wise man would not find himself invading the realm of (?P<god>.+?)\.|Perhaps bards and storytellers will sing a song of your death here one day\.|Filled with rage, you can hardly wait until you are able to spill blood again\. In fact, you might not wait! You never did like the way that person over there looked at you!|You place the key in the tumbler and turn it\. Hearing the familiar sound of the lock clicking open, you push on the heavy door, which creaks loudly as you push it open\.)$'''
+pattern = '''^(?:(?P<who>.+?) resumes his patrol, his keyring jangling noisily at his side\.|(?P<leapt>.+?) is leapt upon\.|A revultant rat's corpse spurts foul smelling blood, and is still\.|(?P<dancer>.+?) stands on (?:her|his|its) tip-toes and does a dance of joy!|It begins to rain\.|(?P<barker>.+?) Growls BARK! 'You will never have my eye!' BARK! BARK!|A fire beetle chitters and buzzes its translucent wings in anticipation of battle\.|A sporeling is not fully developed\. It needs a host body to feed upon\. Yours!|A wise man would not find himself invading the realm of (?P<god>.+?)\.|Perhaps bards and storytellers will sing a song of your death here one day\.|Filled with rage, you can hardly wait until you are able to spill blood again\. In fact, you might not wait! You never did like the way that person over there looked at you!|You place the key in the tumbler and turn it\. Hearing the familiar sound of the lock clicking open, you push on the heavy door, which creaks loudly as you push it open\.|A large widow chitters and moves to attack\.|A layer of foul smelling slime coats the floors here, as well as your feet\.|A revultant rat shivers in anticipation of its next meal\.|A skeleton bones rattle as it mindlessly charges\.|A thistle snake hisses and strikes!|The large stone door rumbles loudly as you push it open\.|The stench of decay is overpowering|Progressing further into the citadel may prove to be a bad idea\.|Thoughts of great treasures and fame spur you on\. Thoughts of certain and painful death do not deter you\.|You feel brave enough to challenge the (?P<lord>.+?) in his lair\. Brave, or foolish\?)$'''
 examples = [
   "[Tue Sep 08 12:00:00 2026] Moosh resumes his patrol, his keyring jangling noisily at his side.",
   "[Tue Sep 08 12:00:00 2026] a rock golem is leapt upon.",
@@ -751,6 +762,16 @@ examples = [
   "[Tue Sep 08 12:00:00 2026] Perhaps bards and storytellers will sing a song of your death here one day.",
   "[Tue Sep 08 12:00:00 2026] Filled with rage, you can hardly wait until you are able to spill blood again. In fact, you might not wait! You never did like the way that person over there looked at you!",
   "[Tue Sep 08 12:00:00 2026] You place the key in the tumbler and turn it. Hearing the familiar sound of the lock clicking open, you push on the heavy door, which creaks loudly as you push it open.",
+  "[Tue Sep 08 12:00:00 2026] A large widow chitters and moves to attack.",
+  "[Tue Sep 08 12:00:00 2026] A layer of foul smelling slime coats the floors here, as well as your feet.",
+  "[Tue Sep 08 12:00:00 2026] A revultant rat shivers in anticipation of its next meal.",
+  "[Tue Sep 08 12:00:00 2026] A skeleton bones rattle as it mindlessly charges.",
+  "[Tue Sep 08 12:00:00 2026] A thistle snake hisses and strikes!",
+  "[Tue Sep 08 12:00:00 2026] The large stone door rumbles loudly as you push it open.",
+  "[Tue Sep 08 12:00:00 2026] The stench of decay is overpowering",
+  "[Tue Sep 08 12:00:00 2026] Progressing further into the citadel may prove to be a bad idea.",
+  "[Tue Sep 08 12:00:00 2026] Thoughts of great treasures and fame spur you on. Thoughts of certain and painful death do not deter you.",
+  "[Tue Sep 08 12:00:00 2026] You feel brave enough to challenge the Goblin Lord in his lair. Brave, or foolish?",
 ]
 
 [[rule]]
@@ -957,6 +978,60 @@ examples = [
   "[Tue Sep 08 12:00:00 2026] Because you recently requested a path, you must wait another 11 second(s) before you can request another path!",
   "[Tue Sep 08 12:00:00 2026] Someone is already looting that corpse.",
   "[Tue Sep 08 12:00:00 2026] Jeweler's Kit cannot be dropped, traded, or sold, because it contains an item that is No Trade.",
+]
+
+[[rule]]
+id = "noise.refusals_page6"
+kind = "noise"
+priority = 50
+anchors = [" "]
+pattern = '''^(?:(?P<ability>.+?) may not be used at this time\.|(?P<dz>.+?) can not be added to this dynamic zone since they are already assigned to another dynamic zone\.|(?P<exp>.+?) cannot be added to this expedition for another (?P<wait>\S+) since they have recently played in this area\.|(?P<item>.+?) cannot be added to your personal tradeskill depot because this item is not marked usable for (?P<use>.+?)\.|You attempted to insert an item that is not an augment\.|The zone path window cannot be opened because there is no active path\.|An unknown error has occurred\.)$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] Rewind may not be used at this time.",
+  "[Tue Sep 08 12:00:00 2026] Raabe can not be added to this dynamic zone since they are already assigned to another dynamic zone.",
+  "[Tue Sep 08 12:00:00 2026] Manipulator cannot be added to this expedition for another 0d:15h:25m:19s since they have recently played in this area.",
+  "[Tue Sep 08 12:00:00 2026] Fish Scales cannot be added to your personal tradeskill depot because this item is not marked usable for Tradeskills.",
+  "[Tue Sep 08 12:00:00 2026] You attempted to insert an item that is not an augment.",
+  "[Tue Sep 08 12:00:00 2026] The zone path window cannot be opened because there is no active path.",
+  "[Tue Sep 08 12:00:00 2026] An unknown error has occurred.",
+]
+
+[[rule]]
+id = "noise.rewards"
+kind = "noise"
+priority = 50
+anchors = ["You "]
+pattern = '''^(?:You earned a refund of your instance charge\.|You gained reward experience from the (?P<event>.+?)!|You have completed the (?P<done>.+?) and earned reward loot!|You have successfully been granted your reward for: (?P<reward>.+)|You have entered an (?P<area>.+?) \((?P<flag>.+?)\) area\.)$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] You earned a refund of your instance charge.",
+  "[Tue Sep 08 12:00:00 2026] You gained reward experience from the Dungeon Crawl!",
+  "[Tue Sep 08 12:00:00 2026] You have completed the Dungeon Crawl and earned reward loot!",
+  "[Tue Sep 08 12:00:00 2026] You have successfully been granted your reward for: Race Unlock",
+  "[Tue Sep 08 12:00:00 2026] You have entered an Arena (PvP) area.",
+]
+
+[[rule]]
+id = "noise.help_text"
+kind = "noise"
+priority = 50
+anchors = [" "]
+pattern = '''^(?:Right click on yourself to bring up your own inspect window\. .+|Turns on/off the ability to inspect other players by right-clicking\.|Usage: /join <channel name>|FORMAT: /toggleinspect <on \| off>\.|You can also specify multiple channels using commas .+|You are currently (?:NOT )?able to inspect other players by right-clicking on them\.|Use the pet inventory system to transfer items to pets|Opening https?://\S+|Printing Open, Complete, and Locked achievements\.\.\.|Logging to 'eqlog\.txt' is now \*(?:ON|OFF)\*\.|(?P<who>.+?)'s age: [0-9]+ years \(Earth time\)\. [0-9]+ years \(Norrathian time\)\.|(?P<born>.+?)'s birthdate: .+|This session: .+|:\S+ \))$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] Right click on yourself to bring up your own inspect window. Use the /toggleinspect command to enable or disable right-click inspecting. You can also enable Click Through Self in the Options Window to stop clicking on yourself.",
+  "[Tue Sep 08 12:00:00 2026] Turns on/off the ability to inspect other players by right-clicking.",
+  "[Tue Sep 08 12:00:00 2026] Usage: /join <channel name>",
+  "[Tue Sep 08 12:00:00 2026] FORMAT: /toggleinspect <on | off>.",
+  "[Tue Sep 08 12:00:00 2026] You can also specify multiple channels using commas (e.g. /join <channel name>,<channel name>).",
+  "[Tue Sep 08 12:00:00 2026] You are currently NOT able to inspect other players by right-clicking on them.",
+  "[Tue Sep 08 12:00:00 2026] You are currently able to inspect other players by right-clicking on them.",
+  "[Tue Sep 08 12:00:00 2026] Use the pet inventory system to transfer items to pets",
+  "[Tue Sep 08 12:00:00 2026] Opening https://help.daybreakgames.com/hc/en-us/requests/new",
+  "[Tue Sep 08 12:00:00 2026] Printing Open, Complete, and Locked achievements...",
+  "[Tue Sep 08 12:00:00 2026] Logging to 'eqlog.txt' is now *ON*.",
+  "[Tue Sep 08 12:00:00 2026] Manipulator's age: 0 years (Earth time). 1 years (Norrathian time).",
+  "[Tue Sep 08 12:00:00 2026] Manipulator's birthdate: Tuesday, July 28, 2026 15:01:00.",
+  "[Tue Sep 08 12:00:00 2026] This session: 5 hours, 4 minutes, and 35 seconds",
+  "[Tue Sep 08 12:00:00 2026] :Loggy )",
 ]
 
 [[rule]]
@@ -2199,6 +2274,40 @@ corpse = { from = "corpse", as = "str" }
 sold_for = { from = "sold_for", as = "str" }
 
 [[rule]]
+id = "loot.reward"
+kind = "loot"
+priority = 50
+anchors = ["You looted"]
+# why: reward chests auto-sell or bank -- the item name is what matters
+pattern = '''^You looted (?:(?P<qty>[0-9]+)|a|an) (?P<item>.+?) from (?P<source>Reward Chest) and (?:sold it for (?P<sold_for>.+?)|stored it in your (?P<stored>tradeskill depot|currency))\.?$'''
+examples = [
+  "[Tue Sep 08 12:00:00 2026] You looted a Moonstone Ring +4 from Reward Chest and sold it for 6 platinum, 3 gold, 5 silver and 7 copper.",
+  "[Tue Sep 08 12:00:00 2026] You looted a Blood Wine from Reward Chest and sold it for free.",
+  "[Tue Sep 08 12:00:00 2026] You looted a Gold Ring +4 from Reward Chest and sold it for 8 gold, 5 silver and 7 copper.",
+  "[Tue Sep 08 12:00:00 2026] You looted a Fine Steel Two Handed Sword +4 from Reward Chest and sold it for 5 platinum.",
+  "[Tue Sep 08 12:00:00 2026] You looted a Jade from Reward Chest and stored it in your tradeskill depot",
+  "[Tue Sep 08 12:00:00 2026] You looted 8 Spider Silk from Reward Chest and sold it for 1 platinum, 1 gold, 4 silver and 4 copper.",
+  "[Tue Sep 08 12:00:00 2026] You looted 3 Mote of Major Potential from Reward Chest and stored it in your currency",
+  "[Tue Sep 08 12:00:00 2026] You looted a Mithril Earring +4 from Reward Chest and sold it for 2 platinum and 5 gold.",
+  "[Tue Sep 08 12:00:00 2026] You looted a Crystallized Marrow from Reward Chest and sold it for 1 gold, 7 silver and 9 copper.",
+  "[Tue Sep 08 12:00:00 2026] You looted a Torn Page of Magi`kot pg. 3 from Reward Chest and sold it for free.",
+]
+[rule.fields]
+item = { from = "item", as = "str" }
+source = { from = "source", as = "str" }
+
+[[rule]]
+id = "loot.left_on_corpse"
+kind = "loot"
+priority = 50
+anchors = [" was left on "]
+pattern = '''^--(?P<item>.+?) was left on (?P<corpse>.+?)\.--$'''
+examples = ["[Tue Sep 08 12:00:00 2026] --a Charred Bone Key was left on a shadowknight's corpse.--"]
+[rule.fields]
+item = { from = "item", as = "str" }
+corpse = { from = "corpse", as = "str" }
+
+[[rule]]
 id = "money.vendor_sell"
 kind = "money"
 priority = 50
@@ -3091,13 +3200,15 @@ id = "mob.state"
 kind = "mobstate"
 priority = 20
 anchors = [" "]
+# why: a warder imbued is the beastlord rule's line, not a mob state
+excludes = [" warder is imbued"]
 # why: extended past the original 4 -- every alternative below is a real,
 # still-unmatched shape confirmed against the reference log (counts in
 # the low hundreds to 1000+ each), not a guess. "writhe"/"writhes" both
 # kept (self "You writhe..." vs third-person "X writhes...", same
 # grammatical shape, different conjugation) rather than trying to fold
 # person into the pattern itself.
-pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better|winces|writhes in the grip of agony|writhe in the grip of agony|is surrounded by a traveling spirit|is healed from within|begins to sway|has fallen to the ground|sinks into the ground|is engulfed by a swarm|regains concentration and continues casting|feels a healing touch|is protected by a vortex of shadows|creates a mystic portal|is entwined by roots|is burning|is stung by a dozen flashes of the blade|is torn between life and death|stumbles, clutching their head|looks glamorous|blinks, looking confused|starts limping|is bound by chords of music|is bound by strands of force|begins to move faster|floats into the air|rises on a gust of hot wind|enters an accelerated frenzy|suffers a blow to the head|looks dazed|channels pure magic into the form of an improved familiar|is bathed in healing water|is healed by the spirit of the slug|is healed by the spirit of the snail|becomes a paragon of spirit|embodies the elements|goes mad with the power of the spirits|becomes entwined in roots|is struck by divine retribution|enters a meditative trance|goes into a berserker frenzy|is no longer berserk|lets loose a berserk yell|freaks out|transmutes flesh to bone|begins to shiver violently|speaks with an unfamiliar voice|is stricken by the force of a dragon|was disarmed|panics|vanishes completely|appears to be dead|has been stunned by a gust of air|is caught in a vortex|falls into a state of nonchalance|is shackled to the ground|is surrounded in a seething mass of darkness|is blinded by a jet of inky water|cheers|has been infused with hatred|faints|is engulfed in a blinding rage|was injured by a trap|staggers as a harpoon of ice strikes them)[.!]?$'''
+pattern = '''^(?P<who>.+?) (?P<state>staggers|rages|begins to bleed profusely|fades away|feels much better|winces|writhes in the grip of agony|writhe in the grip of agony|is surrounded by a traveling spirit|is healed from within|begins to sway|has fallen to the ground|sinks into the ground|is engulfed by a swarm|regains concentration and continues casting|feels a healing touch|is protected by a vortex of shadows|creates a mystic portal|is entwined by roots|is burning|is stung by a dozen flashes of the blade|is torn between life and death|stumbles, clutching their head|looks glamorous|blinks, looking confused|starts limping|is bound by chords of music|is bound by strands of force|begins to move faster|floats into the air|rises on a gust of hot wind|enters an accelerated frenzy|suffers a blow to the head|looks dazed|channels pure magic into the form of an improved familiar|is bathed in healing water|is healed by the spirit of the slug|is healed by the spirit of the snail|becomes a paragon of spirit|embodies the elements|goes mad with the power of the spirits|becomes entwined in roots|is struck by divine retribution|enters a meditative trance|goes into a berserker frenzy|is no longer berserk|lets loose a berserk yell|freaks out|transmutes flesh to bone|begins to shiver violently|speaks with an unfamiliar voice|is stricken by the force of a dragon|was disarmed|panics|vanishes completely|appears to be dead|has been stunned by a gust of air|is caught in a vortex|falls into a state of nonchalance|is shackled to the ground|is surrounded in a seething mass of darkness|is blinded by a jet of inky water|cheers|has been infused with hatred|faints|is engulfed in a blinding rage|was injured by a trap|staggers as a harpoon of ice strikes them|has been struck by the judgment of the gods|is imbued with the spirit of the marsh)[.!]?$'''
 examples = [
   "[Tue Jul 28 15:02:15 2026] Splitpaw Sentry staggers.",
   "[Tue Sep 08 12:00:00 2026] Dippinsauce is bathed in healing water.",
@@ -3167,6 +3278,8 @@ examples = [
   "[Tue Jul 28 15:02:15 2026] Iceduya is torn between life and death.",
   "[Tue Jul 28 15:02:15 2026] Kaeus stumbles, clutching their head!",
   "[Tue Jul 28 15:02:15 2026] Myana looks glamorous.",
+  "[Tue Sep 08 12:00:00 2026] Kaeus has been struck by the judgment of the gods.",
+  "[Tue Sep 08 12:00:00 2026] Xenn is imbued with the spirit of the marsh.",
 ]
 [rule.fields]
 who = { from = "who", as = "str" }
@@ -3182,7 +3295,7 @@ anchors = ["'s "]
 # body ..." -- the possessive must come off so `who` is the entity.
 # Only pings the spell catalog cannot derive: "body pulses with energy"
 # stays with the flavor dictionary (Inner Fire's own you-text)
-pattern = '''^(?P<who>.+?)'s (?P<state>body pulses with corruption|face glows radiantly|wounds turn black|body is rent by vicious arcs of electricity|muscles bulge with stolen strength|barbed bones glow faintly|knee is shattered|corpse ceases to move|corpse blinks in confusion, obviously surprised that she has met her end at the hands of mere mortals|corpse dissolves into a cloud of choking spores|corpse growls out its last breath)\.$'''
+pattern = '''^(?P<who>.+?)'s (?P<state>body pulses with corruption|face glows radiantly|wounds turn black|body is rent by vicious arcs of electricity|muscles bulge with stolen strength|barbed bones glow faintly|knee is shattered|corpse ceases to move|corpse blinks in confusion, obviously surprised that she has met her end at the hands of mere mortals|corpse dissolves into a cloud of choking spores|corpse growls out its last breath|corpse clicks a few times then ceases struggling|corpse lashes out at its attacker one last time|corpse crumples to the ground|corpse hisses as it coils lifelessly to the ground|corpse moans pitifully, '.+?')[.!]?$'''
 examples = [
   "[Tue Sep 08 12:00:00 2026] Iceduya's body pulses with corruption.",
   "[Tue Sep 08 12:00:00 2026] Rebs's face glows radiantly.",
@@ -3196,6 +3309,11 @@ examples = [
   "[Tue Sep 08 12:00:00 2026] Mistress of Scorn's corpse blinks in confusion, obviously surprised that she has met her end at the hands of mere mortals.",
   "[Tue Sep 08 12:00:00 2026] A sporeling's corpse dissolves into a cloud of choking spores.",
   "[Tue Sep 08 12:00:00 2026] A kerran puma's corpse growls out its last breath.",
+  "[Tue Sep 08 12:00:00 2026] A fire beetle's corpse clicks a few times then ceases struggling.",
+  "[Tue Sep 08 12:00:00 2026] A kobold scout's corpse lashes out at its attacker one last time.",
+  "[Tue Sep 08 12:00:00 2026] A kobold watcher's corpse crumples to the ground.",
+  "[Tue Sep 08 12:00:00 2026] A thistle snake's corpse hisses as it coils lifelessly to the ground.",
+  "[Tue Sep 08 12:00:00 2026] Arthikus's corpse moans pitifully, 'Evaaaaa!'",
 ]
 [rule.fields]
 who = { from = "who", as = "str" }
@@ -3297,7 +3415,7 @@ anchors = [" "]
 # why: landing texts on you that the spell catalog cannot derive (checked
 # one by one against packs/spells.json); the ones it can stay with the
 # flavor dictionary
-pattern = '''^(?P<state>The heal within you effloresces|You feel as if you are about to look like yourself again|You feel a shadow empower you|You being to feel healed by the slug|You being to feel healed by the snail|You feel the slug spirit depart|You feel the snail spirit depart|You feel glamorous|You feel your blood begin to freeze|Your skin is rent by massive shards of deadly ice|You are caught in a vortex|You embody the elements|You are now an elemental|You enter a meditative trance|You come out of the meditative trance|The promise of divine renewal is fulfilled|You are thrown backwards by a sudden force|You have entered an area where levitation effects do not function|You prepare the misdirection|You spring the misdirection|The protective presence of a guardian spirit reassures you|A wave of cold washes over you\. You can not move|You feel a traveling spirit enter you|The spirit of travel leaves you|You no longer feel dazed|You are filled with the spirit of alternate adventure|Your blood thaws|Your spirit transcends|You groans and looks a little weaker|You exit your stance|You are blinded by a jet of inky water|YOU were crushed|You groan and feel a bit weaker|Your skin becomes as hard as turtle shell|You have been offered a resurrection|You are conscious again|You feel less sleepy|You really hate this place|You are already on a mount)[.!]?$'''
+pattern = '''^(?P<state>The heal within you effloresces|You feel as if you are about to look like yourself again|You feel a shadow empower you|You being to feel healed by the slug|You being to feel healed by the snail|You feel the slug spirit depart|You feel the snail spirit depart|You feel glamorous|You feel your blood begin to freeze|Your skin is rent by massive shards of deadly ice|You are caught in a vortex|You embody the elements|You are now an elemental|You enter a meditative trance|You come out of the meditative trance|The promise of divine renewal is fulfilled|You are thrown backwards by a sudden force|You have entered an area where levitation effects do not function|You prepare the misdirection|You spring the misdirection|The protective presence of a guardian spirit reassures you|A wave of cold washes over you\. You can not move|You feel a traveling spirit enter you|The spirit of travel leaves you|You no longer feel dazed|You are filled with the spirit of alternate adventure|Your blood thaws|Your spirit transcends|You groans and looks a little weaker|You exit your stance|You are blinded by a jet of inky water|YOU were crushed|You groan and feel a bit weaker|Your skin becomes as hard as turtle shell|You have been offered a resurrection|You are conscious again|You feel less sleepy|You really hate this place|You are already on a mount|You have been struck down by the judgment of the gods|Little eggs of evil hatch from inside your brain|You are bleeding to death)[.!]?$'''
 examples = [
   "[Tue Sep 08 12:00:00 2026] The heal within you effloresces.",
   "[Tue Sep 08 12:00:00 2026] You feel as if you are about to look like yourself again.",
@@ -3338,6 +3456,9 @@ examples = [
   "[Tue Sep 08 12:00:00 2026] You feel less sleepy.",
   "[Tue Sep 08 12:00:00 2026] You really hate this place.",
   "[Tue Sep 08 12:00:00 2026] You are already on a mount.",
+  "[Tue Sep 08 12:00:00 2026] You have been struck down by the judgment of the gods.",
+  "[Tue Sep 08 12:00:00 2026] Little eggs of evil hatch from inside your brain!",
+  "[Tue Sep 08 12:00:00 2026] You are bleeding to death!",
 ]
 [rule.fields]
 state = { from = "state", as = "str" }
@@ -3349,6 +3470,24 @@ priority = 40
 anchors = ["Dismounting"]
 pattern = '''^Dismounting\.$'''
 examples = ["[Tue Sep 08 12:00:00 2026] Dismounting."]
+
+[[rule]]
+id = "state.autoattack"
+kind = "state"
+priority = 40
+anchors = ["Auto attack "]
+pattern = '''^Auto attack (?P<state>on|off)\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Auto attack off."]
+[rule.fields]
+state = { from = "state", as = "str" }
+
+[[rule]]
+id = "noise.solo_emote"
+kind = "noise"
+priority = 50
+anchors = [" bows."]
+pattern = '''^(?P<who>.+?) bows\.$'''
+examples = ["[Tue Sep 08 12:00:00 2026] Buuga bows."]
 
 [[rule]]
 id = "mobstate.possessive_misc"
