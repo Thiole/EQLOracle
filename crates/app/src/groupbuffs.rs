@@ -872,18 +872,21 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
         }
         match kind_of_with(spell, ing.spell_file()) {
             Some(k) => {
-                // why: the rank ON you, by its own level requirement --
-                // the highest one up of that kind is what counts
+                // why: the rank ON you by the rows' own value, not level -- a shared
+                // landing text ledgers every sibling, and Boon (42) read as on you
+                // with Clarity as its upgrade while Clarity was what landed
                 let lvl = spell
                     .classes
                     .iter()
                     .filter_map(|c| c.level)
                     .min()
                     .unwrap_or(0);
+                let file = ing.spell_file();
+                let value = |name: &str, lvl: u32| line_value(file, k, base_name(name), name, lvl);
                 let e = active_by_kind
                     .entry(k)
                     .or_insert_with(|| (spell_name.clone(), lvl));
-                if lvl > e.1 {
+                if value(spell_name, lvl) > value(&e.0, e.1) {
                     *e = (spell_name.clone(), lvl);
                 }
             }
