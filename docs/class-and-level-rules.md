@@ -136,6 +136,24 @@ rules below are ally-specific, and they only decide where a chain breaks.
   enemy, or a landed DETRIMENTAL effect an ally cast on an enemy (the
   landing text names the target; "begins casting" never does).
 
+## Scrub buff bar (2026-09-09)
+
+What the timeline scrub assumes is on an entity at an instant. Read
+from the effect ledger, which keeps every attributed ping for the life
+of the app (a zone line used to cull it, so no past fight had a bar).
+
+- B1. Latest landed ping per spell, catalog duration counted down; a
+  wear-off ping ends it. Unknown or Permanent duration shows no timer.
+- B2. A mob is a fresh body every zone visit: nothing landed before the
+  visit started is on it. Players and pets carry their buffs across.
+- B3. Death strips everything on the entity, silently. Assumed from EQ;
+  on the live log self-buff recasts run 5x baseline in the 10 minutes
+  after a death. Open: whether a rez keeps buffs.
+- B4. A later landing replaces any earlier one sharing a stacking slot
+  (slot number + effect kind from the catalog): Greater -> Arch
+  Shielding lands with no log line at all.
+- B5. A dead enemy caster's effects drop (its wear-off logs 1-2s late).
+
 ## Charm instances (Spencer, 2026-09-08)
 
 A charm line names no instance. One mob of that name is yours from that

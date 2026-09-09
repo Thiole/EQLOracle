@@ -576,6 +576,96 @@ fn the_scrub_window_counts_hits_per_ability_and_shows_what_is_on_each_entity() {
     );
 }
 
+/// why: the buff bar must read a fight from an earlier zone visit (a zone
+/// line used to cull the ledger), and a same-named mob in the next zone
+/// is a fresh body -- nothing landed on the last one is on it
+#[test]
+fn zoning_keeps_the_last_fights_buff_bar_but_not_on_the_next_zones_namesake() {
+    use eqlp_app::combat;
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:01 2026] You begin casting Malaise.\n",
+        "[Tue Jul 28 15:01:04 2026] a gnoll looks somewhat uncomfortable.\n",
+        "[Tue Jul 28 15:01:05 2026] You hit a gnoll for 50 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:30 2026] You have entered Everfrost Peaks.\n",
+        "[Tue Jul 28 15:01:40 2026] You hit a gnoll for 50 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:42 2026] You hit a gnoll for 50 points of fire damage by Burst of Flame.\n",
+    ));
+    let fights: Vec<_> = combat::list_encounters(&ing, None, 0, 50)
+        .into_iter()
+        .filter(|e| e.target.eq_ignore_ascii_case("a gnoll"))
+        .collect();
+    assert_eq!(fights.len(), 2, "one fight per zone");
+    let (later, earlier) = (&fights[0], &fights[1]);
+    let on_gnoll = |id, ts| {
+        combat::fight_state_at(&ing, id, ts, Some(7_000))
+            .into_iter()
+            .find(|e| e.name.eq_ignore_ascii_case("a gnoll"))
+            .map(|g| {
+                g.effects
+                    .iter()
+                    .map(|f| f.spell.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    assert_eq!(
+        on_gnoll(earlier.id, earlier.start_ms + 6_000),
+        vec!["Malaise"],
+        "the earlier zone's fight still shows its debuff after zoning"
+    );
+    assert!(
+        on_gnoll(later.id, later.start_ms + 1_000).is_empty(),
+        "the next zone's gnoll is a fresh body"
+    );
+}
+
+/// why: self-buff ranks replace each other with no log line (Greater ->
+/// Arch Shielding share stacking slots), and death strips every buff
+/// silently -- the bar must not pile up every rank ever cast
+#[test]
+fn a_higher_rank_replaces_its_lower_rank_and_death_strips_the_bar() {
+    use eqlp_app::combat;
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:00:00 2026] You begin casting Greater Shielding.\n",
+        "[Tue Jul 28 15:00:06 2026] You feel armored.\n",
+        "[Tue Jul 28 15:00:10 2026] You begin casting Arch Shielding.\n",
+        "[Tue Jul 28 15:00:22 2026] You feel armored.\n",
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:05 2026] You hit a gnoll for 50 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:10 2026] You have been slain by a gnoll!\n",
+        "[Tue Jul 28 15:03:00 2026] You hit a gnoll for 50 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:03:02 2026] You hit a gnoll for 50 points of fire damage by Burst of Flame.\n",
+    ));
+    let fights: Vec<_> = combat::list_encounters(&ing, None, 0, 50)
+        .into_iter()
+        .filter(|e| e.target.eq_ignore_ascii_case("a gnoll"))
+        .collect();
+    assert_eq!(fights.len(), 2, "death closes the first fight");
+    let (later, earlier) = (&fights[0], &fights[1]);
+    let on_you = |id, ts| {
+        combat::fight_state_at(&ing, id, ts, Some(7_000))
+            .into_iter()
+            .find(|e| e.name == "You")
+            .map(|y| {
+                y.effects
+                    .iter()
+                    .map(|f| f.spell.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    assert_eq!(
+        on_you(earlier.id, earlier.start_ms + 6_000),
+        vec!["Arch Shielding"],
+        "the higher rank replaced Greater Shielding"
+    );
+    assert!(
+        on_you(later.id, later.start_ms + 1_000).is_empty(),
+        "dying stripped it"
+    );
+}
+
 /// why: Spencer -- the timer between a kill and the next hostile action
 /// "cut from 6 seconds to 2.5 seconds": a hit 3s after the kill is the
 /// next pull, and a landed detrimental effect counts as that action too

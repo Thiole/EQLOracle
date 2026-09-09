@@ -646,11 +646,15 @@ pub struct Effects {
 }
 
 impl Effects {
-    /// why: once a zone is done its pings are extraneous (Spencer) --
-    /// the scrub of a compacted fight is gone with its rows anyway
+    pub fn entity_count(&self) -> usize {
+        self.by_entity.len()
+    }
+
+    /// why: attributed pings stay -- the scrub's buff bar reads any past
+    /// fight (~25MB on a full log); text-only pings feed short windows
     pub fn cull_before(&mut self, cut_ts: Millis) {
         for pings in self.by_entity.values_mut() {
-            pings.retain(|p| p.ts >= cut_ts);
+            pings.retain(|p| p.ts >= cut_ts || p.skill.is_some());
         }
         self.by_entity.retain(|_, v| !v.is_empty());
     }
@@ -2337,7 +2341,7 @@ impl Ingest {
                 self.zone.enter(ts, zone);
                 // why: "once you are done with a zone, cull the calculations"
                 // (Spencer): finished fights' combat rows fold to aggregates,
-                // their effect pings go, closed class chains freeze to their
+                // unattributed pings go, closed class chains freeze to their
                 // result -- see Store::compact_before. Idle fights are
                 // closed first: backfill only expires them on the next
                 // damage line, which may be a zone away.

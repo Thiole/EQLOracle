@@ -1877,10 +1877,33 @@ fn active_effects(ing: &Ingest, entity: Sym, ts: Millis) -> Vec<ActiveEffectDto>
         ts: Millis,
         landed: bool,
     }
+    // why: a mob is a fresh body every visit -- nothing landed on its
+    // namesake in the last zone is on it; players carry their buffs across
+    let name = ing.store.name(entity);
+    let visit_start = ing
+        .allegiance_at(name, ts)
+        .is_enemy()
+        .then(|| ing.zone.index_at(ts).and_then(|i| ing.zone.bounds(i)))
+        .flatten()
+        .map_or(Millis::MIN, |(start, _)| start);
+    // why: death strips every buff, silently -- deaths run 5x the
+    // baseline rate of self-buff recasts within 10 min on the live log
+    let last_death = ing
+        .timeline
+        .transitions_of(entity.0)
+        .iter()
+        .filter(|t| t.ts <= ts && t.state == State::Dead)
+        .map(|t| t.ts)
+        .max()
+        .unwrap_or(Millis::MIN);
+    let visit_start = visit_start.max(last_death);
     let mut latest: HashMap<String, Obs> = HashMap::new();
     for p in ing.effects.all(entity.0) {
         if p.ts > ts {
             break;
+        }
+        if p.ts < visit_start {
+            continue;
         }
         let Some(skill) = p.skill.as_deref() else {
             continue;
@@ -1899,13 +1922,27 @@ fn active_effects(ing: &Ingest, entity: Sym, ts: Millis) -> Vec<ActiveEffectDto>
             );
         }
     }
-    let mut out: Vec<ActiveEffectDto> = latest
+    // why: a later landing replaces anything sharing a stacking slot
+    let mut landed: Vec<(Obs, &crate::spelldata::Spell)> = latest
         .into_values()
-        .filter_map(|o| {
-            if !o.landed {
+        .filter(|o| o.landed)
+        .filter_map(|o| Some((crate::spelldata::spell_by_name(&o.spell)?, o)).map(|(s, o)| (o, s)))
+        .collect();
+    landed.sort_by_key(|(o, _)| o.ts);
+    let slots: Vec<Vec<(u32, &str)>> = landed
+        .iter()
+        .map(|(_, s)| crate::spelleffect::stacking_slots(s))
+        .collect();
+    let replaced: Vec<bool> = (0..landed.len())
+        .map(|i| (i + 1..landed.len()).any(|j| slots[j].iter().any(|k| slots[i].contains(k))))
+        .collect();
+    let mut out: Vec<ActiveEffectDto> = landed
+        .into_iter()
+        .zip(replaced)
+        .filter_map(|((o, spell), replaced)| {
+            if replaced {
                 return None;
             }
-            let spell = crate::spelldata::spell_by_name(&o.spell)?;
             let d = crate::spelleffect::effects_for(spell).duration;
             if d.is_instant {
                 return None;

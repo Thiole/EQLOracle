@@ -503,6 +503,20 @@ fn categorize(
 }
 
 /// why: everything derived for one catalog spell
+/// why: EQ stacking -- two buffs sharing a slot number and effect kind
+/// don't coexist, the later landing replaces the earlier (Greater ->
+/// Arch Shielding lands silently over its lower rank)
+pub fn stacking_slots(spell: &Spell) -> Vec<(u32, &str)> {
+    spell
+        .slots
+        .iter()
+        .map(|sl| {
+            let kind = sl.effect.split(" by ").next().unwrap_or("");
+            (sl.slot, kind.split(" (").next().unwrap_or("").trim())
+        })
+        .collect()
+}
+
 pub fn effects_for(spell: &Spell) -> SpellEffects {
     let duration = parse_duration(spell.duration.as_deref());
 
