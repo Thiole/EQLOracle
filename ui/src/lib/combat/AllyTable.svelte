@@ -405,7 +405,7 @@
               {#if expandedPart === part.name && part.summary}
                 <Table.Row>
                   <Table.Cell colspan={cols} class="bg-muted/40 p-0">
-                    <div class="flex flex-col gap-3 p-3 pl-6">
+                    <div class="flex w-0 min-w-full flex-col gap-3 p-3 pl-6 whitespace-normal">
                       {@render entityBlock(rowsOf(part.summary), part.summary, null, null)}
                       {#if !part.pet}{@render ownerExtras(a)}{/if}
                     </div>
@@ -416,7 +416,7 @@
           {:else}
             <Table.Row>
               <Table.Cell colspan={cols} class="bg-muted/40 p-0">
-                <div class="flex flex-col gap-3 p-3">
+                <div class="flex w-0 min-w-full flex-col gap-3 p-3 whitespace-normal">
                   {@render entityBlock(abilityRows, $allySummary, null, null)}
                   {@render ownerExtras(a)}
                 </div>
