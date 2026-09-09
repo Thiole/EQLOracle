@@ -481,6 +481,12 @@ why: current tradeskill levels off skill-up lines -- see craftlog's own doc
 - returns: `Result<uifiles::ParsedUiFileDto, String>`
 
 ## `get_unmatched_coverage` (stateful)
+why: Debug > Parsed -- every in-memory table behind one regex. Async: a no-match pattern renders the whole store and must not hold the main thread
+
+- args: `top: Option<usize>`
+- returns: `UnmatchedCoverageDto`
+
+## `get_unmatched_coverage` (stateful)
 
 - args: `top: Option<usize>`
 - returns: `UnmatchedCoverageDto`
@@ -506,11 +512,6 @@ why: Maps module's zone-identity + entrance-guess input; `current_map_zones` con
 
 - args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `confirmed_only: Option<bool>`; `selection: Option<combat::SelectionDto>`
 - returns: `Vec<AllyDto>`
-
-## `list_debug_encounters` (stateful)
-
-- args: `limit: Option<usize>`
-- returns: `Vec<DebugEncounterDto>`
 
 ## `list_encounter_mobs` (stateful)
 why: the fight tree's rows under an expanded fight -- every enemy in it

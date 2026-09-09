@@ -505,6 +505,12 @@ pub struct ExaltationProcs {
 }
 
 impl ExaltationProcs {
+    /// why: (item, procs, first seen), for the Debug db search
+    pub fn all(&self) -> impl Iterator<Item = (&str, u32, Option<Millis>)> {
+        self.counts
+            .iter()
+            .map(|(k, n)| (k.as_str(), *n, self.first_seen_ms.get(k).copied()))
+    }
     pub fn observe(&mut self, ts: Millis, item: String) {
         *self.counts.entry(item.clone()).or_insert(0) += 1;
         self.first_seen_ms.entry(item).or_insert(ts);
@@ -574,6 +580,10 @@ impl SpellLog {
 }
 
 impl Levels {
+    /// why: the whole ding history, for the Debug db search
+    pub fn all(&self) -> &[(Millis, u8)] {
+        &self.at_ts
+    }
     pub fn observe(&mut self, ts: Millis, level: u8) {
         self.at_ts.push((ts, level));
     }
@@ -646,6 +656,12 @@ pub struct Effects {
 }
 
 impl Effects {
+    /// why: every landing of every entity, for the Debug db search
+    pub fn iter_all(&self) -> impl Iterator<Item = (u32, &EffectPing)> {
+        self.by_entity
+            .iter()
+            .flat_map(|(e, v)| v.iter().map(move |p| (*e, p)))
+    }
     pub fn entity_count(&self) -> usize {
         self.by_entity.len()
     }

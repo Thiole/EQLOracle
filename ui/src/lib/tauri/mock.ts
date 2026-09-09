@@ -105,8 +105,8 @@ function keyFor(cmd: string, args: Record<string, unknown> | undefined): string 
       return `mapZoneName=${norm(a.mapZoneName)}`;
     case 'get_npc_markers_for_zone':
       return `zone=${norm(a.zone)}`;
-    case 'list_debug_encounters':
-      return `limit=${norm(a.limit)}`;
+    case 'search_db':
+      return `table=${norm(a.table)}&pattern=${norm(a.pattern)}&limit=${norm(a.limit)}`;
     case 'get_unmatched_coverage':
       return `top=${norm(a.top)}`;
     case 'get_configuration_zone_visits':

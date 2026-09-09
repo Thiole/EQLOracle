@@ -12,6 +12,7 @@ pub mod combat;
 pub mod commands;
 pub mod config;
 pub mod craftlog;
+pub mod dbsearch;
 pub mod deathrecap;
 pub mod debugview;
 pub mod diskwrite;

@@ -11,7 +11,7 @@ use crate::combat::{
 };
 use crate::config::{self, AppConfig};
 use crate::craftlog::{self, CraftLogEntryDto};
-use crate::debugview::{self, DebugEncounterDto, GameStateDto, UnmatchedCoverageDto};
+use crate::debugview::{self, GameStateDto, UnmatchedCoverageDto};
 use crate::dpscalc::{self, DamageSpellDto};
 use crate::emumaps;
 use crate::gearplanner::{self, InventoryDumpDto, ItemDto, SlotRecommendationDto};
@@ -201,14 +201,17 @@ pub fn list_mob_encounters(
     combat::list_mob_encounters(&state.ingest.lock_recover(), &mob_name, limit.unwrap_or(30))
 }
 
-/// why: Debug module's table -- recent encounters with raw and resolved zone tags
-
+/// why: Debug > Parsed -- every in-memory table behind one regex. Async:
+/// a no-match pattern renders the whole store and must not hold the main thread
 #[tauri::command]
-pub fn list_debug_encounters(
-    state: State<AppState>,
+pub async fn search_db(
+    state: State<'_, AppState>,
+    table: String,
+    pattern: String,
     limit: Option<usize>,
-) -> Vec<DebugEncounterDto> {
-    debugview::list_debug_encounters(&state.ingest.lock_recover(), limit.unwrap_or(100))
+) -> Result<crate::dbsearch::SearchDbDto, String> {
+    let ing = state.ingest.lock_recover();
+    crate::dbsearch::search(&ing, &table, &pattern, limit.unwrap_or(100).clamp(1, 1000))
 }
 
 /// why: Debug module's "Unparsed" tab -- unmatched shapes ranked by count

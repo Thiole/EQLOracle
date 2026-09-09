@@ -1,86 +1,123 @@
 <script lang="ts">
-  // why: raw window into what Ingest actually recorded, for verifying zone tagging against real data
+  // why: every in-memory table behind one regex, newest first, the scan
+  // cut at the limit -- the rendered row is what a custom trigger will
+  // match against later
+  import { onMount } from 'svelte';
   import { Card, CardContent } from '$lib/components/ui/card';
-  import SortableTh from '$lib/character/SortableTh.svelte';
-  import { debugEncounters } from '$lib/stores/debug';
-  import type { DebugEncounterDto } from '$lib/tauri/api';
+  import { api, type SearchDbDto } from '$lib/tauri/api';
+  import { refreshOn } from '$lib/tauri/events';
 
-  type SortKey = 'id' | 'target' | 'start_ms' | 'duration_ms' | 'tier';
-  let sort = $state<{ key: SortKey; dir: 1 | -1 }>({ key: 'id', dir: -1 });
-  function toggle(key: SortKey) {
-    sort = sort.key === key ? { key, dir: (sort.dir * -1) as 1 | -1 } : { key, dir: -1 };
+  let table = $state('events');
+  let pattern = $state('');
+  let result = $state<SearchDbDto | null>(null);
+  let error = $state<string | null>(null);
+  let busy = false;
+  let again = false;
+
+  // why: one call in flight; a request during it runs once it returns
+  async function run() {
+    if (busy) {
+      again = true;
+      return;
+    }
+    busy = true;
+    try {
+      const r = await api.searchDb(table, pattern);
+      if (r) result = r;
+      error = r ? null : 'no backend in this session';
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+      if (again) {
+        again = false;
+        void run();
+      }
+    }
   }
 
-  const sorted = $derived.by(() => {
-    const rows = $debugEncounters ?? [];
-    const { key, dir } = sort;
-    return [...rows].sort((a, b) => {
-      const av = a[key];
-      const bv = b[key];
-      if (typeof av === 'string') return dir * av.localeCompare(bv as string);
-      return dir * ((av as number) - (bv as number));
+  // why: 200ms after the last keystroke -- a no-match regex renders the
+  // whole store, so never per keystroke
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    void table;
+    void pattern;
+    clearTimeout(timer);
+    timer = setTimeout(() => void run(), 200);
+    return () => clearTimeout(timer);
+  });
+
+  // why: live while open -- at most one re-run per 2s of parsed lines
+  onMount(() => {
+    let last = 0;
+    return refreshOn('*', () => {
+      const now = Date.now();
+      if (now - last < 2000) return;
+      last = now;
+      void run();
     });
   });
 
-  const missCount = $derived(($debugEncounters ?? []).filter((e) => e.raw_zone && !e.resolved_zone_id).length);
+  const summary = $derived.by(() => {
+    if (!result) return '';
+    const shown = `${result.matched}${result.truncated ? '+' : ''} of ${result.total.toLocaleString()} rows`;
+    return result.truncated ? `${shown} · scan cut after ${result.scanned.toLocaleString()}` : shown;
+  });
 </script>
 
 <Card class="rounded-sm">
   <CardContent class="px-3 py-2.5">
-    <h2 class="panel-title mb-1">parsed · recent encounters</h2>
-    <p class="mb-2 text-[11px] text-muted-foreground">
-      {#if $debugEncounters}
-        <b class="text-foreground tabular-nums">{$debugEncounters.length}</b> most recent, newest first.
-        {#if missCount}
-          <span class="text-bad">{missCount} with a raw zone that failed to resolve.</span>
-        {:else}
-          Every raw zone resolved.
-        {/if}
-      {:else}
-        Loading…
-      {/if}
-    </p>
-    <div class="max-h-[560px] overflow-y-auto rounded-sm border border-border">
-      <table class="w-full text-[11px]">
-        <thead class="sticky top-0 bg-card">
-          <tr class="border-b border-border">
-            <SortableTh label="id" active={sort.key === 'id'} dir={sort.dir} onclick={() => toggle('id')} />
-            <SortableTh label="target" active={sort.key === 'target'} dir={sort.dir} onclick={() => toggle('target')} />
-            <SortableTh label="start" active={sort.key === 'start_ms'} dir={sort.dir} onclick={() => toggle('start_ms')} />
-            <SortableTh
-              label="duration"
-              align="right"
-              active={sort.key === 'duration_ms'}
-              dir={sort.dir}
-              onclick={() => toggle('duration_ms')}
-            />
-            <th class="px-2 py-0.5 text-left font-normal text-muted-foreground">raw zone</th>
-            <th class="px-2 py-0.5 text-left font-normal text-muted-foreground">resolved</th>
-            <SortableTh label="tier" align="right" active={sort.key === 'tier'} dir={sort.dir} onclick={() => toggle('tier')} />
-            <th class="px-2 py-0.5 text-left font-normal text-muted-foreground">yours</th>
-            <th class="px-2 py-0.5 text-left font-normal text-muted-foreground">classes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each sorted as e (e.id)}
-            {@const miss = e.raw_zone && !e.resolved_zone_id}
-            <tr class="border-b border-border/50 {miss ? 'bg-bad/5' : ''}">
-              <td class="px-2 py-0.5 tabular-nums text-muted-foreground">{e.id}</td>
-              <td class="px-2 py-0.5">{e.target}</td>
-              <td class="px-2 py-0.5 whitespace-nowrap tabular-nums text-muted-foreground">{new Date(e.start_ms).toLocaleString()}</td>
-              <td class="px-2 py-0.5 text-right tabular-nums">{(e.duration_ms / 1000).toFixed(1)}s</td>
-              <td class="px-2 py-0.5 {e.raw_zone ? '' : 'text-muted-foreground'}">{e.raw_zone ?? '— unknown —'}</td>
-              <td class="px-2 py-0.5 {miss ? 'text-bad' : e.resolved_zone_id ? 'text-good' : 'text-muted-foreground'}">
-                {e.resolved_zone_id ?? (e.raw_zone ? 'failed to resolve' : '—')}
-              </td>
-              <td class="px-2 py-0.5 text-right tabular-nums">{e.tier}</td>
-              <!-- why: someone else's fight -- parsed for clean data, hidden from Combat/overlay -->
-              <td class="px-2 py-0.5 {e.involves_you ? '' : 'text-muted-foreground'}">{e.involves_you ? 'yours' : 'other'}</td>
-              <td class="px-2 py-0.5 {e.player_classes.length ? '' : 'text-muted-foreground'}">{e.player_classes.join(' / ') || '— unresolved —'}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+    <div class="mb-2 flex flex-wrap items-center gap-2">
+      <h2 class="panel-title">parsed · db search</h2>
+      <select
+        bind:value={table}
+        class="h-6 rounded-sm border border-border bg-background px-1 font-mono text-[11px]"
+        aria-label="table"
+        data-testid="db-table"
+      >
+        {#each result?.tables ?? [table] as t (t)}
+          <option value={t}>{t}</option>
+        {/each}
+      </select>
+      <input
+        type="text"
+        bind:value={pattern}
+        placeholder="regex · case-insensitive · matches the whole row"
+        spellcheck="false"
+        class="h-6 min-w-64 flex-1 rounded-sm border border-border bg-background px-1 font-mono text-[11px]"
+        aria-label="regex"
+        data-testid="db-regex"
+      />
+      <span class="text-[11px] tabular-nums text-muted-foreground">{summary}</span>
     </div>
+    {#if error}
+      <p class="mb-2 font-mono text-[11px] text-bad">{error}</p>
+    {/if}
+    {#if !result}
+      <p class="text-[12px] text-muted-foreground">Loading…</p>
+    {:else if !result.rows.length}
+      <p class="text-[12px] text-muted-foreground">No rows.</p>
+    {:else}
+      <div class="max-h-[560px] overflow-auto rounded-sm border border-border">
+        <table class="w-full text-[11px]" data-testid="db-rows">
+          <thead class="sticky top-0 bg-card">
+            <tr class="border-b border-border">
+              {#each result.columns as c, i (i)}
+                <th class="px-2 py-0.5 text-left font-normal whitespace-nowrap text-muted-foreground">{c}</th>
+              {/each}
+            </tr>
+          </thead>
+          <tbody>
+            {#each result.rows as row, i (i)}
+              <tr class="border-b border-border/50">
+                {#each row as cell, j (j)}
+                  <td class="px-2 py-0.5 whitespace-nowrap tabular-nums {j === 0 ? 'text-muted-foreground' : ''}">{cell}</td>
+                {/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
   </CardContent>
 </Card>

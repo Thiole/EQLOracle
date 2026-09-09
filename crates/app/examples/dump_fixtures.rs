@@ -486,10 +486,14 @@ fn main() {
     }
 
     // why: real Ingest state, no AppHandle needed for either debug view
-    out.insert(
-        "list_debug_encounters".to_string(),
-        json!({ "limit=null": debugview::list_debug_encounters(&ing, 100) }),
-    );
+    // why: Debug > Parsed's search -- every table browsed with no pattern
+    let mut searches = serde_json::Map::new();
+    for t in eqlp_app::dbsearch::TABLES {
+        if let Ok(dto) = eqlp_app::dbsearch::search(&ing, t, "", 100) {
+            searches.insert(format!("table={t}&pattern=&limit=100"), json!(dto));
+        }
+    }
+    out.insert("search_db".to_string(), Value::Object(searches));
     out.insert(
         "get_unmatched_coverage".to_string(),
         json!({ "top=null": debugview::unmatched_coverage(&ing, 100) }),

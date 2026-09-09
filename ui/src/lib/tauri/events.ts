@@ -36,8 +36,13 @@ let wasBackfilling = false;
 // every tick -- '*' is any parsed line; a quiet tick costs nothing
 type Trigger = { kinds: Set<string> | null; fn: () => void };
 const triggers: Trigger[] = [{ kinds: null, fn: () => void refreshGroupBuffs() }];
-export function refreshOn(kinds: string[] | '*', fn: () => void) {
-  triggers.push({ kinds: kinds === '*' ? null : new Set(kinds), fn });
+export function refreshOn(kinds: string[] | '*', fn: () => void): () => void {
+  const t: Trigger = { kinds: kinds === '*' ? null : new Set(kinds), fn };
+  triggers.push(t);
+  return () => {
+    const i = triggers.indexOf(t);
+    if (i >= 0) triggers.splice(i, 1);
+  };
 }
 function fireTriggers(recent: RecentLine[]) {
   if (!recent.length) return;

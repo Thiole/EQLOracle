@@ -306,7 +306,7 @@ fn main() {
             commands::get_encounter_detail,
             commands::get_mob_stats,
             commands::list_mob_encounters,
-            commands::list_debug_encounters,
+            commands::search_db,
             commands::get_unmatched_coverage,
             commands::get_game_state,
             commands::get_character_estimate,

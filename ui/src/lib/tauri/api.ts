@@ -1746,18 +1746,16 @@ export interface LoadoutSummaryDto {
 
 // ---------------------------------------------------------------- debug
 
-export interface DebugEncounterDto {
-  id: number;
-  target: string;
-  start_ms: number;
-  duration_ms: number;
-  raw_zone: string | null;
-  resolved_zone_id: string | null;
-  tier: number;
-  player_classes: string[];
-  /** why: false = someone else's fight -- parsed for clean data, hidden
-   * from Combat/overlay; Debug is where it stays visible */
-  involves_you: boolean;
+export interface SearchDbDto {
+  tables: string[];
+  table: string;
+  columns: string[];
+  rows: string[][];
+  /** why: rows looked at -- below total when the limit cut the scan */
+  scanned: number;
+  matched: number;
+  total: number;
+  truncated: boolean;
 }
 
 export interface UnmatchedShapeDto {
@@ -2175,8 +2173,9 @@ export const api = {
 
   // -------------------------------------------------------------- debug
 
-  listDebugEncounters: (limit: number | null = null) =>
-    invoke<DebugEncounterDto[]>('list_debug_encounters', { limit }),
+  /** why: Debug > Parsed -- any in-memory table, regex over the rendered row, newest first */
+  searchDb: (table: string, pattern: string, limit = 100) =>
+    invoke<SearchDbDto>('search_db', { table, pattern, limit }),
 
   getUnmatchedCoverage: (top: number | null = null) =>
     invoke<UnmatchedCoverageDto>('get_unmatched_coverage', { top }),

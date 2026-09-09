@@ -125,6 +125,16 @@ pub struct Entities {
 }
 
 impl Entities {
+    /// why: (display name, kind, owner) for every entity, for the Debug db search
+    pub fn all(&self) -> impl Iterator<Item = (&str, Kind, Option<&str>)> {
+        self.kind.iter().map(|(n, k)| {
+            (
+                self.display_name(n),
+                *k,
+                self.owner.get(n).map(String::as_str),
+            )
+        })
+    }
     fn note_seen(&mut self, key: &str, name: &str) {
         self.display
             .entry(key.to_string())
