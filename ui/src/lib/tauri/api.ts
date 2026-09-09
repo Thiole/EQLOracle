@@ -329,6 +329,22 @@ export interface RecentEffectDto {
   text: string;
 }
 
+export interface ActiveEffectDto {
+  spell: string;
+  icon: string | null;
+  source: string | null;
+  since_ms: number;
+  /** null: permanent or unknown -- shown without a timer */
+  duration_ms: number | null;
+  remaining_ms: number | null;
+}
+
+export interface WindowAbilityDto {
+  ability: string;
+  count: number;
+  total: number;
+}
+
 export interface EntityStateDto {
   name: string;
   is_player: boolean;
@@ -344,6 +360,11 @@ export interface EntityStateDto {
   recent_effects: RecentEffectDto[];
   /** why: what this entity did in the inspect window, newest first; condensed, not log lines */
   recent_actions: RecentActionDto[];
+  /** why: assumed on this entity at the instant -- landed by the ledger,
+   * not run out, no wear-off since; drawn as the buff bar */
+  effects: ActiveEffectDto[];
+  /** why: per ability over the inspect window -- count of swings/casts and their total */
+  window_abilities: WindowAbilityDto[];
 }
 
 export interface RecentActionDto {

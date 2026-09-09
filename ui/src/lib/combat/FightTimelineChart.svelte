@@ -1,5 +1,8 @@
 <script lang="ts">
   import { fmtLogTime } from '$lib/utils';
+  import { ICON_BASE } from '$lib/character/constants';
+  // why: the bar's own clock -- 'left' seconds, minutes past a minute
+  const fmtLeft = (ms: number) => (ms >= 60_000 ? `${Math.floor(ms / 60_000)}m${String(Math.floor((ms % 60_000) / 1000)).padStart(2, '0')}` : `${Math.ceil(ms / 1000)}s`);
   // Same multi-series overlapping-lines idea the legacy app used (one
   // polyline per entity, easier to compare shapes over time than a row
   // of bars per person), rebuilt reactively instead of the legacy
@@ -149,10 +152,46 @@
         <tbody>
           {#each $stateAt.entities as e (e.name)}
             <tr class="border-b border-border/50">
-              <td class="py-0.5 {e.is_player || e.is_pet ? 'text-primary' : e.is_enemy ? 'text-bad' : ''}">{e.name}</td>
+              <td class="py-0.5 {e.is_player || e.is_pet ? 'text-primary' : e.is_enemy ? 'text-bad' : ''}">
+                {e.name}
+                <!-- why: Spencer -- "buffs/debuffs currently assumed on each
+                     target ... spell icons, with the duration it thinks is
+                     left ... a buff bar under the targets name" -->
+                {#if (e.effects ?? []).length}
+                  <div class="mt-0.5 flex flex-wrap gap-0.5">
+                    {#each e.effects as f (f.spell)}
+                      <span
+                        class="inline-flex items-center gap-0.5 rounded-[3px] border border-border bg-muted/30 px-0.5 text-[9px] text-muted-foreground"
+                        title="{f.spell}{f.source ? ` · from ${f.source}` : ''}{f.remaining_ms != null ? ` · ${fmtLeft(f.remaining_ms)} left` : ' · duration unknown'}"
+                      >
+                        {#if f.icon}
+                          <img src={ICON_BASE + encodeURIComponent(f.icon)} alt="" class="size-3.5 rounded-[2px]" />
+                        {:else}
+                          <span class="inline-block size-3.5 rounded-[2px] bg-muted"></span>
+                        {/if}
+                        {#if f.remaining_ms != null}<span class="tabular-nums">{fmtLeft(f.remaining_ms)}</span>{/if}
+                      </span>
+                    {/each}
+                  </div>
+                {/if}
+              </td>
               <td class="py-0.5 text-muted-foreground">{e.state}{e.observed ? '' : ' (inferred)'}</td>
               <td class="py-0.5 text-right tabular-nums">{e.dps.toFixed(1)} dps</td>
             </tr>
+            {#if (e.window_abilities ?? []).length > 0}
+              <!-- why: "show total but # of hits in that window" -- one
+                   line per ability, combined, so a 3-cast burst reads
+                   as three, not one -->
+              <tr class="border-b border-border/50">
+                <td colspan="3" class="py-0.5 pl-3">
+                  <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
+                    {#each e.window_abilities as w (w.ability)}
+                      <span><span class="text-foreground">{w.ability}</span> <span class="text-muted-foreground">×{w.count}{#if w.total} · {w.total.toLocaleString()}{/if}</span></span>
+                    {/each}
+                  </div>
+                </td>
+              </tr>
+            {/if}
             {#if (e.recent_actions ?? []).length > 0}
               <tr class="border-b border-border/50">
                 <td colspan="3" class="py-0.5 pl-3">

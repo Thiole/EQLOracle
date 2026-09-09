@@ -517,6 +517,65 @@ fn a_zone_line_forgets_every_pet_owner_the_log_inferred() {
     );
 }
 
+/// why: Spencer -- the scrub window shows "total but # of hits", and a
+/// buff bar of what is assumed on each entity: landed by the ledger,
+/// ended by its wear-off line
+#[test]
+fn the_scrub_window_counts_hits_per_ability_and_shows_what_is_on_each_entity() {
+    use eqlp_app::combat;
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:01 2026] You begin casting Malaise.\n",
+        "[Tue Jul 28 15:01:04 2026] a gnoll looks somewhat uncomfortable.\n",
+        "[Tue Jul 28 15:01:05 2026] You hit a gnoll for 50 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:06 2026] You hit a gnoll for 30 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:08 2026] Your Malaise spell has worn off of a gnoll.\n",
+        "[Tue Jul 28 15:01:09 2026] You hit a gnoll for 10 points of fire damage by Burst of Flame.\n",
+    ));
+    let fight = combat::list_encounters(&ing, None, 0, 50)
+        .into_iter()
+        .find(|e| e.target.eq_ignore_ascii_case("a gnoll"))
+        .expect("the fight");
+    let at = |secs: i64| fight.start_ms + secs * 1000;
+
+    // why: the window is (ts - w, ts], so 7s reaches the :00 hit at :06
+    let state = combat::fight_state_at(&ing, fight.id, at(6), Some(7_000));
+    let you = state.iter().find(|e| e.name == "You").expect("You");
+    let bof = you
+        .window_abilities
+        .iter()
+        .find(|w| w.ability == "Burst of Flame")
+        .expect("the ability line");
+    assert_eq!((bof.count, bof.total), (3, 180), "three hits, combined");
+    let gnoll = state
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("a gnoll"))
+        .expect("the gnoll");
+    let malaise = gnoll
+        .effects
+        .iter()
+        .find(|f| f.spell == "Malaise")
+        .expect("Malaise assumed on the gnoll at :06");
+    assert_eq!(malaise.source.as_deref(), Some("You"));
+    assert_eq!(malaise.since_ms, at(4));
+    assert!(
+        malaise.remaining_ms.is_none_or(|r| r > 0),
+        "a known duration still has time left"
+    );
+
+    // why: the wear-off line at :08 ends it -- nothing assumed at :09
+    let state = combat::fight_state_at(&ing, fight.id, at(9), Some(6_000));
+    let gnoll = state
+        .iter()
+        .find(|e| e.name.eq_ignore_ascii_case("a gnoll"))
+        .expect("the gnoll");
+    assert!(
+        !gnoll.effects.iter().any(|f| f.spell == "Malaise"),
+        "worn off: {:?}",
+        gnoll.effects.iter().map(|f| &f.spell).collect::<Vec<_>>()
+    );
+}
+
 /// why: Spencer -- the timer between a kill and the next hostile action
 /// "cut from 6 seconds to 2.5 seconds": a hit 3s after the kill is the
 /// next pull, and a landed detrimental effect counts as that action too

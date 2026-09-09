@@ -2530,7 +2530,7 @@ impl Ingest {
                 }
             }
             Action::PetSpellWoreOff { spell } => {
-                self.record_effect_ping(ts, "Your pet", &spell);
+                self.record_effect_ping(ts, "Your pet", &spell, true);
             }
             Action::CastInterrupted { source, spell } => {
                 // why: the gate never went off -- they're still here
@@ -2556,7 +2556,7 @@ impl Ingest {
                 // skew resist-rate stats; no outcome variant fits, stays out entirely
                 self.note_class_evidence(ts, "You", class_evidence_for(base_spell_name(&spell)));
                 if let Some(blocker) = blocker {
-                    self.record_effect_ping(ts, &target, &blocker);
+                    self.record_effect_ping(ts, &target, &blocker, true);
                 }
             }
             Action::SpellOverwritten { spell, who } => {
@@ -2578,7 +2578,9 @@ impl Ingest {
                 let you = self.sym("You").0;
                 self.casts.confirm_landed(ts, you, spell_sym);
             }
-            Action::StateEffect { target, text } => self.record_effect_ping(ts, &target, &text),
+            Action::StateEffect { target, text } => {
+                self.record_effect_ping(ts, &target, &text, true)
+            }
             Action::PlayerLoc { x, y, z } => {
                 self.last_loc = Some((ts, x, y, z));
             }
@@ -2588,7 +2590,7 @@ impl Ingest {
                     &who,
                     crate::classdata::classes_for(&ability),
                 );
-                self.record_effect_ping(ts, &who, &ability);
+                self.record_effect_ping(ts, &who, &ability, true);
             }
             Action::PetSummon { owner, flavor } => {
                 // why: "You summon forth a lesser familiar." -- a familiar
@@ -2779,6 +2781,13 @@ impl Ingest {
                 }
             }
             Action::Recovered { who, spell } => {
+                // why: your spell leaving a target -- the scrub's buff bar
+                // needs the end mark, not only the charm logic below
+                if let Some(sp) = spell.as_deref() {
+                    let resolved = self.resolve_name(&who);
+                    let sym = self.sym(&resolved).0;
+                    self.effects.push(sym, ts, sp, Some("You"), Some(sp), false);
+                }
                 // why: state.charm_broken's pattern is generic -- ANY
                 // spell wearing off ANY target. Real false breaks,
                 // replayed from the live log (19 of 52 wear-offs on
@@ -4194,7 +4203,12 @@ impl Ingest {
         self.note_self_effect_text(ts, text);
         let classes = crate::flavordata::classes_for_flavor(text);
         if !classes.is_empty() {
-            self.record_effect_ping(ts, "You", text);
+            self.record_effect_ping(
+                ts,
+                "You",
+                text,
+                crate::spelltext::wearsoff_candidates(text).is_empty(),
+            );
             self.attribute_flavor_hit(ts, text, classes);
             return true;
         }
@@ -4205,16 +4219,21 @@ impl Ingest {
             if let Some(m) = crate::spelltext::match_spell_text(text) {
                 self.confirm_spell_effect(ts, m);
             } else {
-                self.record_effect_ping(ts, "You", text);
+                self.record_effect_ping(
+                    ts,
+                    "You",
+                    text,
+                    crate::spelltext::wearsoff_candidates(text).is_empty(),
+                );
             }
             return true;
         }
         if let Some((who, canonical)) = third_person_flavor(text) {
-            self.record_effect_ping(ts, &who, &canonical);
+            self.record_effect_ping(ts, &who, &canonical, true);
             return true;
         }
         if let Some((who, canonical)) = verb_conjugated_flavor(text) {
-            self.record_effect_ping(ts, &who, &canonical);
+            self.record_effect_ping(ts, &who, &canonical, true);
             return true;
         }
         if let Some(m) = crate::spelltext::match_spell_text(text) {
@@ -4228,7 +4247,7 @@ impl Ingest {
             if m.target == "You" {
                 self.note_self_effect_text(ts, text);
             }
-            self.record_effect_ping(ts, &m.target, text);
+            self.record_effect_ping(ts, &m.target, text, !m.is_wearsoff);
             return true;
         }
         false
@@ -4422,7 +4441,7 @@ impl Ingest {
                 }
             }
         }
-        self.record_effect_ping(ts, &m.target, m.spell);
+        self.record_effect_ping(ts, &m.target, m.spell, !m.is_wearsoff);
         if !m.is_wearsoff {
             let you = self.sym("You").0;
             let spell_sym = self.store.sym(m.spell).0;
@@ -4519,7 +4538,7 @@ impl Ingest {
     /// through pet ownership. Also the other half of
     /// attribute_flavor_hit's group-cast check -- every landing passes
     /// through here, disproving pending evidence in either time direction.
-    fn record_effect_ping(&mut self, ts: Millis, target_name: &str, text: &str) {
+    fn record_effect_ping(&mut self, ts: Millis, target_name: &str, text: &str, landed: bool) {
         let resolved = self.resolve_name(target_name);
         let sym = self.sym(&resolved).0;
         let (source, skill) = self.attribute_effect(ts, text);
@@ -4545,13 +4564,15 @@ impl Ingest {
         // votes for the buffer's classes ("quick buff shows spells
         // landing even though there wasn't an action cast")
         if let Some(src) = source.as_deref() {
-            if !src.eq_ignore_ascii_case("You") && !self.is_pet(src) {
+            if landed && !src.eq_ignore_ascii_case("You") && !self.is_pet(src) {
                 let classes = crate::flavordata::classes_for_flavor(text);
                 self.note_class_evidence(ts, src, classes);
             }
         }
+        // why: a wear-off is the END mark the scrub's buff bar reads --
+        // it used to be recorded as a landing carrying the wear-off text
         self.effects
-            .push(sym, ts, text, source.as_deref(), skill.as_deref(), true);
+            .push(sym, ts, text, source.as_deref(), skill.as_deref(), landed);
 
         // why: strong group evidence -- a landing on someone else while
         // "You" have an open Quick Buff window is suggestive, but alone
@@ -7274,12 +7295,14 @@ pub fn backfill_lines(ing: &mut Ingest, engine: &Engine, lines: &[&[u8]], thread
                     if let Some(m) = crate::spelltext::match_spell_text(&text) {
                         ing.confirm_spell_effect(ts_ms, m);
                     } else {
-                        ing.record_effect_ping(ts_ms, "You", &text);
+                        let landed = crate::spelltext::wearsoff_candidates(&text).is_empty();
+                        ing.record_effect_ping(ts_ms, "You", &text, landed);
                     }
                 }
                 Some(Classified::SelfFlavorHit { classes, text }) => {
                     ing.note_self_effect_text(ts_ms, &text);
-                    ing.record_effect_ping(ts_ms, "You", &text);
+                    let landed = crate::spelltext::wearsoff_candidates(&text).is_empty();
+                    ing.record_effect_ping(ts_ms, "You", &text, landed);
                     ing.attribute_flavor_hit(ts_ms, &text, classes);
                 }
                 Some(Classified::OtherEffectLanding { who, effect }) => {
@@ -7293,13 +7316,13 @@ pub fn backfill_lines(ing: &mut Ingest, engine: &Engine, lines: &[&[u8]], thread
                     ing.note_fanout(ts_ms, effect, counted);
                 }
                 Some(Classified::ThirdPersonFlavorHit { who, text }) => {
-                    ing.record_effect_ping(ts_ms, &who, &text);
+                    ing.record_effect_ping(ts_ms, &who, &text, true);
                 }
                 Some(Classified::EffectPolarityHit { who, text }) => {
                     if who == "You" {
                         ing.note_self_effect_text(ts_ms, &text);
                     }
-                    ing.record_effect_ping(ts_ms, &who, &text);
+                    ing.record_effect_ping(ts_ms, &who, &text, true);
                 }
                 Some(Classified::SpellEffectHit {
                     spell,

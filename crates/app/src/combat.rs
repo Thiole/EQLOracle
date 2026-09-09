@@ -1559,6 +1559,29 @@ pub struct FightTimelineDto {
 /// own doc for exactly how `source`/`skill` get filled in. Either can be
 /// `None` on its own (skill known, source ambiguous/out of view -- or,
 /// rarer, the reverse); `text` is always real, straight off the log line.
+/// why: what the buff bar draws under an entity at the scrub instant --
+/// the latest ledger observation per spell says landed, its catalog
+/// duration (if any) has not run out, and no wear-off ended it
+#[derive(Debug, Clone, Serialize)]
+pub struct ActiveEffectDto {
+    pub spell: String,
+    pub icon: Option<String>,
+    pub source: Option<String>,
+    pub since_ms: Millis,
+    /// why: None -- permanent or unknown: shown without a timer
+    pub duration_ms: Option<Millis>,
+    pub remaining_ms: Option<Millis>,
+}
+
+/// why: one ability inside the inspect window -- how many swings or
+/// casts landed or missed, and what they did in total
+#[derive(Debug, Clone, Serialize)]
+pub struct WindowAbilityDto {
+    pub ability: String,
+    pub count: u64,
+    pub total: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RecentEffectDto {
     pub source: Option<String>,
@@ -1595,6 +1618,10 @@ pub struct EntityStateDto {
     pub recent_effects: Vec<RecentEffectDto>,
     /// why: what this entity did in the inspect window, newest first
     pub recent_actions: Vec<RecentActionDto>,
+    /// why: assumed on this entity at the instant -- see ActiveEffectDto
+    pub effects: Vec<ActiveEffectDto>,
+    /// why: per ability over the inspect window, biggest total first
+    pub window_abilities: Vec<WindowAbilityDto>,
 }
 
 /// why: the window is what makes "recent" readable -- past ~20 rows the
@@ -1732,6 +1759,12 @@ fn fight_state_at_windowed(
             let recent_actions = sym
                 .map(|s| recent_actions(ing, id, s, ts_ms, window_ms))
                 .unwrap_or_default();
+            let window_abilities = sym
+                .map(|s| window_abilities(ing, id, s, ts_ms, window_ms))
+                .unwrap_or_default();
+            let effects = sym
+                .map(|s| active_effects(ing, s, ts_ms))
+                .unwrap_or_default();
             let recent_effects = sym
                 .map(|s| {
                     ing.effects
@@ -1754,6 +1787,8 @@ fn fight_state_at_windowed(
                 dps,
                 recent_effects,
                 recent_actions,
+                effects,
+                window_abilities,
                 name,
             }
         })
@@ -1767,6 +1802,132 @@ fn fight_state_at_windowed(
 }
 
 /// why: the entity's own rows in (ts - window, ts], newest first, capped
+/// why: Spencer -- "show total but # of hits in that window": one line
+/// per ability, swings and casts that landed or missed, combined
+fn window_abilities(
+    ing: &Ingest,
+    id: EncounterId,
+    actor: Sym,
+    ts_ms: Millis,
+    window_ms: Millis,
+) -> Vec<WindowAbilityDto> {
+    let Some(enc) = ing.store.encounter(id) else {
+        return Vec::new();
+    };
+    let since = ts_ms - window_ms;
+    let mut acc: HashMap<&str, (u64, u64)> = HashMap::new();
+    for i in enc.range().rev() {
+        let t = ing.store.ts[i];
+        if t > ts_ms || ing.store.enc[i] != id.0 || ing.store.actor[i] != actor {
+            continue;
+        }
+        if t <= since {
+            break;
+        }
+        match ing.store.kind[i] {
+            EventKind::Damage | EventKind::Miss | EventKind::Heal => {}
+            _ => continue,
+        }
+        let e = acc
+            .entry(ing.store.ability_name(ing.store.ability[i]))
+            .or_insert((0, 0));
+        e.0 += 1;
+        e.1 += ing.store.amount[i];
+    }
+    let mut v: Vec<WindowAbilityDto> = acc
+        .into_iter()
+        .map(|(ability, (count, total))| WindowAbilityDto {
+            ability: ability.to_string(),
+            count,
+            total,
+        })
+        .collect();
+    v.sort_by(|a, b| {
+        b.total
+            .cmp(&a.total)
+            .then_with(|| a.ability.cmp(&b.ability))
+    });
+    v
+}
+
+/// why: the buff bar -- latest ledger observation per spell at or
+/// before `ts`; landed, not yet run out by the catalog's duration, no
+/// wear-off since. An enemy's debuff dies with the enemy (measured:
+/// its wear-off logs 1-2s after the kill), so a Dead source drops it
+fn active_effects(ing: &Ingest, entity: Sym, ts: Millis) -> Vec<ActiveEffectDto> {
+    struct Obs {
+        spell: String,
+        source: Option<String>,
+        ts: Millis,
+        landed: bool,
+    }
+    let mut latest: HashMap<String, Obs> = HashMap::new();
+    for p in ing.effects.all(entity.0) {
+        if p.ts > ts {
+            break;
+        }
+        let Some(skill) = p.skill.as_deref() else {
+            continue;
+        };
+        let (base, _) = crate::ingest::split_cast_rank(skill);
+        let key = base.to_lowercase();
+        if latest.get(&key).is_none_or(|o| p.ts >= o.ts) {
+            latest.insert(
+                key,
+                Obs {
+                    spell: base.to_string(),
+                    source: p.source.as_deref().map(str::to_string),
+                    ts: p.ts,
+                    landed: p.landed,
+                },
+            );
+        }
+    }
+    let mut out: Vec<ActiveEffectDto> = latest
+        .into_values()
+        .filter_map(|o| {
+            if !o.landed {
+                return None;
+            }
+            let spell = crate::spelldata::spell_by_name(&o.spell)?;
+            let d = crate::spelleffect::effects_for(spell).duration;
+            if d.is_instant {
+                return None;
+            }
+            let duration_ms = (!d.is_permanent)
+                .then(|| d.max_secs.or(d.min_secs))
+                .flatten()
+                .map(|secs| (secs * 1000.0) as Millis);
+            let remaining_ms = duration_ms.map(|dm| dm - (ts - o.ts));
+            if remaining_ms.is_some_and(|r| r <= 0) {
+                return None;
+            }
+            if let Some(src) = o.source.as_deref() {
+                let dead_enemy = ing.allegiance_at(src, ts).is_enemy()
+                    && ing
+                        .store
+                        .names
+                        .get(src)
+                        .and_then(|s| ing.timeline.state_at(s.0, ts))
+                        .is_some_and(|(st, _)| st == State::Dead);
+                if dead_enemy {
+                    return None;
+                }
+            }
+            Some(ActiveEffectDto {
+                spell: o.spell,
+                icon: spell.icon.clone(),
+                source: o.source,
+                since_ms: o.ts,
+                duration_ms,
+                remaining_ms,
+            })
+        })
+        .collect();
+    out.sort_by_key(|e| e.since_ms);
+    out
+}
+
 fn recent_actions(
     ing: &Ingest,
     id: EncounterId,
