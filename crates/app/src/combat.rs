@@ -1329,6 +1329,18 @@ fn list_side(
             .map(|o| o.to_string());
         let is_pet_row = owner.is_some();
         let credited = owner.unwrap_or_else(|| name.clone());
+        // why: a possessive pet is a slice under its owner exactly like
+        // a charm is -- Spencer: "expanding gives both pet stats and
+        // mine, as 2 entities"; before, only charms recorded a part
+        if is_pet_row {
+            let p = parts
+                .entry(credited.clone())
+                .or_default()
+                .entry(name.clone())
+                .or_insert((0, 0));
+            p.0 += dmg;
+            p.1 += hits;
+        }
         let first = !by_name.contains_key(&credited);
         let e = by_name.entry(credited).or_default();
         if first {
@@ -3444,6 +3456,30 @@ mod live_meter_window_tests {
     /// The FOLD is presentation only: the store keeps the pet its own
     /// entity, which is what stops two people charming the same kind of
     /// mob collapsing into whichever of them was recorded last.
+    /// why: Spencer -- "You (pet 2,233)" expanded to one block: a
+    /// summoned pet folded by its possessive name set the hint but never
+    /// recorded a part, so the two-slice expansion had nothing to show
+    #[test]
+    fn a_possessive_pet_is_a_part_under_its_owner_like_a_charm() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:02 2026] Kaeus hits a gnoll for 50 points of damage.\n\
+             [Tue Jul 28 15:01:05 2026] Kaeus`s pet slashes a gnoll for 40 points of damage.\n\
+             [Tue Jul 28 15:01:06 2026] You hit a gnoll for 10 points of fire damage by Burst of Flame.\n",
+        );
+        let allies = list_allies(&ing, None, None, false, None);
+        let kaeus = allies
+            .iter()
+            .find(|a| a.name == "Kaeus")
+            .expect("owner row");
+        assert_eq!((kaeus.total, kaeus.pet_total), (90, 40));
+        assert_eq!(kaeus.pets.len(), 1, "the pet is a part: {:?}", kaeus.pets);
+        assert_eq!(
+            (kaeus.pets[0].name.as_str(), kaeus.pets[0].total),
+            ("Kaeus`s pet", 40)
+        );
+    }
+
     #[test]
     fn a_charmed_pets_damage_folds_into_its_owner_but_stays_a_part() {
         let ing = ingest_from(
