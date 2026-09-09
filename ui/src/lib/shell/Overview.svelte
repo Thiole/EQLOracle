@@ -7,8 +7,9 @@
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Badge } from '$lib/components/ui/badge';
   import { Button } from '$lib/components/ui/button';
-  import { api, type ZoneContextDto, type MobDto, type GroupBuffsDto } from '$lib/tauri/api';
-  import { listen } from '$lib/tauri/invoke';
+  import { api, type MobDto } from '$lib/tauri/api';
+  import { groupBuffs, ensureGroupBuffs, refreshGroupBuffs } from '$lib/stores/groupBuffs';
+  import { zoneContext, refreshZoneContext } from '$lib/stores/maps';
   import BellOffIcon from '@lucide/svelte/icons/bell-off';
   import { toggleMutedBuffLine } from '$lib/stores/settings';
   import { activeModule } from '$lib/stores/shell';
@@ -23,20 +24,9 @@
   });
 
   // why: reported -- "if i buff it doesn't load until i reload the tab".
-  // Overview only ever loaded on mount and on the one-shot parse-settled,
-  // so a landing page about "what's going on right now" sat on whatever
-  // moment it opened at. The catalog (listMobs) stays off this: it is a
-  // catalog, not live state.
-  $effect(() => {
-    const un = listen('parse-tick', () => {
-      loadGroupBuffs();
-      void refreshSession();
-      api.getZoneContext().then((z) => (zoneCtx = z));
-    });
-    return () => void un.then((f) => f());
-  });
-
-  let zoneCtx = $state<ZoneContextDto | null>(null);
+  // Live state (group buffs, zone, session) is read from stores the
+  // parse-tick refreshes; this component fetches nothing live itself.
+  // The catalog (listMobs) is a catalog, not live state.
   let mobs = $state<MobDto[] | null>(null);
   let resetting = $state(false);
   let lootExpanded = $state(false);
@@ -45,9 +35,9 @@
   // would otherwise leave the card on whatever moment it mounted at, so
   // the same load runs again when the parse settles (see events.ts)
   function loadOverviewData() {
-    api.getZoneContext().then((z) => (zoneCtx = z));
+    if (!$zoneContext) void refreshZoneContext();
     api.listMobs().then((list) => (mobs = list ?? []));
-    loadGroupBuffs();
+    ensureGroupBuffs();
   }
   $effect(() => {
     loadOverviewData();
@@ -60,10 +50,6 @@
   // is MISSING only (a covered buff needs no row), each one carrying its
   // own mute. Party rows and your own innates read the same here: a line
   // you could have on and do not.
-  let buffs = $state<GroupBuffsDto | null>(null);
-  function loadGroupBuffs() {
-    api.getGroupBuffs().then((d) => (buffs = d)).catch(() => (buffs = null));
-  }
   // why: the LINE is what a mute switches off, the label is the stat it
   // fills -- "not the spell but the slot it fills". A row that is up but
   // upgradeable still needs saying; it names the better line.
@@ -73,9 +59,9 @@
   // "Warning", a groupmate's buffs on you are "Others missing". Party
   // rows name the player expected to cast the line -- "the expected
   // spell line of the players".
-  const missingRows = $derived(buffs ? buffs.rows.filter((r) => !r.active || r.upgrade) : []);
+  const missingRows = $derived($groupBuffs ? $groupBuffs.rows.filter((r) => !r.active || r.upgrade) : []);
   const missingParty = $derived(
-    buffs
+    $groupBuffs
       ? missingRows
           .filter((r) => r.others)
           .map((r) => ({
@@ -90,9 +76,9 @@
   // under "expected from your party" -- you are a source like any
   // groupmate, so a party row can name nobody but you
   const missingOwn = $derived(
-    buffs
+    $groupBuffs
       ? [
-          ...buffs.innates
+          ...$groupBuffs.innates
             .filter((i) => !i.active)
             .map((i) => ({ line: i.line, label: i.label, who: '', was: null as string | null })),
           ...missingRows
@@ -109,7 +95,7 @@
   const neededBuffs = $derived([...missingOwn, ...missingParty]);
   async function muteLine(line: string) {
     await toggleMutedBuffLine(line);
-    loadGroupBuffs();
+    void refreshGroupBuffs();
   }
 
   // why: "manual override button to set timeframe" -- a start and an
@@ -301,7 +287,7 @@
               </div>
             {/if}
             <p class="text-[12px]">
-              {zoneCtx?.current ? displayZoneName(zoneCtx.current) : 'no zone parsed yet'}
+              {$zoneContext?.current ? displayZoneName($zoneContext.current) : 'no zone parsed yet'}
             </p>
 
             <div class="mt-2 grid grid-cols-2 gap-3 border-t border-border/50 pt-2">
@@ -400,9 +386,9 @@
               Settings →
             </button>
           </div>
-          {#if !buffs}
+          {#if !$groupBuffs}
             <p class="text-[11px] text-muted-foreground">Loading…</p>
-          {:else if !buffs.rows.length && !buffs.innates.length}
+          {:else if !$groupBuffs.rows.length && !$groupBuffs.innates.length}
             <p class="text-[11px] text-muted-foreground">Nothing confirmed yet -- no party classes detected.</p>
           {:else if !neededBuffs.length}
             <p class="text-[11px] text-muted-foreground">Every buff you could have on is on.</p>
@@ -410,7 +396,7 @@
             {#snippet buffList(items: typeof neededBuffs, heading: string)}
               <p class="mt-1 text-[10px] text-muted-foreground first:mt-0">{heading}</p>
               <ul class="flex flex-col gap-0.5 text-[11px]">
-                {#each items as b (b.line)}
+                {#each items as b}
                   <li class="flex items-center justify-between gap-2">
                     <span class="truncate text-foreground">
                       {b.line}
