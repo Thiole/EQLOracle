@@ -1762,9 +1762,11 @@ fn fight_state_at_windowed(
             let window_abilities = sym
                 .map(|s| window_abilities(ing, id, s, ts_ms, window_ms))
                 .unwrap_or_default();
-            let effects = sym
-                .map(|s| active_effects(ing, s, ts_ms))
-                .unwrap_or_default();
+            // why: what was on a mob died with it -- no bar under a corpse
+            let effects = match (sym, state) {
+                (Some(s), st) if st != State::Dead => active_effects(ing, s, ts_ms),
+                _ => Vec::new(),
+            };
             let recent_effects = sym
                 .map(|s| {
                     ing.effects
