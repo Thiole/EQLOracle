@@ -62,7 +62,7 @@
 
   // why: the ability grid under an expanded row -- sorted, drilled-down
   // specific data per ability; dps runs on the selection's fight time
-  type AbilityCol = 'total' | 'pct' | 'dps' | 'hits' | 'avg_hit' | 'avg_crit' | 'crits' | 'min' | 'max' | 'avoided';
+  type AbilityCol = 'total' | 'pct' | 'dps' | 'hits' | 'avg_hit' | 'avg_crit' | 'crits' | 'min' | 'max' | 'avoided' | 'casts' | 'resisted' | 'interrupted' | 'fizzled';
   const ABILITY_COLS: { key: AbilityCol; label: string; def: boolean }[] = [
     { key: 'total', label: 'total', def: true },
     { key: 'pct', label: 'share', def: true },
@@ -74,8 +74,23 @@
     { key: 'min', label: 'min', def: false },
     { key: 'max', label: 'max', def: false },
     { key: 'avoided', label: 'avoided', def: true },
+    // why: Spencer -- "dont make spell casts its own section, loop it
+    // into the columns under abilities": a cast row joins the ability it
+    // landed as ("Harm Touch" cast, "Harm Touch X" landed)
+    { key: 'casts', label: 'casts', def: true },
+    { key: 'resisted', label: 'resisted', def: true },
+    { key: 'interrupted', label: 'interrupted', def: false },
+    { key: 'fizzled', label: 'fizzled', def: false },
   ];
-  type AbilityGridRow = AbilityRowDto & { avoided: number };
+  type AbilityGridRow = AbilityRowDto & { avoided: number; casts: number; landed: number; resisted: number; interrupted: number; fizzled: number };
+  // why: the log appends a live rank to a landed ability ("Harm Touch X")
+  // but never to its cast line; the backend keys casts rank-stripped
+  const ROMAN = /^[IVXLC]+$/;
+  function baseOf(name: string): string {
+    const i = name.lastIndexOf(' ');
+    return i > 0 && ROMAN.test(name.slice(i + 1)) ? name.slice(0, i) : name;
+  }
+  const EMPTY_ABILITY: Omit<AbilityRowDto, 'ability'> = { tags: [], total: 0, hits: 0, min: 0, max: 0, crits: 0, avg_hit: 0, avg_crit: 0, pct: 0, dps: 0, missed: 0, blocked: 0, dodged: 0, parried: 0 } as Omit<AbilityRowDto, 'ability'>;
   let abilityVisible = $state(loadCols('ability', ABILITY_COLS.filter((c) => c.def).map((c) => c.key)));
   function toggleAbilityCol(key: string) {
     const next = new Set(abilityVisible);
@@ -88,7 +103,19 @@
   let abilitySort = $state<{ key: AbilityCol | 'ability'; dir: Dir }>({ key: 'total', dir: -1 });
   // why: one grid, many entities -- the owner's own rows and each pet's
   function rowsOf(summary: CombatSummaryDto | null | undefined): AbilityGridRow[] {
-    const rows = (summary?.abilities ?? []).map((ab) => ({ ...ab, avoided: ab.missed + ab.blocked + ab.dodged + ab.parried }));
+    const noCast = { casts: 0, landed: 0, resisted: 0, interrupted: 0, fizzled: 0 };
+    const rows: AbilityGridRow[] = (summary?.abilities ?? []).map((ab) => ({ ...ab, ...noCast, avoided: ab.missed + ab.blocked + ab.dodged + ab.parried }));
+    for (const c of summary?.casts ?? []) {
+      const key = c.spell.toLowerCase();
+      // why: exact name first, then the rank-stripped landed name
+      const row = rows.find((r) => r.ability.toLowerCase() === key) ?? rows.find((r) => baseOf(r.ability).toLowerCase() === key);
+      const target = row ?? (rows.push({ ...EMPTY_ABILITY, ability: c.spell, ...noCast, avoided: 0 }), rows[rows.length - 1]);
+      target.casts += c.attempts;
+      target.landed += c.landed;
+      target.resisted += c.resisted;
+      target.interrupted += c.interrupted;
+      target.fizzled += c.fizzled;
+    }
     return sortRows(rows, abilitySort.key, abilitySort.dir);
   }
   const abilityRows = $derived(rowsOf($allySummary));
@@ -143,8 +170,20 @@
         return ab.crits > 0 ? ab.avg_crit.toFixed(0) : '—';
       case 'avoided':
         return ab.avoided ? String(ab.avoided) : '';
+      case 'casts':
+        return ab.casts ? `${ab.landed}/${ab.casts}` : '';
+      case 'resisted':
+      case 'interrupted':
+      case 'fizzled':
+        return ab[key] ? String(ab[key]) : '';
+      case 'total':
+      case 'hits':
+      case 'crits':
+      case 'min':
+      case 'max':
+        return ab.casts && !ab.hits && key !== 'total' ? '' : ab[key].toLocaleString();
       default:
-        return ab[key].toLocaleString();
+        return '';
     }
   }
   function avoidedTitle(ab: AbilityGridRow): string {
@@ -215,24 +254,6 @@
                           {#each abilityShown as c (c.key)}
                             <td class="py-0.5 text-right tabular-nums {c.key === 'avoided' ? 'text-bad' : c.key === 'total' || c.key === 'dps' ? '' : 'text-muted-foreground'}" title={c.key === 'avoided' ? avoidedTitle(ab) : undefined}>{abilityCell(ab, c.key)}</td>
                           {/each}
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-                <div>
-                  <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">spells cast</h4>
-                  <table class="w-full text-[11px]">
-                    <tbody>
-                      {#each summary.casts as c (c.spell)}
-                        <tr class="border-b border-border/50">
-                          <td class="py-0.5">{c.spell}</td>
-                          <td class="py-0.5 text-right tabular-nums">{c.landed}/{c.attempts}</td>
-                          <td class="py-0.5 text-right tabular-nums text-muted-foreground">
-                            {#if c.resisted}{c.resisted} resisted{/if}
-                            {#if c.interrupted}{c.interrupted} interrupted{/if}
-                            {#if c.fizzled}{c.fizzled} fizzled{/if}
-                          </td>
                         </tr>
                       {/each}
                     </tbody>
