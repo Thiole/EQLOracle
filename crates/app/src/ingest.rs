@@ -2986,6 +2986,9 @@ impl Ingest {
                     })
                 }
             },
+            Action::WhoAnonymous { name } => {
+                self.encounters.entities.note_player_channel(&name);
+            }
             Action::AchievementCompleted { name } => {
                 self.achievements_live.insert(name);
             }
@@ -5471,6 +5474,10 @@ enum Action {
     TradeComplete {
         who: String,
     },
+    /// why: an /anon row on /who -- a player, nothing more known
+    WhoAnonymous {
+        name: String,
+    },
     /// why: your own achievement landing, by its exact name
     AchievementCompleted {
         name: String,
@@ -5557,7 +5564,7 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
                 flags,
             })
         }
-        "dot.damage_uncredited" => {
+        "dot.damage_uncredited" | "dot.damage_unsourced" => {
             // why: no caster named, attributed to a placeholder rather
             // than dropped so damage still counts against the target's total
             let (dst, amount, spell) = (
@@ -5837,6 +5844,9 @@ fn extract_action(engine: &Engine, rule_id: &str, m: &Match, line: &[u8]) -> Opt
             who: str_field("who")?,
         }),
         "combat.enemies_forgot" => Some(Action::EnemiesForgot),
+        "who.anonymous" => Some(Action::WhoAnonymous {
+            name: str_field("name")?,
+        }),
         "who.player" => Some(Action::WhoPlayer {
             name: str_field("name")?,
             level: str_field("level")?.parse().ok()?,
