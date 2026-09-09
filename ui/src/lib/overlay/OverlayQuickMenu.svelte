@@ -39,6 +39,7 @@
     setGroupBuffsEnabled,
   } from '$lib/stores/settings';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
+  import { activeModule } from '$lib/stores/shell';
 
   let open = $state(false);
   let panelEl: HTMLDivElement | undefined = $state();
@@ -156,10 +157,23 @@
       {:else if capped}
         <p class="text-[11px] text-caution">{$windowCapability.reason}</p>
       {:else}
-        <label class="flex items-center gap-2 font-medium text-foreground">
-          <Checkbox checked={$overlayEnabled} onCheckedChange={(v: boolean) => void setOverlayEnabledAll(v)} />
-          Overlay enable
-        </label>
+        <div class="flex items-center justify-between">
+          <label class="flex items-center gap-2 font-medium text-foreground">
+            <Checkbox checked={$overlayEnabled} onCheckedChange={(v: boolean) => void setOverlayEnabledAll(v)} />
+            Overlay enable
+          </label>
+          <!-- why: the full picture lives in the Overlay module -- one hop from here -->
+          <button
+            type="button"
+            class="text-[11px] text-brand-soft hover:text-primary hover:underline"
+            onclick={() => {
+              open = false;
+              activeModule.set('overlay');
+            }}
+          >
+            Settings →
+          </button>
+        </div>
         <div class="mt-2 flex flex-col gap-1.5 border-t border-border/60 pt-2">
           {@render row('dps_meter', 'DPS meter', $dpsMeterEnabled, (v) => void setDpsMeterEnabled(v))}
           {@render row('skill_tracker', 'Skill Tracker', $skillTrackerEnabled, (v) => void setSkillTrackerEnabled(v))}
