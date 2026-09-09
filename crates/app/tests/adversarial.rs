@@ -517,6 +517,90 @@ fn a_zone_line_forgets_every_pet_owner_the_log_inferred() {
     );
 }
 
+/// why: Spencer -- "every abhorrent isn't charmed. one is. the rest are
+/// still on the other side". Rules C1-C4: the other party decides which
+/// instance a row saw; the pool stays enemy; the charm never breaks on a
+/// same-named hit
+#[test]
+fn a_charm_splits_one_instance_off_the_pool_row_by_row() {
+    use eqlp_app::combat;
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n",
+        "[Tue Jul 28 15:01:00 2026] Kaeus begins casting Allure.\n",
+        "[Tue Jul 28 15:01:01 2026] an abhorrent has been charmed.\n",
+        "[Tue Jul 28 15:01:02 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:03 2026] an abhorrent hits a gnoll for 40 points of damage.\n",
+        "[Tue Jul 28 15:01:04 2026] an abhorrent hits You for 7 points of damage.\n",
+        "[Tue Jul 28 15:01:05 2026] You hit an abhorrent for 9 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:06 2026] an abhorrent hits an abhorrent for 5 points of damage.\n",
+        "[Tue Jul 28 15:01:07 2026] a gnoll hits an abhorrent for 3 points of damage.\n",
+    ));
+    let allies = combat::list_allies(&ing, None, None, false, None);
+    let kaeus = allies.iter().find(|a| a.name == "Kaeus").expect("Kaeus");
+    assert_eq!(
+        kaeus.total, 40,
+        "only the hit on the gnoll is the pet's (C2)"
+    );
+    assert_eq!(kaeus.pets[0].name, "an abhorrent (charmed)");
+    assert!(
+        !allies.iter().any(|a| a.name == "an abhorrent"),
+        "the pool is never an ally: {:?}",
+        allies.iter().map(|a| &a.name).collect::<Vec<_>>()
+    );
+    // why: the store rows themselves -- the pool dealt the wild hits and
+    // the pet took the wild one's and the gnoll's
+    let pool = ing.store.names.get("an abhorrent").expect("the pool");
+    let pet = ing
+        .store
+        .names
+        .get("an abhorrent (charmed)")
+        .expect("the pet");
+    let dealt_by = |s| eqlp_store::total(&ing.store, &eqlp_store::Filter::default().damage().by(s));
+    let taken_by = |s| {
+        eqlp_store::total(
+            &ing.store,
+            &eqlp_store::Filter::default().damage().target(s),
+        )
+    };
+    assert_eq!(
+        dealt_by(pool),
+        7 + 5,
+        "wild hits: on You (C1) and on the pet (C3)"
+    );
+    assert_eq!(dealt_by(pet), 40, "the pet's only confirmed action (C2)");
+    assert_eq!(
+        taken_by(pet),
+        5 + 3,
+        "hit by the wild one (C3) and the gnoll (C2 mirror)"
+    );
+    assert_eq!(taken_by(pool), 9, "You hit a wild one (C1)");
+    assert!(
+        ing.charm.is_none(),
+        "not your charm: the group cast was Kaeus's"
+    );
+
+    // why: a fresh charm with no confirmed target yet -- same-name rows
+    // cannot be split (C4): flagged, credited to nobody
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] You begin casting Allure.\n",
+        "[Tue Jul 28 15:01:01 2026] an abhorrent has been charmed.\n",
+        "[Tue Jul 28 15:01:02 2026] an abhorrent hits an abhorrent for 5 points of damage.\n",
+        "[Tue Jul 28 15:01:03 2026] an abhorrent hits You for 7 points of damage.\n",
+    ));
+    let flagged = (0..ing.store.len())
+        .filter(|&i| ing.store.flags[i] & eqlp_store::flag::UNRESOLVED_INSTANCE != 0)
+        .count();
+    assert_eq!(flagged, 1, "the abhorrent-on-abhorrent row");
+    assert!(
+        ing.store.names.get("an abhorrent (charmed)").is_none(),
+        "nothing was ever proven to be the pet"
+    );
+    assert!(
+        ing.charm.as_ref().is_some_and(|c| c.active),
+        "the hit on You is a wild one (C1), the charm stands (C6)"
+    );
+}
+
 /// why: Spencer -- "theres no 10 man raid. max party size is 8". A
 /// warder is its owner's hand, and "frenzies on X" must not spawn a
 /// second mob called "on X"

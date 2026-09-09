@@ -3293,7 +3293,7 @@ mod live_meter_window_tests {
             .expect("the charmer's row");
         assert_eq!(kaeus.total, 90, "50 of his own plus the pet's 40");
         assert_eq!(kaeus.pets.len(), 1, "and the part is kept");
-        assert_eq!(kaeus.pets[0].name, "an abhorrent");
+        assert_eq!(kaeus.pets[0].name, "an abhorrent (charmed)");
         assert_eq!(kaeus.pets[0].total, 40);
         assert!(
             !allies.iter().any(|a| a.name == "an abhorrent"),

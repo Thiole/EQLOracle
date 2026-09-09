@@ -135,11 +135,6 @@ const SESSION_GAP_MS: Millis = 30 * 60 * 1000;
 /// invite can sit while the player finishes something first
 const INVITE_ACCEPT_WINDOW_MS: Millis = 120_000;
 
-/// why: how recently a charm must have been cleared for a Quick Buff
-/// landing to un-clear it -- the wrong-instance repair (see
-/// `reaffirm_charm`), not a license to resurrect a long-ended charm
-const CHARM_REAFFIRM_MS: Millis = 60_000;
-
 /// why: the evidence unit of docs/class-and-level-rules.md P1 -- an
 /// encounter You are in. Evidence outside any encounter attaches to the
 /// next one; a zone line outside any encounter also ends the pending
@@ -1084,6 +1079,18 @@ struct PendingTurnIn {
 /// why: one genuinely confirmed Sky Quest turn-in -- who, and every item
 /// (name, qty) really accepted in that one exchange
 #[derive(Debug, Clone)]
+/// why: one charm per mob name -- see split_instances
+struct CharmHint {
+    active: bool,
+    /// why: the pet's last confirmed target (C2), what C3 reads
+    target: Option<String>,
+}
+
+/// why: the store name of the charmed instance of `base`
+fn charm_instance_name(base: &str) -> String {
+    format!("{base} (charmed)")
+}
+
 pub struct ConfirmedTurnIn {
     pub ts: Millis,
     pub who: String,
@@ -1357,6 +1364,9 @@ pub struct Ingest {
     /// is only true while that charm lasts. Tracked separately, and
     /// dropped when a zone line ends every charm in flight.
     charmed_pets: HashSet<String>,
+    /// why: one charm per mob NAME at a time -- "one of them is ours";
+    /// keyed by the lowercase base name. Rows split per C1-C4 against it
+    charm_hints: HashMap<String, CharmHint>,
     /// why: the no-summon-line case -- a groupmate's pet summoned out of
     /// log range has NOTHING to window-match (measured: the unmatched
     /// generated-name suspects' first action lands p25=50min after any
@@ -1518,6 +1528,7 @@ impl Default for Ingest {
             pet_owner: HashMap::new(),
             prior_pet_owner: HashMap::new(),
             charmed_pets: HashSet::new(),
+            charm_hints: HashMap::new(),
             behavioral_pet_hits: HashMap::new(),
             behavioral_pets: HashSet::new(),
             behavioral_pet_blacklist: HashSet::new(),
@@ -2297,6 +2308,7 @@ impl Ingest {
                 }
                 self.prior_pet_owner = prior;
                 self.charmed_pets.clear();
+                self.charm_hints.clear();
                 self.seen_actors.clear();
                 self.pending_summons.clear();
                 self.last_zone_enter_ms = Some(ts);
@@ -2710,8 +2722,15 @@ impl Ingest {
                 self.encounters.flag_end("You", ts);
             }
             Action::Charm { who } => {
-                let sym = self.sym(&who);
-                self.timeline.observed(ts, sym.0, State::Charmed);
+                // why: a player is one entity, so the name itself changes
+                // sides. A mob name is a pool: docs/class-and-level-rules.md
+                // "Charm instances" -- one instance becomes the charmer's
+                // and every row decides which one it saw (split_instances)
+                let player = self.encounters.entities.kind(&who) == Kind::Player;
+                if player {
+                    let sym = self.sym(&who);
+                    self.timeline.observed(ts, sym.0, State::Charmed);
+                }
                 // why: the mob changed sides -- its fight may be over
                 // (Builder::flag_end); any further action still extends it
                 self.encounters.flag_end(&who, ts);
@@ -2735,32 +2754,28 @@ impl Ingest {
                     .find(|e| ts - e.ts <= RECENT_CAST_RETENTION_MS && is_charm_spell(&e.spell))
                     .map(|e| (e.caster, e.spell.clone()));
                 let you = self.store.names.get("You").map(|s| s.0);
+                let owner_name = match &owner {
+                    Some((caster, _)) => self.store.names.name(Sym(*caster)).to_string(),
+                    None => String::new(),
+                };
                 match owner {
                     // why: yours -- the only case that moves `self.charm`,
                     // which every consumer reads as MY charmed pet
                     Some((caster, spell)) if Some(caster) == you => {
                         self.charm = Some(crate::effects::CharmStatus {
-                            who,
+                            who: who.clone(),
                             active: true,
                             since_ms: ts,
                             spell: Some(spell),
                         });
                     }
-                    // why: an ally's -- credit the mob's damage to them the
-                    // same way a summoned pet is credited, and leave
-                    // `self.charm` alone. Their charmed pet is not yours.
-                    Some((caster, _)) => {
-                        let owner_name = self.store.names.name(Sym(caster)).to_string();
-                        let resolved = self.resolve_name(&who);
-                        self.pet_owner.insert(resolved.clone(), owner_name);
-                        // why: a charm borrows an ordinary mob name -- this
-                        // entry is only true while the charm is
-                        self.charmed_pets.insert(resolved);
-                    }
-                    // why: nobody's charm cast is in the window -- the mob
-                    // really is charmed (timeline above says so) but there
-                    // is no honest owner to name
-                    None => {}
+                    Some(_) | None => {}
+                }
+                // why: the instance is a real entity owned by whoever cast
+                // -- "You" when it was yours, else the ally; no cast in the
+                // window still means one of them is charmed, owner unknown
+                if !player {
+                    self.open_charm_hint(&who, owner_name);
                 }
             }
             Action::Recovered { who, spell } => {
@@ -2786,8 +2801,13 @@ impl Ingest {
                         )
                 });
                 if !false_break {
-                    let sym = self.sym(&who);
-                    self.timeline.observed(ts, sym.0, State::Engaged);
+                    if let Some(h) = self.charm_hints.get_mut(&who.to_lowercase()) {
+                        h.active = false;
+                    }
+                    if self.encounters.entities.kind(&who) == Kind::Player {
+                        let sym = self.sym(&who);
+                        self.timeline.observed(ts, sym.0, State::Engaged);
+                    }
                     if let Some(c) = &mut self.charm {
                         if c.who == who && c.active {
                             c.active = false;
@@ -3059,14 +3079,89 @@ impl Ingest {
         amount: u64,
         flags: Flags,
     ) {
-        let id = Identified::new(ts, src, dst, self.character.as_deref());
+        let (src, dst, split) = self.split_instances(ts, src, dst);
+        let id = Identified::new(ts, &src, &dst, self.character.as_deref());
         self.observe_actors(&id);
         let linked = self.link_damage(&id);
         let involved = self.note_damage_involvement(linked);
         self.note_damage_class_evidence(&involved, ability, tags);
         let resolved = self.resolve_damage(involved);
         self.observe_damage(&resolved, ability, tags, amount);
-        self.commit_damage(&resolved, ability, tags, amount, flags);
+        self.commit_damage(&resolved, ability, tags, amount, flags | split);
+    }
+
+    /// why: C1-C4 -- which instance of a charmed NAME this row saw,
+    /// decided by the other party. Returns the names to intern and the
+    /// UNRESOLVED_INSTANCE flag when the log gives no split
+    fn split_instances(&mut self, ts: Millis, src: &str, dst: &str) -> (String, String, Flags) {
+        let src_hint = self
+            .charm_hints
+            .get(&src.to_lowercase())
+            .is_some_and(|h| h.active);
+        let dst_hint = self
+            .charm_hints
+            .get(&dst.to_lowercase())
+            .is_some_and(|h| h.active);
+        if !src_hint && !dst_hint {
+            return (src.to_string(), dst.to_string(), 0);
+        }
+        if src_hint && dst_hint && src.eq_ignore_ascii_case(dst) {
+            // why: C3 -- the pet is busy elsewhere, so this is a wild one
+            // hitting it; C4 -- otherwise nothing splits the pair
+            let busy_elsewhere = self
+                .charm_hints
+                .get(&src.to_lowercase())
+                .and_then(|h| h.target.as_deref())
+                .is_some_and(|t| !t.eq_ignore_ascii_case(src));
+            if busy_elsewhere {
+                return (src.to_string(), charm_instance_name(dst), 0);
+            }
+            return (src.to_string(), dst.to_string(), flag::UNRESOLVED_INSTANCE);
+        }
+        let mut out_src = src.to_string();
+        let mut out_dst = dst.to_string();
+        if src_hint && self.instance_against(ts, dst) == Some(true) {
+            out_src = charm_instance_name(src);
+            if let Some(h) = self.charm_hints.get_mut(&src.to_lowercase()) {
+                h.target = Some(dst.to_string());
+            }
+        }
+        if dst_hint && self.instance_against(ts, src) == Some(true) {
+            out_dst = charm_instance_name(dst);
+        }
+        (out_src, out_dst, 0)
+    }
+
+    /// why: the other party's side decides -- You or an ally means the
+    /// charmed name is wild (C1, hard rule); an enemy means it is the
+    /// pet (C2, inferred)
+    fn instance_against(&self, ts: Millis, other: &str) -> Option<bool> {
+        if other.eq_ignore_ascii_case("you") {
+            return Some(false);
+        }
+        Some(self.allegiance_at(other, ts).is_enemy())
+    }
+
+    /// why: a charm opened on `who` by `owner` ("" when no cast was in
+    /// the window) -- the instance entity exists from here, owned
+    fn open_charm_hint(&mut self, who: &str, owner: String) {
+        let inst = charm_instance_name(who);
+        if !owner.is_empty() {
+            self.encounters.entities.note_owned(&inst, &owner);
+            self.pet_owner.insert(inst.clone(), owner.clone());
+        } else {
+            self.encounters.entities.observe(&inst);
+        }
+        // why: keeps its own identity in the store; the fold is at
+        // aggregation (pet_of), never by rewriting the Sym
+        self.charmed_pets.insert(inst);
+        self.charm_hints.insert(
+            who.to_lowercase(),
+            CharmHint {
+                active: true,
+                target: None,
+            },
+        );
     }
 
     /// why: these four mutate the very state identity is read from --
@@ -3083,20 +3178,8 @@ impl Ingest {
         // why: the no-summon-line pet classifier -- see
         // note_behavioral_pet_evidence's own doc
         self.note_behavioral_pet_evidence(ts, src, dst);
-        // why: a charmed pet can attack enemies all session with no break
-        // line, but it can never legitimately land a hit on "You" --
-        // that alone proves the charm is gone (expired, backfired, or a
-        // new mob reusing the name), inferred here instead of waiting on
-        // a break line that may never come. Same two-part clear as
-        // Action::Recovered -- self.charm AND the timeline.
-        if let Some(c) = &mut self.charm {
-            if c.active && c.who.eq_ignore_ascii_case(src) && dst.eq_ignore_ascii_case("you") {
-                c.active = false;
-                c.since_ms = ts;
-                let sym = self.sym(src);
-                self.timeline.observed(ts, sym.0, State::Engaged);
-            }
-        }
+        // why: a same-named hit on You is a WILD instance (C1), never
+        // proof the charm broke -- the old clear lived here
         self.note_party_action(ts, src);
     }
 
@@ -3318,6 +3401,8 @@ impl Ingest {
         // why: same normalization as record_damage -- see canonical_you
         let src = canonical_you(src, self.character.as_deref());
         let dst = canonical_you(dst, self.character.as_deref());
+        let (src, dst, _) = self.split_instances(ts, src, dst);
+        let (src, dst) = (src.as_str(), dst.as_str());
         let enc = self
             .current_encounter_of(src)
             .or_else(|| self.current_encounter_of(dst));
@@ -3354,6 +3439,8 @@ impl Ingest {
         // why: same normalization as record_damage -- see canonical_you
         let src = canonical_you(src, self.character.as_deref());
         let dst = canonical_you(dst, self.character.as_deref());
+        let (src, dst, split) = self.split_instances(ts, src, dst);
+        let (src, dst, mitigation) = (src.as_str(), dst.as_str(), mitigation | split);
         // why: an avoided swing is an ENGAGEMENT edge, same as a landed
         // one -- it opens or joins a fight through the graph. Before, a
         // miss only rode along on an existing fight: a second mob of a
@@ -4087,31 +4174,6 @@ impl Ingest {
         self.pending_quickbuff.insert(resolved, ts);
     }
 
-    /// why: a corroborated Quick Buff group-cast landed on the tracked
-    /// charm name -- the game's own targeting says that pet is currently
-    /// a group ally. Two same-named mobs are indistinguishable in the
-    /// log, so the "charm gone" inference (a same-named hit landing on
-    /// "You", record_damage's own clear) can fire on the OTHER instance
-    /// and wrongly flip a still-loyal pet to enemy; this is the repair
-    /// signal, bounded to a recent clear so a long-ended charm can't be
-    /// resurrected by a coincidental matching landing.
-    fn reaffirm_charm(&mut self, ts: Millis, target_sym: u32) {
-        let Some(c) = &mut self.charm else { return };
-        if !c.active && ts - c.since_ms > CHARM_REAFFIRM_MS {
-            return;
-        }
-        c.active = true;
-        if self
-            .timeline
-            .state_at(target_sym, ts)
-            .map(|(s, _)| s)
-            .unwrap_or(State::Engaged)
-            != State::Charmed
-        {
-            self.timeline.observed(ts, target_sym, State::Charmed);
-        }
-    }
-
     /// why: live-tail's entry point for checking an unmatched line against
     /// the flavor dictionary; backfill does this itself during parallel
     /// classification instead (no Ingest access there). Four checks,
@@ -4513,12 +4575,8 @@ impl Ingest {
         // charm by GROUP_TTL_MS, and a charm ally must end with the charm.
         let name_plausible =
             plausible_player_name(&resolved) && !crate::npcdata::is_known_npc_name(&resolved);
-        let charm_tracked = self
-            .charm
-            .as_ref()
-            .is_some_and(|c| c.who.eq_ignore_ascii_case(&resolved));
         if !resolved.eq_ignore_ascii_case("you")
-            && (name_plausible || charm_tracked)
+            && name_plausible
             && !crate::flavordata::classes_for_flavor(text).is_empty()
         {
             if let Some(&activated_ms) = self.pending_quickbuff.get("You") {
@@ -4528,13 +4586,8 @@ impl Ingest {
                         *e == y && txt == text && (ts - *t).abs() <= GROUP_CAST_WINDOW_MS
                     })
                 });
-                if ts - activated_ms <= QUICKBUFF_WINDOW_MS && corroborated {
-                    if name_plausible {
-                        self.groups.reinforce_strong(&resolved, ts);
-                    }
-                    if charm_tracked {
-                        self.reaffirm_charm(ts, sym);
-                    }
+                if ts - activated_ms <= QUICKBUFF_WINDOW_MS && corroborated && name_plausible {
+                    self.groups.reinforce_strong(&resolved, ts);
                 }
             }
         }
@@ -6701,15 +6754,16 @@ mod charm_reaffirm_tests {
             "[Tue Jul 28 15:01:05 2026] an abhorrent hits a gnoll for 40 points of damage.",
         ]);
         assert_eq!(
-            ing.effective_name("an abhorrent"),
-            "an abhorrent",
+            ing.effective_name("an abhorrent (charmed)"),
+            "an abhorrent (charmed)",
             "its damage stays its own, not Sidhe's"
         );
         assert_eq!(
-            ing.pet_of("an abhorrent"),
+            ing.pet_of("an abhorrent (charmed)"),
             Some("Sidhe"),
             "but the row can say whose"
         );
+        assert_eq!(ing.pet_of("an abhorrent"), None, "the pool is nobody's");
     }
 
     #[test]
@@ -6729,43 +6783,24 @@ mod charm_reaffirm_tests {
         );
     }
 
-    /// why: the wrong-instance repair -- two same-named mobs, the OTHER
-    /// one hits "You" (clearing the tracked charm), then a corroborated
-    /// Quick Buff group-cast lands on the charm name: the game's own
-    /// targeting says the pet is still a group ally, so charm state comes back
+    /// why: C1 -- a same-named hit on You is a WILD instance, never a
+    /// break; C6 -- the old clear-and-reaffirm pair is gone with it
     #[test]
-    fn a_quickbuff_burst_restores_a_charm_cleared_by_the_wrong_instance() {
+    fn a_same_named_hit_on_you_is_a_wild_one_and_leaves_the_charm_standing() {
         let ing = run(&[
             "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
             "[Tue Jul 28 15:01:05 2026] an abhorrent hits You for 4 points of damage.",
-            "[Tue Jul 28 15:01:10 2026] You activate Quick Buff.",
-            "[Tue Jul 28 15:01:12 2026] You are enveloped by flame.",
-            "[Tue Jul 28 15:01:13 2026] an abhorrent is enveloped by flame.",
         ]);
-        let c = ing.charm.as_ref().expect("charm still tracked");
+        assert!(ing.charm.as_ref().is_some_and(|c| c.active));
         assert!(
-            c.active,
-            "the group-cast landing proves the pet is still yours"
+            ing.store.names.get("an abhorrent (charmed)").is_none(),
+            "the hit on You never touched the pet"
         );
         let now = ing.now_ms();
-        assert!(!ing.allegiance_at("an abhorrent", now).is_enemy());
-    }
-
-    /// why: bounded repair, not a resurrection license -- a charm that
-    /// ended a long time ago stays ended even if matching flavor text
-    /// coincidentally lands on the same name much later
-    #[test]
-    fn a_long_ended_charm_is_not_resurrected_by_a_matching_landing() {
-        let ing = run(&[
-            "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
-            "[Tue Jul 28 15:01:05 2026] an abhorrent hits You for 4 points of damage.",
-            // why: 5 minutes later, far past CHARM_REAFFIRM_MS
-            "[Tue Jul 28 15:06:10 2026] You activate Quick Buff.",
-            "[Tue Jul 28 15:06:12 2026] You are enveloped by flame.",
-            "[Tue Jul 28 15:06:13 2026] an abhorrent is enveloped by flame.",
-        ]);
-        let c = ing.charm.as_ref().expect("charm still tracked");
-        assert!(!c.active, "a long-broken charm must stay broken");
+        assert!(
+            ing.allegiance_at("an abhorrent", now).is_enemy(),
+            "the pool is enemy"
+        );
     }
 
     /// why: composition guard -- a charmed real PLAYER fights the other
@@ -6780,14 +6815,18 @@ mod charm_reaffirm_tests {
         assert!(ing.allegiance_at("Kaeus", now).is_enemy());
     }
 
-    /// why: the inverse composition -- an Unproven mob that's both
-    /// charmed and (somehow) group-believed is an ally either way, never
-    /// the old effective_kind+flip cancellation that read it Enemy
     #[test]
-    fn a_charmed_mob_reads_ally_while_the_charm_holds() {
+    fn a_charmed_mob_name_stays_enemy_and_its_instance_reads_ally() {
         let ing = run(&["[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed."]);
         let now = ing.now_ms();
-        assert!(!ing.allegiance_at("an abhorrent", now).is_enemy());
+        assert!(
+            ing.allegiance_at("an abhorrent", now).is_enemy(),
+            "the pool"
+        );
+        assert!(
+            !ing.allegiance_at("an abhorrent (charmed)", now).is_enemy(),
+            "the one that is yours"
+        );
     }
 
     /// why: real reported false break, replayed from the live log -- a
@@ -6805,10 +6844,9 @@ mod charm_reaffirm_tests {
         ]);
         let c = ing.charm.as_ref().expect("charm still tracked");
         assert!(c.active, "Tashania/Burnout fading is not the charm ending");
-        let now = ing.now_ms();
         assert!(
-            !ing.allegiance_at("heart harpie", now).is_enemy(),
-            "timeline must still read Charmed, not Engaged"
+            ing.pet_of("heart harpie (charmed)").is_some(),
+            "the instance is still yours"
         );
     }
 
@@ -6872,8 +6910,8 @@ mod charm_reaffirm_tests {
         ing.tick(0);
         let now = ing.now_ms();
         assert!(
-            !ing.allegiance_at("heart harpie", now).is_enemy(),
-            "idle close must not overwrite Charmed with Lost"
+            !ing.allegiance_at("heart harpie (charmed)", now).is_enemy(),
+            "idle close must not overwrite the pet's side"
         );
         assert!(ing.charm.as_ref().is_some_and(|c| c.active));
     }

@@ -258,16 +258,18 @@ mod tests {
     /// why: a charmed pet can never legitimately land a hit on "You" --
     /// that alone proves the charm already broke silently (no worn-off
     /// line), whether it expired or a fresh mob reused the same name.
+    /// why: C1 -- the one hitting You is a wild abhorrent; the charm on
+    /// yours stands until its own wear-off (Spencer, 2026-09-08)
     #[test]
-    fn a_charmed_name_attacking_you_breaks_the_charm_with_no_worn_off_line() {
+    fn a_charmed_name_attacking_you_is_a_wild_one_not_a_break() {
         let ing = run_charmed(&[
             "[Tue Jul 28 15:01:00 2026] an abhorrent has been charmed.",
             "[Tue Jul 28 15:01:05 2026] an abhorrent hits You for 4 points of damage.",
         ]);
         let dto = status_effects(&ing);
         assert!(
-            !dto.charm.expect("still tracked, now inactive").active,
-            "the charmed name hitting You is proof the charm already broke"
+            dto.charm.expect("still tracked").active,
+            "a same-named hit on You says nothing about your pet"
         );
     }
 

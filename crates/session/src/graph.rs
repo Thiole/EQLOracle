@@ -130,6 +130,16 @@ impl Entities {
             .or_insert_with(|| name.to_string());
     }
 
+    /// why: a charm instance has no possessive name to classify by --
+    /// the charmer is known from the cast, so say so directly
+    pub fn note_owned(&mut self, name: &str, owner: &str) {
+        let key = fold_key(name);
+        self.note_seen(&key, name);
+        self.owner
+            .insert(key.clone().into_owned(), owner.to_string());
+        self.kind.insert(key.into_owned(), Kind::Pet);
+    }
+
     /// why: NPCs never use player-only channels -- reliable player proof
     pub fn note_player_channel(&mut self, name: &str) {
         self.promote_to_player(name);

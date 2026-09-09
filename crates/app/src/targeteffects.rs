@@ -660,17 +660,17 @@ mod tests {
 
     /// why: a teammate's charm flips the target's allegiance to ally,
     /// no longer "the enemy"
+    /// why: "a rat has been charmed" names no instance -- the rat you
+    /// were hitting may well be another one, so the name stays the
+    /// enemy pool and the panel stays on it (rules C1-C4)
     #[test]
-    fn a_target_charmed_by_a_teammate_clears_the_panel() {
+    fn a_charmed_mob_name_keeps_the_panel_as_the_enemy_pool() {
         let ing = run(&[
             "[Tue Jul 28 15:01:00 2026] You hit a rat for 5 points of damage.",
             "[Tue Jul 28 15:01:05 2026] a rat has been charmed.",
         ]);
         let dto = target_effects(&ing);
-        assert_eq!(
-            dto.target, None,
-            "a charmed target is no longer an enemy to report effects against"
-        );
+        assert_eq!(dto.target.as_deref(), Some("a rat"));
     }
 
     /// why: a later resist must overwrite an earlier landing for the same spell

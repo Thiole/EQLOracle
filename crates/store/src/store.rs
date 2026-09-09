@@ -65,6 +65,9 @@ pub mod flag {
     pub const BLOCKED: Flags = 1 << 14;
     pub const DODGED: Flags = 1 << 15;
     pub const PARRIED: Flags = 1 << 16;
+    /// why: a same-named row the charm rules (C4) could not split --
+    /// counts toward the fight, credited to no entity
+    pub const UNRESOLVED_INSTANCE: Flags = 1 << 21;
     pub const MITIGATED: Flags = MISSED | BLOCKED | DODGED | PARRIED;
 
     /// why: substring match on free-text, unknown text just sets nothing

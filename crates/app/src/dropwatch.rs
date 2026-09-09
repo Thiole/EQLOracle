@@ -613,13 +613,16 @@ mod tests {
     }
 
     /// why: a charmed target is a temporary ally, not an enemy to warn about
+    /// why: a charm line names no instance -- the name stays an enemy
+    /// pool that still has to be cleared (rules C1-C4), so the watch
+    /// keeps it; only the charmed instance leaves the enemy side
     #[test]
-    fn a_charmed_target_is_excluded() {
+    fn a_charmed_name_stays_on_the_watch_as_the_enemy_pool() {
         let ing = run(concat!(
             "[Tue Jul 28 15:01:00 2026] You hit Keeper of Souls for 5 points of damage.\n",
             "[Tue Jul 28 15:01:05 2026] Keeper of Souls has been charmed.\n",
         ));
-        assert!(drop_watch(&ing).is_empty());
+        assert!(!drop_watch(&ing).is_empty());
     }
 
     /// why: real shape -- a loot line, count and latest timestamp both real

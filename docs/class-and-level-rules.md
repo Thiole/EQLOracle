@@ -124,6 +124,32 @@ rules below are ally-specific, and they only decide where a chain breaks.
   judged enemy or ally at the fight's own time, never "now". Bands:
   1 is solo, 2-4 is group, 5-8 is raid (Spencer, 2026-09-08).
 
+## Charm instances (Spencer, 2026-09-08)
+
+A charm line names no instance. One mob of that name is yours from that
+instant; every other mob with the name stays an enemy that still has to
+be cleared. Identity is split per row by the other party, never by
+flipping the name. Fold under the charmer only what confirms ally-side,
+only while the charm holds; after a break the name feeds the enemy side
+again with no migration.
+
+- C1. Row touches You or a proven ally: that mob is wild. Hard rule --
+  a charmed pet cannot hit allies and allies cannot hit it.
+- C2. Row is the mob against a target your group is engaged with: that
+  mob is the pet. Inferred, marked as such, folded under the charmer,
+  and it sets the pet's current target.
+- C3. Same-name row while the pet's current target is a different mob:
+  wild hitting pet, both credited. Reverse inference from C2 -- a pet
+  has one target at a time.
+- C4. Same-name row otherwise, or a row with no other party (self-heal,
+  cast, buff landing): unresolved. Credited to nobody; still part of
+  the encounter's total. NPCs fight NPCs and the wild ones may be
+  mezzed or rooted, so the log gives no split.
+- C5. The charm's own wear-off, the pet's death, or a zone line ends
+  the hint. Nothing migrates; later rows resolve by C1 on their own.
+- C6. A same-named hit landing on You is not evidence the charm broke
+  (it is C1 on a wild instance). The old clear-and-reaffirm pair is gone.
+
 ## Your level
 
 Level is a rolling record per class (P6), not something an encounter
