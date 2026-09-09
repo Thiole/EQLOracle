@@ -3,8 +3,8 @@
 use eqlp_session::{Builder, Entities, Kind, Policy};
 
 #[test]
-fn policy_defaults_to_six_seconds_and_is_settable() {
-    assert_eq!(Policy::default().idle_ms, 6_000);
+fn policy_defaults_to_two_and_a_half_seconds_and_is_settable() {
+    assert_eq!(Policy::default().idle_ms, 2_500);
     assert_eq!(Policy::default().idle_secs(30.0).idle_ms, 30_000);
     assert_eq!(Policy::default().cc_hold_secs(90.0).cc_hold_ms, 90_000);
     assert_eq!(Policy::default().link_secs(2.5).link_ms, 2_500);
@@ -331,8 +331,11 @@ fn a_same_named_survivor_stays_in_the_fight() {
     b.death(5_000, "a drake");
     let again = b.damage(6_000, "You", "a drake");
     assert_eq!(first, again, "same name, same pull");
+    // why: a same-named survivor is a mob still up -- the 12s window
     b.expire(17_000);
-    assert_eq!(b.live_count(), 0, "10s after the last action it closes");
+    assert_eq!(b.live_count(), 1, "the survivor keeps the fight open");
+    b.expire(18_001);
+    assert_eq!(b.live_count(), 0, "12s after the last action it closes");
 }
 
 /// why: the counter-case -- one mob, one death, no survivor: the plain
@@ -413,8 +416,12 @@ fn a_party_mez_holds_the_fight_until_broken_or_capped() {
     b.engage("a zol ghoul knight", "You", 1_000);
     b.hold_entity("a zol ghoul knight", 1_000);
     b.death(20_000, "a zol ghoul knight");
+    // why: the dar ghoul knight is still up -- the death drops the hold,
+    // the 12s no-kill window then closes it
     b.expire(26_001);
-    assert_eq!(b.live_count(), 0, "a death drops the hold, 6s closes it");
+    assert_eq!(b.live_count(), 1, "the other mob is still up");
+    b.expire(32_001);
+    assert_eq!(b.live_count(), 0, "a death drops the hold, 12s closes it");
 
     let mut b = Builder::new(Policy::default().cc_hold_secs(60.0));
     b.damage(0, "You", "a dar ghoul knight");
@@ -475,12 +482,12 @@ fn a_new_mob_after_a_kill_joins_the_running_encounter() {
         1,
         "still live: the sphinx hit was the last action"
     );
+    // why: the sphinx is still up, so the kill was not the end of
+    // combat -- the no-kill window (12s) runs from the last action
     b.expire(18_000);
-    assert_eq!(
-        b.live_count(),
-        0,
-        "10s quiet after the last action, with a kill in it, closes"
-    );
+    assert_eq!(b.live_count(), 1, "a mob still up keeps the 12s window");
+    b.expire(19_001);
+    assert_eq!(b.live_count(), 0, "12s quiet after the last action closes");
 }
 
 /// why: one team, one encounter -- a caster opening on a second mob

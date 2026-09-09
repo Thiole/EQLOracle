@@ -1823,6 +1823,8 @@ pub struct LiveMeterRowDto {
 /// back), not just a flat roster
 #[derive(Debug, Clone, Serialize)]
 pub struct LiveMeterDto {
+    /// why: "encounter" or "target" -- what the ally side counted
+    pub scope: &'static str,
     /// why: the anchor label ("a zol ghoul knight +2") -- kept for the
     /// Combat tab's fight list; the widget header is team v team now
     pub target: String,
@@ -1950,6 +1952,30 @@ pub enum DpsLayout {
     Full,
 }
 
+/// why: what the meter's ALLY side counts -- the whole engagement, or
+/// only the mob You last hit or were hit by. Incoming stays whole either
+/// way: it is what you survive. Spencer, 2026-09-08
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DpsScope {
+    Encounter,
+    Target,
+}
+
+impl DpsScope {
+    pub fn parse(v: &str) -> Self {
+        match v {
+            "target" => DpsScope::Target,
+            _ => DpsScope::Encounter,
+        }
+    }
+    fn name(self) -> &'static str {
+        match self {
+            DpsScope::Encounter => "encounter",
+            DpsScope::Target => "target",
+        }
+    }
+}
+
 impl DpsLayout {
     /// why: an unrecognized value (old install, hand-edited prefs) falls
     /// back to the default rather than erroring -- same contract as
@@ -1966,10 +1992,10 @@ impl DpsLayout {
 /// why: the default layout, and what every caller that does not care
 /// about the preset gets
 pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
-    live_meter_with(ing, DpsLayout::Condensed)
+    live_meter_with(ing, DpsLayout::Condensed, DpsScope::Encounter)
 }
 
-pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> {
+pub fn live_meter_with(ing: &Ingest, layout: DpsLayout, scope: DpsScope) -> Option<LiveMeterDto> {
     let now = ing.now_ms();
     let primary = current_encounter(ing)?;
     // why: the engagement is EVERY fight of yours that overlapped the
@@ -2037,6 +2063,39 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> 
     let mut you_first: Option<Millis> = None;
     let mut enemies: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut current_target: Option<(Millis, String)> = None;
+    // why: single-target scope needs the focus BEFORE rows accumulate --
+    // the newest mob You hit or were hit by, same rule the label uses
+    let focus: Option<String> = (scope == DpsScope::Target)
+        .then(|| {
+            let mut best: Option<(Millis, String)> = None;
+            for enc in &encs {
+                for i in enc.range() {
+                    if ing.store.enc[i] != enc.id.0 || ing.store.kind[i] != EventKind::Damage {
+                        continue;
+                    }
+                    let ts = ing.store.ts[i];
+                    let a = ing.effective_name(ing.store.name(ing.store.actor[i]));
+                    let t = ing.store.name(ing.store.target[i]).to_string();
+                    let mob = if a.eq_ignore_ascii_case("You")
+                        && ing.allegiance_at(&t, ts).is_enemy()
+                    {
+                        Some(t)
+                    } else if t.eq_ignore_ascii_case("You") && ing.allegiance_at(&a, ts).is_enemy()
+                    {
+                        Some(a)
+                    } else {
+                        None
+                    };
+                    if let Some(m) = mob {
+                        if best.as_ref().is_none_or(|(bt, _)| ts >= *bt) {
+                            best = Some((ts, m));
+                        }
+                    }
+                }
+            }
+            best.map(|(_, n)| n)
+        })
+        .flatten();
     for enc in &encs {
         for i in enc.range() {
             if ing.store.enc[i] != enc.id.0 || ing.store.kind[i] != EventKind::Damage {
@@ -2052,6 +2111,13 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> 
             let target_enemy = ing.allegiance_at(&target_name, ts).is_enemy();
             let acc = if !actor_enemy && target_enemy {
                 enemies.insert(target_name.to_lowercase());
+                // why: single-target -- only what landed on the focus counts
+                if focus
+                    .as_deref()
+                    .is_some_and(|f| !f.eq_ignore_ascii_case(&target_name))
+                {
+                    continue;
+                }
                 if actor_name.eq_ignore_ascii_case("You")
                     && current_target.as_ref().is_none_or(|(t, _)| ts >= *t)
                 {
@@ -2184,6 +2250,7 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout) -> Option<LiveMeterDto> 
     let ally_count = out_acc.len();
     let enemy_count = enemies.len();
     Some(LiveMeterDto {
+        scope: scope.name(),
         target,
         open,
         ally_count,
@@ -2531,6 +2598,42 @@ mod live_meter_tests {
     fn no_encounters_yet_is_none_not_a_panic() {
         let ing = run("");
         assert!(live_meter(&ing).is_none());
+    }
+
+    /// why: Spencer -- "an option for single target or encounter dps".
+    /// The focus is the mob You last hit or were hit by; incoming stays whole
+    #[test]
+    fn single_target_scope_counts_only_the_mob_you_last_hit() {
+        let ing = run("[Tue Jul 28 15:00:00 2026] You tell your party, 'ready'\n\
+             [Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.\n\
+             [Tue Jul 28 15:01:01 2026] You hit a gnoll scout for 20 points of damage.\n\
+             [Tue Jul 28 15:01:02 2026] a gnoll hits You for 4 points of damage.\n\
+             [Tue Jul 28 15:01:03 2026] a gnoll scout hits You for 3 points of damage.\n");
+        let whole =
+            live_meter_with(&ing, DpsLayout::Condensed, DpsScope::Encounter).expect("fight");
+        let you = whole
+            .outgoing
+            .iter()
+            .find(|r| r.name == "You")
+            .expect("You");
+        assert_eq!((whole.scope, you.total), ("encounter", 30));
+        let one = live_meter_with(&ing, DpsLayout::Condensed, DpsScope::Target).expect("fight");
+        let you = one.outgoing.iter().find(|r| r.name == "You").expect("You");
+        assert_eq!(
+            one.current_target.as_deref(),
+            Some("a gnoll scout"),
+            "the newest mob You traded hits with"
+        );
+        assert_eq!(
+            (one.scope, you.total),
+            ("target", 20),
+            "only what landed on the scout"
+        );
+        assert_eq!(
+            one.incoming.iter().map(|r| r.total).sum::<u64>(),
+            whole.incoming.iter().map(|r| r.total).sum::<u64>(),
+            "incoming stays whole"
+        );
     }
 
     #[test]
@@ -3332,7 +3435,12 @@ mod live_meter_window_tests {
              [Tue Jul 28 15:01:04 2026] a gnoll scout hits You for 8 points of damage.\n\
              [Tue Jul 28 15:01:05 2026] a gnoll runt hits You for 7 points of damage.\n",
         );
-        let n = |l| live_meter_with(&ing, l).expect("live fight").incoming.len();
+        let n = |l| {
+            live_meter_with(&ing, l, DpsScope::Encounter)
+                .expect("live fight")
+                .incoming
+                .len()
+        };
         assert_eq!(n(DpsLayout::Minimal), 0, "teammates only");
         assert_eq!(
             n(DpsLayout::Condensed),

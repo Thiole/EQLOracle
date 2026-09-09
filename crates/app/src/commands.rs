@@ -612,9 +612,11 @@ pub fn get_window_capability() -> WindowCapabilityDto {
 
 #[tauri::command]
 pub fn get_live_meter(app: AppHandle, state: State<AppState>) -> Option<combat::LiveMeterDto> {
-    let layout = combat::DpsLayout::parse(&preferences::load(&app).overlay_dps_meter_layout);
+    let prefs = preferences::load(&app);
+    let layout = combat::DpsLayout::parse(&prefs.overlay_dps_meter_layout);
+    let scope = combat::DpsScope::parse(&prefs.overlay_dps_meter_scope);
     let ing = state.ingest.lock_recover();
-    let m = combat::live_meter_with(&ing, layout);
+    let m = combat::live_meter_with(&ing, layout, scope);
     // why: EQLP_METER_TRACE=<file> -- one line per widget poll straight
     // from the running app: wall clock, log clock, encounter, open, rows,
     // your total. The only way to see what the widget was actually

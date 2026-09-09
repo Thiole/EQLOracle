@@ -42,7 +42,8 @@ pub struct Policy {
 impl Default for Policy {
     fn default() -> Self {
         Policy {
-            idle_ms: 6_000,
+            // why: Spencer, 2026-09-08 -- "cut from 6 seconds to 2.5"
+            idle_ms: 2_500,
             idle_unresolved_ms: 12_000,
             cc_hold_ms: 96_000,
             link_ms: 60_000,
@@ -231,6 +232,10 @@ pub struct Live {
     /// why: a party member (by the caller's own sides) acted in this
     /// fight -- what makes it the party's fight for team_fight
     pub has_party: bool,
+    /// why: the enemy side as the caller sided it -- "end of combat" is
+    /// every one of these slain, not merely the first kill (Spencer:
+    /// the short window runs from the END of combat)
+    pub mobs: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -379,6 +384,11 @@ impl Builder {
             }
         };
 
+        if actor_party && !target_party {
+            self.note_mob(id, target);
+        } else if target_party && !actor_party {
+            self.note_mob(id, actor);
+        }
         if let Some(e) = self.live.get_mut(&id) {
             e.last_ms = ts;
             e.events += 1;
@@ -482,11 +492,22 @@ impl Builder {
                 dupe: false,
                 flagged: false,
                 has_party: false,
+                mobs: Vec::new(),
             },
         );
         self.of.insert(fold_key(a).into_owned(), id);
         self.of.insert(fold_key(b).into_owned(), id);
         id
+    }
+
+    /// why: the caller knows which side a name is on; the fight keeps
+    /// the enemy names so expire can tell a kill from the end of combat
+    fn note_mob(&mut self, id: EncId, name: &str) {
+        if let Some(e) = self.live.get_mut(&id) {
+            if !e.mobs.iter().any(|m| fold_eq(m, name)) {
+                e.mobs.push(name.to_string());
+            }
+        }
     }
 
     fn attach(&mut self, id: EncId, name: &str, _ts: Millis) {
@@ -502,6 +523,11 @@ impl Builder {
         let (keep, gone) = if x.0 <= y.0 { (x, y) } else { (y, x) };
         if let Some(src) = self.live.remove(&gone) {
             if let Some(dst) = self.live.get_mut(&keep) {
+                for n in &src.mobs {
+                    if !dst.mobs.iter().any(|m| fold_eq(m, n)) {
+                        dst.mobs.push(n.clone());
+                    }
+                }
                 for n in &src.entities {
                     if !dst.entities.iter().any(|m| fold_eq(m, n)) {
                         dst.entities.push(n.clone());
@@ -562,6 +588,7 @@ impl Builder {
         if let Some(&id) = self.of.get(&*fold_key(with)) {
             self.entities.observe(name);
             self.attach(id, name, ts);
+            self.note_mob(id, name);
             if let Some(e) = self.live.get_mut(&id) {
                 if ts > e.last_ms {
                     e.last_ms = ts;
@@ -631,7 +658,15 @@ impl Builder {
                 // why: pet deaths don't resolve a fight -- "a pet dying
                 // isn't a kill"; only a non-pet death arms the short window
                 let real_kill = e.slain.iter().any(|n| !is_pet_suffixed(n));
-                let idle = if real_kill || e.flagged {
+                // why: a kill with another mob still up is not the end of
+                // combat -- the short window would cut a 3s cast on the
+                // next mob into a new fight. A dupe (a slain name swinging
+                // again) is a mob still up too
+                let mob_still_up = e.dupe
+                    || e.mobs
+                        .iter()
+                        .any(|m| !e.slain.iter().any(|s| fold_eq(s, m)));
+                let idle = if (real_kill && !mob_still_up) || e.flagged {
                     self.policy.idle_ms + if e.dupe { self.policy.dupe_grace_ms } else { 0 }
                 } else {
                     self.policy.idle_unresolved_ms

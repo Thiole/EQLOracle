@@ -4520,6 +4520,23 @@ impl Ingest {
         let resolved = self.resolve_name(target_name);
         let sym = self.sym(&resolved).0;
         let (source, skill) = self.attribute_effect(ts, text);
+        // why: Spencer -- a landed detrimental effect on an enemy is a
+        // hostile action: it opens or extends the fight like a hit would
+        // (a slow landing 3s after the last kill is the next pull).
+        // Beneficial landings never reach an enemy, so they never count
+        if let (Some(src), Some(sk)) = (source.as_deref(), skill.as_deref()) {
+            let detrimental = crate::spelldata::spell_by_name(sk)
+                .and_then(|s| s.spell_type.as_deref())
+                == Some("Detrimental");
+            if detrimental
+                && !resolved.eq_ignore_ascii_case(src)
+                && !self.allegiance_at(src, ts).is_enemy()
+                && self.allegiance_at(&resolved, ts).is_enemy()
+            {
+                let src = src.to_string();
+                self.link(ts, &src, &resolved);
+            }
+        }
         // why: a Quick Buff landing has no cast line -- the flavor text
         // names the effect and the open window names the buffer, so it
         // votes for the buffer's classes ("quick buff shows spells

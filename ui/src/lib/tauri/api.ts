@@ -429,6 +429,8 @@ export interface LiveMeterRowDto {
 }
 
 export interface LiveMeterDto {
+  /** 'encounter' or 'target' -- what the ally side counted */
+  scope: string;
   /** anchor label, for the Combat tab's fight list */
   target: string;
   open: boolean;
@@ -1668,6 +1670,9 @@ export interface PreferencesDto {
    * 'minimal' | 'condensed' | 'full'. Ally pets fold to one row in all
    * three; what changes is the enemy side. */
   overlay_dps_meter_layout: string;
+  /** why: what the meter's ally side counts -- 'encounter' | 'target'.
+   * Incoming stays whole either way. */
+  overlay_dps_meter_scope: string;
   /** why: how the Group Buff Tracker OVERLAY draws itself -- 'full' |
    * 'minimal'. Changes nothing in the app, only the in-game widget's own
    * screen footprint. Plain string, validated by asBuffLayout on read. */

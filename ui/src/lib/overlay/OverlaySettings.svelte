@@ -61,12 +61,14 @@
     setGroupBuffsLayout,
     dpsMeterLayout,
     setDpsMeterLayout,
+    dpsMeterScope,
+    setDpsMeterScope,
     loadPreferences,
   } from '$lib/stores/settings';
   import type { CcSize } from './ccSize';
   import type { BuffLayout } from './buffLayout';
   import { HelpTip } from '$lib/components/ui/help';
-  import type { DpsLayout } from './dpsLayout';
+  import type { DpsLayout, DpsScope } from './dpsLayout';
   import { windowCapability, loadWindowCapability } from '$lib/stores/overlay';
   import TrackedSkillsList from './TrackedSkillsList.svelte';
   import BellIcon from '@lucide/svelte/icons/bell';
@@ -351,13 +353,18 @@
       <CardContent class="px-3 py-2.5">
         {@render sectionHeader(
           'DPS meter',
-          "Players and assumed pets, rolling recent-fight damage. Layout: minimal is teammates only; condensed adds the top enemy and one combined row for the rest; full gives every enemy its own row. Pets always fold into one row.",
+          "Players and assumed pets, rolling recent-fight damage. Layout: minimal is teammates only; condensed adds the top enemy and one combined row for the rest; full gives every enemy its own row. Pets always fold into one row. Scope: encounter counts every mob of the engagement; target counts only the mob you last hit or were hit by, incoming stays whole.",
         )}
         <!-- why: at the top of the section, like Group Buffs -- this is
              how the IN-GAME widget lays itself out, nothing in the app
              changes with it. Allies read the same in all three; what
              changes is the enemy side. -->
         {@render presetPicker(['minimal', 'condensed', 'full'], $dpsMeterLayout, (v) => void setDpsMeterLayout(v as DpsLayout), capped)}
+        <!-- why: what the ally side COUNTS -- the whole engagement, or
+             only the mob you last hit or were hit by. Incoming stays
+             whole either way. -->
+        <div class="mt-1"></div>
+        {@render presetPicker(['encounter', 'target'], $dpsMeterScope, (v) => void setDpsMeterScope(v as DpsScope), capped)}
         <div class="mt-2"></div>
         <label class="flex items-center gap-2 text-[12px] {capped ? 'text-muted-foreground' : 'text-foreground'}">
           <Checkbox checked={$dpsMeterEnabled} disabled={capped} onCheckedChange={(v: boolean) => void onToggleDpsMeter(v)} />

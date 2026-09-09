@@ -55,6 +55,11 @@ fn default_dps_layout() -> String {
     "condensed".to_string()
 }
 
+/// why: the whole engagement, as it always was; "target" is the opt-in
+fn default_dps_scope() -> String {
+    "encounter".to_string()
+}
+
 /// why: the second opacity knob. overlay_<widget>_opacity above is
 /// background-only (rgba alpha on the panel; text stays fully
 /// readable). This is a CSS `opacity` on the whole outer element, so
@@ -234,6 +239,11 @@ pub struct Preferences {
     /// DpsLayout::parse validates it on read.
     #[serde(default = "default_dps_layout")]
     pub overlay_dps_meter_layout: String,
+    /// why: what the meter's ally side counts -- "encounter" (every mob
+    /// of the engagement) or "target" (only the mob You last hit or were
+    /// hit by). Incoming stays whole either way. Spencer, 2026-09-08
+    #[serde(default = "default_dps_scope")]
+    pub overlay_dps_meter_scope: String,
     /// why: how the Group Buff Tracker OVERLAY draws itself -- "full"
     /// (the list) or "minimal" (one verdict line). Spencer: "it doesnt
     /// change any information in app. just minimizes the screen space in
@@ -321,6 +331,7 @@ impl Default for Preferences {
             tracked_drop_items: Vec::new(),
             tracked_drop_seen_counts: HashMap::new(),
             overlay_dps_meter_layout: default_dps_layout(),
+            overlay_dps_meter_scope: default_dps_scope(),
             overlay_group_buffs_layout: default_buff_layout(),
             muted_buff_lines: Vec::new(),
             overlay_enabled_widgets: Vec::new(),
@@ -484,6 +495,7 @@ mod tests {
             tracked_target_effects: vec!["Tashania".to_string()],
             tracked_drop_items: vec!["Light Woolen Mask".to_string()],
             overlay_dps_meter_layout: "full".to_string(),
+            overlay_dps_meter_scope: "encounter".to_string(),
             overlay_group_buffs_layout: "minimal".to_string(),
             muted_buff_lines: vec!["Cure Disease".to_string()],
             overlay_enabled_widgets: vec!["dps_meter".to_string()],

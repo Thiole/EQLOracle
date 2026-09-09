@@ -124,6 +124,18 @@ rules below are ally-specific, and they only decide where a chain breaks.
   judged enemy or ally at the fight's own time, never "now". Bands:
   1 is solo, 2-4 is group, 5-8 is raid (Spencer, 2026-09-08).
 
+## Encounter idle (Spencer, 2026-09-08)
+
+- E1. The short window after the END of combat is 2.5s (was 6): every
+  engaged mob slain, or an end-of-combat flag (charm, mem blur). The
+  next hostile action after it opens a new fight.
+- E2. A kill with another mob still up is not the end of combat -- the
+  12s no-kill window runs from the last party action. A same-named
+  survivor (a slain name acting again) counts as a mob still up.
+- E3. A hostile action is party damage or an avoided swing against an
+  enemy, or a landed DETRIMENTAL effect an ally cast on an enemy (the
+  landing text names the target; "begins casting" never does).
+
 ## Charm instances (Spencer, 2026-09-08)
 
 A charm line names no instance. One mob of that name is yours from that

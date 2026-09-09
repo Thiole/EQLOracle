@@ -103,7 +103,9 @@
       <span class="ml-1 font-mono text-[10px] text-foreground/70" title="allies dealing damage v enemies involved">{meter.ally_count} v {meter.enemy_count}</span>{meter.open ? '' : ' (ended)'}
     </div>
     {#if meter.current_target}
-      <div class="truncate text-[10px] text-foreground/70">current target: {meter.current_target}</div>
+      <div class="truncate text-[10px] text-foreground/70">
+        current target: {meter.current_target}{#if meter.scope === 'target'}<span class="ml-1 text-foreground/50" title="Ally side counts only what landed on this mob">· single target</span>{/if}
+      </div>
     {/if}
 
     {#if meter.outgoing.length}

@@ -7,6 +7,14 @@ export type DpsLayout = 'minimal' | 'condensed' | 'full';
 
 export const DEFAULT_DPS_LAYOUT: DpsLayout = 'condensed';
 
+// why: what the ally side counts -- the engagement, or only the mob You
+// last hit or were hit by. No window resize; same rows, narrower sum.
+export type DpsScope = 'encounter' | 'target';
+export const DEFAULT_DPS_SCOPE: DpsScope = 'encounter';
+export function asDpsScope(v: string | null | undefined): DpsScope {
+  return v === 'target' ? 'target' : DEFAULT_DPS_SCOPE;
+}
+
 const LAYOUTS: readonly DpsLayout[] = ['minimal', 'condensed', 'full'];
 
 /** why: an unrecognized value falls back to the default rather than

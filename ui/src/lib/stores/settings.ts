@@ -8,7 +8,7 @@ import { writable, derived, get } from 'svelte/store';
 import { api, type PreferencesDto, type TrackedLootDto } from '../tauri/api';
 import { asCcSize, DEFAULT_CC_SIZE, type CcSize } from '../overlay/ccSize';
 import { asBuffLayout, DEFAULT_BUFF_LAYOUT, type BuffLayout } from '../overlay/buffLayout';
-import { asDpsLayout, DEFAULT_DPS_LAYOUT, type DpsLayout } from '../overlay/dpsLayout';
+import { asDpsLayout, asDpsScope, DEFAULT_DPS_LAYOUT, DEFAULT_DPS_SCOPE, type DpsLayout, type DpsScope } from '../overlay/dpsLayout';
 
 export const volume = writable(100);
 /** why: the raw saved preference -- null means "no explicit choice yet",
@@ -122,6 +122,8 @@ export const groupBuffsLayout = writable<BuffLayout>(DEFAULT_BUFF_LAYOUT);
 /** why: how much of the fight the DPS meter overlay draws -- see
  * PreferencesDto.overlay_dps_meter_layout's own doc */
 export const dpsMeterLayout = writable<DpsLayout>(DEFAULT_DPS_LAYOUT);
+/** why: encounter or single-target -- see PreferencesDto.overlay_dps_meter_scope */
+export const dpsMeterScope = writable<DpsScope>(DEFAULT_DPS_SCOPE);
 export const settingsLoaded = writable(false);
 
 // why: applies on every change, not just after an explicit setTheme() --
@@ -178,6 +180,7 @@ export function loadPreferences(): Promise<void> {
     dropWatchCheckpointMs.set(prefs.drop_watch_checkpoint_ms);
     groupBuffsLayout.set(asBuffLayout(prefs.overlay_group_buffs_layout));
     dpsMeterLayout.set(asDpsLayout(prefs.overlay_dps_meter_layout));
+    dpsMeterScope.set(asDpsScope(prefs.overlay_dps_meter_scope));
     enabledWidgets.set(prefs.overlay_enabled_widgets ?? []);
     mutedBuffLines.set(prefs.muted_buff_lines ?? []);
     settingsLoaded.set(true);
@@ -213,6 +216,7 @@ function currentPrefs(): PreferencesDto {
     muted_buff_lines: get(mutedBuffLines),
     overlay_group_buffs_layout: get(groupBuffsLayout),
     overlay_dps_meter_layout: get(dpsMeterLayout),
+    overlay_dps_meter_scope: get(dpsMeterScope),
     overlay_enabled_widgets: get(enabledWidgets),
   };
 }
@@ -504,6 +508,11 @@ export async function setDpsMeterLayout(v: DpsLayout) {
   dpsMeterLayout.set(v);
   void api.setOverlaySize('dps_meter', v);
   await api.setPreferences({ ...currentPrefs(), overlay_dps_meter_layout: v }).catch(() => {});
+}
+
+export async function setDpsMeterScope(v: DpsScope) {
+  dpsMeterScope.set(v);
+  await api.setPreferences({ ...currentPrefs(), overlay_dps_meter_scope: v }).catch(() => {});
 }
 
 export async function setCcTrackerSize(v: CcSize) {

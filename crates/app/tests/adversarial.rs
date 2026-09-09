@@ -365,9 +365,9 @@ fn a_selection_clips_ranges_and_never_double_counts() {
         mobs: vec![],
     };
     let s = combat::summarize(&ing, None, None, None, false, Some(&visit));
-    // why: run_closed's own filler hit lands inside the orc fight's 6s
-    // post-kill window, so it is part of that fight, not a third one
-    assert_eq!(s.fight_count, 2);
+    // why: run_closed's own filler hit lands 6s after the orc kill --
+    // past the 2.5s post-kill window, so it is a third fight of its own
+    assert_eq!(s.fight_count, 3);
     assert_eq!(s.total_damage, 401);
 }
 
@@ -514,6 +514,54 @@ fn a_zone_line_forgets_every_pet_owner_the_log_inferred() {
         ),
         15,
         "refound pet's 10 lands under Scarge beside his own 5"
+    );
+}
+
+/// why: Spencer -- the timer between a kill and the next hostile action
+/// "cut from 6 seconds to 2.5 seconds": a hit 3s after the kill is the
+/// next pull, and a landed detrimental effect counts as that action too
+#[test]
+fn a_fight_closes_two_and_a_half_seconds_after_its_kill_and_a_landed_debuff_opens_the_next() {
+    use eqlp_app::combat;
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:05 2026] You have slain a gnoll!\n",
+        "[Tue Jul 28 15:01:08 2026] You hit a gnoll scout for 50 points of fire damage by Burst of Flame.\n",
+    ));
+    let fights = combat::list_encounters(&ing, None, 0, 50);
+    assert_eq!(
+        fights
+            .iter()
+            .filter(|e| !e.target.contains("filler"))
+            .count(),
+        2,
+        "3s after the kill is a new fight: {:?}",
+        fights.iter().map(|e| &e.target).collect::<Vec<_>>()
+    );
+
+    // why: Malaise casts in 3.0s; its landing on the scout at :10 is
+    // attributed to You and is the hostile action that opens the fight,
+    // so the fight starts at the landing, not at the first hit
+    let ing = run_closed(concat!(
+        "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 100 points of fire damage by Burst of Flame.\n",
+        "[Tue Jul 28 15:01:05 2026] You have slain a gnoll!\n",
+        "[Tue Jul 28 15:01:07 2026] You begin casting Malaise.\n",
+        "[Tue Jul 28 15:01:10 2026] a gnoll scout looks somewhat uncomfortable.\n",
+        "[Tue Jul 28 15:01:12 2026] You hit a gnoll scout for 50 points of fire damage by Burst of Flame.\n",
+    ));
+    let fights = combat::list_encounters(&ing, None, 0, 50);
+    let scout = fights
+        .iter()
+        .find(|e| e.target.eq_ignore_ascii_case("a gnoll scout"))
+        .expect("the scout's own fight");
+    let gnoll = fights
+        .iter()
+        .find(|e| e.target.eq_ignore_ascii_case("a gnoll"))
+        .expect("the gnoll's fight");
+    assert_eq!(
+        scout.start_ms - gnoll.start_ms,
+        10_000,
+        "opened by the landing at :10, not the hit at :12"
     );
 }
 
