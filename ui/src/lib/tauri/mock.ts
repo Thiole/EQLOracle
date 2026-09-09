@@ -52,6 +52,10 @@ function keyFor(cmd: string, args: Record<string, unknown> | undefined): string 
     case 'list_encounters':
       return `zoneVisit=${norm(a.zoneVisit)}&offset=${norm(a.offset)}&limit=${norm(a.limit)}`;
     case 'get_combat_summary':
+      // why: an actor narrows to one entity's own rows -- keyed so an
+      // expanded owner and each of its pets read their own summary, not
+      // the fight's; absent actor keeps the legacy key byte-identical
+      return `zoneVisit=${norm(a.zoneVisit)}&encounterId=${norm(a.encounterId)}${a.selection ? `&selection=${JSON.stringify(a.selection)}` : ''}${a.actor ? `&actor=${a.actor}` : ''}`;
     case 'list_allies':
     case 'list_enemies':
       // why: a bucket keys separately; without one the legacy key stays byte-identical

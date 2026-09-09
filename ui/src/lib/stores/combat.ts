@@ -86,6 +86,9 @@ export const stateAt = writable<{ tsMs: number; entities: EntityStateDto[] } | n
 /** Which ally row (if any) is expanded to its own ability/cast breakdown. */
 export const expandedAlly = writable<string | null>(null);
 export const allySummary = writable<CombatSummaryDto | null>(null);
+// why: an expanded owner is a folder -- each charmed/summoned pet under
+// it gets its own summary, keyed by the pet's store name
+export const petSummaries = writable<Record<string, CombatSummaryDto>>({});
 
 // ---------------------------------------------------------------- history pane
 /** why: the past-parses target -- the one fight selected, else nothing */
@@ -305,11 +308,24 @@ export async function toggleAlly(name: string) {
   if (current === name) {
     expandedAlly.set(null);
     allySummary.set(null);
+    petSummaries.set({});
     return;
   }
   expandedAlly.set(name);
+  await loadExpanded(name);
+}
+
+// why: the owner's own rows and one block per pet, fetched together
+async function loadExpanded(name: string) {
   const { zv, enc, sel } = scope();
-  allySummary.set(await api.getCombatSummary(zv, enc, name, false, sel));
+  const pets = get(allies).find((a) => a.name === name)?.pets ?? [];
+  const [own, ...petSums] = await Promise.all([
+    api.getCombatSummary(zv, enc, name, false, sel),
+    ...pets.map((p) => api.getCombatSummary(zv, enc, p.name, false, sel)),
+  ]);
+  if (get(expandedAlly) !== name) return;
+  allySummary.set(own);
+  petSummaries.set(Object.fromEntries(pets.map((p, i) => [p.name, petSums[i]])));
 }
 
 function timelineEncounter(): number | null {
@@ -346,6 +362,7 @@ async function refreshSelection(preserveScrub = false) {
     timeline.set(null);
     stateAt.set(null);
     allySummary.set(null);
+    petSummaries.set({});
     return;
   }
   const token = ++selectionToken;
@@ -359,7 +376,7 @@ async function refreshSelection(preserveScrub = false) {
   timeline.set(tl != null ? await api.getFightTimeline(tl) : null);
   if (!preserveScrub) stateAt.set(null);
   const expanded = get(expandedAlly);
-  if (expanded) allySummary.set(await api.getCombatSummary(zv, enc, expanded, false, sel));
+  if (expanded) await loadExpanded(expanded);
 }
 
 // why: refetch what is on screen; closed fights untouched, no teardown

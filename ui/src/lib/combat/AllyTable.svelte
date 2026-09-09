@@ -1,7 +1,7 @@
 <script lang="ts">
   import * as Table from '$lib/components/ui/table';
-  import type { AllyDto } from '$lib/tauri/api';
-  import { allies, expandedAlly, allySummary, toggleAlly } from '$lib/stores/combat';
+  import type { AllyDto, CombatSummaryDto } from '$lib/tauri/api';
+  import { allies, expandedAlly, allySummary, petSummaries, toggleAlly } from '$lib/stores/combat';
   import { trackedSkills, toggleTrackedSkill } from '$lib/stores/settings';
   import TargetIcon from '@lucide/svelte/icons/target';
   import { sortRows, nextSort, loadCols, saveCols, type Dir } from './grid';
@@ -86,9 +86,49 @@
   }
   const abilityShown = $derived(ABILITY_COLS.filter((c) => abilityVisible.has(c.key)));
   let abilitySort = $state<{ key: AbilityCol | 'ability'; dir: Dir }>({ key: 'total', dir: -1 });
-  const abilityRows = $derived.by((): AbilityGridRow[] => {
-    const rows = ($allySummary?.abilities ?? []).map((ab) => ({ ...ab, avoided: ab.missed + ab.blocked + ab.dodged + ab.parried }));
+  // why: one grid, many entities -- the owner's own rows and each pet's
+  function rowsOf(summary: CombatSummaryDto | null | undefined): AbilityGridRow[] {
+    const rows = (summary?.abilities ?? []).map((ab) => ({ ...ab, avoided: ab.missed + ab.blocked + ab.dodged + ab.parried }));
     return sortRows(rows, abilitySort.key, abilitySort.dir);
+  }
+  const abilityRows = $derived(rowsOf($allySummary));
+  // why: the two slices under an owner with a pet -- shares the row's
+  // own time window, so % and dps scale with the split of the total
+  type Part = { name: string; label: string; pet: boolean; total: number; hits: number; summary: CombatSummaryDto | undefined };
+  function partsOf(a: AllyDto): Part[] {
+    const petTotal = a.pets.reduce((n, p) => n + p.total, 0);
+    const petHits = a.pets.reduce((n, p) => n + p.hits, 0);
+    return [
+      { name: a.name, label: `${a.name} directly`, pet: false, total: a.total - petTotal, hits: Math.max(0, a.hits - petHits), summary: $allySummary ?? undefined },
+      ...a.pets.map((p) => ({ name: p.name, label: p.name, pet: true, total: p.total, hits: p.hits, summary: $petSummaries[p.name] })),
+    ];
+  }
+  function partCell(part: Part, a: AllyDto, key: AllyCol): string {
+    const share = a.total > 0 ? part.total / a.total : 0;
+    switch (key) {
+      case 'total':
+        return part.total.toLocaleString();
+      case 'hits':
+        return part.hits.toLocaleString();
+      case 'pct':
+        return pctCell(a.pct * share);
+      case 'dps':
+        return (a.dps * share).toFixed(1);
+      case 'crits':
+      case 'crit_pct': {
+        const abs = part.summary?.abilities ?? [];
+        const crits = abs.reduce((n, ab) => n + ab.crits, 0);
+        const hits = abs.reduce((n, ab) => n + ab.hits, 0);
+        return key === 'crits' ? crits.toLocaleString() : hits ? pctCell((crits / hits) * 100) : '';
+      }
+      default:
+        return '';
+    }
+  }
+  let expandedPart = $state<string | null>(null);
+  $effect(() => {
+    void $expandedAlly;
+    expandedPart = null;
   });
   let abilityColsOpen = $state(false);
   function abilityCell(ab: AbilityGridRow, key: AbilityCol): string {
@@ -120,6 +160,141 @@
   };
   const abbr = (c: string) => ABBR[c] ?? c.slice(0, 3).toUpperCase();
 </script>
+
+{#snippet entityBlock(rows: AbilityGridRow[], summary: CombatSummaryDto, label: string | null, total: number | null)}
+  <div class="flex flex-col gap-3">
+    {#if label}
+      <h4 class="flex items-center justify-between border-b border-border pb-0.5 text-[11px]">
+        <span class="font-medium text-foreground">{label}</span>
+        {#if total != null}<span class="font-mono tabular-nums text-muted-foreground">{total.toLocaleString()}</span>{/if}
+      </h4>
+    {/if}
+                <div>
+                  <h4 class="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <span>abilities</span>
+                    <button type="button" class="normal-case tracking-normal hover:text-foreground" onclick={() => (abilityColsOpen = !abilityColsOpen)}>columns</button>
+                  </h4>
+                  {#if abilityColsOpen}
+                    <div class="mb-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                      {#each ABILITY_COLS as c (c.key)}
+                        <label class="flex items-center gap-1"><input type="checkbox" checked={abilityVisible.has(c.key)} onchange={() => toggleAbilityCol(c.key)} /> {c.label}</label>
+                      {/each}
+                    </div>
+                  {/if}
+                  <table class="w-full text-[11px]">
+                    <thead>
+                      <tr class="border-b border-border text-muted-foreground">
+                        <th class="py-0.5 text-left font-normal"><button type="button" class="select-none" onclick={() => (abilitySort = nextSort(abilitySort, 'ability', false))}>ability{arrow('ability', abilitySort)}</button></th>
+                        {#each abilityShown as c (c.key)}
+                          <th class="py-0.5 text-right font-normal"><button type="button" class="select-none" onclick={() => (abilitySort = nextSort(abilitySort, c.key, true))}>{c.label}{arrow(c.key, abilitySort)}</button></th>
+                        {/each}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {#each rows as ab (ab.ability)}
+                        <tr class="group border-b border-border/50">
+                          <td class="py-0.5">
+                            <span class="inline-flex items-center gap-1">
+                              {ab.ability}
+                              <!-- why: the target icon adds/removes it from
+                                   the Skill Tracker overlay's cooldowns section -->
+                              <button
+                                type="button"
+                                class="rounded-sm p-0.5 {$trackedSkills.includes(ab.ability)
+                                  ? 'text-primary'
+                                  : 'text-muted-foreground opacity-0 group-hover:opacity-100'}"
+                                title={$trackedSkills.includes(ab.ability)
+                                  ? `Stop tracking ${ab.ability}`
+                                  : `Track ${ab.ability} in the Skill Tracker overlay`}
+                                onclick={() => void toggleTrackedSkill(ab.ability)}
+                              >
+                                <TargetIcon class="size-3" />
+                              </button>
+                            </span>
+                          </td>
+                          {#each abilityShown as c (c.key)}
+                            <td class="py-0.5 text-right tabular-nums {c.key === 'avoided' ? 'text-bad' : c.key === 'total' || c.key === 'dps' ? '' : 'text-muted-foreground'}" title={c.key === 'avoided' ? avoidedTitle(ab) : undefined}>{abilityCell(ab, c.key)}</td>
+                          {/each}
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+                <div>
+                  <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">spells cast</h4>
+                  <table class="w-full text-[11px]">
+                    <tbody>
+                      {#each summary.casts as c (c.spell)}
+                        <tr class="border-b border-border/50">
+                          <td class="py-0.5">{c.spell}</td>
+                          <td class="py-0.5 text-right tabular-nums">{c.landed}/{c.attempts}</td>
+                          <td class="py-0.5 text-right tabular-nums text-muted-foreground">
+                            {#if c.resisted}{c.resisted} resisted{/if}
+                            {#if c.interrupted}{c.interrupted} interrupted{/if}
+                            {#if c.fizzled}{c.fizzled} fizzled{/if}
+                          </td>
+                        </tr>
+                      {/each}
+                    </tbody>
+                  </table>
+                </div>
+  </div>
+{/snippet}
+
+{#snippet ownerExtras(a: AllyDto)}
+                <!-- why: an observed swing rate, and labelled as one.
+                     The log timestamps whole seconds and haste, dual
+                     wield and double attack all sit on the weapon's own
+                     delay, so this cannot be that number and does not
+                     claim to be. Specials are excluded -- Bash, Kick,
+                     Backstab and Frenzy run on their own timers. -->
+                {#if a.melee_rate && a.melee_rate.rounds > 1}
+                  <div class="text-[11px]">
+                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      melee swing rate
+                    </h4>
+                    <p class="flex justify-between gap-3">
+                      <span>seconds between swing rounds</span>
+                      <span class="font-mono tabular-nums">{a.melee_rate.secs_between_rounds.toFixed(2)}s</span>
+                    </p>
+                    <p class="flex justify-between gap-3">
+                      <span>swings per round</span>
+                      <span class="font-mono tabular-nums">
+                        {(a.melee_rate.swings / a.melee_rate.rounds).toFixed(2)}
+                      </span>
+                    </p>
+                    <p class="flex justify-between gap-3 text-muted-foreground">
+                      <span>{a.melee_rate.swings.toLocaleString()} swings over {a.melee_rate.rounds.toLocaleString()} rounds</span>
+                    </p>
+                  </div>
+                {/if}
+                {#if allySide && a.class_source !== 'who' && (a.classes.length < 3 || a.class_prior.length || a.class_conflicts || a.class_chain_end)}
+                  <!-- why: Q34 -- what the open slot is stuck between, and the chain's state -->
+                  <div class="text-[11px]">
+                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">class detection</h4>
+                    {#if a.classes.length < 3}
+                      <p>open slot{a.class_candidates.length ? `, between: ${a.class_candidates.join(', ')}` : ': no candidates yet'}</p>
+                    {/if}
+                    {#if a.class_prior.length}
+                      <p>carried as prior, reconfirming: {a.class_prior.join(', ')}</p>
+                    {/if}
+                    {#if a.class_conflicts}
+                      <p class="text-caution">{a.class_conflicts} conflicting encounter{a.class_conflicts === 1 ? '' : 's'} running (3 close the chain)</p>
+                    {/if}
+                    {#if a.class_chain_end === '??'}
+                      <p class="text-bad">chain closed by contradiction -- a new one is confirming</p>
+                    {:else if a.class_chain_end === 'swap'}
+                      <p class="text-caution">chain closed by a loadout swap signal</p>
+                    {:else if a.class_chain_end === 'presence'}
+                      <!-- why: not a swap: a new presence (absence, your zone
+                           line, a group change). This fight keeps what was known
+                           in it; detection since then started clean. -->
+                      <p class="text-muted-foreground">this presence ended (absence, your zone line or a group change) -- detection restarted after it</p>
+                    {/if}
+                  </div>
+                {/if}
+{/snippet}
+
 
 {#if list.length === 0}
   <p class="py-4 text-[12px] text-muted-foreground">{empty}</p>
@@ -187,159 +362,43 @@
           {/each}
         </Table.Row>
         {#if $expandedAlly === a.name && $allySummary}
-          <Table.Row>
-            <Table.Cell colspan={cols} class="bg-muted/40 p-0">
-              <div class="flex flex-col gap-3 p-3">
-                <div>
-                  <h4 class="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
-                    <span>abilities</span>
-                    <button type="button" class="normal-case tracking-normal hover:text-foreground" onclick={() => (abilityColsOpen = !abilityColsOpen)}>columns</button>
-                  </h4>
-                  {#if abilityColsOpen}
-                    <div class="mb-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-                      {#each ABILITY_COLS as c (c.key)}
-                        <label class="flex items-center gap-1"><input type="checkbox" checked={abilityVisible.has(c.key)} onchange={() => toggleAbilityCol(c.key)} /> {c.label}</label>
-                      {/each}
+          {#if a.pets.length}
+            <!-- why: an owner with a pet is a folder -- two slices in the
+                 row's own shape, the player alone and the pet while it
+                 was theirs, each opening its own abilities -->
+            {#each partsOf(a) as part (part.name)}
+              <Table.Row class="cursor-pointer bg-muted/20" onclick={() => (expandedPart = expandedPart === part.name ? null : part.name)}>
+                <Table.Cell class="pl-6 {part.pet ? 'text-muted-foreground' : ''}">
+                  <span class="mr-1 text-muted-foreground">{expandedPart === part.name ? '▾' : '▸'}</span>{part.label}
+                </Table.Cell>
+                {#if allySide && visible.has('class')}
+                  <Table.Cell class="text-[10px] text-muted-foreground">{part.pet ? 'charmed pet' : ''}</Table.Cell>
+                {/if}
+                {#each shown as c (c.key)}
+                  <Table.Cell class="text-right tabular-nums">{partCell(part, a, c.key)}</Table.Cell>
+                {/each}
+              </Table.Row>
+              {#if expandedPart === part.name && part.summary}
+                <Table.Row>
+                  <Table.Cell colspan={cols} class="bg-muted/40 p-0">
+                    <div class="flex flex-col gap-3 p-3 pl-6">
+                      {@render entityBlock(rowsOf(part.summary), part.summary, null, null)}
+                      {#if !part.pet}{@render ownerExtras(a)}{/if}
                     </div>
-                  {/if}
-                  <table class="w-full text-[11px]">
-                    <thead>
-                      <tr class="border-b border-border text-muted-foreground">
-                        <th class="py-0.5 text-left font-normal"><button type="button" class="select-none" onclick={() => (abilitySort = nextSort(abilitySort, 'ability', false))}>ability{arrow('ability', abilitySort)}</button></th>
-                        {#each abilityShown as c (c.key)}
-                          <th class="py-0.5 text-right font-normal"><button type="button" class="select-none" onclick={() => (abilitySort = nextSort(abilitySort, c.key, true))}>{c.label}{arrow(c.key, abilitySort)}</button></th>
-                        {/each}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {#each abilityRows as ab (ab.ability)}
-                        <tr class="group border-b border-border/50">
-                          <td class="py-0.5">
-                            <span class="inline-flex items-center gap-1">
-                              {ab.ability}
-                              <!-- why: the target icon adds/removes it from
-                                   the Skill Tracker overlay's cooldowns section -->
-                              <button
-                                type="button"
-                                class="rounded-sm p-0.5 {$trackedSkills.includes(ab.ability)
-                                  ? 'text-primary'
-                                  : 'text-muted-foreground opacity-0 group-hover:opacity-100'}"
-                                title={$trackedSkills.includes(ab.ability)
-                                  ? `Stop tracking ${ab.ability}`
-                                  : `Track ${ab.ability} in the Skill Tracker overlay`}
-                                onclick={() => void toggleTrackedSkill(ab.ability)}
-                              >
-                                <TargetIcon class="size-3" />
-                              </button>
-                            </span>
-                          </td>
-                          {#each abilityShown as c (c.key)}
-                            <td class="py-0.5 text-right tabular-nums {c.key === 'avoided' ? 'text-bad' : c.key === 'total' || c.key === 'dps' ? '' : 'text-muted-foreground'}" title={c.key === 'avoided' ? avoidedTitle(ab) : undefined}>{abilityCell(ab, c.key)}</td>
-                          {/each}
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
+                  </Table.Cell>
+                </Table.Row>
+              {/if}
+            {/each}
+          {:else}
+            <Table.Row>
+              <Table.Cell colspan={cols} class="bg-muted/40 p-0">
+                <div class="flex flex-col gap-3 p-3">
+                  {@render entityBlock(abilityRows, $allySummary, null, null)}
+                  {@render ownerExtras(a)}
                 </div>
-                <div>
-                  <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">spells cast</h4>
-                  <table class="w-full text-[11px]">
-                    <tbody>
-                      {#each $allySummary.casts as c (c.spell)}
-                        <tr class="border-b border-border/50">
-                          <td class="py-0.5">{c.spell}</td>
-                          <td class="py-0.5 text-right tabular-nums">{c.landed}/{c.attempts}</td>
-                          <td class="py-0.5 text-right tabular-nums text-muted-foreground">
-                            {#if c.resisted}{c.resisted} resisted{/if}
-                            {#if c.interrupted}{c.interrupted} interrupted{/if}
-                            {#if c.fizzled}{c.fizzled} fizzled{/if}
-                          </td>
-                        </tr>
-                      {/each}
-                    </tbody>
-                  </table>
-                </div>
-                <!-- why: the row's total already includes these; this
-                     says which part came from which charmed pet, so a
-                     folded number can still be broken down. The store
-                     keeps the pet a separate entity -- only the row
-                     folds -- which is what stops two people charming the
-                     same kind of mob collapsing into one of them. -->
-                <!-- why: an observed swing rate, and labelled as one.
-                     The log timestamps whole seconds and haste, dual
-                     wield and double attack all sit on the weapon's own
-                     delay, so this cannot be that number and does not
-                     claim to be. Specials are excluded -- Bash, Kick,
-                     Backstab and Frenzy run on their own timers. -->
-                {#if a.melee_rate && a.melee_rate.rounds > 1}
-                  <div class="text-[11px]">
-                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      melee swing rate
-                    </h4>
-                    <p class="flex justify-between gap-3">
-                      <span>seconds between swing rounds</span>
-                      <span class="font-mono tabular-nums">{a.melee_rate.secs_between_rounds.toFixed(2)}s</span>
-                    </p>
-                    <p class="flex justify-between gap-3">
-                      <span>swings per round</span>
-                      <span class="font-mono tabular-nums">
-                        {(a.melee_rate.swings / a.melee_rate.rounds).toFixed(2)}
-                      </span>
-                    </p>
-                    <p class="flex justify-between gap-3 text-muted-foreground">
-                      <span>{a.melee_rate.swings.toLocaleString()} swings over {a.melee_rate.rounds.toLocaleString()} rounds</span>
-                    </p>
-                  </div>
-                {/if}
-                {#if a.pets.length}
-                  <div class="text-[11px]">
-                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      folded in
-                    </h4>
-                    {#each a.pets as p (p.name)}
-                      <p class="flex justify-between gap-3">
-                        <span class="truncate">{p.name}</span>
-                        <span class="shrink-0 font-mono tabular-nums text-muted-foreground">
-                          {p.total.toLocaleString()} · {p.hits} hit{p.hits === 1 ? '' : 's'}
-                        </span>
-                      </p>
-                    {/each}
-                    <p class="mt-0.5 flex justify-between gap-3 text-muted-foreground">
-                      <span>{a.name} directly</span>
-                      <span class="shrink-0 font-mono tabular-nums">
-                        {(a.total - a.pets.reduce((n, p) => n + p.total, 0)).toLocaleString()}
-                      </span>
-                    </p>
-                  </div>
-                {/if}
-                {#if allySide && a.class_source !== 'who' && (a.classes.length < 3 || a.class_prior.length || a.class_conflicts || a.class_chain_end)}
-                  <!-- why: Q34 -- what the open slot is stuck between, and the chain's state -->
-                  <div class="text-[11px]">
-                    <h4 class="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground">class detection</h4>
-                    {#if a.classes.length < 3}
-                      <p>open slot{a.class_candidates.length ? `, between: ${a.class_candidates.join(', ')}` : ': no candidates yet'}</p>
-                    {/if}
-                    {#if a.class_prior.length}
-                      <p>carried as prior, reconfirming: {a.class_prior.join(', ')}</p>
-                    {/if}
-                    {#if a.class_conflicts}
-                      <p class="text-caution">{a.class_conflicts} conflicting encounter{a.class_conflicts === 1 ? '' : 's'} running (3 close the chain)</p>
-                    {/if}
-                    {#if a.class_chain_end === '??'}
-                      <p class="text-bad">chain closed by contradiction -- a new one is confirming</p>
-                    {:else if a.class_chain_end === 'swap'}
-                      <p class="text-caution">chain closed by a loadout swap signal</p>
-                    {:else if a.class_chain_end === 'presence'}
-                      <!-- why: not a swap: a new presence (absence, your zone
-                           line, a group change). This fight keeps what was known
-                           in it; detection since then started clean. -->
-                      <p class="text-muted-foreground">this presence ended (absence, your zone line or a group change) -- detection restarted after it</p>
-                    {/if}
-                  </div>
-                {/if}
-              </div>
-            </Table.Cell>
-          </Table.Row>
+              </Table.Cell>
+            </Table.Row>
+          {/if}
         {/if}
       {/each}
     </Table.Body>

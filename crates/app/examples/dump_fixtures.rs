@@ -141,6 +141,25 @@ fn main() {
             format!("zoneVisit=null&encounterId={id}"),
             json!(combat::summarize(&ing, None, Some(id), None, false, None)),
         );
+        // why: an expanded ally reads its OWN rows, and each pet under it
+        // its own -- keyed by actor exactly as mock.ts's keyFor does
+        for ally in combat::list_allies(&ing, None, Some(id), false, None) {
+            let names =
+                std::iter::once(ally.name.clone()).chain(ally.pets.iter().map(|p| p.name.clone()));
+            for name in names {
+                summary_by_selection.insert(
+                    format!("zoneVisit=null&encounterId={id}&actor={name}"),
+                    json!(combat::summarize(
+                        &ing,
+                        None,
+                        Some(id),
+                        Some(&name),
+                        false,
+                        None
+                    )),
+                );
+            }
+        }
     }
     out.insert(
         "get_combat_summary".to_string(),
