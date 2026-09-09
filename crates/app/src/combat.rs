@@ -1322,11 +1322,12 @@ fn list_side(
     let mut by_name: HashMap<String, Merged> = HashMap::new();
     for (sym, (dmg, hits, crits)) in acc {
         let name = ing.store.name(sym).to_string();
+        // why: your own pet's owner is your character name; the row is "You"
         let owner = ing
             .encounters
             .entities
             .owner_of(&name)
-            .map(|o| o.to_string());
+            .map(|o| ing.as_you(o));
         let is_pet_row = owner.is_some();
         let credited = owner.unwrap_or_else(|| name.clone());
         // why: a possessive pet is a slice under its owner exactly like
@@ -1638,16 +1639,29 @@ pub fn fight_timeline(ing: &Ingest, encounter_id: u32) -> Option<FightTimelineDt
     let duration = (end - start).max(1);
     let bucket_ms = (duration / TARGET_BUCKETS).max(MIN_BUCKET_MS);
 
-    // why: resolved through inferred pet ownership, de-duplicated --
-    // graph doesn't know about pet merging, could name the same entity twice
-    let mut entities: Vec<String> = ing
-        .entities_by_enc
-        .get(&id)
-        .cloned()
-        .unwrap_or_default()
-        .iter()
-        .map(|n| ing.effective_name(n))
-        .collect();
+    // why: the fight's own rows are the truth the chart draws from --
+    // Spencer saw a Blackburrow roster under a Nagafen scrub, a snapshot
+    // map that had drifted from the store. Rows cannot drift. The graph
+    // snapshot only fills in a fight with no rows (a mezzed add alone)
+    let mut entities: Vec<String> = Vec::new();
+    for i in e.range() {
+        if ing.store.enc[i] != id.0 {
+            continue;
+        }
+        for sym in [ing.store.actor[i], ing.store.target[i]] {
+            entities.push(ing.effective_name(ing.store.name(sym)));
+        }
+    }
+    if entities.is_empty() {
+        entities = ing
+            .entities_by_enc
+            .get(&id)
+            .cloned()
+            .unwrap_or_default()
+            .iter()
+            .map(|n| ing.effective_name(n))
+            .collect();
+    }
     entities.sort();
     entities.dedup();
     let range = e.range();

@@ -4731,6 +4731,15 @@ impl Ingest {
             || self.behavioral_pets.contains(resolved)
     }
 
+    /// why: the log calls you "You" and your pet "<character>`s pet" --
+    /// anything crediting an owner by name lands on the same row
+    pub fn as_you(&self, name: &str) -> String {
+        match &self.character {
+            Some(c) if c.eq_ignore_ascii_case(name) => "You".to_string(),
+            _ => name.to_string(),
+        }
+    }
+
     /// why: probe/audit access -- lets an example validate the pet-name
     /// shape against the inference's own confirmed matches
     pub fn inferred_pets(&self) -> impl Iterator<Item = (&str, &str)> {

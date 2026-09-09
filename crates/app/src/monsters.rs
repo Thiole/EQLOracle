@@ -121,14 +121,6 @@ fn instance_of(zone: Option<&str>) -> (u8, &'static str) {
     (tier, instance)
 }
 
-/// why: your own pet's owner is your character name; the log calls you "You"
-fn as_you(ing: &Ingest, name: String) -> String {
-    match &ing.character {
-        Some(c) if c.eq_ignore_ascii_case(&name) => "You".to_string(),
-        _ => name,
-    }
-}
-
 /// why: who counts toward a kill's party size -- distinct people who
 /// dealt damage to the mob, pets folded onto owners, enemies, unclaimed
 /// pets and charmed bestiary mobs dropped. Shared with the probe so it
@@ -163,7 +155,7 @@ pub fn kill_bodies(
             .map(str::to_string);
         match owner {
             Some(o) => {
-                allies.insert(as_you(ing, o));
+                allies.insert(ing.as_you(&o));
             }
             // why: a pet nobody claims is still not a body; a bestiary mob
             // hitting the boss is someone's charm. A proven player keeps
@@ -174,7 +166,7 @@ pub fn kill_bodies(
                     || ing.is_known_pet(&who)
                     || crate::npcdata::npc_for(&who).is_some()) => {}
             None => {
-                allies.insert(as_you(ing, who));
+                allies.insert(ing.as_you(&who));
             }
         }
     }
