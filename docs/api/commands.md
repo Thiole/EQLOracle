@@ -11,7 +11,7 @@ and need the service layer described in README.md before external
 exposure. Parameters shown are the real API surface -- Tauri plumbing
 (`State`, `AppHandle`, `Window`) is elided.
 
-125 commands: 26 pure, 99 stateful.
+125 commands: 27 pure, 98 stateful.
 
 ## `get_changelog` (pure)
 why: the Info panel's own "what's new" -- every section, newest first
@@ -92,6 +92,12 @@ why: static recipe catalog for the Tradeskill module -- every core tradeskill's 
 
 - args: none
 - returns: `Vec<TradeskillSkill>`
+
+## `get_ui_shell` (pure)
+why: Debug's Overlay tab -- OS-level readback of every open overlay window, so a "nothing shows" report becomes pasteable facts. A panic comes back as a visible error string, never a silently dead panel. why: async -- collect's getters round-trip through the main thread; a sync command holds that thread, so it timed out at 3s on every call.
+
+- args: none
+- returns: `UiShellDto`
 
 ## `get_ui_shell` (pure)
 
@@ -228,7 +234,7 @@ why: L9 -- the rolling per-class level record, which the Character Planner fills
 
 ## `get_configuration_zone_visits` (stateful)
 
-- args: `name: String`; `classes: Vec<String>`; `level_range: Option<(u8, u8)>`
+- args: `name: String`; `classes: Vec<String>`; `level_range: Option<(u8, u8)>`; `latest_ms: Option<eqlp_source::Millis>`
 - returns: `Vec<ZoneVisitDto>`
 
 ## `get_craft_log` (stateful)
@@ -366,12 +372,6 @@ why: past parses against `target`, newest first; re-resolves loadout against liv
 
 - args: `kind: String`
 - returns: `Option<String>`
-
-## `get_overlay_diagnostics` (stateful)
-why: Debug's Overlay tab -- OS-level readback of every open overlay window, so a "nothing shows" report becomes pasteable facts. A panic comes back as a visible error string, never a silently dead panel.
-
-- args: none
-- returns: `Result<crate::overlaydiag::OverlayDiagnosticsDto, String>`
 
 ## `get_party_chat` (stateful)
 

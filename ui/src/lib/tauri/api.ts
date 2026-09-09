@@ -602,6 +602,8 @@ export interface ClassConfigurationDto {
   classes: string[];
   zone_visits: number;
   level_range: [number, number] | null;
+  /** why: the session's newest unit, log time -- what tells two rows of one trio apart */
+  latest_ms: number | null;
 }
 
 export interface ClassConfigurationsDto {
@@ -1857,8 +1859,8 @@ export const api = {
   // share the same classes (separate real sessions of the same trio,
   // see combat.rs's SESSION_GAP_MS), so classes alone no longer picks
   // a unique row.
-  getConfigurationZoneVisits: (classes: string[], levelRange: [number, number] | null) =>
-    invoke<ZoneVisitDto[]>('get_configuration_zone_visits', { name: 'You', classes, levelRange }),
+  getConfigurationZoneVisits: (classes: string[], levelRange: [number, number] | null, latestMs: number | null) =>
+    invoke<ZoneVisitDto[]>('get_configuration_zone_visits', { name: 'You', classes, levelRange, latestMs }),
 
   getCurrentLevel: () => invoke<number | null>('get_current_level'),
 

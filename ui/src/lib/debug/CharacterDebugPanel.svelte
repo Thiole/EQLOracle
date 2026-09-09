@@ -3,9 +3,10 @@
   import { Card, CardContent } from '$lib/components/ui/card';
   import SortableTh from '$lib/character/SortableTh.svelte';
   import { debugConfigurations } from '$lib/stores/debug';
-  import { api, type ZoneVisitDto } from '$lib/tauri/api';
+  import { api, type ClassConfigurationDto, type ZoneVisitDto } from '$lib/tauri/api';
+  import { fmtLogDate } from '$lib/utils';
 
-  type SortKey = 'classes' | 'zone_visits' | 'level_range';
+  type SortKey = 'classes' | 'zone_visits' | 'level_range' | 'latest_ms';
   let sort = $state<{ key: SortKey; dir: 1 | -1 }>({ key: 'zone_visits', dir: -1 });
   function toggle(key: SortKey) {
     sort = sort.key === key ? { key, dir: (sort.dir * -1) as 1 | -1 } : { key, dir: -1 };
@@ -17,29 +18,28 @@
     return [...rows].sort((a, b) => {
       if (key === 'classes') return dir * a.classes.join().localeCompare(b.classes.join());
       if (key === 'level_range') return dir * ((a.level_range?.[1] ?? -1) - (b.level_range?.[1] ?? -1));
+      if (key === 'latest_ms') return dir * ((a.latest_ms ?? -1) - (b.latest_ms ?? -1));
       return dir * (a.zone_visits - b.zone_visits);
     });
   });
 
-  // why: classes alone no longer identifies one row -- a class-set can
-  // now split into several real, time-separate sessions (see combat.rs's
-  // SESSION_GAP_MS), each its own row sharing the same classes -- so the
-  // row key and the drill-down both fold in level_range too.
-  function rowKey(classes: string[], levelRange: [number, number] | null): string {
-    return `${classes.join(',')}|${levelRange ? levelRange.join('-') : 'none'}`;
+  // why: two sessions of one trio with no ding share classes and
+  // level_range (combat.rs SESSION_GAP_MS); latest_ms keeps the key unique
+  function rowKey(c: ClassConfigurationDto): string {
+    return `${c.classes.join(',')}|${c.level_range ? c.level_range.join('-') : 'none'}|${c.latest_ms ?? 'none'}`;
   }
 
   let expanded = $state<string | null>(null);
   let drillVisits = $state<ZoneVisitDto[] | null>(null);
-  async function toggleRow(classes: string[], levelRange: [number, number] | null) {
-    const key = rowKey(classes, levelRange);
+  async function toggleRow(c: ClassConfigurationDto) {
+    const key = rowKey(c);
     if (expanded === key) {
       expanded = null;
       return;
     }
     expanded = key;
     drillVisits = null;
-    drillVisits = await api.getConfigurationZoneVisits(classes, levelRange);
+    drillVisits = await api.getConfigurationZoneVisits(c.classes, c.level_range, c.latest_ms);
   }
 </script>
 
@@ -83,15 +83,22 @@
                 dir={sort.dir}
                 onclick={() => toggle('level_range')}
               />
+              <SortableTh
+                label="last seen"
+                align="right"
+                active={sort.key === 'latest_ms'}
+                dir={sort.dir}
+                onclick={() => toggle('latest_ms')}
+              />
             </tr>
           </thead>
           <tbody>
-            {#each sorted as c (rowKey(c.classes, c.level_range))}
-              {@const key = rowKey(c.classes, c.level_range)}
+            {#each sorted as c (rowKey(c))}
+              {@const key = rowKey(c)}
               {@const thin = c.zone_visits <= 2}
               <tr
                 class="cursor-pointer border-b border-border/50 hover:bg-muted/40 {thin ? 'bg-caution/5' : ''}"
-                onclick={() => toggleRow(c.classes, c.level_range)}
+                onclick={() => toggleRow(c)}
               >
                 <td class="px-2 py-1">
                   {expanded === key ? '▾' : '▸'}
@@ -99,10 +106,11 @@
                 </td>
                 <td class="px-2 py-1 text-right tabular-nums {thin ? 'text-caution' : ''}">{c.zone_visits}</td>
                 <td class="px-2 py-1 text-right tabular-nums">{c.level_range ? `${c.level_range[0]}–${c.level_range[1]}` : '—'}</td>
+                <td class="px-2 py-1 text-right tabular-nums text-muted-foreground">{c.latest_ms == null ? '—' : fmtLogDate(c.latest_ms)}</td>
               </tr>
               {#if expanded === key}
                 <tr>
-                  <td colspan="3" class="bg-muted/10 px-2 py-1.5">
+                  <td colspan="4" class="bg-muted/10 px-2 py-1.5">
                     {#if !drillVisits}
                       <span class="text-muted-foreground">Loading…</span>
                     {:else if !drillVisits.length}

@@ -4,7 +4,7 @@
 //! same-second everything), conflicting data sources, and exact window
 //! boundaries. A failure is a real bug or an unpinned semantic.
 
-use eqlp_app::combat::list_encounters;
+use eqlp_app::combat::{class_configurations, list_encounters, zone_visits_for_configuration};
 use eqlp_app::deathrecap::{death_timestamps, recap};
 use eqlp_app::dropwatch::{drop_watch, loot_status};
 use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
@@ -1243,4 +1243,41 @@ fn a_cut_chain_still_answers_for_the_fights_before_the_cut() {
         !now.iter().any(|c| c == "Enchanter"),
         "current detection started clean -- got {now:?}"
     );
+}
+
+/// why: real crash -- two sessions of one trio, no ding in either, collided
+/// on classes+level_range; Debug threw each_key_duplicate and went blank
+#[test]
+fn two_sessions_of_one_trio_without_dings_are_distinct_rows() {
+    // why: the stray hit closes the day's fight on its own day; a
+    // per-day zone line would keep the trio unresolved
+    let day = |d: &str, mob: &str| {
+        format!(
+            "[{d} 15:01:00 2026] You hit {mob} for 10 points of damage.\n\
+             [{d} 15:01:01 2026] You begin casting Mesmerization.\n\
+             [{d} 15:01:02 2026] You begin casting Harm Touch.\n\
+             [{d} 15:01:03 2026] You begin casting Numbing Cold.\n\
+             [{d} 15:01:04 2026] You have slain {mob}!\n\
+             [{d} 15:05:00 2026] a rat hits a gnoll for 1 points of damage.\n"
+        )
+    };
+    let ing = run(&format!(
+        "[Tue Jul 28 14:00:00 2026] You have entered Befallen.\n{}{}",
+        day("Tue Jul 28", "a gnoll"),
+        day("Fri Jul 31", "a rat")
+    ));
+    let rows = class_configurations(&ing, "You").configurations;
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(rows[0].classes, rows[1].classes);
+    assert_eq!(rows[0].level_range, rows[1].level_range);
+    assert!(
+        rows[0].latest_ms.is_some() && rows[0].latest_ms != rows[1].latest_ms,
+        "{rows:?}"
+    );
+    // why: a row's own latest_ms finds its visit; a foreign one finds nothing
+    let r = &rows[0];
+    let own = zone_visits_for_configuration(&ing, "You", &r.classes, r.level_range, r.latest_ms);
+    assert_eq!(own.len(), 1, "{own:?}");
+    let foreign = zone_visits_for_configuration(&ing, "You", &r.classes, r.level_range, Some(1));
+    assert!(foreign.is_empty(), "{foreign:?}");
 }

@@ -241,12 +241,20 @@ fn main() {
             Some((lo, hi)) => format!("{lo},{hi}"),
             None => "null".to_string(),
         };
+        let latest_str = cfg
+            .latest_ms
+            .map_or_else(|| "null".to_string(), |ms| ms.to_string());
         let key = format!(
-            "name=You&classes={}&levelRange={level_range_str}",
+            "name=You&classes={}&levelRange={level_range_str}&latestMs={latest_str}",
             cfg.classes.join(",")
         );
-        let visits =
-            combat::zone_visits_for_configuration(&ing, "You", &cfg.classes, cfg.level_range);
+        let visits = combat::zone_visits_for_configuration(
+            &ing,
+            "You",
+            &cfg.classes,
+            cfg.level_range,
+            cfg.latest_ms,
+        );
         visits_by_cfg.insert(key, json!(visits));
     }
     out.insert(

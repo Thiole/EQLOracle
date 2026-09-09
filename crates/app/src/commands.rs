@@ -373,12 +373,14 @@ pub fn get_configuration_zone_visits(
     name: String,
     classes: Vec<String>,
     level_range: Option<(u8, u8)>,
+    latest_ms: Option<eqlp_source::Millis>,
 ) -> Vec<ZoneVisitDto> {
     combat::zone_visits_for_configuration(
         &state.ingest.lock_recover(),
         &name,
         &classes,
         level_range,
+        latest_ms,
     )
 }
 
@@ -1206,8 +1208,10 @@ pub fn set_overlay_locked(app: AppHandle, widget: String, locked: bool) -> Resul
 /// why: Debug's Overlay tab -- OS-level readback of every open overlay
 /// window, so a "nothing shows" report becomes pasteable facts. A panic
 /// comes back as a visible error string, never a silently dead panel.
+/// why: async -- collect's getters round-trip through the main thread; a
+/// sync command holds that thread, so it timed out at 3s on every call.
 #[tauri::command]
-pub fn get_overlay_diagnostics(
+pub async fn get_overlay_diagnostics(
     app: AppHandle,
 ) -> Result<crate::overlaydiag::OverlayDiagnosticsDto, String> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

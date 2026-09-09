@@ -2603,6 +2603,9 @@ pub struct ClassConfigurationDto {
     /// inside them; None if no ding landed. A range since a class swap
     /// drops effective level with no line marking it
     pub level_range: Option<(u8, u8)>,
+    /// why: the session's newest unit -- what tells two rows of one trio
+    /// apart; classes + level_range alone collide (both None, same trio)
+    pub latest_ms: Option<Millis>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -2720,12 +2723,14 @@ pub fn class_configurations(ing: &Ingest, name: &str) -> ClassConfigurationsDto 
     for (classes, visits) in resolved {
         for session_visits in split_into_sessions(ing, &visits, SESSION_GAP_MS) {
             let level_range = level_range_for(ing, &session_visits);
+            let latest_ms = latest_visit_ms(ing, &session_visits);
             rows.push((
-                latest_visit_ms(ing, &session_visits),
+                latest_ms,
                 ClassConfigurationDto {
                     classes: classes.clone(),
                     zone_visits: session_visits.len(),
                     level_range,
+                    latest_ms,
                 },
             ));
         }
@@ -2801,17 +2806,22 @@ pub fn zone_visits_for_configuration(
     name: &str,
     classes: &[String],
     level_range: Option<(u8, u8)>,
+    latest_ms: Option<Millis>,
 ) -> Vec<ZoneVisitDto> {
     let Some(sym) = ing.store.names.get(name) else {
         return Vec::new();
     };
+    // why: every chain of this trio, not the first -- each chain is its
+    // own rows in class_configurations; the row's identity is latest_ms
     let (resolved, _) = ing.classes.visits_by_resolved_configuration(sym.0);
-    let Some((_, visits)) = resolved.into_iter().find(|(c, _)| c.as_slice() == classes) else {
-        return Vec::new();
-    };
-    let wanted = split_into_sessions(ing, &visits, SESSION_GAP_MS)
+    let wanted = resolved
         .into_iter()
-        .find(|session| level_range_for(ing, session) == level_range)
+        .filter(|(c, _)| c.as_slice() == classes)
+        .flat_map(|(_, visits)| split_into_sessions(ing, &visits, SESSION_GAP_MS))
+        .find(|session| {
+            latest_visit_ms(ing, session) == latest_ms
+                && level_range_for(ing, session) == level_range
+        })
         .unwrap_or_default();
     // why: units are encounters; the drill-down shows the zone visits
     // those encounters sat in

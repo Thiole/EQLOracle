@@ -56,8 +56,13 @@ fn main() {
             .iter()
             .filter(|c| c.classes == classes)
         {
-            let visits =
-                combat::zone_visits_for_configuration(&ing, "You", &classes, row.level_range);
+            let visits = combat::zone_visits_for_configuration(
+                &ing,
+                "You",
+                &classes,
+                row.level_range,
+                row.latest_ms,
+            );
             println!(
                 "\n=== real visit timestamps for {classes:?} level_range={:?} ===",
                 row.level_range
