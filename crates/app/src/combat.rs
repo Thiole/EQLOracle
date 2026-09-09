@@ -1991,6 +1991,23 @@ impl DpsLayout {
 
 /// why: the default layout, and what every caller that does not care
 /// about the preset gets
+/// why: what counts as choosing a target -- a swing, or a spell the
+/// catalog calls single-target (unknown spells and procs pass: they land
+/// on the mob in front of you). AoE and DoT ticks do not
+fn explicit_single_target(ing: &Ingest, ab: eqlp_store::AbilityId) -> bool {
+    let tags = ing.store.abilities.tags(ab);
+    if tags & tag::DOT != 0 {
+        return false;
+    }
+    if tags & tag::SPELL == 0 {
+        return true;
+    }
+    let (base, _) = crate::ingest::split_cast_rank(ing.store.ability_name(ab));
+    crate::spelldata::spell_by_name(base)
+        .and_then(|s| s.target_type.as_deref())
+        .is_none_or(|t| !t.contains("AE"))
+}
+
 pub fn live_meter(ing: &Ingest) -> Option<LiveMeterDto> {
     live_meter_with(ing, DpsLayout::Condensed, DpsScope::Encounter)
 }
@@ -2063,8 +2080,12 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout, scope: DpsScope) -> Opti
     let mut you_first: Option<Millis> = None;
     let mut enemies: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut current_target: Option<(Millis, String)> = None;
-    // why: single-target scope needs the focus BEFORE rows accumulate --
-    // the newest mob You hit or were hit by, same rule the label uses
+    // why: single-target scope needs the focus BEFORE rows accumulate.
+    // Spencer: "You - not other players ... to switch targets, otherwise
+    // it should be fairly forgiving" -- only an explicit single-target
+    // action of YOUR OWN moves it: a melee swing or a single-target spell
+    // landing. AoE landings, DoT ticks and getting hit never move it.
+    // No such action in the engagement yet: no focus, the whole counts
     let focus: Option<String> = (scope == DpsScope::Target)
         .then(|| {
             let mut best: Option<(Millis, String)> = None;
@@ -2075,21 +2096,18 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout, scope: DpsScope) -> Opti
                     }
                     let ts = ing.store.ts[i];
                     let a = ing.effective_name(ing.store.name(ing.store.actor[i]));
+                    if !a.eq_ignore_ascii_case("You") {
+                        continue;
+                    }
                     let t = ing.store.name(ing.store.target[i]).to_string();
-                    let mob = if a.eq_ignore_ascii_case("You")
-                        && ing.allegiance_at(&t, ts).is_enemy()
-                    {
-                        Some(t)
-                    } else if t.eq_ignore_ascii_case("You") && ing.allegiance_at(&a, ts).is_enemy()
-                    {
-                        Some(a)
-                    } else {
-                        None
-                    };
-                    if let Some(m) = mob {
-                        if best.as_ref().is_none_or(|(bt, _)| ts >= *bt) {
-                            best = Some((ts, m));
-                        }
+                    if !ing.allegiance_at(&t, ts).is_enemy() {
+                        continue;
+                    }
+                    if !explicit_single_target(ing, ing.store.ability[i]) {
+                        continue;
+                    }
+                    if best.as_ref().is_none_or(|(bt, _)| ts >= *bt) {
+                        best = Some((ts, t));
                     }
                 }
             }
@@ -2247,6 +2265,10 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout, scope: DpsScope) -> Opti
         out_acc.insert(format!("pets ({})", pets.len()), merged);
     }
 
+    // why: under single-target scope the header names what is counted
+    if let Some(f) = &focus {
+        current_target = Some((0, f.clone()));
+    }
     let ally_count = out_acc.len();
     let enemy_count = enemies.len();
     Some(LiveMeterDto {
@@ -2634,6 +2656,49 @@ mod live_meter_tests {
             whole.incoming.iter().map(|r| r.total).sum::<u64>(),
             "incoming stays whole"
         );
+    }
+
+    /// why: Spencer -- the focus "switches targets from AoE abilities
+    /// when it shouldn't"; only your own single-target action moves it
+    #[test]
+    fn single_target_focus_moves_only_on_your_own_single_target_action() {
+        let ing = run("[Tue Jul 28 15:00:00 2026] You tell your party, 'ready'\n\
+             [Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.\n\
+             [Tue Jul 28 15:01:01 2026] You hit a gnoll scout for 30 points of cold damage by Frost Storm.\n\
+             [Tue Jul 28 15:01:02 2026] a gnoll scout hits You for 3 points of damage.\n\
+             [Tue Jul 28 15:01:03 2026] You hit a gnoll for 5 points of fire damage by Burst of Flame.\n");
+        let one = live_meter_with(&ing, DpsLayout::Condensed, DpsScope::Target).expect("fight");
+        assert_eq!(
+            one.current_target.as_deref(),
+            Some("a gnoll"),
+            "an AoE landing and a hit taken never moved it"
+        );
+        let you = one.outgoing.iter().find(|r| r.name == "You").expect("You");
+        assert_eq!(you.total, 15);
+
+        let ing = run("[Tue Jul 28 15:00:00 2026] You tell your party, 'ready'\n\
+             [Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of damage.\n\
+             [Tue Jul 28 15:01:01 2026] You hit a gnoll scout for 30 points of cold damage by Frost Storm.\n\
+             [Tue Jul 28 15:01:04 2026] You hit a gnoll scout for 7 points of damage.\n");
+        let one = live_meter_with(&ing, DpsLayout::Condensed, DpsScope::Target).expect("fight");
+        assert_eq!(
+            one.current_target.as_deref(),
+            Some("a gnoll scout"),
+            "your own swing moved it"
+        );
+        let you = one.outgoing.iter().find(|r| r.name == "You").expect("You");
+        assert_eq!(
+            you.total, 37,
+            "everything that landed on the scout, the AoE included"
+        );
+
+        // why: nothing explicit yet -- forgiving: the whole engagement counts
+        let ing = run("[Tue Jul 28 15:00:00 2026] You tell your party, 'ready'\n\
+             [Tue Jul 28 15:01:00 2026] a gnoll hits You for 4 points of damage.\n\
+             [Tue Jul 28 15:01:01 2026] You hit a gnoll scout for 30 points of cold damage by Frost Storm.\n");
+        let one = live_meter_with(&ing, DpsLayout::Condensed, DpsScope::Target).expect("fight");
+        let you = one.outgoing.iter().find(|r| r.name == "You").expect("You");
+        assert_eq!(you.total, 30, "no focus yet, nothing dropped");
     }
 
     #[test]
