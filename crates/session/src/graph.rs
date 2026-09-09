@@ -563,6 +563,10 @@ impl Builder {
 
     /// why: target leaves combat, fight continues if anything else is up
     pub fn death(&mut self, ts: Millis, target: &str) {
+        // why: a quiet fight closes before a later death can reach it --
+        // backfill ran expire only on damage lines, so a same-name kill
+        // 100s later reopened and stretched the fight (live ticks never did)
+        self.expire(ts);
         self.held.remove(&*fold_key(target));
         if let Some(id) = self.of.remove(&*fold_key(target)) {
             if let Some(e) = self.live.get_mut(&id) {
@@ -582,6 +586,7 @@ impl Builder {
     /// next pull ("timer shouldn't reset when target changes"). A CC
     /// line IS the pull: the add is part of this encounter.
     pub fn engage(&mut self, name: &str, with: &str, ts: Millis) {
+        self.expire(ts);
         if self.of.contains_key(&*fold_key(name)) {
             return;
         }
@@ -602,6 +607,7 @@ impl Builder {
     /// mem blur landed). Arms the 10s window on that entity's fight; any
     /// further action still extends it, so a fight that goes on goes on.
     pub fn flag_end(&mut self, name: &str, ts: Millis) {
+        self.expire(ts);
         if let Some(&id) = self.of.get(&*fold_key(name)) {
             if let Some(e) = self.live.get_mut(&id) {
                 e.flagged = true;
@@ -617,6 +623,7 @@ impl Builder {
     /// past idle until the mez breaks (release_entity, death) or
     /// cc_hold_ms runs out.
     pub fn hold_entity(&mut self, name: &str, ts: Millis) {
+        self.expire(ts);
         if let Some(&id) = self.of.get(&*fold_key(name)) {
             if let Some(e) = self.live.get_mut(&id) {
                 if ts > e.last_ms {

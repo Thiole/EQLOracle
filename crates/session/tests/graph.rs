@@ -502,3 +502,24 @@ fn an_allys_new_mob_joins_the_teams_live_fight() {
     let stray = b.damage_sided(2_000, "a rat", "a snake", false, false);
     assert_ne!(stray, tank);
 }
+
+/// why: backfill ran expire only on damage lines -- a same-name kill 100s
+/// after a fight went quiet reopened it and stretched its end to the kill.
+/// Live ticks closed it in time; history must read the same
+#[test]
+fn a_late_death_line_closes_the_quiet_fight_first_instead_of_stretching_it() {
+    let mut b = Builder::default();
+    b.damage(0, "A spectre", "You");
+    b.damage(5_000, "You", "A spectre");
+    b.death(100_000, "A spectre");
+    assert_eq!(b.live_count(), 0, "the quiet fight is closed, not reopened");
+    let c = &b.closed[0];
+    assert_eq!(
+        c.end_ms, 5_000,
+        "ends at its last swing, not at the late kill"
+    );
+    assert!(
+        c.slain.is_empty(),
+        "the late kill belongs to no fight of ours"
+    );
+}

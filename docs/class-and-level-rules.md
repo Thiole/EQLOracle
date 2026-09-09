@@ -135,6 +135,10 @@ rules below are ally-specific, and they only decide where a chain breaks.
 - E3. A hostile action is party damage or an avoided swing against an
   enemy, or a landed DETRIMENTAL effect an ally cast on an enemy (the
   landing text names the target; "begins casting" never does).
+- E4. A death, CC, or end-of-combat line reaching a quiet fight closes
+  it first, on the same windows a live tick would. History used to run
+  the idle check only on damage lines, so a same-name kill minutes
+  later stretched a finished fight to that kill (2026-09-09).
 
 ## Scrub buff bar (2026-09-09)
 
