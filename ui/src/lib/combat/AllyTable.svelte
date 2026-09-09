@@ -165,7 +165,7 @@
       case 'dps':
         return (ab.dps ?? 0).toFixed(1);
       case 'avg_hit':
-        return ab.avg_hit.toFixed(0);
+        return ab.casts && !ab.hits ? '' : ab.avg_hit.toFixed(0);
       case 'avg_crit':
         return ab.crits > 0 ? ab.avg_crit.toFixed(0) : '—';
       case 'avoided':
@@ -220,6 +220,8 @@
                       {/each}
                     </div>
                   {/if}
+                  <!-- why: ten columns outrun a 1366px window -- scroll the grid, never clip it -->
+                  <div class="overflow-x-auto">
                   <table class="w-full text-[11px]">
                     <thead>
                       <tr class="border-b border-border text-muted-foreground">
@@ -258,6 +260,7 @@
                       {/each}
                     </tbody>
                   </table>
+                  </div>
                 </div>
   </div>
 {/snippet}
