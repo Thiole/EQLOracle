@@ -187,7 +187,16 @@ pub fn by_loadout(records: &[ParseRecord]) -> Vec<LoadoutSummary> {
             }
         })
         .collect();
-    out.sort_by_key(|b| std::cmp::Reverse(b.fights));
+    // why: the groups come out of a HashMap, whose iteration order is
+    // randomized per process -- sorting on fights alone left every tie in
+    // a different order on every call, so the table visibly reshuffled
+    // (reported real). The loadout itself is the tiebreak: unique by
+    // construction, so the order is total and stable across calls.
+    out.sort_by(|a, b| {
+        b.fights
+            .cmp(&a.fights)
+            .then_with(|| a.loadout.cmp(&b.loadout))
+    });
     out
 }
 
@@ -214,6 +223,64 @@ mod tests {
             confirmed_kill: true,
             score_ratio: None,
         }
+    }
+
+    /// why: reported real -- the loadout table reshuffled between calls.
+    /// The rows come out of a HashMap, so ties in fight count had no
+    /// order at all; same input must give the same order every time.
+    #[test]
+    fn loadouts_with_the_same_fight_count_keep_one_stable_order() {
+        let records: Vec<ParseRecord> = [
+            vec!["Wizard", "Cleric", "Enchanter"],
+            vec!["Bard", "Rogue", "Monk"],
+            vec!["Magician", "Druid", "Shaman"],
+            vec!["Necromancer", "Paladin", "Warrior"],
+            vec!["Ranger", "Beastlord", "Berserker"],
+        ]
+        .iter()
+        .map(|l| fake_record(l, Some(0)))
+        .collect();
+        let first: Vec<Vec<String>> = by_loadout(&records)
+            .into_iter()
+            .map(|s| s.loadout)
+            .collect();
+        assert_eq!(first.len(), 5, "one row per loadout, all tied at one fight");
+        // why: a fresh HashMap per call is where the randomness lived
+        for _ in 0..20 {
+            let again: Vec<Vec<String>> = by_loadout(&records)
+                .into_iter()
+                .map(|s| s.loadout)
+                .collect();
+            assert_eq!(again, first, "the order must not depend on hash iteration");
+        }
+        let mut sorted = first.clone();
+        sorted.sort();
+        assert_eq!(first, sorted, "ties read alphabetically");
+    }
+
+    /// why: the real sort is still fights first -- the tiebreak only
+    /// decides between equals
+    #[test]
+    fn more_fights_still_outranks_an_alphabetically_earlier_loadout() {
+        let mut records = vec![fake_record(&["Wizard"], Some(0))];
+        records.extend(
+            [
+                fake_record(&["Bard"], Some(0)),
+                fake_record(&["Bard"], Some(1)),
+            ]
+            .into_iter()
+            .take(0),
+        );
+        records.push(fake_record(&["Wizard"], Some(1)));
+        records.push(fake_record(&["Bard"], Some(0)));
+        let out = by_loadout(&records);
+        assert_eq!(
+            out[0].loadout,
+            strs(&["Wizard"]),
+            "2 fights beats 1: {out:?}"
+        );
+        assert_eq!(out[0].fights, 2);
+        assert_eq!(out[1].loadout, strs(&["Bard"]));
     }
 
     /// why: real bug fix -- a fight closed early must pick up later evidence

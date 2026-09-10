@@ -5,12 +5,24 @@
   import { Checkbox } from '$lib/components/ui/checkbox';
   import { historyTarget, historyConfirmedOnly, historyRecords, loadoutSummaries, setHistoryConfirmedOnly, jumpToParse } from '$lib/stores/combat';
   import { fmtDuration } from '$lib/format';
+  import SortableTh from '$lib/character/SortableTh.svelte';
+  import { sortRows, nextSort, type Dir } from './grid';
 
   function fmtLoadout(loadout: string[]): string {
     return loadout.length > 0 ? loadout.join(' / ') : '—';
   }
   function fmtRatio(r: number | null): string {
     return r == null ? '—' : `${(r * 100).toFixed(0)}%`;
+  }
+
+  // why: the backend already orders these by fights, then loadout -- this
+  // is the manual override, and 'fights' descending reproduces that order
+  // exactly (JS sort is stable, so the loadout tiebreak survives)
+  type LoadoutCol = 'loadout' | 'fights' | 'confirmed_kills' | 'avg_dps' | 'avg_score_ratio';
+  let loadoutSort = $state<{ key: LoadoutCol; dir: Dir }>({ key: 'fights', dir: -1 });
+  const sortedLoadouts = $derived(sortRows($loadoutSummaries, loadoutSort.key, loadoutSort.dir));
+  function sortLoadouts(key: LoadoutCol) {
+    loadoutSort = nextSort(loadoutSort, key, key !== 'loadout');
   }
 
   // why: derived from the same records the table renders, stays in sync
@@ -43,16 +55,22 @@
         <div class="mb-3 overflow-x-auto">
           <table class="w-full text-[11px]">
             <thead>
-              <tr class="border-b border-border text-muted-foreground">
-                <th class="px-2 py-0.5 text-left font-normal">loadout</th>
-                <th class="px-2 py-0.5 text-right font-normal">fights</th>
-                <th class="px-2 py-0.5 text-right font-normal">kills</th>
-                <th class="px-2 py-0.5 text-right font-normal">avg dps</th>
-                <th class="px-2 py-0.5 text-right font-normal">avg vs. baseline</th>
+              <tr class="border-b border-border text-muted-foreground" data-testid="loadout-header">
+                <SortableTh label="loadout" active={loadoutSort.key === 'loadout'} dir={loadoutSort.dir} onclick={() => sortLoadouts('loadout')} />
+                <SortableTh label="fights" align="right" active={loadoutSort.key === 'fights'} dir={loadoutSort.dir} onclick={() => sortLoadouts('fights')} />
+                <SortableTh label="kills" align="right" active={loadoutSort.key === 'confirmed_kills'} dir={loadoutSort.dir} onclick={() => sortLoadouts('confirmed_kills')} />
+                <SortableTh label="avg dps" align="right" active={loadoutSort.key === 'avg_dps'} dir={loadoutSort.dir} onclick={() => sortLoadouts('avg_dps')} />
+                <SortableTh
+                  label="avg vs. baseline"
+                  align="right"
+                  active={loadoutSort.key === 'avg_score_ratio'}
+                  dir={loadoutSort.dir}
+                  onclick={() => sortLoadouts('avg_score_ratio')}
+                />
               </tr>
             </thead>
             <tbody>
-              {#each $loadoutSummaries as l (l.loadout.join('/'))}
+              {#each sortedLoadouts as l (l.loadout.join('/'))}
                 <tr class="border-b border-border/50">
                   <td class="px-2 py-0.5">{fmtLoadout(l.loadout)}</td>
                   <td class="px-2 py-0.5 text-right tabular-nums">{l.fights.toLocaleString()}</td>
