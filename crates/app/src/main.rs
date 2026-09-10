@@ -12,7 +12,7 @@
 use eqlp_app::{
     commands, config, history, overlaydiag,
     state::{AppState, LockRecover},
-    tail_worker, updater,
+    tail_worker, updater, windowstate,
 };
 use tauri::Manager;
 
@@ -97,9 +97,32 @@ fn main() {
         // main one, never the reverse -- closing main always ends the
         // whole app, the overlay's own close is just its own close.
         .on_window_event(|window, event| {
-            if window.label() == "main"
-                && matches!(event, tauri::WindowEvent::CloseRequested { .. })
-            {
+            if window.label() != "main" {
+                return;
+            }
+            // why: every move and resize updates the tracked value in
+            // memory only -- a drag fires these per pixel, and the disk
+            // write happens once, on the way out
+            if matches!(
+                event,
+                tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
+            ) {
+                windowstate::track(window.app_handle());
+            }
+            // why: close is the only guaranteed write, and a killed or
+            // crashed run never reaches it -- losing the geometry looks
+            // exactly like the bug this fixes. Tabbing away to the game
+            // is frequent, natural and cheap: `save` compares before it
+            // writes, so a focus change with nothing moved costs a read.
+            if matches!(event, tauri::WindowEvent::Focused(false)) {
+                windowstate::track(window.app_handle());
+                windowstate::save(window.app_handle());
+            }
+            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                // why: the last reading is the one worth keeping, and
+                // this is the only guaranteed moment to write it
+                windowstate::track(window.app_handle());
+                windowstate::save(window.app_handle());
                 // why: clean exit -- clears the unclean-exit sentinel so
                 // the next launch keeps its webview cache; a killed run
                 // never reaches this, see updater::mark_clean_exit
@@ -109,6 +132,7 @@ fn main() {
         })
         .setup(|app| {
             let handle = app.handle().clone();
+            app.manage(windowstate::Tracked::default());
             let state = app.state::<AppState>();
             // why: frameless with the in-app title bar, Windows only --
             // Linux keeps native decorations (KWin/XWayland drops the
@@ -119,6 +143,10 @@ fn main() {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_decorations(false);
             }
+            // why: after the decoration change, before anything paints --
+            // dropping the frame on Windows re-lays-out the window, so a
+            // size set before it would be the one that gets adjusted
+            windowstate::restore(app.handle());
             // why: a borderless game that raises itself topmost wins the
             // z-fight until someone raises back (both sit in the same
             // topmost band, last raise wins) -- re-raise every overlay

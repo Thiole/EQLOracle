@@ -984,7 +984,7 @@ pub async fn set_overlay_enabled(
 /// margin so a window whose top-left sits a few px past an edge (a
 /// drag that hugged the border) still counts. Monitor enumeration
 /// failing falls back to "don't restore", never "restore blind".
-fn position_on_some_monitor(app: &AppHandle, x: f64, y: f64) -> bool {
+pub(crate) fn position_on_some_monitor(app: &AppHandle, x: f64, y: f64) -> bool {
     const MARGIN: f64 = 32.0;
     let Ok(monitors) = app.available_monitors() else {
         return false;

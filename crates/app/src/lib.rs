@@ -72,5 +72,6 @@ pub mod uifiles;
 pub mod updater;
 pub mod whatsnew;
 pub mod windowcap;
+pub mod windowstate;
 pub mod zone;
 pub mod zonedata;

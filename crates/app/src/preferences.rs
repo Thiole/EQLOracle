@@ -21,6 +21,20 @@ pub struct OverlayPosition {
     pub y: f64,
 }
 
+/// why: the main window's own geometry, in LOGICAL units like
+/// OverlayPosition -- backend-only, never round-tripped through
+/// PreferencesDto (see set_preferences' doc). `maximized` is kept
+/// separately from x/y/w/h so restoring a maximized window still knows
+/// what size to un-maximize back to.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+pub struct WindowState {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub maximized: bool,
+}
+
 fn default_volume() -> u8 {
     100
 }
@@ -270,6 +284,10 @@ pub struct Preferences {
     pub muted_buff_lines: Vec<String>,
     #[serde(default)]
     pub overlay_positions: HashMap<String, OverlayPosition>,
+    /// why: where and how big the main window was last time. Backend-only,
+    /// same stance as overlay_positions.
+    #[serde(default)]
+    pub main_window: Option<WindowState>,
     /// why: Character Planner's hand-set race -- the log never states
     /// race, so losing it every launch means re-picking it every launch.
     /// Backend-only, same never-round-tripped-through-PreferencesDto
@@ -349,6 +367,7 @@ impl Default for Preferences {
             muted_buff_lines: Vec::new(),
             overlay_enabled_widgets: Vec::new(),
             overlay_positions: HashMap::new(),
+            main_window: None,
             planner_race: None,
             planner_levels: HashMap::new(),
             planner_gear: HashMap::new(),
@@ -516,6 +535,13 @@ mod tests {
             overlay_enabled_widgets: vec!["dps_meter".to_string()],
             tracked_drop_seen_counts,
             overlay_positions,
+            main_window: Some(WindowState {
+                x: 100.0,
+                y: 50.0,
+                width: 1200.0,
+                height: 800.0,
+                maximized: false,
+            }),
             planner_race: Some("Halfling".to_string()),
             planner_levels: HashMap::from([("Wizard".to_string(), 34u8)]),
             planner_gear: HashMap::from([("PRIMARY".to_string(), "Brass_Ring".to_string())]),
@@ -591,5 +617,9 @@ mod tests {
         assert!(back.overlay_enabled_widgets.is_empty(), "never chosen");
         assert!(back.tracked_drop_seen_counts.is_empty());
         assert!(back.overlay_positions.is_empty());
+        assert_eq!(
+            back.main_window, None,
+            "no geometry saved until a window moves"
+        );
     }
 }
