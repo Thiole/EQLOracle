@@ -13,6 +13,9 @@ import { status } from './status';
  * doubled from 15 by real experience) -- long enough to notice while
  * dealing with having just died, short enough it doesn't go stale */
 export const DEATH_TOAST_TIMEOUT_MS = 30_000;
+/** why: blocked off for now (Spencer) -- deaths are still polled and the
+ * recap still builds, nothing surfaces until this flips back */
+const DEATH_TOASTS_ENABLED = false;
 
 export interface DeathToast {
   deathTs: number;
@@ -48,6 +51,7 @@ export async function pollDeaths(): Promise<void> {
   }
   if (deaths.length > lastSeenCount) {
     lastSeenCount = deaths.length;
+    if (!DEATH_TOASTS_ENABLED) return;
     deathToast.set({
       deathTs: deaths[deaths.length - 1],
       expiresAtMs: Date.now() + DEATH_TOAST_TIMEOUT_MS,
