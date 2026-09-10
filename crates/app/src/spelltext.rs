@@ -188,6 +188,31 @@ pub(crate) fn other_tail_of(msg: &str) -> Option<&str> {
     None
 }
 
+/// why: the wiki writes Al'Kabor and "poison", the log Al`Kabor and
+/// "Poison" -- ASCII-only, so an offset into the fold indexes the line too
+pub(crate) fn fold(s: &str) -> String {
+    let bytes: Vec<u8> = s
+        .bytes()
+        .map(|b| {
+            if b == b'`' {
+                b'\''
+            } else {
+                b.to_ascii_lowercase()
+            }
+        })
+        .collect();
+    String::from_utf8(bytes).expect("ascii-only edits keep utf-8 valid")
+}
+
+/// why: a folded key, leaked once at dictionary build; untouched text stays borrowed
+fn key(s: &'static str) -> &'static str {
+    if s.bytes().any(|b| b.is_ascii_uppercase() || b == b'`') {
+        Box::leak(fold(s).into_boxed_str())
+    } else {
+        s
+    }
+}
+
 fn insert_unique<'a, V>(
     map: &mut HashMap<&'a str, V>,
     ambiguous: &mut HashSet<&'a str>,
@@ -227,6 +252,7 @@ fn build_dict() -> Dict {
             if msg.is_empty() || msg == "N/A" {
                 continue;
             }
+            let msg = key(msg);
             insert_unique(
                 &mut self_text,
                 &mut self_ambiguous,
@@ -254,6 +280,7 @@ fn build_dict() -> Dict {
                 continue;
             }
             if let Some(tail) = other_tail_of(msg) {
+                let tail = key(tail);
                 insert_unique(&mut other_tail, &mut other_ambiguous, tail, name);
                 if let Some(p) = polarity {
                     let entry = other_landing_agg
@@ -286,18 +313,19 @@ fn dict() -> &'static Dict {
 /// just the first.
 pub fn match_spell_text(text: &str) -> Option<SpellTextMatch> {
     let d = dict();
-    if let Some(&(spell, is_wearsoff)) = d.self_text.get(text) {
+    let folded = fold(text);
+    if let Some(&(spell, is_wearsoff)) = d.self_text.get(folded.as_str()) {
         return Some(SpellTextMatch {
             spell,
             target: "You".to_string(),
             is_wearsoff,
         });
     }
-    for (idx, _) in text.match_indices("'s ") {
+    for (idx, _) in folded.match_indices("'s ") {
         if idx == 0 {
             continue;
         }
-        let tail = &text[idx + 3..];
+        let tail = &folded[idx + 3..];
         if let Some(&spell) = d.other_tail.get(tail) {
             return Some(SpellTextMatch {
                 spell,
@@ -306,11 +334,11 @@ pub fn match_spell_text(text: &str) -> Option<SpellTextMatch> {
             });
         }
     }
-    for (i, b) in text.bytes().enumerate() {
+    for (i, b) in folded.bytes().enumerate() {
         if b != b' ' || i == 0 {
             continue;
         }
-        let tail = &text[i + 1..];
+        let tail = &folded[i + 1..];
         if let Some(&spell) = d.other_tail.get(tail) {
             return Some(SpellTextMatch {
                 spell,
@@ -327,7 +355,7 @@ pub fn match_spell_text(text: &str) -> Option<SpellTextMatch> {
 pub fn landing_candidates(text: &str) -> &'static [&'static str] {
     dict()
         .self_landing_all
-        .get(text)
+        .get(fold(text).as_str())
         .map(Vec::as_slice)
         .unwrap_or(&[])
 }
@@ -336,7 +364,7 @@ pub fn landing_candidates(text: &str) -> &'static [&'static str] {
 pub fn wearsoff_candidates(text: &str) -> &'static [&'static str] {
     dict()
         .self_wearsoff_all
-        .get(text)
+        .get(fold(text).as_str())
         .map(Vec::as_slice)
         .unwrap_or(&[])
 }
@@ -347,25 +375,26 @@ pub fn wearsoff_candidates(text: &str) -> &'static [&'static str] {
 /// (polarity, not a spell name) when every real candidate agrees on one.
 pub fn match_effect_polarity(text: &str) -> Option<EffectPolarityMatch> {
     let d = dict();
-    if let Some(&polarity) = d.self_landing_polarity.get(text) {
+    let folded = fold(text);
+    if let Some(&polarity) = d.self_landing_polarity.get(folded.as_str()) {
         return Some(EffectPolarityMatch {
             polarity,
             target: "You".to_string(),
             is_wearsoff: false,
         });
     }
-    if let Some(&polarity) = d.self_wearsoff_polarity.get(text) {
+    if let Some(&polarity) = d.self_wearsoff_polarity.get(folded.as_str()) {
         return Some(EffectPolarityMatch {
             polarity,
             target: "You".to_string(),
             is_wearsoff: true,
         });
     }
-    for (idx, _) in text.match_indices("'s ") {
+    for (idx, _) in folded.match_indices("'s ") {
         if idx == 0 {
             continue;
         }
-        let tail = &text[idx + 3..];
+        let tail = &folded[idx + 3..];
         if let Some(&polarity) = d.other_landing_polarity.get(tail) {
             return Some(EffectPolarityMatch {
                 polarity,
@@ -374,11 +403,11 @@ pub fn match_effect_polarity(text: &str) -> Option<EffectPolarityMatch> {
             });
         }
     }
-    for (i, b) in text.bytes().enumerate() {
+    for (i, b) in folded.bytes().enumerate() {
         if b != b' ' || i == 0 {
             continue;
         }
-        let tail = &text[i + 1..];
+        let tail = &folded[i + 1..];
         if let Some(&polarity) = d.other_landing_polarity.get(tail) {
             return Some(EffectPolarityMatch {
                 polarity,
@@ -393,6 +422,26 @@ pub fn match_effect_polarity(text: &str) -> Option<EffectPolarityMatch> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// why: the wiki's Al'Kabor and "poison" against the log's Al`Kabor
+    /// and "Poison" -- real unparsed lines, 14 and 29 occurrences
+    #[test]
+    fn a_landing_resolves_across_case_and_apostrophe_spelling() {
+        let m = match_spell_text("You burn within the inferno of Al`Kabor.").expect("resolves");
+        assert_eq!(
+            (m.spell, m.target.as_str(), m.is_wearsoff),
+            ("Inferno of Al`Kabor", "You", false)
+        );
+        let m = match_spell_text("Balanque is blasted by a jet of Poison.").expect("resolves");
+        assert_eq!(
+            (m.spell, m.target.as_str()),
+            ("Torbas Poison Blast", "Balanque")
+        );
+        assert_eq!(
+            landing_candidates("A blast of Poison eats at your skin."),
+            ["Torbas Poison Blast"]
+        );
+    }
 
     /// why: real, confirmed-unambiguous packs/spells.json entry
     #[test]
