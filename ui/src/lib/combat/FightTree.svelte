@@ -275,10 +275,12 @@
       <span class="text-muted-foreground">log time</span>
     </div>
   {/if}
-  <!-- why: fifty rows tall, then it scrolls -->
+  <!-- why: fifty rows tall, then it scrolls -- capped by the window, not a
+       flat 1300px: as a left rail it has only the viewport to work with,
+       and even in the wide layout a 720px-tall window ran it off the page -->
   <div
     bind:this={list}
-    class="relative max-h-[1300px] select-none overflow-y-auto"
+    class="relative max-h-[min(1300px,calc(100vh-7rem))] select-none overflow-y-auto"
     role="listbox"
     aria-multiselectable="true"
     tabindex="-1"

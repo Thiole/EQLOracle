@@ -93,13 +93,39 @@
   }
 </script>
 
-<!-- why: two panes -- the list that is the scope on the left, the data
-     it describes on the right; below ~1100px the list stacks on top,
-     twelve rows tall, so nothing is hidden behind a toggle -->
-<div class="grid grid-cols-1 items-start gap-4 p-4 lg:grid-cols-[340px_minmax(0,1fr)]">
-  <FightTree />
+<!-- why: two panes -- the list that is the scope on the left, the data it
+     describes on the right. The breakpoint is 900px, not Tailwind's lg
+     (1024): the tree is 340 and the data needs ~560, so 900 is where the
+     pair actually stops fitting. Reported real -- a default 1040px window
+     at 110% zoom is 945 CSS px, which fell under lg and dropped to one
+     column, and since the tree comes first in the DOM it took the whole
+     width on launch with the data pushed off the bottom.
 
-  <div class="flex min-w-0 flex-col gap-4">
+     Under 900 the data comes FIRST and the tree becomes a rail pinned to
+     the left edge: a labelled spine you hover (or tab into) to slide it
+     out over the page. The data is what the window is for; the tree is
+     how you change what it shows. -->
+<div
+  class="grid grid-cols-1 items-start gap-4 p-4 pl-11 min-[900px]:grid-cols-[340px_minmax(0,1fr)] min-[900px]:pl-4"
+>
+  <aside
+    data-testid="fight-tree-rail"
+    class="fixed top-9 bottom-0 left-0 z-40 order-2 flex w-8 overflow-hidden transition-[width] duration-150 hover:w-[21.5rem] focus-within:w-[21.5rem] min-[900px]:static min-[900px]:z-auto min-[900px]:order-1 min-[900px]:w-full min-[900px]:overflow-visible"
+  >
+    <!-- why: the grab strip -- the only part visible while collapsed, so
+         it has to say what it opens. Hidden once both panes fit. -->
+    <div
+      class="flex w-8 shrink-0 items-center justify-center border-r border-border bg-card text-[10px] tracking-widest text-muted-foreground min-[900px]:hidden"
+      style="writing-mode: vertical-rl"
+    >
+      fights
+    </div>
+    <div class="min-h-0 w-[340px] shrink-0 min-[900px]:w-full">
+      <FightTree />
+    </div>
+  </aside>
+
+  <div class="order-1 flex min-w-0 flex-col gap-4 min-[900px]:order-2" data-testid="combat-details">
     {#if !$selection.length}
       <p class="rounded-sm border border-border bg-card px-4 py-6 text-center text-[12px] text-muted-foreground">
         Pick a fight or a zone on the left. Ctrl-click to add, shift-click to span, or drag a box.
