@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-09-10 (0.24.0)
+
+### Combat
+
+- Right-click is the app's everywhere; the webview's own menu is gone. On a mob row in the ally or enemy table: "assign to player" (You plus the detected party), "clear owner", "hide" / "unhide". An assigned mob joins the ally side for that zone visit and folds under its owner as a pet part, on the Combat tab and in the DPS overlay. Hidden rows leave both tables and the overlay, data untouched; "columns · N hidden" gains a "show hidden" toggle. Assignments and hides persist in pet_owners.json and hidden_entities.json.
+- Each charm is its own entity: "a fire giant (charmed k7x2q)", a five-character id hashed from the zone visit, the name and its sequence within that visit. A later charm of the same name never rewrites an earlier fight's owner. Two charms of one name active at once still share an instance, the log names both identically.
+- The DPS overlay folds possessive pets ("X`s warder") under their owner, as the Combat tab always did.
+
+### Class detection
+
+- A damage line no longer counts an unranked spell any item procs or clicks as class evidence. A Fluxbladed Axe's Chaos Flux read as Enchanter beside Shaman, Magician and Ranger casts, and four classes fit no trio, so the row showed "no candidates".
+
+### Group Buff Tracker
+
+- The rank on you is picked by the rows' own value model, not level. A Quick Buff landing shared by Clarity and Boon of the Clear Mind read as Boon with Clarity as its upgrade while Clarity was what landed.
+
+### Skill Tracker
+
+- A zone line clears Charm, Hide and Sneak outright; nothing shows for them until the first such line in the new zone.
+
+### Import
+
+- An Import button beside Overlay replaces the launch-time inventory prompt. Inventory, Achievements and Spellbook rows, each with the in-game command on a copy button and an import-now button; the newest dump and its write time are shown. A dump the game writes while the app runs waits until asked for.
+- Spellbook dumps merge into Character > Spellbook as known spells on every read.
+
+### Character
+
+- Gear planner picks persist with race and levels, and a copyable base64 build code pastes back into any planner.
+
+### Settings
+
+- A Display card at the top: zoom in Chrome's steps from 50% to 200%, applied through the webview's own zoom and persisted. The dropdown is the app's themed Select.
+- The Overlay page's "enable ui" checkbox reads the shared overlay flag, so enabling from the quick menu is reflected and its own action restores the remembered widget set.
+
+### Debug
+
+- Parsed is a db search: every in-memory table behind one case-insensitive regex, newest first, the scan cut at the limit. The entities table shows charm id, visit and since.
+
+### Parsing
+
+- Seventh unmatched-shapes page: custom /emote output, refusals page 7, unknown-tongue chat, "* RIP *" corpse rows in /who, more emotes, NPC narrations, mob states, self pings, help and system lines. Fixture coverage 94.4%.
+- Spell effect texts fold ASCII case and backtick to apostrophe, so "Al`Kabor" and "Poison" resolve against the wiki's "Al'Kabor" and "poison".
+
+### Off for now
+
+- The death recap toast is disabled. Deaths are still polled and the recap still builds; one flag turns it back on.
+
 ## 2026-09-08 (0.23.0)
 
 ### Combat
