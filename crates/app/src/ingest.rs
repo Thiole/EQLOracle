@@ -1099,16 +1099,38 @@ struct PendingTurnIn {
 /// why: one genuinely confirmed Sky Quest turn-in -- who, and every item
 /// (name, qty) really accepted in that one exchange
 #[derive(Debug, Clone)]
-/// why: one charm per mob name -- see split_instances
+/// why: one ACTIVE charm per mob name (see split_instances), each charm
+/// its own instance -- a later charm of the same name never touches the
+/// entity, owner or fights of an earlier one
 struct CharmHint {
     active: bool,
     /// why: the pet's last confirmed target (C2), what C3 reads
     target: Option<String>,
+    /// why: the store name this charm's rows intern under
+    instance: String,
 }
 
-/// why: the store name of the charmed instance of `base`
-fn charm_instance_name(base: &str) -> String {
-    format!("{base} (charmed)")
+/// why: one short, replay-stable id per charm -- a hash of visit, name
+/// and sequence as five base36 chars; the tables join on it
+pub fn charm_id(visit: eqlp_session::classdetect::Unit, base: &str, seq: u32) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in format!("{visit:?}:{}:{seq}", base.to_lowercase()).bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    let mut n = h % 36u64.pow(5);
+    let mut out = [b'0'; 5];
+    for c in out.iter_mut().rev() {
+        let d = (n % 36) as u8;
+        *c = if d < 10 { b'0' + d } else { b'a' + d - 10 };
+        n /= 36;
+    }
+    String::from_utf8(out.to_vec()).expect("base36 is ascii")
+}
+
+/// why: the store name of one charm of `base` -- its id makes it its own entity
+pub fn charm_instance_name(visit: eqlp_session::classdetect::Unit, base: &str, seq: u32) -> String {
+    format!("{base} (charmed {})", charm_id(visit, base, seq))
 }
 
 pub struct ConfirmedTurnIn {
@@ -1368,6 +1390,11 @@ pub struct Ingest {
     /// why: resolved pet -> owner; checked by sym before interning so a
     /// matched pet's actions merge into the owner's identity
     pet_owner: HashMap<String, String>,
+    /// why: right-click assignments, (zone visit, lowercased mob name) ->
+    /// owner -- read at fold and side time, never rewriting the store
+    manual_pet_owners: HashMap<(Option<usize>, String), String>,
+    /// why: right-click "hide" -- (zone visit, lowercased name); rows stay, tables skip
+    hidden_entities: HashSet<(Option<usize>, String)>,
     /// why: owners forgotten at the last zone line, keyed by owner -- a
     /// pet zones with its owner, so the pair is refound the moment that
     /// owner acts in the new zone; an owner who never shows leaves the
@@ -1387,6 +1414,8 @@ pub struct Ingest {
     /// why: one charm per mob NAME at a time -- "one of them is ours";
     /// keyed by the lowercase base name. Rows split per C1-C4 against it
     charm_hints: HashMap<String, CharmHint>,
+    /// why: charms seen per (visit, mob name) -- the sequence behind charm_id
+    charm_seq: HashMap<String, u32>,
     /// why: the no-summon-line case -- a groupmate's pet summoned out of
     /// log range has NOTHING to window-match (measured: the unmatched
     /// generated-name suspects' first action lands p25=50min after any
@@ -1546,9 +1575,12 @@ impl Default for Ingest {
             seen_actors: HashSet::new(),
             you_confirmed_target_encs: HashSet::new(),
             pet_owner: HashMap::new(),
+            manual_pet_owners: HashMap::new(),
+            hidden_entities: HashSet::new(),
             prior_pet_owner: HashMap::new(),
             charmed_pets: HashSet::new(),
             charm_hints: HashMap::new(),
+            charm_seq: HashMap::new(),
             behavioral_pet_hits: HashMap::new(),
             behavioral_pets: HashSet::new(),
             behavioral_pet_blacklist: HashSet::new(),
@@ -2332,15 +2364,12 @@ impl Ingest {
                 self.seen_actors.clear();
                 self.pending_summons.clear();
                 self.last_zone_enter_ms = Some(ts);
-                // why: a charmed pet never follows you across a zone line --
-                // real loss even with no "spell has worn off" confirmation
-                // line at all (charm's own break is often silent on zoning)
-                if let Some(c) = &mut self.charm {
-                    if c.active {
-                        c.active = false;
-                        c.since_ms = ts;
-                    }
-                }
+                // why: a charmed pet never follows you across a zone line, and
+                // hide/sneak drop on zoning too -- the tracker shows nothing
+                // for them until the first line in the new zone (Spencer)
+                self.charm = None;
+                self.hide = None;
+                self.sneak = None;
                 self.entered_via_teleport = self
                     .last_teleport_cast
                     .clone()
@@ -2797,7 +2826,7 @@ impl Ingest {
                 // -- "You" when it was yours, else the ally; no cast in the
                 // window still means one of them is charmed, owner unknown
                 if !player {
-                    self.open_charm_hint(&who, owner_name);
+                    self.open_charm_hint(ts, &who, owner_name);
                 }
             }
             Action::Recovered { who, spell } => {
@@ -3146,20 +3175,20 @@ impl Ingest {
                 .and_then(|h| h.target.as_deref())
                 .is_some_and(|t| !t.eq_ignore_ascii_case(src));
             if busy_elsewhere {
-                return (src.to_string(), charm_instance_name(dst), 0);
+                return (src.to_string(), self.instance_of(dst), 0);
             }
             return (src.to_string(), dst.to_string(), flag::UNRESOLVED_INSTANCE);
         }
         let mut out_src = src.to_string();
         let mut out_dst = dst.to_string();
         if src_hint && self.instance_against(ts, dst) == Some(true) {
-            out_src = charm_instance_name(src);
+            out_src = self.instance_of(src);
             if let Some(h) = self.charm_hints.get_mut(&src.to_lowercase()) {
                 h.target = Some(dst.to_string());
             }
         }
         if dst_hint && self.instance_against(ts, src) == Some(true) {
-            out_dst = charm_instance_name(dst);
+            out_dst = self.instance_of(dst);
         }
         (out_src, out_dst, 0)
     }
@@ -3176,22 +3205,46 @@ impl Ingest {
 
     /// why: a charm opened on `who` by `owner` ("" when no cast was in
     /// the window) -- the instance entity exists from here, owned
-    fn open_charm_hint(&mut self, who: &str, owner: String) {
-        let inst = charm_instance_name(who);
+    /// why: the hint's own instance name; callers only ask while a hint is open
+    fn instance_of(&self, base: &str) -> String {
+        self.charm_hints
+            .get(&base.to_lowercase())
+            .map(|h| h.instance.clone())
+            .unwrap_or_else(|| format!("{base} (charmed)"))
+    }
+
+    fn open_charm_hint(&mut self, ts: Millis, who: &str, owner: String) {
+        let visit = self.units.current();
+        let n = {
+            let key = format!("{visit:?}:{}", who.to_lowercase());
+            let e = self.charm_seq.entry(key).or_insert(0);
+            *e += 1;
+            *e
+        };
+        let id = charm_id(visit, who, n);
+        let inst = format!("{who} (charmed {id})");
+        let meta = eqlp_session::graph::CharmMeta {
+            id,
+            visit,
+            since: ts,
+        };
         if !owner.is_empty() {
-            self.encounters.entities.note_owned(&inst, &owner);
             self.pet_owner.insert(inst.clone(), owner.clone());
-        } else {
-            self.encounters.entities.observe(&inst);
         }
+        self.encounters.entities.note_charm(
+            &inst,
+            (!owner.is_empty()).then_some(owner.as_str()),
+            meta,
+        );
         // why: keeps its own identity in the store; the fold is at
         // aggregation (pet_of), never by rewriting the Sym
-        self.charmed_pets.insert(inst);
+        self.charmed_pets.insert(inst.clone());
         self.charm_hints.insert(
             who.to_lowercase(),
             CharmHint {
                 active: true,
                 target: None,
+                instance: inst,
             },
         );
     }
@@ -3245,13 +3298,13 @@ impl Ingest {
         }
         if ev.0.id.src_is_you {
             if tags & tag::SPELL != 0 && is_castless_ability(base_spell_name(ability)) {
-                let classes = crate::classdata::classes_for(base_spell_name(ability));
+                let classes = class_evidence_for_damage(ability);
                 self.note_class_evidence(ts, src, classes);
             }
             return;
         }
         if tags & tag::SPELL != 0 {
-            let classes = crate::classdata::classes_for(base_spell_name(ability));
+            let classes = class_evidence_for_damage(ability);
             self.note_class_evidence(ts, src, classes);
             self.note_implied_level(ts, src, ability);
         } else if tags & tag::MELEE != 0 {
@@ -4734,6 +4787,83 @@ impl Ingest {
     /// why: whose charmed pet this is, for a row LABEL rather than an
     /// identity -- "an abhorrent (Sidhe's pet)" keeps the damage in its
     /// own bucket while still saying who it belongs to
+    /// why: the whole assignment list, replacing what was there
+    pub fn set_manual_pet_owners(&mut self, list: &[crate::petowners::PetOwner]) {
+        self.manual_pet_owners = list
+            .iter()
+            .map(|p| ((p.visit, p.pet.to_lowercase()), p.owner.clone()))
+            .collect();
+    }
+
+    pub fn manual_pet_owners(&self) -> Vec<crate::petowners::PetOwner> {
+        let mut v: Vec<crate::petowners::PetOwner> = self
+            .manual_pet_owners
+            .iter()
+            .map(|((visit, pet), owner)| crate::petowners::PetOwner {
+                visit: *visit,
+                pet: pet.clone(),
+                owner: owner.clone(),
+            })
+            .collect();
+        v.sort_by(|a, b| (a.visit, &a.pet).cmp(&(b.visit, &b.pet)));
+        v
+    }
+
+    pub fn assign_pet_owner(&mut self, visit: Option<usize>, pet: &str, owner: Option<&str>) {
+        let key = (visit, pet.to_lowercase());
+        match owner {
+            Some(o) => {
+                self.manual_pet_owners.insert(key, o.to_string());
+            }
+            None => {
+                self.manual_pet_owners.remove(&key);
+            }
+        }
+    }
+
+    pub fn set_hidden_entities(&mut self, list: &[crate::petowners::HiddenEntity]) {
+        self.hidden_entities = list
+            .iter()
+            .map(|h| (h.visit, h.name.to_lowercase()))
+            .collect();
+    }
+
+    pub fn hidden_entities(&self) -> Vec<crate::petowners::HiddenEntity> {
+        let mut v: Vec<crate::petowners::HiddenEntity> = self
+            .hidden_entities
+            .iter()
+            .map(|(visit, name)| crate::petowners::HiddenEntity {
+                visit: *visit,
+                name: name.clone(),
+            })
+            .collect();
+        v.sort_by(|a, b| (a.visit, &a.name).cmp(&(b.visit, &b.name)));
+        v
+    }
+
+    pub fn set_entity_hidden(&mut self, visit: Option<usize>, name: &str, hidden: bool) {
+        let key = (visit, name.to_lowercase());
+        if hidden {
+            self.hidden_entities.insert(key);
+        } else {
+            self.hidden_entities.remove(&key);
+        }
+    }
+
+    /// why: hidden for the visit `ts` falls in
+    pub fn is_hidden(&self, name: &str, ts: Millis) -> bool {
+        let visit = self.zone.index_at(ts);
+        self.hidden_entities.contains(&(visit, name.to_lowercase()))
+    }
+
+    /// why: the assignment in force for the visit `ts` falls in
+    pub fn manual_pet_owner(&self, name: &str, ts: Millis) -> Option<&str> {
+        let visit = self.zone.index_at(ts);
+        self.manual_pet_owners
+            .get(&(visit, name.to_lowercase()))
+            .map(String::as_str)
+    }
+
     pub fn pet_of(&self, name: &str) -> Option<&str> {
         let resolved = self.encounters.entities.display_name(name);
         if !self.charmed_pets.contains(resolved) {
@@ -4938,6 +5068,7 @@ impl Ingest {
                     || self.pet_owner.contains_key(canonical)
                     || self.behavioral_pets.contains(canonical)
                     || self.groups.currently_grouped(name, ts)
+                    || self.manual_pet_owner(canonical, ts).is_some()
                 {
                     Allegiance::Ally
                 } else {
@@ -6245,6 +6376,34 @@ fn has_item_click_source(base_spell: &str) -> bool {
         .contains(base_spell)
 }
 
+/// why: a damage line names the spell but not what fired it -- a weapon
+/// proc lands as "by Chaos Flux" exactly like a cast would (real:
+/// Fluxbladed Axe on a Shaman/Magician/Ranger read as Enchanter, and four
+/// classes fit no trio, so the row showed "no candidates")
+fn has_item_proc_source(base_spell: &str) -> bool {
+    static ITEM_PROCS: OnceLock<std::collections::HashSet<&'static str>> = OnceLock::new();
+    ITEM_PROCS
+        .get_or_init(|| {
+            crate::itemdata::items()
+                .iter()
+                .filter_map(|i| i.effects.get("proc"))
+                .filter_map(|e| e.get("name").and_then(|n| n.as_str()))
+                .collect()
+        })
+        .contains(base_spell)
+}
+
+/// why: same rank rule as a cast line, but a damage line also cannot tell
+/// a proc from a cast, so both item sources void an unranked name
+fn class_evidence_for_damage(name: &str) -> &'static [String] {
+    let base = base_spell_name(name);
+    let ranked = name.get(base.len() + 1..).is_some_and(|rank| rank != "I");
+    if !ranked && (has_item_click_source(base) || has_item_proc_source(base)) {
+        return &[];
+    }
+    crate::classdata::classes_for(base)
+}
+
 /// why: the cast line as written -- a rank above I ("Conflagration X")
 /// is a spellbook cast, an item click always casts the bare base spell,
 /// so the item-source exclusion only applies to an unranked line
@@ -6823,6 +6982,20 @@ mod charm_reaffirm_tests {
     /// name, so folding its damage into the charmer put every mob of
     /// that name under whichever charmer was recorded last. It keeps its
     /// own bucket now, and the row says whose it is.
+    /// why: replay-stable, five base36 chars, and a different visit or a
+    /// second charm of the name gets a different id
+    #[test]
+    fn a_charm_id_is_stable_short_and_distinct_per_visit_and_sequence() {
+        let a = charm_id(Some(3), "a fire giant", 1);
+        assert_eq!(a, charm_id(Some(3), "A Fire Giant", 1));
+        assert_eq!(a.len(), 5);
+        assert!(a
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()));
+        assert_ne!(a, charm_id(Some(4), "a fire giant", 1));
+        assert_ne!(a, charm_id(Some(3), "a fire giant", 2));
+    }
+
     #[test]
     fn a_charmed_pet_keeps_its_own_bucket_and_names_its_owner() {
         let ing = run(&[
@@ -6831,12 +7004,12 @@ mod charm_reaffirm_tests {
             "[Tue Jul 28 15:01:05 2026] an abhorrent hits a gnoll for 40 points of damage.",
         ]);
         assert_eq!(
-            ing.effective_name("an abhorrent (charmed)"),
-            "an abhorrent (charmed)",
+            ing.effective_name(charm_instance_name(Some(0), "an abhorrent", 1).as_str()),
+            charm_instance_name(Some(0), "an abhorrent", 1).as_str(),
             "its damage stays its own, not Sidhe's"
         );
         assert_eq!(
-            ing.pet_of("an abhorrent (charmed)"),
+            ing.pet_of(charm_instance_name(Some(0), "an abhorrent", 1).as_str()),
             Some("Sidhe"),
             "but the row can say whose"
         );
@@ -6870,7 +7043,10 @@ mod charm_reaffirm_tests {
         ]);
         assert!(ing.charm.as_ref().is_some_and(|c| c.active));
         assert!(
-            ing.store.names.get("an abhorrent (charmed)").is_none(),
+            ing.store
+                .names
+                .get(charm_instance_name(Some(0), "an abhorrent", 1).as_str())
+                .is_none(),
             "the hit on You never touched the pet"
         );
         let now = ing.now_ms();
@@ -6901,7 +7077,11 @@ mod charm_reaffirm_tests {
             "the pool"
         );
         assert!(
-            !ing.allegiance_at("an abhorrent (charmed)", now).is_enemy(),
+            !ing.allegiance_at(
+                charm_instance_name(Some(0), "an abhorrent", 1).as_str(),
+                now
+            )
+            .is_enemy(),
             "the one that is yours"
         );
     }
@@ -6922,7 +7102,8 @@ mod charm_reaffirm_tests {
         let c = ing.charm.as_ref().expect("charm still tracked");
         assert!(c.active, "Tashania/Burnout fading is not the charm ending");
         assert!(
-            ing.pet_of("heart harpie (charmed)").is_some(),
+            ing.pet_of(charm_instance_name(Some(0), "heart harpie", 1).as_str())
+                .is_some(),
             "the instance is still yours"
         );
     }
@@ -6987,7 +7168,11 @@ mod charm_reaffirm_tests {
         ing.tick(0);
         let now = ing.now_ms();
         assert!(
-            !ing.allegiance_at("heart harpie (charmed)", now).is_enemy(),
+            !ing.allegiance_at(
+                charm_instance_name(Some(0), "heart harpie", 1).as_str(),
+                now
+            )
+            .is_enemy(),
             "idle close must not overwrite the pet's side"
         );
         assert!(ing.charm.as_ref().is_some_and(|c| c.active));
@@ -8537,6 +8722,40 @@ mod stance_evidence_tests {
     fn a_proc_only_item_effect_is_not_an_item_click_source() {
         assert!(has_item_click_source("Conflagration"));
         assert!(!has_item_click_source("Affliction"));
+    }
+
+    /// why: real -- Bravesirrobin's Fluxbladed Axe procs Chaos Flux; its
+    /// damage lines read as Enchanter beside Shaman, Magician and Ranger
+    /// casts, and four classes fit no trio: "open slot: no candidates yet"
+    #[test]
+    fn a_proc_spells_damage_line_is_not_class_evidence_but_a_ranked_one_is() {
+        assert!(has_item_proc_source("Chaos Flux"));
+        assert!(class_evidence_for_damage("Chaos Flux").is_empty());
+        assert_eq!(
+            class_evidence_for_damage("Chaos Flux VI"),
+            &["Enchanter".to_string()][..]
+        );
+        let engine = build_engine().expect("pack builds");
+        let mut ing = Ingest::default();
+        let lines: Vec<&[u8]> = vec![
+            b"[Tue Jul 28 15:01:00 2026] Bravesirrobin tells the group, 'hi'",
+            b"[Tue Jul 28 15:01:01 2026] Bravesirrobin hit a gnoll for 132 points of magic damage by Chaos Flux.",
+            b"[Tue Jul 28 15:01:02 2026] Bravesirrobin hit a gnoll for 900 points of fire damage by Lava Bolt VI.",
+        ];
+        backfill_lines(&mut ing, &engine, &lines, 1);
+        let view = ing
+            .class_chain("Bravesirrobin", ing.now_ms())
+            .expect("a chain");
+        assert!(
+            view.weights.iter().all(|(c, _)| c != "Enchanter"),
+            "the proc is not evidence: {:?}",
+            view.weights
+        );
+        assert!(
+            view.weights.iter().any(|(c, _)| c == "Magician"),
+            "the real cast still is: {:?}",
+            view.weights
+        );
     }
 
     /// why: docs P10 -- the stance in effect is a state: assumed once, it

@@ -7,7 +7,7 @@
 use eqlp_app::combat::{class_configurations, list_encounters, zone_visits_for_configuration};
 use eqlp_app::deathrecap::{death_timestamps, recap};
 use eqlp_app::dropwatch::{drop_watch, loot_status};
-use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
+use eqlp_app::ingest::{backfill_lines, charm_instance_name, framed_lines, Ingest};
 use eqlp_app::parser::build_engine;
 
 fn run(log: &str) -> Ingest {
@@ -738,7 +738,10 @@ fn a_charm_splits_one_instance_off_the_pool_row_by_row() {
         kaeus.total, 40,
         "only the hit on the gnoll is the pet's (C2)"
     );
-    assert_eq!(kaeus.pets[0].name, "an abhorrent (charmed)");
+    assert_eq!(
+        kaeus.pets[0].name,
+        charm_instance_name(Some(0), "an abhorrent", 1).as_str()
+    );
     assert!(
         !allies.iter().any(|a| a.name == "an abhorrent"),
         "the pool is never an ally: {:?}",
@@ -750,7 +753,7 @@ fn a_charm_splits_one_instance_off_the_pool_row_by_row() {
     let pet = ing
         .store
         .names
-        .get("an abhorrent (charmed)")
+        .get(charm_instance_name(Some(0), "an abhorrent", 1).as_str())
         .expect("the pet");
     let dealt_by = |s| eqlp_store::total(&ing.store, &eqlp_store::Filter::default().damage().by(s));
     let taken_by = |s| {
@@ -789,7 +792,10 @@ fn a_charm_splits_one_instance_off_the_pool_row_by_row() {
         .count();
     assert_eq!(flagged, 1, "the abhorrent-on-abhorrent row");
     assert!(
-        ing.store.names.get("an abhorrent (charmed)").is_none(),
+        ing.store
+            .names
+            .get(charm_instance_name(Some(0), "an abhorrent", 1).as_str())
+            .is_none(),
         "nothing was ever proven to be the pet"
     );
     assert!(

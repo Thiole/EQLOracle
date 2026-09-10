@@ -116,22 +116,33 @@ fn pet_owner(name: &str) -> Option<&str> {
     (!owner.is_empty()).then_some(owner)
 }
 
+/// why: what one charm instance is keyed by -- the id the tables join on,
+/// the visit it belongs to, and when it opened
+#[derive(Debug, Clone)]
+pub struct CharmMeta {
+    pub id: String,
+    pub visit: Option<usize>,
+    pub since: Millis,
+}
+
 /// why: classification is monotonic -- evidence promotes, never demotes
 #[derive(Debug, Default)]
 pub struct Entities {
     kind: HashMap<String, Kind>,
     owner: HashMap<String, String>,
     display: HashMap<String, String>,
+    charms: HashMap<String, CharmMeta>,
 }
 
 impl Entities {
     /// why: (display name, kind, owner) for every entity, for the Debug db search
-    pub fn all(&self) -> impl Iterator<Item = (&str, Kind, Option<&str>)> {
+    pub fn all(&self) -> impl Iterator<Item = (&str, Kind, Option<&str>, Option<&CharmMeta>)> {
         self.kind.iter().map(|(n, k)| {
             (
                 self.display_name(n),
                 *k,
                 self.owner.get(n).map(String::as_str),
+                self.charms.get(n),
             )
         })
     }
@@ -141,14 +152,22 @@ impl Entities {
             .or_insert_with(|| name.to_string());
     }
 
-    /// why: a charm instance has no possessive name to classify by --
-    /// the charmer is known from the cast, so say so directly
-    pub fn note_owned(&mut self, name: &str, owner: &str) {
+    /// why: a charm instance has no possessive name to classify by -- a
+    /// known charmer makes it a pet outright, an unknown one leaves it
+    /// unproven like any other observed name; the meta is kept either way
+    pub fn note_charm(&mut self, name: &str, owner: Option<&str>, meta: CharmMeta) {
         let key = fold_key(name);
-        self.note_seen(&key, name);
-        self.owner
-            .insert(key.clone().into_owned(), owner.to_string());
-        self.kind.insert(key.into_owned(), Kind::Pet);
+        match owner {
+            Some(o) => {
+                self.note_seen(&key, name);
+                self.owner.insert(key.clone().into_owned(), o.to_string());
+                self.kind.insert(key.clone().into_owned(), Kind::Pet);
+            }
+            None => {
+                self.observe(name);
+            }
+        }
+        self.charms.insert(key.into_owned(), meta);
     }
 
     /// why: NPCs never use player-only channels -- reliable player proof

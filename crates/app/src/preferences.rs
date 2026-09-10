@@ -28,6 +28,11 @@ fn default_volume() -> u8 {
 /// why: this app's own original identity -- see themes.css's own doc for
 /// where the other presets come from and why "eqlp" mirrors :root's own
 /// base values rather than being a special-cased empty string
+/// why: 1.0 is the page as designed; Chrome's own steps are the choices
+fn default_zoom() -> f64 {
+    1.0
+}
+
 fn default_theme() -> String {
     "eqlp".to_string()
 }
@@ -129,6 +134,9 @@ pub struct Preferences {
     /// never a hard error
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// why: the main window's zoom, applied through the webview itself
+    #[serde(default = "default_zoom")]
+    pub ui_zoom: f64,
     /// why: each overlay widget owns its own opacity, not one shared
     /// window-wide setting -- more widgets are coming (a party tracker
     /// is the next one planned), each independently placed and
@@ -276,6 +284,10 @@ pub struct Preferences {
     /// Backend-only, same as planner_race.
     #[serde(default)]
     pub planner_levels: HashMap<String, u8>,
+    /// why: the gear planner's hand picks (slot -> item id). Backend-only,
+    /// same as planner_race.
+    #[serde(default)]
+    pub planner_gear: HashMap<String, String>,
     /// why: real epoch ms (`Date.now()` on the frontend, which owns this
     /// entirely -- backend just stores whatever it's given), refreshed
     /// roughly every 5 minutes while Drop Watch has anything tracked
@@ -313,6 +325,7 @@ impl Default for Preferences {
             save_profile: false,
             update_channel: UpdateChannel::default(),
             theme: default_theme(),
+            ui_zoom: default_zoom(),
             overlay_dps_meter_opacity: default_overlay_opacity(),
             overlay_dps_meter_overall_opacity: default_overall_opacity(),
             overlay_skill_tracker_opacity: default_overlay_opacity(),
@@ -338,6 +351,7 @@ impl Default for Preferences {
             overlay_positions: HashMap::new(),
             planner_race: None,
             planner_levels: HashMap::new(),
+            planner_gear: HashMap::new(),
             drop_watch_checkpoint_ms: None,
         }
     }
@@ -478,6 +492,7 @@ mod tests {
             save_profile: true,
             update_channel: UpdateChannel::Beta,
             theme: "claude".to_string(),
+            ui_zoom: 1.25,
             overlay_dps_meter_opacity: 0.4,
             overlay_dps_meter_overall_opacity: 0.7,
             overlay_skill_tracker_opacity: 0.6,
@@ -503,6 +518,7 @@ mod tests {
             overlay_positions,
             planner_race: Some("Halfling".to_string()),
             planner_levels: HashMap::from([("Wizard".to_string(), 34u8)]),
+            planner_gear: HashMap::from([("PRIMARY".to_string(), "Brass_Ring".to_string())]),
             drop_watch_checkpoint_ms: Some(1_700_000_000_000),
         };
         let json = serde_json::to_string(&p).unwrap();

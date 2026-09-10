@@ -297,7 +297,7 @@ fn main() {
     );
     out.insert(
         "get_spellbook".to_string(),
-        json!({ "": progression::spellbook(&ing) }),
+        json!({ "": progression::spellbook(&ing, &[]) }),
     );
     out.insert("list_aa".to_string(), json!({ "": aadata::aas() }));
     // why: same assumeMaxRank=true the frontend's own SkillData tab calls

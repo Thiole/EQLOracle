@@ -116,17 +116,25 @@ fn spellbook_entry(name: &str, confidence: &str, ts: Millis) -> SpellbookEntryDt
 
 /// why: every spell with Possible+ evidence this session, Known first,
 /// newest first within each tier, enriched with catalog stats
-pub fn spellbook(ing: &Ingest) -> Vec<SpellbookEntryDto> {
+pub fn spellbook(ing: &Ingest, dump: &[(String, Millis)]) -> Vec<SpellbookEntryDto> {
     let mut known: Vec<SpellbookEntryDto> = ing
         .spellbook
         .known()
         .map(|(name, ts)| spellbook_entry(name, "known", ts))
         .collect();
+    // why: a `/outputfile spellbook` row is the game's own word -- known
+    // whether or not the log ever saw it scribed
+    for (name, ts) in dump {
+        if !known.iter().any(|k| k.name.eq_ignore_ascii_case(name)) {
+            known.push(spellbook_entry(name, "known", *ts));
+        }
+    }
     known.sort_by_key(|b| std::cmp::Reverse(b.first_seen_ms));
 
     let mut possible: Vec<SpellbookEntryDto> = ing
         .spellbook
         .possible()
+        .filter(|(name, _)| !dump.iter().any(|(d, _)| d.eq_ignore_ascii_case(name)))
         .map(|(name, ts)| spellbook_entry(name, "possible", ts))
         .collect();
     possible.sort_by_key(|b| std::cmp::Reverse(b.first_seen_ms));

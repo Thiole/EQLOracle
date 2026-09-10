@@ -4,6 +4,7 @@
   import { status } from '$lib/stores/status';
   import { minimizeWindow, toggleMaximizeWindow, closeWindow } from '$lib/tauri/window';
   import OverlayQuickMenu from '$lib/overlay/OverlayQuickMenu.svelte';
+  import ImportMenu from '$lib/shell/ImportMenu.svelte';
   import { HelpTip } from '$lib/components/ui/help';
   import { PAGE_HELP } from '$lib/shell/pageHelp';
   import { activeModule } from '$lib/stores/shell';
@@ -79,6 +80,7 @@
     {#if PAGE_HELP[$activeModule]}
       <HelpTip label="About this page" text={PAGE_HELP[$activeModule]} />
     {/if}
+    <ImportMenu />
     <OverlayQuickMenu />
     {#if customTitlebar}
       <!-- why: full-height hit targets flush to the window edge, the

@@ -11,7 +11,7 @@ and need the service layer described in README.md before external
 exposure. Parameters shown are the real API surface -- Tauri plumbing
 (`State`, `AppHandle`, `Window`) is elided.
 
-125 commands: 27 pure, 98 stateful.
+132 commands: 27 pure, 105 stateful.
 
 ## `get_changelog` (pure)
 why: the Info panel's own "what's new" -- every section, newest first
@@ -503,6 +503,18 @@ why: Maps module's zone-identity + entrance-guess input; `current_map_zones` con
 - args: none
 - returns: `ZoneContextDto`
 
+## `import_achievements` (stateful)
+why: Import > Achievements -- reads the dump now, answers how many are complete
+
+- args: none
+- returns: `Result<usize, String>`
+
+## `import_spellbook` (stateful)
+why: Import > Spellbook -- how many spells the dumps name; get_spellbook merges them on every read, so nothing is stored
+
+- args: none
+- returns: `Result<usize, String>`
+
 ## `list_all_map_zones` (stateful)
 
 - args: none
@@ -530,6 +542,11 @@ why: Combat module's second dropdown, defaults to the whole list -- a rendering 
 - args: `zone_visit: Option<i64>`; `encounter_id: Option<u32>`; `confirmed_only: Option<bool>`; `selection: Option<combat::SelectionDto>`
 - returns: `Vec<AllyDto>`
 
+## `list_hidden_entities` (stateful)
+
+- args: none
+- returns: `Vec<crate::petowners::HiddenEntity>`
+
 ## `list_map_packs` (stateful)
 
 - args: none
@@ -549,6 +566,17 @@ why: Combat module's second dropdown, defaults to the whole list -- a rendering 
 
 - args: none
 - returns: `Vec<MobDto>`
+
+## `list_outputfiles` (stateful)
+why: Import menu -- the newest `/outputfile` dump per kind beside Logs
+
+- args: none
+- returns: `Vec<outputfiles::OutputfileDto>`
+
+## `list_pet_owners` (stateful)
+
+- args: none
+- returns: `Vec<crate::petowners::PetOwner>`
 
 ## `list_pm_threads` (stateful)
 
@@ -627,6 +655,12 @@ why: real "save as" -- forks `source_file`'s pair (hotbuttons + its `UI_` layout
 - args: `source_file: String`; `new_stem: String`; `loadouts: Vec<spellbookfiles::SpellLoadoutDto>`
 - returns: `Result<String, String>`
 
+## `set_entity_hidden` (stateful)
+why: right-click > hide -- the row leaves both tables for that visit; the data stays
+
+- args: `visit: Option<i64>`; `encounter_id: Option<u32>`; `name: String`; `hidden: bool`
+- returns: `Result<Vec<crate::petowners::HiddenEntity>, String>`
+
 ## `set_log_directory` (stateful)
 why: native folder picker, None on cancel (not an error). Async callback API, not blocking_pick_folder -- Linux's GTK/portal dialog doesn't reliably mesh with a blocked command thread.
 
@@ -673,10 +707,16 @@ why: same live-push/persist split as set_overlay_opacity, but resizes the real O
 - args: `widget: String`; `size: String`
 - returns: `()`
 
+## `set_pet_owner` (stateful)
+why: right-click > assign to player -- persisted, then in force for every view of that visit; owner None clears the assignment
+
+- args: `visit: Option<i64>`; `encounter_id: Option<u32>`; `pet: String`; `owner: Option<String>`
+- returns: `Result<Vec<crate::petowners::PetOwner>, String>`
+
 ## `set_planner_state` (stateful)
 why: whole-state write -- the frontend owns the merge (it knows which edit happened); race None clears, empty levels clears (the "Estimate levels" reset path).
 
-- args: `race: Option<String>`; `levels: HashMap<String, u8>`
+- args: `race: Option<String>`; `levels: HashMap<String, u8>`; `gear: HashMap<String, String>`
 - returns: `Result<(), String>`
 
 ## `set_preferences` (stateful)

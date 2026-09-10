@@ -195,6 +195,7 @@ fn fold_history(
     engine: &eqlp_core::Engine,
     log_dir: &Path,
     threads: usize,
+    overrides: &crate::petowners::Overrides,
     stop: &AtomicBool,
     mut progress: impl FnMut(),
 ) -> Option<(Ingest, Tail, Framer)> {
@@ -202,6 +203,7 @@ fn fold_history(
     if let Some(base) = log_dir.parent() {
         ing.set_spell_file(base);
     }
+    crate::petowners::apply(&mut ing, overrides);
     ing.character = identity_from_filename(path).map(|(c, _)| c);
     let mut t = Tail::from_start(path);
     let mut framer = Framer::default();
@@ -277,6 +279,7 @@ fn run(
         if let Some(base) = log_dir.parent() {
             fresh.set_spell_file(base);
         }
+        crate::petowners::apply(&mut fresh, &crate::petowners::load(&app));
         *ingest.lock_recover() = fresh;
     }
 
@@ -330,10 +333,15 @@ fn run(
         if !backfilling {
             if let Some(path) = history_pending.take() {
                 emit_tick(&app, &log_dir, &target, "history", true, &ingest, &status);
-                let folded =
-                    fold_history(&path, &engine, &log_dir, backfill_threads, &stop, || {
-                        emit_tick(&app, &log_dir, &target, "history", true, &ingest, &status)
-                    });
+                let folded = fold_history(
+                    &path,
+                    &engine,
+                    &log_dir,
+                    backfill_threads,
+                    &crate::petowners::load(&app),
+                    &stop,
+                    || emit_tick(&app, &log_dir, &target, "history", true, &ingest, &status),
+                );
                 if let Some((full, full_tail, full_framer)) = folded {
                     {
                         let mut ing = ingest.lock_recover();
@@ -391,6 +399,7 @@ fn run(
                     if let Some(base) = log_dir.parent() {
                         fresh.set_spell_file(base);
                     }
+                    crate::petowners::apply(&mut fresh, &crate::petowners::load(&app));
                     // why: whose log this is -- your own /who row then
                     // lands on "You" like every other self observation
                     fresh.character = character;

@@ -29,8 +29,8 @@ export const userLevels = writable<Record<string, number>>({});
 /** why: race + user levels saved together, whole-state -- see backend
  * set_planner_state's own doc. Best-effort: a failed save must not
  * break planner interaction. */
-function savePlannerState() {
-  void api.setPlannerState(get(race) || null, get(userLevels)).catch(() => {});
+export function savePlannerState() {
+  void api.setPlannerState(get(race) || null, get(userLevels), get(gearChosen)).catch(() => {});
 }
 
 export const classConfigurations = writable<ClassConfigurationsDto | null>(null);
@@ -103,36 +103,23 @@ function gearStatTotals(): Record<string, number> {
 
 // ---------------------------------------------------------------- equipped inventory
 
-/** why: dump ready, not yet loaded; stays until user acts */
-export const pendingInventoryDump = writable<{ file: string; character: string | null } | null>(null);
 /** why: doll priority: equipped beats manual pick beats top rec */
 export const equippedInventory = writable<InventoryDumpDto | null>(null);
-export const inventoryDumpError = writable<string | null>(null);
 /** why: bumped only on a real fresh dump load -- NOT on clearEquippedSlot's
  * own in-place edits to the same dump, which GearPanel must not mistake
  * for a new dump and use as a reason to wipe the pick it's mid-committing. */
 export const inventoryDumpVersion = writable(0);
 
-export function onInventoryDumpDetected(file: string, character: string | null) {
-  pendingInventoryDump.set({ file, character });
+/** why: Import > Inventory -- reads the dump the player asked for; throws so the menu shows why */
+export async function loadInventoryDump(file: string) {
+  equippedInventory.set(await api.getInventoryDump(file));
+  inventoryDumpVersion.update((v) => v + 1);
+  void refreshGear();
 }
 
-export function dismissInventoryDump() {
-  pendingInventoryDump.set(null);
-}
-
-export async function loadInventoryDump() {
-  const pending = get(pendingInventoryDump);
-  if (!pending) return;
-  pendingInventoryDump.set(null);
-  inventoryDumpError.set(null);
-  try {
-    equippedInventory.set(await api.getInventoryDump(pending.file));
-    inventoryDumpVersion.update((v) => v + 1);
-    void refreshGear();
-  } catch (e) {
-    inventoryDumpError.set(String(e));
-  }
+/** why: Import > Spellbook -- the view merges the dump on every read, so a re-read is the import */
+export async function reloadSpellbook() {
+  spellbook.set(await api.getSpellbook());
 }
 
 /** why: manual pick must override equipped for just this slot */
@@ -143,16 +130,6 @@ export function clearEquippedSlot(key: string) {
     delete resolved[key];
     return { ...dump, resolved };
   });
-}
-
-let checkedForExistingDump = false;
-
-/** why: an already-on-disk dump, not just one caught live -- only worth asking once a session */
-async function checkForExistingInventoryDump() {
-  if (checkedForExistingDump || get(pendingInventoryDump) || get(equippedInventory)) return;
-  checkedForExistingDump = true;
-  const found = await api.findExistingInventoryDump();
-  if (found) onInventoryDumpDetected(found.file, found.character);
 }
 
 /** why: loaded once on entering Character; input: none; output: void */
@@ -176,6 +153,7 @@ export async function loadCharacterModule() {
     if (planner.levels && !Object.keys(get(userLevels)).length) {
       userLevels.set(planner.levels);
     }
+    if (planner.gear && !Object.keys(get(gearChosen)).length) gearChosen.set(planner.gear);
   }
   classConfigurations.set(cfgs);
   // why: a command with no mock table (or a failed invoke) answers null
@@ -203,8 +181,6 @@ export async function loadCharacterModule() {
     void refreshEstimate();
     void refreshGear();
   }
-
-  void checkForExistingInventoryDump();
 }
 
 /** why: startup folds the last 24 MiB first so the app is usable in about

@@ -3,7 +3,6 @@ import { listen } from './invoke';
 import type { TailStatus, LineCounts } from './api';
 import { applyStatusTick } from '../stores/status';
 import { onCombatTick } from '../stores/combat';
-import { onInventoryDumpDetected } from '../stores/character';
 import { refreshLastLocation, refreshZoneContext } from '../stores/maps';
 import { refreshRaidRows } from '../stores/raiding';
 import { onChatTick } from '../stores/chat';
@@ -77,9 +76,5 @@ export async function initTauriEvents() {
 
   await listen<string>('parse-error', (e) => {
     console.error('parse-error', e.payload);
-  });
-
-  await listen<{ file: string; character: string | null }>('inventory-dump', (e) => {
-    onInventoryDumpDetected(e.payload.file, e.payload.character);
   });
 }

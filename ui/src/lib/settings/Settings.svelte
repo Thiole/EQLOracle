@@ -12,6 +12,9 @@
     saveProfile,
     updateChannel,
     theme,
+    uiZoom,
+    setUiZoom,
+    ZOOM_STEPS,
     settingsLoaded,
     setVolume,
     setEra,
@@ -87,6 +90,25 @@
         {/each}
       </span>
     {/snippet}
+
+    <Card class="rounded-sm">
+      <CardContent class="px-3 py-2.5">
+        {@render sectionHeader('display', "Zoom scales the whole window like a browser's zoom -- text, panels and tables together.")}
+        <label class="flex max-w-sm items-center gap-3 text-[12px]">
+          <span class="w-16 shrink-0 text-muted-foreground">zoom</span>
+          <!-- why: the app's own list, not the native popup -- GTK draws
+               that one in its own colors, never the theme's -->
+          <Select.Root type="single" value={String($uiZoom)} onValueChange={(v) => v && void setUiZoom(+v)}>
+            <Select.Trigger class="h-7 w-24 text-[12px]" aria-label="zoom">{Math.round($uiZoom * 100)}%</Select.Trigger>
+            <Select.Content>
+              {#each ZOOM_STEPS as z (z)}
+                <Select.Item value={String(z)}>{Math.round(z * 100)}%</Select.Item>
+              {/each}
+            </Select.Content>
+          </Select.Root>
+        </label>
+      </CardContent>
+    </Card>
 
     <Card class="rounded-sm">
       <CardContent class="px-3 py-2.5">

@@ -222,7 +222,16 @@ fn table_values(ing: &Ingest, table: &str) -> Option<Vec<Value>> {
             .encounters
             .entities
             .all()
-            .map(|(n, k, o)| json!({"name": n, "kind": format!("{k:?}"), "owner": o}))
+            .map(|(n, k, o, c)| {
+                json!({
+                    "name": n,
+                    "kind": format!("{k:?}"),
+                    "owner": o,
+                    "charm": c.map(|c| c.id.as_str()),
+                    "visit": c.and_then(|c| c.visit),
+                    "since_ms": c.map(|c| c.since),
+                })
+            })
             .collect(),
         "effects" => ing
             .effects
@@ -255,7 +264,7 @@ fn table_values(ing: &Ingest, table: &str) -> Option<Vec<Value>> {
                 })
             })
             .collect(),
-        "spellbook" => vals(crate::progression::spellbook(ing)),
+        "spellbook" => vals(crate::progression::spellbook(ing, &[])),
         "spell_ranks" => ing
             .spell_ranks
             .all()

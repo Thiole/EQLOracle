@@ -90,6 +90,13 @@ function keyFor(cmd: string, args: Record<string, unknown> | undefined): string 
     case 'get_exalt_candidates':
       return `id=${norm(a.id)}&socketKey=${norm(a.socketKey)}&other=${normMap(a.otherAssignments)}&classes=${norm(a.classes)}&maxEra=${norm(a.maxEra)}`;
     case 'find_existing_inventory_dump':
+    case 'list_outputfiles':
+    case 'list_pet_owners':
+    case 'set_pet_owner':
+    case 'set_entity_hidden':
+    case 'list_hidden_entities':
+    case 'import_achievements':
+    case 'import_spellbook':
     case 'list_map_packs':
     case 'list_all_map_zones':
     case 'get_last_location':

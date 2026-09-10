@@ -223,8 +223,8 @@ mod tests {
     }
 
     /// why: a charmed pet never follows across a zone line, and the
-    /// break is often silent (no "worn off" line) -- zoning must clear
-    /// it unconditionally, not wait for a confirmation that may never come
+    /// break is often silent (no "worn off" line) -- zoning clears it
+    /// outright, so the tracker shows nothing until the next line here
     #[test]
     fn zoning_breaks_an_active_charm_even_with_no_explicit_break_line() {
         let ing = run_charmed(&[
@@ -233,8 +233,8 @@ mod tests {
         ]);
         let dto = status_effects(&ing);
         assert!(
-            !dto.charm.expect("still tracked, now inactive").active,
-            "zoning must break an active charm even with no worn-off line"
+            dto.charm.is_none(),
+            "zoning clears an active charm even with no worn-off line: {dto:?}"
         );
     }
 
@@ -314,6 +314,35 @@ mod tests {
         ]);
         let dto = status_effects(&ing);
         assert!(!dto.invis.expect("still tracked, now inactive").active);
+    }
+
+    /// why: Spencer -- on zoning, Charm/Hide/Sneak clear and the tracker
+    /// shows nothing for them until the first line in the new zone
+    #[test]
+    fn a_zone_line_clears_hide_sneak_and_charm() {
+        let before = run(&[
+            "[Tue Jul 28 15:01:00 2026] You have hidden yourself from view.",
+            "[Tue Jul 28 15:01:01 2026] You are as quiet as a cat stalking its prey.",
+            "[Tue Jul 28 15:01:02 2026] You begin casting Allure.",
+            "[Tue Jul 28 15:01:03 2026] an abhorrent has been charmed.",
+        ]);
+        let dto = status_effects(&before);
+        assert!(
+            dto.hide.is_some() && dto.sneak.is_some() && dto.charm.is_some(),
+            "premise: all three tracked before zoning: {dto:?}"
+        );
+        let after = run(&[
+            "[Tue Jul 28 15:01:00 2026] You have hidden yourself from view.",
+            "[Tue Jul 28 15:01:01 2026] You are as quiet as a cat stalking its prey.",
+            "[Tue Jul 28 15:01:02 2026] You begin casting Allure.",
+            "[Tue Jul 28 15:01:03 2026] an abhorrent has been charmed.",
+            "[Tue Jul 28 15:02:00 2026] You have entered The Feerrott.",
+        ]);
+        let dto = status_effects(&after);
+        assert!(
+            dto.hide.is_none() && dto.sneak.is_none() && dto.charm.is_none(),
+            "cleared by the zone line, not shown as ended: {dto:?}"
+        );
     }
 
     #[test]

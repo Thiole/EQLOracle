@@ -25,6 +25,7 @@ use crate::mobalias;
 use crate::monsters::{self, LootEventDto, MobDto, MobStatsDto};
 use crate::notifications;
 use crate::npcdata;
+use crate::outputfiles;
 use crate::overview::{self, SessionDto};
 use crate::pathfind;
 use crate::preferences::{self, Preferences};
@@ -516,7 +517,16 @@ pub fn get_aa_log(state: State<AppState>) -> AaLogDto {
 
 #[tauri::command]
 pub fn get_spellbook(state: State<AppState>) -> Vec<SpellbookEntryDto> {
-    progression::spellbook(&state.ingest.lock_recover())
+    let base_dir = state
+        .config
+        .lock_recover()
+        .as_ref()
+        .map(|c| c.base_dir.clone());
+    let ing = state.ingest.lock_recover();
+    let dump = base_dir
+        .map(|d| outputfiles::spellbook_spells(&d, ing.character.as_deref()))
+        .unwrap_or_default();
+    progression::spellbook(&ing, &dump)
 }
 
 /// why: Spellbook builder's picker -- shows an already-ranked spell's real rank
@@ -1466,6 +1476,7 @@ pub fn set_preferences(app: AppHandle, mut prefs: Preferences) -> Result<Prefere
     // not wipe a hand-set race/level
     prefs.planner_race = on_disk.planner_race;
     prefs.planner_levels = on_disk.planner_levels;
+    prefs.planner_gear = on_disk.planner_gear;
     preferences::save(&app, &prefs)?;
     Ok(prefs)
 }
@@ -1479,6 +1490,8 @@ pub fn set_preferences(app: AppHandle, mut prefs: Preferences) -> Result<Prefere
 pub struct PlannerStateDto {
     pub race: Option<String>,
     pub levels: HashMap<String, u8>,
+    /// why: the gear planner's hand picks, slot -> item id
+    pub gear: HashMap<String, String>,
 }
 
 #[tauri::command]
@@ -1487,6 +1500,7 @@ pub fn get_planner_state(app: AppHandle) -> PlannerStateDto {
     PlannerStateDto {
         race: p.planner_race,
         levels: p.planner_levels,
+        gear: p.planner_gear,
     }
 }
 
@@ -1498,10 +1512,12 @@ pub fn set_planner_state(
     app: AppHandle,
     race: Option<String>,
     levels: HashMap<String, u8>,
+    gear: HashMap<String, String>,
 ) -> Result<(), String> {
     let mut prefs = preferences::load(&app);
     prefs.planner_race = race;
     prefs.planner_levels = levels;
+    prefs.planner_gear = gear;
     preferences::save(&app, &prefs)
 }
 
@@ -1628,6 +1644,118 @@ pub fn find_existing_inventory_dump(state: State<AppState>) -> Option<ExistingIn
     let base_dir = state.config.lock_recover().as_ref()?.base_dir.clone();
     let (file, character) = inventory::find_existing_dump(&base_dir)?;
     Some(ExistingInventoryDumpDto { file, character })
+}
+
+/// why: Import menu -- the newest `/outputfile` dump per kind beside Logs
+#[tauri::command]
+pub fn list_outputfiles(state: State<AppState>) -> Vec<outputfiles::OutputfileDto> {
+    let Some(base_dir) = state
+        .config
+        .lock_recover()
+        .as_ref()
+        .map(|c| c.base_dir.clone())
+    else {
+        return Vec::new();
+    };
+    outputfiles::list(&base_dir)
+}
+
+/// why: the visit an assignment keys on -- the viewed fight's own visit,
+/// else the UI's visit filter (-1 is the pre-zone bucket), else now
+fn assignment_visit(ing: &Ingest, visit: Option<i64>, encounter_id: Option<u32>) -> Option<usize> {
+    if let Some(eid) = encounter_id {
+        if let Some(e) = ing.store.encounter(eqlp_store::EncounterId(eid)) {
+            return ing.zone.index_at(e.start_ms);
+        }
+    }
+    match visit {
+        Some(n) if n >= 0 => usize::try_from(n).ok(),
+        Some(_) => None,
+        None => ing.zone.index_at(ing.now_ms()),
+    }
+}
+
+/// why: right-click > assign to player -- persisted, then in force for
+/// every view of that visit; owner None clears the assignment
+#[tauri::command]
+pub fn set_pet_owner(
+    app: AppHandle,
+    state: State<AppState>,
+    visit: Option<i64>,
+    encounter_id: Option<u32>,
+    pet: String,
+    owner: Option<String>,
+) -> Result<Vec<crate::petowners::PetOwner>, String> {
+    let mut ing = state.ingest.lock_recover();
+    let at = assignment_visit(&ing, visit, encounter_id);
+    ing.assign_pet_owner(at, &pet, owner.as_deref());
+    let list = ing.manual_pet_owners();
+    crate::petowners::save_owners(&app, &list)?;
+    Ok(list)
+}
+
+/// why: right-click > hide -- the row leaves both tables for that visit; the data stays
+#[tauri::command]
+pub fn set_entity_hidden(
+    app: AppHandle,
+    state: State<AppState>,
+    visit: Option<i64>,
+    encounter_id: Option<u32>,
+    name: String,
+    hidden: bool,
+) -> Result<Vec<crate::petowners::HiddenEntity>, String> {
+    let mut ing = state.ingest.lock_recover();
+    let at = assignment_visit(&ing, visit, encounter_id);
+    ing.set_entity_hidden(at, &name, hidden);
+    let list = ing.hidden_entities();
+    crate::petowners::save_hidden(&app, &list)?;
+    Ok(list)
+}
+
+#[tauri::command]
+pub fn list_hidden_entities(state: State<AppState>) -> Vec<crate::petowners::HiddenEntity> {
+    state.ingest.lock_recover().hidden_entities()
+}
+
+#[tauri::command]
+pub fn list_pet_owners(state: State<AppState>) -> Vec<crate::petowners::PetOwner> {
+    state.ingest.lock_recover().manual_pet_owners()
+}
+
+/// why: Import > Achievements -- reads the dump now, answers how many are complete
+#[tauri::command]
+pub fn import_achievements(state: State<AppState>) -> Result<usize, String> {
+    let base_dir = state
+        .config
+        .lock_recover()
+        .as_ref()
+        .ok_or("no install folder configured yet")?
+        .base_dir
+        .clone();
+    let path = crate::achievements::find_existing(&base_dir)
+        .ok_or("no achievements dump found -- run /outputfile achievements in game")?;
+    Ok(crate::achievements::parse(&path)
+        .map_err(|e| e.to_string())?
+        .completed())
+}
+
+/// why: Import > Spellbook -- how many spells the dumps name; get_spellbook
+/// merges them on every read, so nothing is stored
+#[tauri::command]
+pub fn import_spellbook(state: State<AppState>) -> Result<usize, String> {
+    let base_dir = state
+        .config
+        .lock_recover()
+        .as_ref()
+        .ok_or("no install folder configured yet")?
+        .base_dir
+        .clone();
+    let character = state.ingest.lock_recover().character.clone();
+    let n = outputfiles::spellbook_spells(&base_dir, character.as_deref()).len();
+    if n == 0 {
+        return Err("no spellbook dump found -- run /outputfile spellbook in game".into());
+    }
+    Ok(n)
 }
 
 /// why: shared by `locate_item` and `get_inventory_browser` -- both want

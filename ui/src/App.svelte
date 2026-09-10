@@ -16,14 +16,13 @@
   import Maps from '$lib/maps/Maps.svelte';
   import OverlaySettings from '$lib/overlay/OverlaySettings.svelte';
   import Settings from '$lib/settings/Settings.svelte';
-  import InventoryDumpBanner from '$lib/shell/InventoryDumpBanner.svelte';
   import UpdateBanner from '$lib/shell/UpdateBanner.svelte';
   import WhatsNew from '$lib/shell/WhatsNew.svelte';
   import { checkWhatsNew } from '$lib/stores/whatsnew';
   import DropWatchLootBanner from '$lib/shell/DropWatchLootBanner.svelte';
   import DeathRecapBanner from '$lib/shell/DeathRecapBanner.svelte';
   import { status, refreshStatusUntilUp } from '$lib/stores/status';
-  import { loadPreferences, restoreOverlays } from '$lib/stores/settings';
+  import { loadPreferences, restoreOverlays, applyUiZoom } from '$lib/stores/settings';
   import { loadGameDataModule } from '$lib/stores/gamedata';
   import { activeModule } from '$lib/stores/shell';
   import { initTauriEvents } from '$lib/tauri/events';
@@ -33,11 +32,14 @@
   onMount(() => {
     void refreshStatusUntilUp();
     void initTauriEvents();
-    void loadPreferences();
+    void loadPreferences().then(applyUiZoom);
     // why: positions and opacity already survived a restart; which
     // widgets were open did not, so every launch reopened nothing and
     // the master toggle then lit all six. Asked for directly.
     void restoreOverlays();
+    // why: the webview's own menu (reload, back) means nothing here --
+    // right-click is the app's, row by row
+    document.addEventListener('contextmenu', (e) => e.preventDefault());
     // why: loaded here, not on-demand when Game Data first mounts -- the
     // Gear Planner's own item preview links to zone/NPC pages too (see
     // gdOpenPage's own doc), and those links need the catalogs already
@@ -110,7 +112,6 @@
         </main>
       </div>
     </div>
-    <InventoryDumpBanner />
     <UpdateBanner />
     <WhatsNew />
     <DropWatchLootBanner />

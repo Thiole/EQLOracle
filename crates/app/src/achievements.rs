@@ -25,6 +25,10 @@ impl Achievements {
     pub fn is_complete(&self, text: &str) -> Option<bool> {
         self.complete.get(&normalize(text)).copied()
     }
+
+    pub fn completed(&self) -> usize {
+        self.complete.values().filter(|c| **c).count()
+    }
 }
 
 /// why: most recent dump already on disk, same stance as `inventory::find_existing_dump`

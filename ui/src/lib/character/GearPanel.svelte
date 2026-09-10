@@ -16,7 +16,9 @@
     chosenGearItem,
     isTwoHandItem,
     refreshEstimate,
+    savePlannerState,
   } from '$lib/stores/character';
+  import { copyText } from '$lib/clipboard';
   import { effectiveEra, trackedDropItems, toggleTrackedDropItem } from '$lib/stores/settings';
   import { DOLL_ROWS, ICON_BASE, WEIGHT_GROUPS, SLOT_LABELS } from './constants';
   import { api, type ScoredItemDto, type ItemDto } from '$lib/tauri/api';
@@ -184,6 +186,7 @@
     $inventoryDumpVersion;
     if (untrack(() => $equippedInventory)) {
       gearChosen.set({});
+      savePlannerState();
       stickyItem = null;
       hoveredItem = null;
       expandedSlot = null;
@@ -261,9 +264,44 @@
   function pickAlt(key: string, item: ScoredItemDto) {
     clearEquippedSlot(key);
     gearChosen.update((c) => ({ ...c, [key]: item.id }));
+    savePlannerState();
     stickyItem = item;
     expandedSlot = null;
     void refreshEstimate(); // what's "worn" in this slot just changed
+  }
+
+  // why: the build code IS the saved picks -- base64 of the slot -> item id
+  // map, so the same thing that survives a restart can be handed to someone
+  let pasteCode = $state('');
+  let codeNote = $state<string | null>(null);
+  let codeError = $state<string | null>(null);
+  async function copyBuildCode() {
+    let ok = false;
+    try {
+      ok = await copyText(btoa(JSON.stringify($gearChosen)));
+    } catch {
+      ok = false;
+    }
+    codeNote = ok ? 'copied' : 'copy failed';
+    setTimeout(() => (codeNote = null), 1500);
+  }
+  function applyBuildCode() {
+    codeError = null;
+    try {
+      const picks = JSON.parse(atob(pasteCode.trim())) as unknown;
+      const valid =
+        !!picks &&
+        typeof picks === 'object' &&
+        !Array.isArray(picks) &&
+        Object.values(picks as Record<string, unknown>).every((v) => typeof v === 'string');
+      if (!valid) throw new Error('shape');
+      gearChosen.set(picks as Record<string, string>);
+      savePlannerState();
+      pasteCode = '';
+      void refreshEstimate();
+    } catch {
+      codeError = 'not a build code';
+    }
   }
 
   function iconUrl(icon: string | null): string | null {
@@ -339,8 +377,35 @@
 
 <div class="flex flex-col gap-3">
   <p class="rounded-sm border border-border bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
-    Run <code class="text-foreground">/outputfile inventory</code> in game to pull your equipped gear into the doll below.
+    Run <code class="text-foreground">/outputfile inventory</code> in game, then Import → Inventory (top right) to pull your
+    equipped gear into the doll below. Your own picks are kept between launches.
   </p>
+  <div class="flex flex-wrap items-center gap-2 text-[11px]">
+    <button
+      type="button"
+      onclick={() => void copyBuildCode()}
+      class="rounded border border-border px-1.5 py-0.5 text-muted-foreground hover:text-foreground"
+    >
+      {codeNote ?? 'copy build code'}
+    </button>
+    <input
+      type="text"
+      bind:value={pasteCode}
+      placeholder="paste a build code"
+      spellcheck="false"
+      aria-label="build code"
+      class="h-6 min-w-48 rounded-sm border border-border bg-background px-1 font-mono text-[11px]"
+    />
+    <button
+      type="button"
+      onclick={applyBuildCode}
+      disabled={!pasteCode.trim()}
+      class="rounded border border-border px-1.5 py-0.5 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      apply
+    </button>
+    {#if codeError}<span class="text-bad">{codeError}</span>{/if}
+  </div>
 
   {#if $equippedInventory}
     {@const resolvedCount = Object.keys($equippedInventory.resolved).length}

@@ -1086,6 +1086,8 @@ pub struct AllyDto {
     /// closes the possessive-name half that Entities::credit knew about
     /// but nothing ever applied.
     pub pet_total: u64,
+    /// why: right-click "hide" for this visit -- the table skips it unless asked to show hidden
+    pub hidden: bool,
     /// why: this row is a SUGGESTED ally, not a proven one -- included
     /// only because it's currently charm-flipped or group-tracked
     /// (effective_kind), with no permanent Player/Pet proof behind it.
@@ -1233,8 +1235,15 @@ fn list_side(
             }
             // why: a charmed pet folds into its charmer, who is on the
             // other side -- never roll it up in an enemy listing
+            // why: a right-click assignment folds exactly like a charm --
+            // the row is the owner's, the mob is a part under it
             let owner = (!want_enemies)
-                .then(|| ing.pet_of(&name).map(str::to_string))
+                .then(|| {
+                    ing.pet_of(&name).map(str::to_string).or_else(|| {
+                        ing.manual_pet_owner(&name, enc.start_ms)
+                            .map(|o| ing.as_you(o))
+                    })
+                })
                 .flatten();
             let into = match owner.as_deref().and_then(|o| ing.store.names.get(o)) {
                 Some(osym) => osym,
@@ -1429,6 +1438,7 @@ fn list_side(
                 None => "",
             };
             AllyDto {
+                hidden: ing.is_hidden(&name, class_at),
                 // why: an observed rate, never the weapon's own delay --
                 // see MeleeRateDto
                 melee_rate: swing_secs.get(&name).and_then(|secs| {
@@ -2348,6 +2358,10 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout, scope: DpsScope) -> Opti
             let ts = ing.store.ts[i];
             let actor_name = ing.effective_name(ing.store.name(ing.store.actor[i]));
             let target_name = ing.store.name(ing.store.target[i]).to_string();
+            // why: right-click "hide" reaches the overlay too
+            if ing.is_hidden(&actor_name, ts) {
+                continue;
+            }
             if actor_name.eq_ignore_ascii_case("You") || target_name.eq_ignore_ascii_case("You") {
                 you_first = Some(you_first.map_or(ts, |f: Millis| f.min(ts)));
             }
@@ -2392,15 +2406,27 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout, scope: DpsScope) -> Opti
             // the room -- while the row you read still totals yours.
             // The overlay has no expansion, so it folds and stops there;
             // the Combat tab carries the parts (see list_allies).
-            let actor_name = ing
+            // why: a possessive pet ("X`s warder") credits its owner too --
+            // the Combat tab always did (list_allies), the overlay never did
+            let credited = ing
                 .pet_of(&actor_name)
                 .map(str::to_string)
-                .unwrap_or(actor_name);
-            let e = acc.entry(actor_name).or_insert(Acc {
+                .or_else(|| {
+                    ing.encounters
+                        .entities
+                        .owner_of(&actor_name)
+                        .map(|o| ing.as_you(o))
+                })
+                .or_else(|| ing.manual_pet_owner(&actor_name, ts).map(|o| ing.as_you(o)))
+                .unwrap_or_else(|| actor_name.clone());
+            // why: an owner is a player by construction -- a pet swinging
+            // first must not stamp its owner's row as a pet
+            let folded = credited != actor_name;
+            let e = acc.entry(credited).or_insert(Acc {
                 total: 0,
                 first_ts: ts,
-                is_player: kind == Kind::Player,
-                is_pet: kind == Kind::Pet,
+                is_player: folded || kind == Kind::Player,
+                is_pet: !folded && kind == Kind::Pet,
             });
             e.total += ing.store.amount[i];
             e.first_ts = e.first_ts.min(ts);
@@ -3683,6 +3709,36 @@ mod live_meter_window_tests {
     /// why: Spencer -- "You (pet 2,233)" expanded to one block: a
     /// summoned pet folded by its possessive name set the hint but never
     /// recorded a part, so the two-slice expansion had nothing to show
+    /// why: the overlay folds a possessive pet the way the Combat tab does --
+    /// reported: "X's warder" sat beside X in the DPS overlay
+    #[test]
+    fn the_live_meter_folds_a_possessive_warder_into_its_owner() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] Kaeus tells the group, 'hi'\n\
+             [Tue Jul 28 15:01:02 2026] Kaeus`s warder slashes a gnoll for 40 points of damage.\n\
+             [Tue Jul 28 15:01:04 2026] Kaeus hits a gnoll for 50 points of damage.\n\
+             [Tue Jul 28 15:01:06 2026] You hit a gnoll for 10 points of fire damage by Burst of Flame.\n",
+        );
+        let m = live_meter(&ing).expect("a fight");
+        let kaeus = m
+            .outgoing
+            .iter()
+            .find(|r| r.name == "Kaeus")
+            .unwrap_or_else(|| panic!("owner row: {:?}", m.outgoing));
+        assert_eq!(kaeus.total, 90, "his 50 plus the warder's 40");
+        assert!(
+            kaeus.is_player && !kaeus.is_pet,
+            "credited row is the player: {kaeus:?}"
+        );
+        assert!(
+            !m.outgoing
+                .iter()
+                .any(|r| r.name.contains("warder") || r.name.starts_with("pets")),
+            "no separate warder row: {:?}",
+            m.outgoing
+        );
+    }
+
     #[test]
     fn a_possessive_pet_is_a_part_under_its_owner_like_a_charm() {
         let ing = ingest_from(
@@ -3704,6 +3760,86 @@ mod live_meter_window_tests {
         );
     }
 
+    /// why: ownership is keyed by time -- an ally charming the same mob
+    /// name later must not rewrite whose pet it was in your earlier fight
+    #[test]
+    fn a_later_charm_of_the_same_mob_name_leaves_the_earlier_fight_with_its_first_charmer() {
+        let ing = ingest_from(
+            "[Tue Jul 28 15:00:00 2026] You begin casting Allure.\n\
+             [Tue Jul 28 15:00:01 2026] a fire giant has been charmed.\n\
+             [Tue Jul 28 15:00:02 2026] You hit a gnoll for 10 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:00:05 2026] a fire giant hits a gnoll for 40 points of damage.\n\
+             [Tue Jul 28 15:00:08 2026] Your Allure spell has worn off of a fire giant.\n\
+             [Tue Jul 28 15:00:40 2026] Sidhe tells the group, 'inc'\n\
+             [Tue Jul 28 15:00:41 2026] Sidhe begins casting Allure.\n\
+             [Tue Jul 28 15:00:42 2026] a fire giant has been charmed.\n\
+             [Tue Jul 28 15:00:43 2026] Sidhe hits an orc for 10 points of damage.\n\
+             [Tue Jul 28 15:00:45 2026] a fire giant hits an orc for 40 points of damage.\n",
+        );
+        let fights = list_encounters(&ing, None, 0, 50);
+        let id_of = |target: &str| {
+            fights
+                .iter()
+                .find(|e| e.target.eq_ignore_ascii_case(target))
+                .unwrap_or_else(|| panic!("a fight against {target}: {fights:?}"))
+                .id
+        };
+        let mine = list_allies(&ing, None, Some(id_of("a gnoll")), false, None);
+        let you = mine
+            .iter()
+            .find(|a| a.name == "You")
+            .unwrap_or_else(|| panic!("your row in your fight: {mine:?}"));
+        let parts = |a: &AllyDto| -> Vec<(String, u64)> {
+            a.pets.iter().map(|p| (p.name.clone(), p.total)).collect()
+        };
+        assert_eq!(you.total, 50, "your fire giant stays yours: {mine:?}");
+        let inst = |seq| crate::ingest::charm_instance_name(Some(0), "a fire giant", seq);
+        assert_eq!(parts(you), [(inst(1), 40)]);
+        assert!(
+            !mine.iter().any(|a| a.name == "Sidhe"),
+            "Sidhe's later charm must not appear in your fight: {mine:?}"
+        );
+        let theirs = list_allies(&ing, None, Some(id_of("an orc")), false, None);
+        let sidhe = theirs
+            .iter()
+            .find(|a| a.name == "Sidhe")
+            .unwrap_or_else(|| panic!("Sidhe's row in the later fight: {theirs:?}"));
+        assert_eq!(sidhe.total, 50, "and the later one is Sidhe's: {theirs:?}");
+        assert_eq!(parts(sidhe), [(inst(2), 40)], "its own instance");
+    }
+
+    /// why: right-click > assign to player -- a mob no log line ties to an
+    /// owner folds under them for that visit, and comes back out when cleared
+    #[test]
+    fn an_assigned_pet_folds_under_its_owner_for_that_visit_and_unfolds_when_cleared() {
+        let mut ing = ingest_from(
+            "[Tue Jul 28 15:01:00 2026] You hit a gnoll for 10 points of fire damage by Burst of Flame.\n\
+             [Tue Jul 28 15:01:02 2026] a fire elemental hits a gnoll for 40 points of damage.\n",
+        );
+        let total_of = |rows: &[AllyDto]| rows.iter().find(|a| a.name == "You").map(|a| a.total);
+        let before = list_allies(&ing, None, None, false, None);
+        assert_eq!(
+            total_of(&before),
+            Some(10),
+            "an unassigned mob is not your damage: {before:?}"
+        );
+        ing.assign_pet_owner(None, "a fire elemental", Some("You"));
+        let after = list_allies(&ing, None, None, false, None);
+        assert_eq!(total_of(&after), Some(50), "folded under you: {after:?}");
+        let you = after.iter().find(|a| a.name == "You").expect("You");
+        assert_eq!(
+            you.pets
+                .iter()
+                .map(|p| (p.name.as_str(), p.total))
+                .collect::<Vec<_>>(),
+            [("a fire elemental", 40)],
+            "and kept as a part"
+        );
+        ing.assign_pet_owner(None, "a fire elemental", None);
+        let cleared = list_allies(&ing, None, None, false, None);
+        assert_eq!(total_of(&cleared), Some(10), "cleared: {cleared:?}");
+    }
+
     #[test]
     fn a_charmed_pets_damage_folds_into_its_owner_but_stays_a_part() {
         let ing = ingest_from(
@@ -3721,7 +3857,10 @@ mod live_meter_window_tests {
             .expect("the charmer's row");
         assert_eq!(kaeus.total, 90, "50 of his own plus the pet's 40");
         assert_eq!(kaeus.pets.len(), 1, "and the part is kept");
-        assert_eq!(kaeus.pets[0].name, "an abhorrent (charmed)");
+        assert_eq!(
+            kaeus.pets[0].name,
+            crate::ingest::charm_instance_name(Some(0), "an abhorrent", 1)
+        );
         assert_eq!(kaeus.pets[0].total, 40);
         assert!(
             !allies.iter().any(|a| a.name == "an abhorrent"),

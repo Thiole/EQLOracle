@@ -1,7 +1,9 @@
 <script lang="ts">
   import * as Table from '$lib/components/ui/table';
   import type { AllyDto, CombatSummaryDto } from '$lib/tauri/api';
-  import { allies, expandedAlly, allySummary, petSummaries, toggleAlly } from '$lib/stores/combat';
+  import { allies, expandedAlly, allySummary, petSummaries, toggleAlly, scope, refreshSelection } from '$lib/stores/combat';
+  import { api } from '$lib/tauri/api';
+  import ContextMenu, { type MenuItem } from '$lib/shell/ContextMenu.svelte';
   import { trackedSkills, toggleTrackedSkill } from '$lib/stores/settings';
   import TargetIcon from '@lucide/svelte/icons/target';
   import { sortRows, nextSort, loadCols, saveCols, type Dir } from './grid';
@@ -13,6 +15,40 @@
   let { rows = null, allySide = true, empty = 'No fights parsed for this selection yet.' }:
     { rows?: AllyDto[] | null; allySide?: boolean; empty?: string } = $props();
   const list = $derived(rows ?? $allies);
+
+  // why: right-click on a mob row -- "this is X's pet" for the viewed
+  // visit; owners are You and whoever the party roster currently holds
+  let menu = $state<{ x: number; y: number; name: string } | null>(null);
+  let party = $state<string[]>([]);
+  async function openMenu(e: MouseEvent, a: AllyDto) {
+    if (a.is_player) return;
+    e.preventDefault();
+    menu = { x: e.clientX, y: e.clientY, name: a.name };
+    const gs = await api.getGameState().catch(() => null);
+    party = ['You', ...(gs?.party ?? []).map((p) => p.name).filter((n) => n !== 'You')];
+  }
+  async function assign(pet: string, owner: string | null) {
+    const { zv, enc } = scope();
+    await api.setPetOwner(zv, enc, pet, owner).catch(() => {});
+    await refreshSelection(true);
+  }
+  async function hide(name: string, hidden: boolean) {
+    const { zv, enc } = scope();
+    await api.setEntityHidden(zv, enc, name, hidden).catch(() => {});
+    await refreshSelection(true);
+  }
+  const menuItems = $derived.by((): MenuItem[] => {
+    const m = menu;
+    if (!m) return [];
+    const row = list.find((a) => a.name === m.name);
+    return [
+      { label: 'assign to player', children: party.map((p) => ({ label: p, onSelect: () => void assign(m.name, p) })) },
+      { label: 'clear owner', onSelect: () => void assign(m.name, null) },
+      row?.hidden
+        ? { label: 'unhide', onSelect: () => void hide(m.name, false) }
+        : { label: 'hide', onSelect: () => void hide(m.name, true) },
+    ];
+  });
 
   // ---------------------------------------------------------------- grid
   // why: every numeric column the row carries; the default set is what
@@ -42,7 +78,10 @@
   const shown = $derived(ALLY_COLS.filter((c) => visible.has(c.key)));
   const cols = $derived(1 + (allySide && visible.has('class') ? 1 : 0) + shown.length);
   let sort = $state<{ key: AllyCol | 'name'; dir: Dir }>({ key: 'total', dir: -1 });
-  const sorted = $derived(sortRows(list, sort.key, sort.dir));
+  // why: hidden rows keep their data; "show hidden" brings them back dimmed so they can be unhidden
+  let showHidden = $state(false);
+  const hiddenCount = $derived(list.filter((a) => a.hidden).length);
+  const sorted = $derived(sortRows(showHidden ? list : list.filter((a) => !a.hidden), sort.key, sort.dir));
   const arrow = (key: string, cur: { key: string; dir: Dir }) => (cur.key === key ? (cur.dir === -1 ? ' ▼' : ' ▲') : '');
   const pctCell = (v: number | null) => (v == null ? '—' : `${v.toFixed(1)}%`);
   function allyCell(a: AllyDto, key: AllyCol): string {
@@ -325,7 +364,12 @@
 {:else}
   <!-- why: native details/checkboxes -- a column chooser needs no library -->
   <details class="mb-1 text-[11px]" bind:open={colsOpen}>
-    <summary class="cursor-pointer select-none text-muted-foreground hover:text-foreground">columns</summary>
+    <summary class="cursor-pointer select-none text-muted-foreground hover:text-foreground">
+      columns{#if hiddenCount}<span class="ml-2">· {hiddenCount} hidden</span>{/if}
+    </summary>
+    {#if hiddenCount}
+      <label class="flex items-center gap-1 py-1"><input type="checkbox" bind:checked={showHidden} /> show hidden</label>
+    {/if}
     <div class="flex flex-wrap gap-x-3 gap-y-1 py-1">
       {#if allySide}
         <label class="flex items-center gap-1"><input type="checkbox" checked={visible.has('class')} onchange={() => toggleCol('class')} /> class</label>
@@ -348,9 +392,10 @@
     <Table.Body>
       {#each sorted as a (a.name)}
         <Table.Row
-          class="cursor-pointer bg-no-repeat"
+          class="cursor-pointer bg-no-repeat {a.hidden ? 'opacity-50' : ''}"
           style="background-image: linear-gradient(to right, color-mix(in srgb, var(--color-primary) 14%, transparent) {a.pct}%, transparent {a.pct}%)"
           onclick={() => toggleAlly(a.name)}
+          oncontextmenu={(e) => void openMenu(e, a)}
         >
           <!-- why: a suggested ally (charm pet / co-occurrence, no permanent
                proof -- see AllyDto.suggested's own doc) reads visibly
@@ -427,4 +472,8 @@
       {/each}
     </Table.Body>
   </Table.Root>
+{/if}
+
+{#if menu}
+  <ContextMenu x={menu.x} y={menu.y} items={menuItems} onclose={() => (menu = null)} />
 {/if}

@@ -253,6 +253,8 @@ export interface AllyDto {
    * possessive-named pets fold into their owner's row now, this is how
    * much of it was theirs. 0 when none. */
   pet_total: number;
+  /** why: right-click "hide" for this visit -- skipped unless "show hidden" is on */
+  hidden: boolean;
   /** why: a SUGGESTED ally (charm pet or co-occurrence), not a proven
    * one -- rendered visibly tentative, see combat.rs AllyDto's own doc */
   suggested: boolean;
@@ -1164,6 +1166,35 @@ export interface InventoryContainerDto {
   slots: InventorySlotDto[];
 }
 
+/** why: one `/outputfile` dump kind beside Logs -- the newest file, when it
+ * was written, and the in-game command that writes it */
+/** why: a right-click assignment -- this mob is that owner's pet for
+ * one zone visit; null visit is the pre-zone bucket */
+export interface PetOwnerDto {
+  visit: number | null;
+  pet: string;
+  owner: string;
+}
+
+export interface HiddenEntityDto {
+  visit: number | null;
+  name: string;
+}
+
+export interface OutputfileDto {
+  kind: string;
+  command: string;
+  file: string | null;
+  modified_ms: number | null;
+}
+
+export interface PlannerStateDto {
+  race: string | null;
+  levels: Record<string, number>;
+  /** why: the gear planner's hand picks, slot -> item id */
+  gear: Record<string, string>;
+}
+
 export interface InventoryDumpDto {
   /** why: slot -> matched item */
   resolved: Record<string, ItemDto>;
@@ -1610,6 +1641,8 @@ export interface PreferencesDto {
    * blocks -- 'eqlp' is this app's own original identity, everything
    * else is a real preset, see themes.css's own doc for where they're from */
   theme: string;
+  /** why: main-window zoom, Chrome's steps; applied through the webview */
+  ui_zoom: number;
   /** why: each overlay widget owns its own opacity, not one shared
    * window-wide value -- 0.0 (invisible) to 1.0 (fully opaque), this
    * widget's own panel background alpha. NOT the same as
@@ -1943,6 +1976,19 @@ export const api = {
   ) => invoke<ItemDto[]>('get_exalt_candidates', { id, socketKey, otherAssignments, classes, maxEra }),
 
   findExistingInventoryDump: () => invoke<{ file: string; character: string | null } | null>('find_existing_inventory_dump'),
+  /** why: Import menu -- newest dump per kind; import reads the file on demand, nothing is stored */
+  listOutputfiles: () => invoke<OutputfileDto[]>('list_outputfiles'),
+  importAchievements: () => invoke<number>('import_achievements'),
+  importSpellbook: () => invoke<number>('import_spellbook'),
+  /** why: right-click > assign to player; owner null clears. Keyed to the
+   * viewed fight's visit, else the visit filter, else now */
+  setPetOwner: (visit: number | null, encounterId: number | null, pet: string, owner: string | null) =>
+    invoke<PetOwnerDto[]>('set_pet_owner', { visit, encounterId, pet, owner }),
+  listPetOwners: () => invoke<PetOwnerDto[]>('list_pet_owners'),
+  /** why: right-click > hide / unhide, same visit keying as setPetOwner */
+  setEntityHidden: (visit: number | null, encounterId: number | null, name: string, hidden: boolean) =>
+    invoke<HiddenEntityDto[]>('set_entity_hidden', { visit, encounterId, name, hidden }),
+  listHiddenEntities: () => invoke<HiddenEntityDto[]>('list_hidden_entities'),
 
   /** why: subfolders of maps/ under the game install (e.g. "Brewall") -- used by Settings' "N packs known" display. */
   listMapPacks: () => invoke<string[]>('list_map_packs'),
@@ -2014,9 +2060,9 @@ export const api = {
    * user-typed levels (presence = the "user updated" flag). Its own
    * commands, deliberately outside PreferencesDto -- see backend
    * set_preferences' doc on clobber-proofing. */
-  getPlannerState: () => invoke<{ race: string | null; levels: Record<string, number> }>('get_planner_state'),
-  setPlannerState: (race: string | null, levels: Record<string, number>) =>
-    invoke<void>('set_planner_state', { race, levels }),
+  getPlannerState: () => invoke<PlannerStateDto>('get_planner_state'),
+  setPlannerState: (race: string | null, levels: Record<string, number>, gear: Record<string, string>) =>
+    invoke<void>('set_planner_state', { race, levels, gear }),
   /** why: the DPS meter overlay's whole data source */
   getLiveMeter: () => invoke<LiveMeterDto | null>('get_live_meter'),
   getSpellCheck: () => invoke<SpellCheckDto>('get_spell_check'),

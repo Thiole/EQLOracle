@@ -354,7 +354,7 @@ export async function setInspectWindow(seconds: number) {
  * change does (see the incident in git history: the scrub point vanished
  * seconds after clicking it) */
 let selectionToken = 0;
-async function refreshSelection(preserveScrub = false) {
+export async function refreshSelection(preserveScrub = false) {
   if (!get(selection).length) {
     summary.set(null);
     allies.set([]);

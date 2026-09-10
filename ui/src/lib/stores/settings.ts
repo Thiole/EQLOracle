@@ -26,6 +26,9 @@ export const saveProfile = writable(false);
 export const updateChannel = writable<'public' | 'beta'>('public');
 /** why: a themes.css `data-theme` slug -- see PreferencesDto.theme's own doc */
 export const theme = writable('eqlp');
+/** why: Chrome's own zoom steps -- familiar, and 1 is the page as designed */
+export const ZOOM_STEPS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+export const uiZoom = writable(1);
 /** why: each overlay widget owns its own on/off -- deliberately NOT
  * loaded from or saved to preferences (see preferences.rs's own doc):
  * whether a widget is currently showing is live session state, not a
@@ -160,6 +163,7 @@ export function loadPreferences(): Promise<void> {
     saveProfile.set(prefs.save_profile);
     updateChannel.set(prefs.update_channel);
     theme.set(prefs.theme);
+    uiZoom.set(prefs.ui_zoom ?? 1);
     dpsMeterOpacity.set(prefs.overlay_dps_meter_opacity);
     dpsMeterOverallOpacity.set(prefs.overlay_dps_meter_overall_opacity);
     skillTrackerOpacity.set(prefs.overlay_skill_tracker_opacity);
@@ -195,6 +199,7 @@ function currentPrefs(): PreferencesDto {
     save_profile: get(saveProfile),
     update_channel: get(updateChannel),
     theme: get(theme),
+    ui_zoom: get(uiZoom),
     overlay_dps_meter_opacity: get(dpsMeterOpacity),
     overlay_dps_meter_overall_opacity: get(dpsMeterOverallOpacity),
     overlay_skill_tracker_opacity: get(skillTrackerOpacity),
@@ -244,6 +249,24 @@ export async function setUpdateChannel(channel: 'public' | 'beta') {
 export async function setTheme(slug: string) {
   theme.set(slug);
   await api.setPreferences({ ...currentPrefs(), theme: slug }).catch(() => {});
+}
+
+/** why: the webview's own zoom, like Chrome's -- layout, fonts and fixed
+ * panels all scale together; a plain browser (mock) falls back to CSS zoom */
+export async function applyUiZoom() {
+  const z = get(uiZoom);
+  try {
+    const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+    await getCurrentWebview().setZoom(z);
+  } catch {
+    (document.documentElement.style as CSSStyleDeclaration & { zoom: string }).zoom = String(z);
+  }
+}
+
+export async function setUiZoom(z: number) {
+  uiZoom.set(z);
+  await applyUiZoom();
+  await api.setPreferences({ ...currentPrefs(), ui_zoom: z }).catch(() => {});
 }
 
 /** why: NOT persisted (see dpsMeterEnabled's own doc) -- each widget is
