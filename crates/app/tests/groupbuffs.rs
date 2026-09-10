@@ -37,3 +37,68 @@ fn a_quick_buff_landing_shared_by_a_line_reads_as_the_rank_worth_having() {
         "Clarity is up, nothing to cast over it: {row:?}"
     );
 }
+
+/// why: reported real -- "[Tue Aug 18 22:38:16 2026] Maenn has left the
+/// group." must drop them from the roster and from Group Buffs, and keep
+/// them out while they keep fighting the same mobs nearby
+#[test]
+fn an_explicit_leave_line_empties_the_party_and_later_shared_damage_does_not_undo_it() {
+    let mut log = String::from(
+        "[Tue Aug 18 10:00:00 2026] You have entered The Northern Desert of Ro.\n\
+         [Tue Aug 18 10:00:05 2026] [60 ENC/WIZ/CLR] Manipulator (Human)  ZONE: The Northern Desert of Ro (nro)  \n\
+         [Tue Aug 18 10:00:10 2026] Maenn has joined the group.\n\
+         [Tue Aug 18 10:00:20 2026] Maenn begins casting Clarity.\n",
+    );
+    // why: a real standing groupmate -- gap-separated shared kills, so the
+    // weak channel qualifies on its own history
+    for d in 0..6 {
+        let h = 10 + d * 3;
+        log.push_str(&format!(
+            "[Tue Aug 18 {h:02}:00:30 2026] Maenn hits a gnoll for 50 points of damage.\n\
+             [Tue Aug 18 {h:02}:00:31 2026] You hit a gnoll for 10 points of fire damage by Burst of Flame.\n"
+        ));
+    }
+    let ing = run(&log);
+    let dto = group_buffs(&ing, &[], None);
+    assert!(
+        dto.party.iter().any(|p| p.name == "Maenn"),
+        "premise: grouped and listed: {:?}",
+        dto.party
+    );
+
+    let left = format!("{log}[Tue Aug 18 22:38:16 2026] Maenn has left the group.\n");
+    let ing = run(&left);
+    let now = ing.now_ms();
+    assert!(
+        !ing.groups.currently_grouped("Maenn", now),
+        "the leave line drops membership"
+    );
+    let dto = group_buffs(&ing, &[], None);
+    assert!(
+        dto.party.is_empty(),
+        "and Group Buffs stops listing them: {:?}",
+        dto.party
+    );
+
+    let after = format!(
+        "{left}[Tue Aug 18 22:38:46 2026] Maenn hits a gnoll for 50 points of damage.\n\
+         [Tue Aug 18 22:38:47 2026] You hit a gnoll for 10 points of fire damage by Burst of Flame.\n"
+    );
+    let ing = run(&after);
+    let dto = group_buffs(&ing, &[], None);
+    assert!(
+        dto.party.is_empty(),
+        "still fighting the same mob is not rejoining: {:?}",
+        dto.party
+    );
+
+    // why: the game's own word is the way back
+    let rejoined = format!("{after}[Tue Aug 18 22:40:00 2026] Maenn has joined the group.\n");
+    let ing = run(&rejoined);
+    let dto = group_buffs(&ing, &[], None);
+    assert!(
+        dto.party.iter().any(|p| p.name == "Maenn"),
+        "a rejoin line puts them back: {:?}",
+        dto.party
+    );
+}

@@ -129,7 +129,8 @@ struct Evidence {
     /// everything else -- see `strong_currently`.
     strong_last_ms: Option<Millis>,
     /// why: an explicit roster line ("has joined the group") -- no TTL,
-    /// the game states the fact; ends only via evicted_ms/reset_ms
+    /// the game states the fact; ends only via evicted_ms/reset_ms.
+    /// Also the way back in after an explicit leave -- see `channel`
     joined_ms: Option<Millis>,
     /// why: this one member's own explicit exit ("has left the group") --
     /// evidence at or before this instant no longer counts as current;
@@ -156,6 +157,18 @@ impl Evidence {
         }
         if self.strong_currently(ts) && fresh(self.strong_last_ms) {
             return Some(Channel::Strong);
+        }
+        // why: "<Name> has left the group" ends membership until the game
+        // says otherwise. Shared-target damage is exactly what an
+        // ungrouped stranger in the same zone produces, and a standing
+        // groupmate's own session history is already past MIN_SESSIONS,
+        // so without this one later hit re-listed them seconds after
+        // their leave line (reported real). A rejoin line or a
+        // group-scoped Quick Buff landing both still revive them above;
+        // a tracker-wide `reset` deliberately does not block weak, since
+        // a log gap is not a statement about any one member.
+        if self.evicted_ms.is_some() {
+            return None;
         }
         (self.sessions >= MIN_SESSIONS).then_some(Channel::Weak)
     }
@@ -274,6 +287,43 @@ impl GroupTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// why: reported real -- "<Name> has left the group" must drop them
+    /// and keep them dropped; a standing groupmate is already past
+    /// MIN_SESSIONS, so one later shared-target hit used to re-list them
+    #[test]
+    fn shared_damage_never_revives_a_member_who_explicitly_left() {
+        let mut g = GroupTracker::default();
+        let session = |i: u32| 1_000 + i64::from(i) * (SESSION_GAP_MS + 1_000);
+        for i in 0..MIN_SESSIONS {
+            g.reinforce_weak("Maenn", session(i));
+        }
+        let last = session(MIN_SESSIONS - 1);
+        assert!(
+            g.currently_grouped("Maenn", last),
+            "premise: weak evidence qualified"
+        );
+
+        g.left("Maenn", last + 1_000);
+        assert!(!g.currently_grouped("Maenn", last + 1_000));
+
+        g.reinforce_weak("Maenn", last + 2_000);
+        assert!(
+            !g.currently_grouped("Maenn", last + 2_000),
+            "still fighting nearby is not rejoining"
+        );
+        assert!(g.current_members(last + 2_000).is_empty());
+
+        // why: the game's own word puts them back
+        g.joined("Maenn", last + 3_000);
+        assert!(g.currently_grouped("Maenn", last + 3_000));
+
+        // why: so does a group-scoped Quick Buff landing after a later leave
+        g.left("Maenn", last + 4_000);
+        assert!(!g.currently_grouped("Maenn", last + 4_000));
+        g.reinforce_strong("Maenn", last + 5_000);
+        assert!(g.currently_grouped("Maenn", last + 5_000));
+    }
 
     #[test]
     fn a_single_weak_reinforcement_is_not_enough() {
