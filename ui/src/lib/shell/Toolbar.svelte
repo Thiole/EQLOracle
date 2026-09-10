@@ -38,21 +38,31 @@
   class="flex h-9 shrink-0 items-center justify-between border-b border-border bg-card pl-3 text-[12px]"
   class:pr-3={!customTitlebar}
 >
-  <!-- why: the drag surface is this inner flex-1 span, not the header --
-       Tauri's drag handler fires only when the mousedown target itself
-       carries the attribute, so the interactive children (change folder,
-       quick menu, window controls) stay clickable without opting out. -->
+  <!-- why: Tauri's drag handler fires only when the mousedown target
+       ITSELF carries the attribute -- it does not walk up to a parent.
+       So every non-interactive part of the bar carries it: the row, the
+       title, the "watching" label, the file name, the character, the
+       badge and the spacer. Reported real on Windows: with only the
+       spacer marked, a long file name shrank it to its 16px minimum and
+       the bar had almost nothing left to grab. The interactive children
+       (change folder, the menus, the window controls) deliberately do
+       not carry it, so they stay clickable. -->
   <!-- why: the page "?" lives here, not over <main> -- absolutely
        positioned inside the page it collided with whatever that page put
        in its own top-right corner (Combat's fight picker). This row is
        always free and is still the top right of the window. -->
-  <div class="flex min-w-0 flex-1 items-center gap-3 self-stretch">
-    <span class="shrink-0 font-medium text-foreground">EQL Oracle</span>
+  <div
+    class="flex min-w-0 flex-1 items-center gap-3 self-stretch"
+    data-tauri-drag-region={customTitlebar ? '' : undefined}
+    ondblclick={customTitlebar ? toggleMaximizeWindow : undefined}
+    role="presentation"
+  >
+    <span class="shrink-0 font-medium text-foreground" data-tauri-drag-region={customTitlebar ? '' : undefined}>EQL Oracle</span>
     {#if $status}
-      <span class="shrink-0 text-muted-foreground">watching</span>
-      <span class="truncate font-mono text-foreground">{$status.status.file ?? '—'}</span>
+      <span class="shrink-0 text-muted-foreground" data-tauri-drag-region={customTitlebar ? '' : undefined}>watching</span>
+      <span class="truncate font-mono text-foreground" data-tauri-drag-region={customTitlebar ? '' : undefined}>{$status.status.file ?? '—'}</span>
       {#if $status.status.character}
-        <span class="shrink-0 text-muted-foreground">{$status.status.character}</span>
+        <span class="shrink-0 text-muted-foreground" data-tauri-drag-region={customTitlebar ? '' : undefined}>{$status.status.character}</span>
       {/if}
       {#if $status.status.backfilling}
         <Badge variant="secondary" class="h-5 shrink-0 text-[10px]">replaying history…</Badge>

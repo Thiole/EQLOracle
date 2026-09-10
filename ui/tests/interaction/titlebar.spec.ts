@@ -21,6 +21,46 @@ test.describe('custom title bar', () => {
     await expect(region).toHaveAttribute('data-tauri-drag-region', '');
   });
 
+  // Reported real on Windows: only the leftover spacer carried the
+  // attribute, so a long log file name shrank it to its 16px minimum and
+  // the bar had almost nothing grabbable. Tauri only starts a drag when
+  // the mousedown target itself carries the attribute, so every
+  // non-interactive part of the row must have it.
+  test('the text in the title bar is grabbable, not just the empty spacer', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('[data-testid="titlebar-drag-region"]');
+    const marked = await page.evaluate(() => {
+      const header = document.querySelector('header');
+      const row = header?.querySelector('div');
+      if (!row) return null;
+      const has = (el: Element | null | undefined) => el?.hasAttribute('data-tauri-drag-region') ?? false;
+      return {
+        row: has(row),
+        // why: the title and every status label the row renders
+        spans: [...row.querySelectorAll(':scope > span')].map((el) => ({
+          text: (el.textContent ?? '').slice(0, 24),
+          draggable: has(el),
+        })),
+      };
+    });
+    expect(marked?.row).toBe(true);
+    expect(marked?.spans.length ?? 0).toBeGreaterThan(0);
+    for (const s of marked?.spans ?? []) expect(s.draggable, `"${s.text}" must be grabbable`).toBe(true);
+  });
+
+  // The window controls sit in the same row and must NOT be drag regions,
+  // or clicking close would start a drag instead.
+  test('the window controls are not drag regions', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForSelector('[data-testid="window-controls"]');
+    const anyDraggable = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="window-controls"] button')].some((b) =>
+        b.hasAttribute('data-tauri-drag-region'),
+      ),
+    );
+    expect(anyDraggable).toBe(false);
+  });
+
   test('title bar renders before the app is configured', async ({ page }) => {
     // A frameless first-launch window without controls would be
     // unclosable -- the toolbar must not be gated on configured state.

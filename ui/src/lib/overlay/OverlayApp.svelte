@@ -171,12 +171,23 @@
     }
   }
 
+  // why: every widget window refreshes on every tick, and each refresh is
+  // one to four IPC calls that take the ingest lock -- six widgets open
+  // during a replay is a steady stream of them against the very lock the
+  // parser holds. Nothing they would show mid-replay is worth reading, so
+  // they sit still and refresh once when it settles. Same reasoning as
+  // tauri/events.ts's own backfill guard.
+  let wasBackfilling = false;
   $effect(() => {
     void refreshPrefs();
     void refresh();
-    const unlistenTick = listen('parse-tick', () => {
-      void refreshPrefs();
-      void refresh();
+    const unlistenTick = listen<{ status?: { backfilling?: boolean } }>('parse-tick', (e) => {
+      const backfilling = e.payload?.status?.backfilling ?? false;
+      if (!backfilling || wasBackfilling !== backfilling) {
+        void refreshPrefs();
+        void refresh();
+      }
+      wasBackfilling = backfilling;
     });
     // why: the tick is the only thing that refreshed this window, so one
     // missed event -- or one rejected refresh, which assigns nothing and

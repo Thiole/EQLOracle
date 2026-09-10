@@ -54,24 +54,45 @@ export async function initTauriEvents() {
   initialized = true;
 
   await listen<ParseTick>('parse-tick', (e) => {
+    // why: always -- this is the progress badge itself, and it invokes nothing
     applyStatusTick(e.payload);
-    void onCombatTick();
-    void refreshLastLocation();
-    void refreshZoneContext();
-    void refreshRaidRows();
-    onChatTick();
-    void pollTrackedLoot();
-    void pollDeaths();
-    void refreshSession();
-    // why: a backfill chunk overflows the recent window -- one full
-    // refresh when it settles, kind-triggers only while live
-    if (!e.payload.status.backfilling) fireTriggers(e.payload.recent);
-    if (wasBackfilling && !e.payload.status.backfilling) {
+    const backfilling = e.payload.status.backfilling;
+    // why: every one of these is an IPC round trip that takes the ingest
+    // lock, and a backfill tick fires one per parsed chunk while the
+    // worker is holding that same lock. Reported real on Windows, where
+    // the IPC handler shares the window's own thread: the window could
+    // not be dragged until the replay finished. Nothing below is worth
+    // showing mid-replay anyway -- the settle path re-runs all of it
+    // once, against the finished state.
+    if (!backfilling) {
+      void onCombatTick();
+      void refreshLastLocation();
+      void refreshZoneContext();
+      void refreshRaidRows();
+      onChatTick();
+      void pollTrackedLoot();
+      void pollDeaths();
+      void refreshSession();
+      // why: a backfill chunk overflows the recent window -- one full
+      // refresh when it settles, kind-triggers only while live
+      fireTriggers(e.payload.recent);
+    }
+    if (wasBackfilling && !backfilling) {
       void loadCharacterModule();
+      // why: the settle refresh -- the same set the live path runs, so a
+      // replay that ends with a fight open still lands on the real state
+      void onCombatTick();
+      void refreshLastLocation();
+      void refreshZoneContext();
+      void refreshRaidRows();
+      onChatTick();
+      void pollTrackedLoot();
+      void pollDeaths();
+      void refreshSession();
       for (const t of triggers) t.fn();
       window.dispatchEvent(new CustomEvent('eqlp:parse-settled'));
     }
-    wasBackfilling = e.payload.status.backfilling;
+    wasBackfilling = backfilling;
   });
 
   await listen<string>('parse-error', (e) => {
