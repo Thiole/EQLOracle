@@ -11,6 +11,7 @@
   import { api } from '$lib/tauri/api';
   import {
     overlayEnabled,
+    setOverlayEnabledAll,
     dpsMeterEnabled,
     dpsMeterOpacity,
     setDpsMeterEnabled,
@@ -190,31 +191,10 @@
 
   const capped = $derived($windowCapability?.capability === 'docked');
 
-  // why: single "enable ui" toggle for everything at once, since each
-  // widget reopens wherever it was last positioned (see
-  // preferences::OverlayPosition's doc). Checked only when EVERY widget
-  // is on ("select all", not "any"); clicking always sets every widget
-  // to the same new state. Not its own persisted preference -- stays a
-  // live, explicit action each session (see preferences.rs's doc on
-  // why enabled/disabled stays live-only).
-  const allEnabled = $derived(
-    $dpsMeterEnabled && $skillTrackerEnabled && $dropWatchEnabled && $ccTrackerEnabled && $sessionWidgetEnabled,
-  );
+  // why: the one shared action -- OverlayQuickMenu's master toggle is the
+  // same call, so both surfaces read and drive the same flag
   async function onToggleAll(on: boolean) {
-    // why: keeps overlayEnabled (settings.ts) in sync with this page's
-    // own "enable ui" action too -- OverlayQuickMenu's top-bar shortcut
-    // reads that same flag, so enabling everything from here shouldn't
-    // leave the top-bar button/menu still reading "off". Per-widget
-    // errors still surface on THIS page individually (see each
-    // onToggleX above) -- this just adds the one extra flag set.
-    overlayEnabled.set(on);
-    await Promise.all([
-      onToggleDpsMeter(on),
-      onToggleSkillTracker(on),
-      onToggleDropWatch(on),
-      onToggleCcTracker(on),
-      onToggleSession(on),
-    ]);
+    await setOverlayEnabledAll(on);
   }
 </script>
 
@@ -334,7 +314,7 @@
         </p>
       {:else}
         <label class="mt-2 flex items-center gap-2 text-[12px] text-foreground">
-          <Checkbox checked={allEnabled} onCheckedChange={(v: boolean) => void onToggleAll(v)} />
+          <Checkbox checked={$overlayEnabled} onCheckedChange={(v: boolean) => void onToggleAll(v)} />
           enable ui
         </label>
       {/if}
