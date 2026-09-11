@@ -10,7 +10,9 @@ test('debug db search browses events and switches tables', async ({ page }) => {
   await expect(rows.locator('thead')).toContainText('actor');
   expect(await rows.locator('tbody tr').count()).toBeGreaterThan(0);
 
-  await page.getByTestId('db-table').selectOption('encounters');
+  // why: the app's own themed Select, not a native <select> -- open it and pick
+  await page.getByTestId('db-table').click();
+  await page.getByRole('option', { name: 'encounters', exact: true }).click();
   await expect(rows.locator('thead')).toContainText('target', { timeout: 3000 });
   await expect(rows.locator('thead')).not.toContainText('actor');
 });

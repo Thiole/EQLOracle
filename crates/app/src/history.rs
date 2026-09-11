@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,8 +99,7 @@ pub fn refresh_loadouts(records: &mut [ParseRecord], classes: &ClassDetector, yo
     }
 }
 
-/// why: all records, oldest first; input: app handle; output: raw records
-pub fn all(app: &AppHandle) -> Vec<ParseRecord> {
+fn read_all(app: &AppHandle) -> Vec<ParseRecord> {
     let path = match history_path(app) {
         Ok(p) => p,
         Err(_) => return Vec::new(),
@@ -112,6 +112,31 @@ pub fn all(app: &AppHandle) -> Vec<ParseRecord> {
         .map_while(Result::ok)
         .filter_map(|line| serde_json::from_str::<ParseRecord>(&line).ok())
         .collect()
+}
+
+/// why: the Combat tab asks for this twice per parse-tick (mob history and
+/// the loadout bundle), and every ask used to re-open the file and re-parse
+/// every line -- a growing cost, on the tick, for a file this process is
+/// the only writer of. Keyed on the file's own length: `append` is the only
+/// thing that changes it, so a stale cache is not representable.
+fn cached<R>(app: &AppHandle, f: impl FnOnce(&[ParseRecord]) -> R) -> R {
+    static CACHE: OnceLock<Mutex<(Option<u64>, Vec<ParseRecord>)>> = OnceLock::new();
+    let cell = CACHE.get_or_init(|| Mutex::new((None, Vec::new())));
+    let mut g = cell.lock().unwrap_or_else(|e| e.into_inner());
+    let len = history_path(app)
+        .ok()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len());
+    if g.0 != len {
+        g.1 = read_all(app);
+        g.0 = len;
+    }
+    f(&g.1)
+}
+
+/// why: all records, oldest first; input: app handle; output: raw records
+pub fn all(app: &AppHandle) -> Vec<ParseRecord> {
+    cached(app, <[ParseRecord]>::to_vec)
 }
 
 /// why: pure filter, shared by file-backed path and fixture dumping
@@ -129,8 +154,15 @@ pub fn only_confirmed_kills(records: Vec<ParseRecord>) -> Vec<ParseRecord> {
 }
 
 /// Every past record for `target`, oldest first, unfiltered by kill status.
+/// why: filters straight out of the cache -- cloning every record only to
+/// drop almost all of them was the other half of the per-tick cost
 pub fn for_target(app: &AppHandle, target: &str) -> Vec<ParseRecord> {
-    filter_for_target(all(app), target)
+    cached(app, |rows| {
+        rows.iter()
+            .filter(|r| crate::mobalias::mob_matches(&r.target, target))
+            .cloned()
+            .collect()
+    })
 }
 
 /// why: get_mob_history's view; output: target-filtered, newest first

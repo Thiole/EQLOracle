@@ -1660,6 +1660,42 @@ pub fn list_outputfiles(state: State<AppState>) -> Vec<outputfiles::OutputfileDt
     outputfiles::list(&base_dir)
 }
 
+/// why: header Sync Check -- is each anchor file present, and can the
+/// log account for what changed since it was written
+#[tauri::command]
+pub fn get_sync_check(state: State<AppState>) -> outputfiles::SyncCheckDto {
+    let base_dir = state
+        .config
+        .lock_recover()
+        .as_ref()
+        .map(|c| c.base_dir.clone());
+    let st = state.status.lock_recover().clone();
+    let (status, detail) = match (&st.file, st.watching) {
+        (Some(f), true) => ("ok", format!("Tailing {f}.")),
+        (Some(f), false) => (
+            "fix",
+            format!("{f} found but not being watched. Check the folder setting."),
+        ),
+        (None, _) => (
+            "missing",
+            "No log file found. Turn logging on in game with /log on.".to_string(),
+        ),
+    };
+    let log_row = outputfiles::SyncRowDto {
+        kind: "log".to_string(),
+        label: "Combat log".to_string(),
+        primary: true,
+        status: status.to_string(),
+        file: st.file.clone(),
+        modified_ms: None,
+        dumped_at_ms: None,
+        detail,
+        command: Some("/log on".to_string()),
+    };
+    let dumps = state.ingest.lock_recover().dump_ts.clone();
+    outputfiles::sync_check(&dumps, base_dir.as_deref(), log_row)
+}
+
 /// why: the visit an assignment keys on -- the viewed fight's own visit,
 /// else the UI's visit filter (-1 is the pre-zone bucket), else now
 fn assignment_visit(ing: &Ingest, visit: Option<i64>, encounter_id: Option<u32>) -> Option<usize> {

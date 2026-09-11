@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   // why: composes data other modules already fetch (character, zone, mob
   // history) plus overview.rs's own dedicated session-rate stats -- a
   // real backend module (get_session) that already existed, wired to no
@@ -39,9 +40,13 @@
     api.listMobs().then((list) => (mobs = list ?? []));
     ensureGroupBuffs();
   }
+  // why: untracked -- loadOverviewData READS $zoneContext, so without
+  // this the effect subscribed to it and re-ran on every parse-tick,
+  // re-issuing listMobs() and swapping the settle listener ten times a
+  // second. It is a load-once effect; the settle event is how it repeats.
   $effect(() => {
-    loadOverviewData();
-    const onSettled = () => loadOverviewData();
+    untrack(loadOverviewData);
+    const onSettled = () => untrack(loadOverviewData);
     window.addEventListener('eqlp:parse-settled', onSettled);
     return () => window.removeEventListener('eqlp:parse-settled', onSettled);
   });

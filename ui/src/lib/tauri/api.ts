@@ -1188,6 +1188,27 @@ export interface OutputfileDto {
   modified_ms: number | null;
 }
 
+/** why: one Sync Check row -- `status` is the colour, `detail` the sentence.
+ * "ok" | "fix" | "missing" | "optional" | "inferred" */
+export interface SyncRowDto {
+  kind: string;
+  label: string;
+  primary: boolean;
+  status: string;
+  file: string | null;
+  modified_ms: number | null;
+  /** why: log clock of the newest Outputfile Complete for this kind */
+  dumped_at_ms: number | null;
+  detail: string;
+  command: string | null;
+}
+
+export interface SyncCheckDto {
+  /** "ok" | "fix" | "missing" */
+  overall: string;
+  rows: SyncRowDto[];
+}
+
 export interface PlannerStateDto {
   race: string | null;
   levels: Record<string, number>;
@@ -1978,6 +1999,7 @@ export const api = {
   findExistingInventoryDump: () => invoke<{ file: string; character: string | null } | null>('find_existing_inventory_dump'),
   /** why: Import menu -- newest dump per kind; import reads the file on demand, nothing is stored */
   listOutputfiles: () => invoke<OutputfileDto[]>('list_outputfiles'),
+  getSyncCheck: () => invoke<SyncCheckDto>('get_sync_check'),
   importAchievements: () => invoke<number>('import_achievements'),
   importSpellbook: () => invoke<number>('import_spellbook'),
   /** why: right-click > assign to player; owner null clears. Keyed to the

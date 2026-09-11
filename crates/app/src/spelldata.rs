@@ -112,7 +112,22 @@ pub fn spell_by_name(name: &str) -> Option<&'static Spell> {
         })
         .get(name)
         .copied()
+        .or_else(|| {
+            SPELL_NAME_ALIASES
+                .iter()
+                .find(|(logged, _)| *logged == name)
+                .and_then(|(_, in_pack)| spell_by_name(in_pack))
+        })
 }
+
+/// why: the game prints a name the wiki scrape doesn't carry. Only
+/// entries proven against a real log belong here -- the broader gap
+/// (113 cast names absent from the pack) is a scrape problem, not this.
+const SPELL_NAME_ALIASES: &[(&str, &str)] = &[
+    // why: bard charm, 559 casts in eqlog_Manipulator_rivervale.txt --
+    // without it is_charm_spell never sees a bard as a charmer
+    ("Solon's Bewitching Bravura", "Solon's Bravura"),
+];
 
 #[cfg(test)]
 mod tests {

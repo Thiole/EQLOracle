@@ -310,6 +310,7 @@ fn main() {
             commands::get_inventory_dump,
             commands::find_existing_inventory_dump,
             commands::list_outputfiles,
+            commands::get_sync_check,
             commands::set_pet_owner,
             commands::list_pet_owners,
             commands::set_entity_hidden,

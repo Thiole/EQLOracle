@@ -5,6 +5,7 @@
   import { minimizeWindow, toggleMaximizeWindow, closeWindow } from '$lib/tauri/window';
   import OverlayQuickMenu from '$lib/overlay/OverlayQuickMenu.svelte';
   import ImportMenu from '$lib/shell/ImportMenu.svelte';
+  import SyncCheck from '$lib/shell/SyncCheck.svelte';
   import { HelpTip } from '$lib/components/ui/help';
   import { PAGE_HELP } from '$lib/shell/pageHelp';
   import { activeModule } from '$lib/stores/shell';
@@ -90,6 +91,7 @@
     {#if PAGE_HELP[$activeModule]}
       <HelpTip label="About this page" text={PAGE_HELP[$activeModule]} />
     {/if}
+    <SyncCheck />
     <ImportMenu />
     <OverlayQuickMenu />
     {#if customTitlebar}

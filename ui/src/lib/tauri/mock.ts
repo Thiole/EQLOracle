@@ -91,6 +91,7 @@ function keyFor(cmd: string, args: Record<string, unknown> | undefined): string 
       return `id=${norm(a.id)}&socketKey=${norm(a.socketKey)}&other=${normMap(a.otherAssignments)}&classes=${norm(a.classes)}&maxEra=${norm(a.maxEra)}`;
     case 'find_existing_inventory_dump':
     case 'list_outputfiles':
+    case 'get_sync_check':
     case 'list_pet_owners':
     case 'set_pet_owner':
     case 'set_entity_hidden':

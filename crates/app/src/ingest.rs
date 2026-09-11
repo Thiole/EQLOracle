@@ -1285,6 +1285,10 @@ pub struct Ingest {
     /// post-dump loot as owned instead of waiting for the next dump.
     /// None until a dump line is seen this replay.
     pub last_inventory_dump_ts: Option<Millis>,
+    /// why: log clock of the newest Outputfile Complete per dump kind --
+    /// Sync Check asks whether the log covers the span since each dump,
+    /// so a kind absent from this map is one nothing can account for
+    pub dump_ts: std::collections::HashMap<String, Millis>,
     /// why: overlay's Skill Tracker widget -- see skilltracker.rs's own doc
     pub skills: std::collections::HashMap<String, crate::skilltracker::SkillTrack>,
     /// why: latest skill-up "(N)" per skill with its ts -- the log
@@ -1537,6 +1541,7 @@ impl Default for Ingest {
             achievements_live: HashSet::new(),
             disposed_items: std::collections::HashSet::new(),
             last_inventory_dump_ts: None,
+            dump_ts: std::collections::HashMap::new(),
             skills: std::collections::HashMap::new(),
             skill_levels: std::collections::HashMap::new(),
             aa_points: Vec::new(),
@@ -2174,7 +2179,15 @@ impl Ingest {
             Outcome::Matched(m) => {
                 self.counts.matched += 1;
                 let rule = engine.rule(m.rule);
-                *self.counts.by_kind.entry(rule.kind.clone()).or_insert(0) += 1;
+                // why: one allocation per matched line otherwise -- the
+                // key already exists after the first line of each kind,
+                // and there are only a few dozen kinds in the pack
+                match self.counts.by_kind.get_mut(rule.kind.as_str()) {
+                    Some(n) => *n += 1,
+                    None => {
+                        self.counts.by_kind.insert(rule.kind.clone(), 1);
+                    }
+                }
                 let ts_ms = m.ts.secs() * 1000;
 
                 if self.live {
@@ -2393,7 +2406,19 @@ impl Ingest {
                 if !self.keep_full_history {
                     self.encounters.expire(ts);
                     self.drain_closed();
-                    self.store.compact_before(ts);
+                    // why: Drop Watch folds loot from a row POSITION
+                    // (loot_scan_next_row) and compaction moves every
+                    // position after the fold, stranding the watermark
+                    // past the end of a now-shorter store -- measured on a
+                    // replay: 41 rows to 5, and every drop after the zone
+                    // line went uncounted for the rest of the session.
+                    // Only combat rows fold (Store::compact_before's own
+                    // `is_combat` gate), so a loot row is never removed
+                    // and a fresh fold from zero is the same total.
+                    if self.store.compact_before(ts) > 0 {
+                        self.loot_scan_next_row = 0;
+                        self.loot_scan_counts.clear();
+                    }
                     self.effects.cull_before(ts);
                 }
                 if let Some(you) = self.store.names.get("You").map(|s| s.0) {
@@ -2460,6 +2485,9 @@ impl Ingest {
                 // know about (see skyquests' live-owned boost)
                 if crate::inventory::is_inventory_dump(&file) {
                     self.last_inventory_dump_ts = Some(ts);
+                }
+                if let Some(kind) = crate::outputfiles::kind_of(&file) {
+                    self.dump_ts.insert(kind.to_string(), ts);
                 }
                 self.pending_inventory_files.push(file);
             }
@@ -3155,6 +3183,13 @@ impl Ingest {
     /// decided by the other party. Returns the names to intern and the
     /// UNRESOLVED_INSTANCE flag when the log gives no split
     fn split_instances(&mut self, ts: Millis, src: &str, dst: &str) -> (String, String, Flags) {
+        // why: this runs on every damage line and the two lookups below
+        // each allocate a lowercased copy of a name. No charm open means
+        // no instance to split, which is the overwhelming majority of
+        // lines in any log -- 4 allocations per line, for nothing.
+        if self.charm_hints.is_empty() {
+            return (src.to_string(), dst.to_string(), 0);
+        }
         let src_hint = self
             .charm_hints
             .get(&src.to_lowercase())
@@ -3578,6 +3613,25 @@ impl Ingest {
         // why: dying drops every buff -- the Group Buff Tracker's ledger with it
         if victim == "You" {
             self.self_buffs.clear();
+            // why: and every timed state with it -- your charm is gone, and
+            // so are hide and sneak. The log prints no break line for any
+            // of the three, so the Skill Tracker kept showing them as
+            // still up after a death. Same clear the zone line does.
+            self.charm = None;
+            self.hide = None;
+            self.sneak = None;
+        }
+        // why: the pet dying ends the charm too, with no break line of its
+        // own -- the mob is simply a corpse and stops acting
+        if let Some(h) = self.charm_hints.get_mut(&victim.to_lowercase()) {
+            h.active = false;
+        }
+        if self
+            .charm
+            .as_ref()
+            .is_some_and(|c| c.active && c.who.eq_ignore_ascii_case(victim))
+        {
+            self.charm = None;
         }
         // why: the fight this mob is IN right now, read before death()
         // drops it from the graph -- the anchor-name scan below found an
@@ -4852,12 +4906,24 @@ impl Ingest {
 
     /// why: hidden for the visit `ts` falls in
     pub fn is_hidden(&self, name: &str, ts: Millis) -> bool {
+        // why: called once per damage row by the live meter, and the
+        // lookup key is a fresh lowercased String. Nobody has hidden
+        // anything in most sessions, so answer without allocating.
+        if self.hidden_entities.is_empty() {
+            return false;
+        }
         let visit = self.zone.index_at(ts);
         self.hidden_entities.contains(&(visit, name.to_lowercase()))
     }
 
     /// why: the assignment in force for the visit `ts` falls in
     pub fn manual_pet_owner(&self, name: &str, ts: Millis) -> Option<&str> {
+        // why: same as is_hidden -- allegiance_at calls this for every
+        // name it is asked about, and the map is empty until someone
+        // right-clicks "assign to player"
+        if self.manual_pet_owners.is_empty() {
+            return None;
+        }
         let visit = self.zone.index_at(ts);
         self.manual_pet_owners
             .get(&(visit, name.to_lowercase()))

@@ -6,16 +6,79 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// why: (kind, filename suffix, in-game command) -- the three the app reads
-pub const KINDS: &[(&str, &str, &str)] = &[
-    ("inventory", "-Inventory.txt", "/outputfile inventory"),
+/// why: (kind, filename suffix, command, primary, app reads it). Suffixes
+/// for the first four are confirmed from real Outputfile Complete lines;
+/// the rest are the command's own names and stay unconfirmed until one
+/// is actually written.
+pub const KINDS: &[(&str, &str, &str, bool, bool)] = &[
+    (
+        "inventory",
+        "-Inventory.txt",
+        "/outputfile inventory",
+        true,
+        true,
+    ),
     (
         "achievements",
         "-Achievements.txt",
         "/outputfile achievements",
+        true,
+        true,
     ),
-    ("spellbook", "-Spellbook.txt", "/outputfile spellbook"),
+    (
+        "spellbook",
+        "-Spellbook.txt",
+        "/outputfile spellbook",
+        true,
+        true,
+    ),
+    (
+        "factions",
+        "-Factions.txt",
+        "/outputfile faction",
+        true,
+        false,
+    ),
+    ("guild", "-Guild.txt", "/outputfile guild", false, false),
+    (
+        "guildbank",
+        "-GuildBank.txt",
+        "/outputfile guildbank",
+        false,
+        false,
+    ),
+    (
+        "guildhall",
+        "-GuildHall.txt",
+        "/outputfile guildhall",
+        false,
+        false,
+    ),
+    ("raid", "-Raid.txt", "/outputfile raid", false, false),
+    (
+        "realestate",
+        "-RealEstate.txt",
+        "/outputfile realestate",
+        false,
+        false,
+    ),
+    (
+        "recipes",
+        "-Recipes.txt",
+        "/outputfile recipes",
+        false,
+        false,
+    ),
 ];
+
+/// why: which kind a dump filename belongs to -- the Outputfile Complete
+/// line states only the name, and `Ingest` keys its dump clock by kind
+pub fn kind_of(file: &str) -> Option<&'static str> {
+    KINDS
+        .iter()
+        .find(|(_, suffix, _, _, _)| file.ends_with(suffix))
+        .map(|(kind, ..)| *kind)
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct OutputfileDto {
@@ -44,7 +107,8 @@ fn newest(base_dir: &Path, suffix: &str) -> Option<PathBuf> {
 pub fn list(base_dir: &Path) -> Vec<OutputfileDto> {
     KINDS
         .iter()
-        .map(|(kind, suffix, command)| {
+        .filter(|(.., reads)| *reads)
+        .map(|(kind, suffix, command, _, _)| {
             let path = newest(base_dir, suffix);
             OutputfileDto {
                 kind: kind.to_string(),
@@ -91,9 +155,264 @@ pub fn spellbook_spells(base_dir: &Path, character: Option<&str>) -> Vec<(String
     seen.into_iter().collect()
 }
 
+/// why: one health row -- `status` is the colour, `detail` the sentence
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncRowDto {
+    pub kind: String,
+    pub label: String,
+    pub primary: bool,
+    /// "ok" | "fix" | "missing" | "optional" | "inferred"
+    pub status: String,
+    pub file: Option<String>,
+    pub modified_ms: Option<Millis>,
+    /// why: log clock of the newest Outputfile Complete for this kind
+    pub dumped_at_ms: Option<Millis>,
+    pub detail: String,
+    pub command: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncCheckDto {
+    /// "ok" | "fix" | "missing"
+    pub overall: String,
+    pub rows: Vec<SyncRowDto>,
+}
+
+/// why: the command's own one-word names read badly as headings
+fn label_for(kind: &str) -> String {
+    match kind {
+        "guildbank" => "Guild bank",
+        "guildhall" => "Guild hall",
+        "realestate" => "Real estate",
+        "inventory" => "Inventory",
+        "achievements" => "Achievements",
+        "spellbook" => "Spellbook",
+        "factions" => "Factions",
+        "guild" => "Guild",
+        "raid" => "Raid",
+        "recipes" => "Recipes",
+        other => other,
+    }
+    .to_string()
+}
+
+/// why: `LocalTs` is the log's wall clock with no zone attached, so a
+/// logged dump time is local-read-as-UTC; a file mtime is true epoch.
+/// The game writes both at the same instant, so a matched pair gives the
+/// offset without a timezone database. Median over the pairs, so one odd
+/// file can't skew it.
+fn local_offset_ms(pairs: &[(Millis, Millis)]) -> Option<Millis> {
+    let mut d: Vec<Millis> = pairs
+        .iter()
+        .map(|(logged, mtime)| mtime - logged)
+        // why: a real zone offset, never a stale file masquerading as one
+        .filter(|d| d.abs() <= 14 * 3_600_000)
+        .collect();
+    // why: one pair is circular -- the offset would absorb whatever
+    // staleness it was meant to reveal, so `unsure` could never fire
+    if d.len() < 2 {
+        return None;
+    }
+    d.sort_unstable();
+    Some(d[d.len() / 2])
+}
+
+/// why: log seconds vs filesystem sub-seconds, and the two writes are
+/// not atomic with each other
+const DUMP_MATCH_TOLERANCE_MS: Millis = 5_000;
+
+/// why: a dump is usable only while the log still covers the span since
+/// it was written. No Outputfile Complete for it in the replayed log
+/// means nothing can say what changed, so it needs re-running -- this is
+/// an accountability test, not a count of changes.
+pub fn sync_check(
+    dumps: &HashMap<String, Millis>,
+    base_dir: Option<&Path>,
+    log_row: SyncRowDto,
+) -> SyncCheckDto {
+    let mut rows = vec![log_row];
+    let found: Vec<(&str, Option<PathBuf>, Option<Millis>)> = KINDS
+        .iter()
+        .map(|(kind, suffix, ..)| {
+            let path = base_dir.and_then(|d| newest(d, suffix));
+            let mtime = path.as_deref().and_then(modified_ms);
+            (*kind, path, mtime)
+        })
+        .collect();
+    let pairs: Vec<(Millis, Millis)> = found
+        .iter()
+        .filter_map(|(kind, _, mtime)| Some((dumps.get(*kind).copied()?, (*mtime)?)))
+        .collect();
+    let offset = local_offset_ms(&pairs);
+    for ((kind, suffix, command, primary, reads), (_, path, mtime)) in KINDS.iter().zip(&found) {
+        let _ = suffix;
+        let path = path.clone();
+        let dumped = dumps.get(*kind).copied();
+        // why: the file put on the log's own clock, so "is this the dump
+        // the log saw?" is a like-for-like comparison
+        let file_on_log_clock = match (mtime, offset) {
+            (Some(m), Some(off)) => Some(m - off),
+            _ => None,
+        };
+        let (status, detail) = match (path.is_some(), dumped) {
+            (true, Some(d))
+                if file_on_log_clock.is_some_and(|f| f > d + DUMP_MATCH_TOLERANCE_MS) =>
+            {
+                (
+                    "unsure",
+                    format!(
+                        "A newer dump was written than this log recorded, so what \
+                     changed since it can't be pinned down. Run {command} again."
+                    ),
+                )
+            }
+            (false, _) if !reads && !primary => (
+                "optional",
+                "Never written. Nothing here needs it.".to_string(),
+            ),
+            (false, _) => ("missing", format!("No dump found. Run {command} in game.")),
+            (true, Some(_)) => (
+                "ok",
+                "Dump found, and the log covers everything since it.".to_string(),
+            ),
+            (true, None) => (
+                "fix",
+                format!(
+                    "Dump found, but this log never recorded it being written, \
+                     so changes since it can't be accounted for. Run {command} again."
+                ),
+            ),
+        };
+        rows.push(SyncRowDto {
+            kind: kind.to_string(),
+            label: label_for(kind),
+            primary: *primary,
+            status: status.to_string(),
+            file: path
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .map(|n| n.to_string_lossy().into_owned()),
+            modified_ms: *mtime,
+            // why: handed over as true epoch so the UI can render it
+            // directly -- the raw log clock would show the zone offset
+            dumped_at_ms: match (dumped, offset) {
+                (Some(d), Some(off)) => Some(d + off),
+                _ => dumped,
+            },
+            detail,
+            command: Some(command.to_string()),
+        });
+    }
+    // why: the spellbook dump already lists what is scribed, so what is
+    // missing is the complement -- a separate dump would say nothing new
+    rows.push(SyncRowDto {
+        kind: "missingspells".to_string(),
+        label: "Missing spells".to_string(),
+        primary: false,
+        status: "inferred".to_string(),
+        file: None,
+        modified_ms: None,
+        dumped_at_ms: None,
+        detail: "Worked out from the spellbook dump. No separate file needed.".to_string(),
+        command: None,
+    });
+    let worst = |s: &str| match s {
+        "missing" => 3,
+        "fix" => 2,
+        "unsure" => 1,
+        _ => 0,
+    };
+    let overall = rows
+        .iter()
+        .filter(|r| r.primary)
+        .map(|r| r.status.as_str())
+        .max_by_key(|s| worst(s))
+        .map(|s| match worst(s) {
+            3 => "missing",
+            2 => "fix",
+            1 => "unsure",
+            _ => "ok",
+        })
+        .unwrap_or("ok");
+    SyncCheckDto {
+        overall: overall.to_string(),
+        rows,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn log_row() -> SyncRowDto {
+        SyncRowDto {
+            kind: "log".into(),
+            label: "Combat log".into(),
+            primary: true,
+            status: "ok".into(),
+            file: None,
+            modified_ms: None,
+            dumped_at_ms: None,
+            detail: String::new(),
+            command: None,
+        }
+    }
+
+    /// why: the whole rule -- a dump the log never recorded is one whose
+    /// changes since cannot be accounted for, however recent the file is
+    #[test]
+    fn a_dump_the_log_never_recorded_needs_rerunning_even_when_the_file_is_fresh() {
+        let d = std::env::temp_dir().join(format!("eqlp-sync-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("Manipulator_rivervale-Inventory.txt"), "x").unwrap();
+        std::fs::write(d.join("Manipulator_rivervale-Achievements.txt"), "x").unwrap();
+
+        let mut dumps = HashMap::new();
+        dumps.insert("achievements".to_string(), 1_700_000_000_000i64);
+        let out = sync_check(&dumps, Some(&d), log_row());
+        let by = |k: &str| {
+            out.rows
+                .iter()
+                .find(|r| r.kind == k)
+                .unwrap_or_else(|| panic!("{k} row"))
+        };
+        assert_eq!(by("achievements").status, "ok", "file + a logged dump line");
+        assert_eq!(
+            by("inventory").status,
+            "fix",
+            "file on disk but no Outputfile Complete for it in this log"
+        );
+        assert_eq!(by("spellbook").status, "missing", "no file at all");
+        assert_eq!(by("guild").status, "optional", "secondary, never written");
+        assert_eq!(by("missingspells").status, "inferred");
+        assert_eq!(out.overall, "missing", "worst primary row wins");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// why: the log clock carries no zone, so comparing it to a file
+    /// mtime is wrong by the local offset -- measured -4h on the real
+    /// install. Derived from matched pairs, and refused when a single
+    /// pair would just absorb the staleness it is meant to expose.
+    #[test]
+    fn the_zone_offset_is_derived_from_pairs_and_refused_when_circular() {
+        let h = 3_600_000i64;
+        assert_eq!(
+            local_offset_ms(&[(1_000, 1_000 - 4 * h)]),
+            None,
+            "one pair is circular -- it would absorb any staleness"
+        );
+        assert_eq!(
+            local_offset_ms(&[(0, -4 * h), (500, 500 - 4 * h)]),
+            Some(-4 * h),
+            "two agreeing pairs give the real offset"
+        );
+        assert_eq!(
+            local_offset_ms(&[(0, -4 * h), (0, -4 * h), (0, 99 * h)]),
+            Some(-4 * h),
+            "median ignores an outlier, and beyond 14h is rejected outright"
+        );
+        assert_eq!(local_offset_ms(&[]), None, "nothing to calibrate from");
+    }
 
     #[test]
     fn lists_the_newest_per_kind_and_reads_one_characters_spellbook_rows() {

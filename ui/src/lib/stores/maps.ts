@@ -366,13 +366,28 @@ export async function toggleNpcZone(zone: string) {
 }
 
 export async function refreshLastLocation() {
-  lastLocation.set(await api.getLastLocation());
+  const next = await api.getLastLocation();
+  const prev = get(lastLocation);
+  // why: this runs on every parse-tick, up to 10x a second while the log
+  // grows, and a fresh object notifies every subscriber even when the
+  // player has not moved. Two deriveds downstream are expensive -- the
+  // nearest-wall scan walks tens of thousands of map line segments, and
+  // the walk-path effects re-issue a pathfind -- so the identity change
+  // alone was the cost. One /loc is one timestamp; compare that.
+  if (prev?.ts_ms === next?.ts_ms && prev?.zone === next?.zone) return;
+  lastLocation.set(next);
 }
 
 export async function refreshZoneContext() {
-  const prevRaw = get(zoneContext)?.current ?? null;
+  const prev = get(zoneContext);
+  const prevRaw = prev?.current ?? null;
   const ctx = await api.getZoneContext();
-  zoneContext.set(ctx);
+  // why: same per-tick identity churn as refreshLastLocation. Overview's
+  // own "load once" effect reads this store, so a fresh object re-ran a
+  // full listMobs() pass (documented O(store length)) ten times a second.
+  // The object is small and flat -- comparing it is cheaper than one of
+  // the calls it triggers.
+  if (JSON.stringify(prev) !== JSON.stringify(ctx)) zoneContext.set(ctx);
   // why: GPS-style navigation recomputes on every real zone change,
   // independent of "live: follow me" (that toggle only controls whether
   // the *viewed map* auto-switches, not whether an active route stays

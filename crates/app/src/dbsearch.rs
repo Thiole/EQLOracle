@@ -75,21 +75,24 @@ pub fn search(
                 .map_err(|e| e.to_string())?,
         )
     };
+    // why: the three big tables build their own rows lazily -- on a real
+    // log `effects` is 402k rows and `timeline` 84k, and routing those
+    // through serde_json Values cost 371 ms and 100 ms to show 100 rows
     if table == "events" {
         let (columns, total, rows) = events(ing);
         return Ok(collect(table, columns, total, rows, re.as_ref(), limit));
     }
+    if table == "effects" {
+        let (columns, total, rows) = effects_rows(ing);
+        return Ok(collect(table, columns, total, rows, re.as_ref(), limit));
+    }
+    if table == "timeline" {
+        let (columns, total, rows) = timeline_rows(ing);
+        return Ok(collect(table, columns, total, rows, re.as_ref(), limit));
+    }
     let values = table_values(ing, table).ok_or_else(|| format!("no table named {table}"))?;
-    let (columns, rows) = from_values(values);
-    let total = rows.len();
-    Ok(collect(
-        table,
-        columns,
-        total,
-        rows.into_iter(),
-        re.as_ref(),
-        limit,
-    ))
+    let (columns, total, rows) = from_values(values);
+    Ok(collect(table, columns, total, rows, re.as_ref(), limit))
 }
 
 fn collect(
@@ -157,6 +160,65 @@ fn events(ing: &Ingest) -> (Vec<String>, usize, impl Iterator<Item = Vec<String>
     (columns, s.len(), rows)
 }
 
+/// why: 402k rows on a real log. Built lazily like `events`, and the
+/// entity's own sym goes out beside its display name so this table can be
+/// joined to `names` and `entities` on a stable id instead of a string.
+/// source/skill/landed were dropped before, which hid who cast an effect
+/// and whether the ping was a real landing or a resisted cast.
+fn effects_rows(ing: &Ingest) -> (Vec<String>, usize, impl Iterator<Item = Vec<String>> + '_) {
+    let s = &ing.store;
+    let columns = [
+        "ts",
+        "entity_sym",
+        "entity",
+        "text",
+        "source",
+        "skill",
+        "landed",
+    ]
+    .iter()
+    .map(|c| c.to_string())
+    .collect();
+    let mut idx: Vec<(u32, &crate::ingest::EffectPing)> = ing.effects.iter_all().collect();
+    // why: the source is keyed by entity, not by time -- one sort of the
+    // index, then only the rows the caller keeps are ever rendered
+    idx.sort_by_key(|(_, p)| std::cmp::Reverse(p.ts));
+    let total = idx.len();
+    let rows = idx.into_iter().map(move |(e, p)| {
+        vec![
+            civil(p.ts),
+            e.to_string(),
+            s.name(Sym(e)).to_string(),
+            p.text.to_string(),
+            p.source.as_deref().unwrap_or_default().to_string(),
+            p.skill.as_deref().unwrap_or_default().to_string(),
+            p.landed.to_string(),
+        ]
+    });
+    (columns, total, rows)
+}
+
+/// why: already stored in ts order, so newest-first is a reverse and no
+/// sort at all -- same sym-beside-name rule as `effects_rows`
+fn timeline_rows(ing: &Ingest) -> (Vec<String>, usize, impl Iterator<Item = Vec<String>> + '_) {
+    let s = &ing.store;
+    let all = ing.timeline.between(Millis::MIN, Millis::MAX);
+    let columns = ["ts", "entity_sym", "entity", "state", "cause"]
+        .iter()
+        .map(|c| c.to_string())
+        .collect();
+    let rows = all.iter().rev().map(move |t| {
+        vec![
+            civil(t.ts),
+            t.entity.to_string(),
+            s.name(Sym(t.entity)).to_string(),
+            format!("{:?}", t.state),
+            format!("{:?}", t.cause),
+        ]
+    });
+    (columns, all.len(), rows)
+}
+
 fn flag_names(f: Flags) -> String {
     const ALL: &[(Flags, &str)] = &[
         (flag::CRITICAL, "crit"),
@@ -169,6 +231,20 @@ fn flag_names(f: Flags) -> String {
         (flag::DOUBLE_BOW, "double_bow"),
         (flag::FLURRY, "flurry"),
         (flag::LOOT_AUTO_SOLD, "auto_sold"),
+        // why: the cast and craft outcomes ARE the row for a cast or a
+        // combine -- without them a landed cast read as a bare "0x100"
+        (flag::CAST_LANDED, "cast_landed"),
+        (flag::CAST_RESISTED, "cast_resisted"),
+        (flag::CAST_INTERRUPTED, "cast_interrupted"),
+        (flag::CAST_FIZZLED, "cast_fizzled"),
+        (flag::CAST_UNCONFIRMED, "cast_unconfirmed"),
+        (flag::MISSED, "missed"),
+        (flag::BLOCKED, "blocked"),
+        (flag::DODGED, "dodged"),
+        (flag::PARRIED, "parried"),
+        (flag::CRAFT_SUCCESS, "craft_success"),
+        (flag::CRAFT_SKILL_CAPPED, "craft_skill_capped"),
+        (flag::UNRESOLVED_INSTANCE, "unresolved_instance"),
     ];
     let mut names: Vec<String> = ALL
         .iter()
@@ -192,17 +268,8 @@ fn vals<T: Serialize>(v: Vec<T>) -> Vec<Value> {
 /// so the search never disagrees with the module that shows the same data
 fn table_values(ing: &Ingest, table: &str) -> Option<Vec<Value>> {
     let s = &ing.store;
-    let name = |e: u32| s.name(Sym(e)).to_string();
     Some(match table {
         "encounters" => vals(crate::debugview::list_debug_encounters(ing, usize::MAX)),
-        "timeline" => ing
-            .timeline
-            .between(Millis::MIN, Millis::MAX)
-            .iter()
-            .map(|t| {
-                json!({"ts": t.ts, "entity": name(t.entity), "state": format!("{:?}", t.state), "cause": format!("{:?}", t.cause)})
-            })
-            .collect(),
         "zones" => vals(crate::combat::list_zone_visits(ing)),
         "units" => (0..ing.units.len())
             .filter_map(|i| {
@@ -232,11 +299,6 @@ fn table_values(ing: &Ingest, table: &str) -> Option<Vec<Value>> {
                     "since_ms": c.map(|c| c.since),
                 })
             })
-            .collect(),
-        "effects" => ing
-            .effects
-            .iter_all()
-            .map(|(e, p)| json!({"ts": p.ts, "entity": name(e), "text": &*p.text}))
             .collect(),
         "self_buffs" => ing
             .self_buffs
@@ -369,8 +431,20 @@ const TS_KEYS: &[&str] = &[
 ];
 
 /// why: columns are the union of keys, the timestamp first; rows sort
-/// newest first on it, or by the first cell when the table has no clock
-fn from_values(values: Vec<Value>) -> (Vec<String>, Vec<Vec<String>>) {
+/// newest first on it, or by the first cell when the table has no clock.
+///
+/// Rows come back as a LAZY newest-first iterator, the same shape `events`
+/// already had, because `collect` stops at the limit: a browse of `effects`
+/// used to render all 402,258 rows to strings and sort them to show 100,
+/// which measured 371 ms on a real log. Only the sort key is computed for
+/// every row now; the cells are rendered as the caller pulls them.
+fn from_values(
+    values: Vec<Value>,
+) -> (
+    Vec<String>,
+    usize,
+    impl Iterator<Item = Vec<String>> + 'static,
+) {
     let mut keys: Vec<String> = Vec::new();
     for v in &values {
         if let Value::Object(m) = v {
@@ -386,27 +460,44 @@ fn from_values(values: Vec<Value>) -> (Vec<String>, Vec<Vec<String>>) {
         .find(|k| keys.iter().any(|x| x == *k))
         .copied();
     keys.sort_by_key(|k| (Some(k.as_str()) != ts_key, k.clone()));
-    let mut rows: Vec<(Millis, Vec<String>)> = values
-        .iter()
-        .map(|v| {
-            let m = v.as_object();
-            let ts = ts_key
-                .and_then(|k| m.and_then(|m| m.get(k)))
-                .and_then(Value::as_i64)
-                .unwrap_or(0);
-            let cells = keys
+
+    // why: order first, render later -- the sort key is one field, the row
+    // is every field, and all but `limit` of the rows are discarded
+    let mut order: Vec<usize> = (0..values.len()).collect();
+    match ts_key {
+        Some(k) => {
+            let ts: Vec<Millis> = values
                 .iter()
-                .map(|k| render(k, m.and_then(|m| m.get(k))))
+                .map(|v| {
+                    v.as_object()
+                        .and_then(|m| m.get(k))
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
+                })
                 .collect();
-            (ts, cells)
-        })
-        .collect();
-    if ts_key.is_some() {
-        rows.sort_by_key(|r| std::cmp::Reverse(r.0));
-    } else {
-        rows.sort_by_cached_key(|r| r.1.first().cloned().unwrap_or_default());
+            // why: stable, and `order` starts in source order, so equal
+            // timestamps keep the order the table produced them in
+            order.sort_by_key(|&i| std::cmp::Reverse(ts[i]));
+        }
+        None => {
+            let first = keys.first().cloned().unwrap_or_default();
+            let cell: Vec<String> = values
+                .iter()
+                .map(|v| render(&first, v.as_object().and_then(|m| m.get(&first))))
+                .collect();
+            order.sort_by(|&a, &b| cell[a].cmp(&cell[b]));
+        }
     }
-    (keys, rows.into_iter().map(|r| r.1).collect())
+
+    let total = values.len();
+    let cols = keys.clone();
+    let rows = order.into_iter().map(move |i| {
+        let m = values[i].as_object();
+        cols.iter()
+            .map(|k| render(k, m.and_then(|m| m.get(k))))
+            .collect()
+    });
+    (keys, total, rows)
 }
 
 /// why: a millisecond clock reads as a date; everything else as itself

@@ -647,13 +647,18 @@ fn resolve_members(
             mob: None,
         })
         .collect();
+    // why: the duplicate test was a linear scan of `out`, run for every
+    // encounter of every selected visit and range -- quadratic in the
+    // number of fights selected. `insert` answers it in one hash.
+    let mut seen_members: std::collections::HashSet<EncounterId> =
+        out.iter().map(|m| m.id).collect();
     // why: a visit is every fight of yours in it, whole
     for &v in &sel.visits {
         for e in &ing.store.encounters {
             if e.involves_you
                 && !e.absorbed
                 && matches_visit(ing, e.start_ms, Some(v))
-                && !out.iter().any(|m| m.id == e.id)
+                && seen_members.insert(e.id)
             {
                 out.push(Member {
                     id: e.id,
@@ -698,7 +703,7 @@ fn resolve_members(
                 && !e.absorbed
                 && e.start_ms <= until
                 && e.end_ms.unwrap_or(now) >= since;
-            if overlaps && !out.iter().any(|m| m.id == e.id) {
+            if overlaps && seen_members.insert(e.id) {
                 out.push(Member {
                     id: e.id,
                     window: Some((since, until)),
@@ -2269,14 +2274,19 @@ pub fn live_meter_with(ing: &Ingest, layout: DpsLayout, scope: DpsScope) -> Opti
     };
     let mut encs: Vec<&Encounter> = vec![primary];
     let (mut span_start, mut span_end) = (primary.start_ms, last_of(primary));
+    // why: the membership test was a linear scan of `encs`, inside a loop
+    // over every encounter ever recorded, inside a fixpoint -- cubic in
+    // the worst case for a chain of overlapping fights
+    let mut seen: std::collections::HashSet<EncounterId> = encs.iter().map(|e| e.id).collect();
     loop {
         let mut grew = false;
         for e in &ing.store.encounters {
-            if !e.involves_you || e.absorbed || encs.iter().any(|x| x.id == e.id) {
+            if !e.involves_you || e.absorbed || seen.contains(&e.id) {
                 continue;
             }
             let (s, l) = (e.start_ms, last_of(e));
             if s <= span_end && l >= span_start {
+                seen.insert(e.id);
                 encs.push(e);
                 span_start = span_start.min(s);
                 span_end = span_end.max(l);

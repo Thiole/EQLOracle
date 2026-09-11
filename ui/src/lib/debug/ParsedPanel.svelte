@@ -4,6 +4,7 @@
   // match against later
   import { onMount } from 'svelte';
   import { Card, CardContent } from '$lib/components/ui/card';
+  import * as Select from '$lib/components/ui/select';
   import { api, type SearchDbDto } from '$lib/tauri/api';
   import { refreshOn } from '$lib/tauri/events';
 
@@ -69,16 +70,18 @@
   <CardContent class="px-3 py-2.5">
     <div class="mb-2 flex flex-wrap items-center gap-2">
       <h2 class="panel-title">parsed · db search</h2>
-      <select
-        bind:value={table}
-        class="h-6 rounded-sm border border-border bg-background px-1 font-mono text-[11px]"
-        aria-label="table"
-        data-testid="db-table"
-      >
-        {#each result?.tables ?? [table] as t (t)}
-          <option value={t}>{t}</option>
-        {/each}
-      </select>
+      <!-- why: the app's own list, not the native popup -- GTK draws that
+           one in its own colours and it never follows the theme -->
+      <Select.Root type="single" value={table} onValueChange={(v) => v && (table = v)}>
+        <Select.Trigger class="h-6 w-44 font-mono text-[11px]" aria-label="table" data-testid="db-table">
+          {table}
+        </Select.Trigger>
+        <Select.Content>
+          {#each result?.tables ?? [table] as t (t)}
+            <Select.Item value={t} class="font-mono text-[11px]">{t}</Select.Item>
+          {/each}
+        </Select.Content>
+      </Select.Root>
       <input
         type="text"
         bind:value={pattern}

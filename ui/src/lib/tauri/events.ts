@@ -9,6 +9,8 @@ import { onChatTick } from '../stores/chat';
 import { pollTrackedLoot } from '../stores/dropWatchLoot';
 import { pollDeaths } from '../stores/deathRecap';
 import { refreshSession } from '../stores/session';
+import { get } from 'svelte/store';
+import { activeModule } from '../stores/shell';
 import { loadCharacterModule } from '../stores/character';
 import { refreshGroupBuffs } from '../stores/groupBuffs';
 
@@ -49,6 +51,30 @@ function fireTriggers(recent: RecentLine[]) {
   for (const t of triggers) if (!t.kinds || [...t.kinds].some((k) => seen.has(k))) t.fn();
 }
 
+/// why: one coalesced pass instead of one per tick. `all` is the settle
+/// case, which refreshes modules that are not on screen too.
+const FAN_OUT_MS = 350;
+let fanTimer: ReturnType<typeof setTimeout> | undefined;
+let pendingRecent: RecentLine[] = [];
+
+function fanOut(all: boolean) {
+  const recent = pendingRecent;
+  pendingRecent = [];
+  const mod = get(activeModule);
+  void onCombatTick();
+  void refreshLastLocation();
+  void refreshZoneContext();
+  void pollTrackedLoot();
+  void pollDeaths();
+  void refreshSession();
+  // why: these two feed one module each and both re-load on mount, so
+  // fetching them while the user is elsewhere buys nothing -- chat alone
+  // is four calls that serialize the whole session's messages
+  if (all || mod === 'endgame') void refreshRaidRows();
+  if (all || mod === 'social') onChatTick();
+  fireTriggers(recent);
+}
+
 export async function initTauriEvents() {
   if (initialized) return;
   initialized = true;
@@ -65,30 +91,28 @@ export async function initTauriEvents() {
     // showing mid-replay anyway -- the settle path re-runs all of it
     // once, against the finished state.
     if (!backfilling) {
-      void onCombatTick();
-      void refreshLastLocation();
-      void refreshZoneContext();
-      void refreshRaidRows();
-      onChatTick();
-      void pollTrackedLoot();
-      void pollDeaths();
-      void refreshSession();
-      // why: a backfill chunk overflows the recent window -- one full
-      // refresh when it settles, kind-triggers only while live
-      fireTriggers(e.payload.recent);
+      // why: a tick fires up to ten times a second while the log grows,
+      // and this fan-out is ~18 IPC round trips, each taking the same
+      // ingest lock the parser holds. Coalesced to one pass per window:
+      // the numbers on screen are a running fight, not an animation, and
+      // the overlay widgets keep their own tick listener.
+      for (const r of e.payload.recent) pendingRecent.push(r);
+      if (fanTimer === undefined) {
+        fanTimer = setTimeout(() => {
+          fanTimer = undefined;
+          fanOut(false);
+        }, FAN_OUT_MS);
+      }
     }
     if (wasBackfilling && !backfilling) {
       void loadCharacterModule();
-      // why: the settle refresh -- the same set the live path runs, so a
-      // replay that ends with a fight open still lands on the real state
-      void onCombatTick();
-      void refreshLastLocation();
-      void refreshZoneContext();
-      void refreshRaidRows();
-      onChatTick();
-      void pollTrackedLoot();
-      void pollDeaths();
-      void refreshSession();
+      // why: the settle refresh -- everything, ungated, so a replay that
+      // ends with a fight open still lands on the real state
+      if (fanTimer !== undefined) {
+        clearTimeout(fanTimer);
+        fanTimer = undefined;
+      }
+      fanOut(true);
       for (const t of triggers) t.fn();
       window.dispatchEvent(new CustomEvent('eqlp:parse-settled'));
     }

@@ -316,6 +316,44 @@ mod tests {
         assert!(!dto.invis.expect("still tracked, now inactive").active);
     }
 
+    /// why: dying breaks all three too, and the log prints no break line
+    /// for any of them -- the tracker kept showing a charm after a death
+    #[test]
+    fn your_own_death_clears_hide_sneak_and_charm() {
+        let lines = [
+            "[Tue Jul 28 15:01:00 2026] You have hidden yourself from view.",
+            "[Tue Jul 28 15:01:01 2026] You are as quiet as a cat stalking its prey.",
+            "[Tue Jul 28 15:01:02 2026] You begin casting Allure.",
+            "[Tue Jul 28 15:01:03 2026] an abhorrent has been charmed.",
+        ];
+        let before = run(&lines);
+        let dto = status_effects(&before);
+        assert!(
+            dto.hide.is_some() && dto.sneak.is_some() && dto.charm.is_some(),
+            "premise: all three tracked: {dto:?}"
+        );
+        let mut dead = lines.to_vec();
+        dead.push("[Tue Jul 28 15:02:00 2026] You have been slain by a gnoll!");
+        let dto = status_effects(&run(&dead));
+        assert!(
+            dto.hide.is_none() && dto.sneak.is_none() && dto.charm.is_none(),
+            "cleared by your death: {dto:?}"
+        );
+    }
+
+    /// why: the charmed pet dying ends the charm -- a corpse acts for
+    /// nobody, and the log prints no wear-off line for it
+    #[test]
+    fn the_charmed_pets_own_death_ends_the_charm() {
+        let ing = run(&[
+            "[Tue Jul 28 15:01:02 2026] You begin casting Allure.",
+            "[Tue Jul 28 15:01:03 2026] an abhorrent has been charmed.",
+            "[Tue Jul 28 15:01:20 2026] You have slain an abhorrent!",
+        ]);
+        let dto = status_effects(&ing);
+        assert!(dto.charm.is_none(), "the pet is dead: {dto:?}");
+    }
+
     /// why: Spencer -- on zoning, Charm/Hide/Sneak clear and the tracker
     /// shows nothing for them until the first line in the new zone
     #[test]

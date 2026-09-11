@@ -11,7 +11,7 @@ and need the service layer described in README.md before external
 exposure. Parameters shown are the real API surface -- Tauri plumbing
 (`State`, `AppHandle`, `Window`) is elided.
 
-132 commands: 27 pure, 105 stateful.
+133 commands: 27 pure, 106 stateful.
 
 ## `get_changelog` (pure)
 why: the Info panel's own "what's new" -- every section, newest first
@@ -456,6 +456,12 @@ why: overlay's timed-effects widget -- same polled-on-tick shape as get_live_met
 
 - args: none
 - returns: `crate::effects::StatusEffectsDto`
+
+## `get_sync_check` (stateful)
+why: header Sync Check -- is each anchor file present, and can the log account for what changed since it was written
+
+- args: none
+- returns: `outputfiles::SyncCheckDto`
 
 ## `get_target_effects` (stateful)
 why: Skill Tracker widget's target-effects section -- see targeteffects.rs's own doc
