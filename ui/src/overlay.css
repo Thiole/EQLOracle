@@ -29,4 +29,26 @@
     font-family: var(--font-sans);
     font-size: 13px;
   }
+
+  /* why: the main window's muted grey is a label tone against an opaque
+     panel; over a near-transparent overlay sitting on the game it reads
+     as unlit. Overridden here only -- the token keeps its own value in
+     app.css's windows. */
+  :root {
+    /* why: the themed foreground is a warm off-white (#e9e6df, oklch .92)
+       tuned for an opaque panel. Over the game it reads grey, so the
+       overlay drives both tones to flat white. */
+    --foreground: #ffffff;
+    --muted-foreground: #ffffff;
+  }
+
+  /* why: an overlay has no background it can rely on -- the game behind
+     it is any colour at any moment. A hard 1px dark outline keeps every
+     glyph legible over both without touching opacity. Shadow, not
+     backdrop-filter or blur: those are banned on the WebKitGTK floor. */
+  body {
+    text-shadow:
+      0 1px 2px rgb(0 0 0 / 0.9),
+      0 0 1px rgb(0 0 0 / 0.8);
+  }
 }

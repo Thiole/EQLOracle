@@ -43,32 +43,32 @@
     <div class="grid grid-cols-3 gap-1.5 text-center">
       <div class="rounded-sm bg-foreground/10 px-1 py-1.5">
         <div class="font-mono text-[16px] text-foreground tabular-nums">{rate(session.aa_per_hour, 1)}</div>
-        <div class="text-[9px] tracking-wide text-foreground/60 uppercase">AA/hr</div>
+        <div class="text-[9px] tracking-wide text-foreground/90 uppercase">AA/hr</div>
       </div>
       <div class="rounded-sm bg-foreground/10 px-1 py-1.5">
         <div class="font-mono text-[16px] text-foreground tabular-nums">{rate(session.levels_per_hour, 2)}</div>
-        <div class="text-[9px] tracking-wide text-foreground/60 uppercase">levels/hr</div>
+        <div class="text-[9px] tracking-wide text-foreground/90 uppercase">levels/hr</div>
         {#if session.eta_hours != null}
-          <div class="mt-0.5 text-[9px] text-foreground/60" title="estimated time to next level at this rate">
-            next lvl est: <span class="font-mono text-foreground/80 tabular-nums">{fmtEta(session.eta_hours)}</span>
+          <div class="mt-0.5 text-[9px] text-foreground/90" title="estimated time to next level at this rate">
+            next lvl est: <span class="font-mono text-foreground tabular-nums">{fmtEta(session.eta_hours)}</span>
           </div>
         {/if}
       </div>
       <div class="rounded-sm bg-foreground/10 px-1 py-1.5">
         <div class="font-mono text-[16px] text-foreground tabular-nums">{rate(session.platinum_per_hour, 1)}</div>
-        <div class="text-[9px] tracking-wide text-foreground/60 uppercase">plat/hr</div>
+        <div class="text-[9px] tracking-wide text-foreground/90 uppercase">plat/hr</div>
       </div>
     </div>
     <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1 rounded-sm bg-foreground/10 px-1.5 py-1">
-      <span class="text-[9px] tracking-wide text-foreground/60 uppercase">motes</span>
+      <span class="text-[9px] tracking-wide text-foreground/90 uppercase">motes</span>
       <span class="font-mono text-foreground tabular-nums">{session.motes_found}</span>
-      <span class="font-mono text-[10px] text-foreground/60 tabular-nums">({rate(session.motes_per_hour, 1)}/hr)</span>
+      <span class="font-mono text-[10px] text-foreground/90 tabular-nums">({rate(session.motes_per_hour, 1)}/hr)</span>
       {#if session.mote_tiers.length}
         <span class="flex flex-1 flex-wrap items-center justify-end gap-1.5">
           {#each session.mote_tiers as t (t.name)}
             <span title={t.name} class="flex items-center gap-0.5">
               <span
-                class="flex size-4 shrink-0 items-center justify-center rounded-full border border-foreground/40 font-mono text-[9px] text-foreground/80"
+                class="flex size-4 shrink-0 items-center justify-center rounded-full border border-foreground/40 font-mono text-[9px] text-foreground"
               >
                 {t.tier ?? '?'}
               </span>

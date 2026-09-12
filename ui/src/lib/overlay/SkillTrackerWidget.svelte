@@ -194,8 +194,8 @@
               class="flex size-7 items-center justify-center overflow-hidden rounded-sm bg-background/60 text-[10px] font-bold tracking-wide {st.flash
                 ? 'target-effect-blink'
                 : st.expiring
-                  ? 'target-effect-expiring text-foreground/90'
-                  : 'text-foreground/90'}"
+                  ? 'target-effect-expiring text-foreground'
+                  : 'text-foreground'}"
             >
               {#if e.icon}
                 <img src={ICON_BASE + encodeURIComponent(e.icon)} alt="" class="size-full object-cover" />

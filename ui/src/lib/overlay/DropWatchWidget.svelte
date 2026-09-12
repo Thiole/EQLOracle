@@ -52,7 +52,7 @@
              so; yellow = assumed from a zone rule (header table, common
              pool) -- asked directly -->
         <span class="flex flex-wrap gap-x-1 text-[11px] font-normal">
-          <span class="text-foreground/70">drops</span>
+          <span class="text-foreground/95">drops</span>
           {#each m.drops as d, i (d)}
             <span class="whitespace-nowrap {m.assumed.includes(d) ? 'text-caution' : 'text-good'}" title={m.assumed.includes(d) ? 'assumed from a zone rule' : 'confirmed for this mob'}>{d}{i < m.drops.length - 1 ? ',' : ''}</span>
           {/each}

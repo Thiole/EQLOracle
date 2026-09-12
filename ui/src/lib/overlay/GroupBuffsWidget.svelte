@@ -66,14 +66,14 @@
   );
   const verdict = $derived(
     !data
-      ? { text: 'Buffs: …', tone: 'text-foreground/60' }
+      ? { text: 'Buffs: …', tone: 'text-foreground/90' }
       : !data.rows.length && !data.innates.length
-        ? { text: 'Buffs: unknown', tone: 'text-foreground/60' }
+        ? { text: 'Buffs: unknown', tone: 'text-foreground/90' }
         : missingInnates.length || ownRowsMissing
           ? { text: `Buffs: Warning (${counts})`, tone: 'text-bad' }
           : missing || upgrades
             ? { text: `Buffs: Others missing (${groupMissing} group)`, tone: 'text-caution' }
-            : { text: 'Buffs: OK', tone: 'text-foreground/70' },
+            : { text: 'Buffs: OK', tone: 'text-foreground/95' },
   );
 </script>
 
@@ -96,7 +96,7 @@
     <p class="text-muted-foreground">group buffs: no party</p>
   {:else}
     <div class="flex items-baseline justify-between">
-      <span class="font-medium {clean ? 'text-foreground/70' : 'text-caution'}">
+      <span class="font-medium {clean ? 'text-foreground/95' : 'text-caution'}">
         <!-- why: no rows means nothing is KNOWN, which is not the same as
              nothing being wrong -- saying "All good" there would be a
              claim the data does not support -->
@@ -110,18 +110,18 @@
                 upgrades ? `${upgrades} upgradeable` : '',
               ].filter(Boolean).join(', ')}
       </span>
-      <span class="truncate font-mono text-[10px] text-foreground/60" title="your classes">{data.my_classes.map(abbr).join('/')}</span>
+      <span class="truncate font-mono text-[10px] text-foreground/90" title="your classes">{data.my_classes.map(abbr).join('/')}</span>
     </div>
     {#if missing || upgrades || missingInnates.length || maybes.length}
-    <div class="truncate font-mono text-[10px] text-foreground/60" title="party -- confirmed classes count; ? means not confirmed yet">
+    <div class="truncate font-mono text-[10px] text-foreground/90" title="party -- confirmed classes count; ? means not confirmed yet">
       {#each data.party as m, i (m.name)}{i ? ' · ' : ''}<span title={m.buffs.length ? `on ${m.name}: ${m.buffs.join(', ')}` : `nothing seen landing on ${m.name}`}>{m.name} {m.classes.length ? m.classes.map(abbr).join('/') : '?'}{m.confirmed ? '' : '?'}{m.buffs.length ? ` +${m.buffs.length}` : ''}</span>{/each}
     </div>
     <div class="flex flex-col gap-0.5">
       {#each data.rows.filter((r) => !r.active || r.upgrade) as r (r.kind)}
         <div class="flex items-baseline justify-between gap-2">
-          <span class="text-foreground/80">{r.label}</span>
+          <span class="text-foreground">{r.label}</span>
           {#if r.active && !r.upgrade}
-            <span class="truncate text-foreground/60" title="on you">{r.active}</span>
+            <span class="truncate text-foreground/90" title="on you">{r.active}</span>
           {:else if r.active}
             <!-- why: up, but a better rank is castable -- name the better
                  line only. No arrow: "overlay should never show arrows";
@@ -148,7 +148,7 @@
         <div class="text-[10px] text-muted-foreground">innates</div>
         {#each missingInnates as i (i.line)}
           <div class="flex items-baseline justify-between gap-2 text-[10px]">
-            <span class="truncate text-foreground/80">{i.line}</span>
+            <span class="truncate text-foreground">{i.line}</span>
             <span class="truncate text-caution" title="cast it on yourself">{i.best_spell}</span>
           </div>
         {/each}
@@ -160,7 +160,7 @@
       <div class="flex flex-col gap-0.5 border-t border-foreground/15 pt-1">
         <div class="text-[10px] text-muted-foreground">maybe</div>
         {#each maybes as m (m.line + m.best_spell)}
-          <div class="flex items-baseline justify-between gap-2 text-[10px] text-foreground/55">
+          <div class="flex items-baseline justify-between gap-2 text-[10px] text-foreground/85">
             <span class="truncate">{m.line}</span>
             <span class="truncate">{m.best_spell}</span>
           </div>

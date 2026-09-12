@@ -47,7 +47,7 @@
      use the exact same width classes. gap-3 over the old gap-2: asked
      directly, more separation between columns. -->
 {#snippet columnLabels()}
-  <span class="flex shrink-0 items-center gap-3 font-mono text-[9px] tracking-wide text-foreground/50 uppercase">
+  <span class="flex shrink-0 items-center gap-3 font-mono text-[9px] tracking-wide text-foreground/85 uppercase">
     <span class="w-10 text-right" title="time in encounter -- from this entity's first action">time</span>
     <span class="w-12 text-right" title="total damage over the whole encounter">dmg</span>
     <span class="w-11 text-right" title="DPS over time in encounter">dps</span>
@@ -60,17 +60,17 @@
     <div class="relative overflow-hidden rounded-sm bg-foreground/10">
       <div class="absolute inset-y-0 left-0 {barClass}" style:width="{r.pct}%"></div>
       <div class="relative flex items-center gap-3 px-1.5 py-0.5">
-        <span class="min-w-0 flex-1 truncate {r.is_pet ? 'text-foreground/70 italic' : 'text-foreground'}"
+        <span class="min-w-0 flex-1 truncate {r.is_pet ? 'text-foreground/95 italic' : 'text-foreground'}"
           >{r.name}<!--
           why: an AoE lands one line per target, so N of one name in a
                single instant is a census. Shown as "x5+" because it is a
                high-water mark, never a live count -- nothing in the log
                says how many are up right now.
-        -->{#if r.instances}<span class="ml-1 font-mono text-[10px] text-foreground/60" title="{r.instances} of these were up at once, seen when an area effect landed on all of them">&times;{r.instances}+</span>{/if}</span>
-        <span class="w-10 shrink-0 text-right font-mono text-[10px] text-foreground/70 tabular-nums" title="time in encounter -- from this entity's first action">{fmtActive(r.active_ms)}</span>
-        <span class="w-12 shrink-0 text-right font-mono text-foreground/80 tabular-nums" title="total damage over the whole encounter">{fmtCompact(r.total)}</span>
+        -->{#if r.instances}<span class="ml-1 font-mono text-[10px] text-foreground/90" title="{r.instances} of these were up at once, seen when an area effect landed on all of them">&times;{r.instances}+</span>{/if}</span>
+        <span class="w-10 shrink-0 text-right font-mono text-[10px] text-foreground/95 tabular-nums" title="time in encounter -- from this entity's first action">{fmtActive(r.active_ms)}</span>
+        <span class="w-12 shrink-0 text-right font-mono text-foreground tabular-nums" title="total damage over the whole encounter">{fmtCompact(r.total)}</span>
         <span class="w-11 shrink-0 text-right font-mono text-foreground tabular-nums" title="DPS over time in encounter">{r.dps.toFixed(0)}</span>
-        <span class="w-8 shrink-0 text-right font-mono text-[10px] text-foreground/70 tabular-nums" title="share of this side's damage">{r.pct.toFixed(0)}%</span>
+        <span class="w-8 shrink-0 text-right font-mono text-[10px] text-foreground/95 tabular-nums" title="share of this side's damage">{r.pct.toFixed(0)}%</span>
       </div>
     </div>
   {/each}
@@ -99,12 +99,12 @@
          target sits UNDER it, as asked -->
     <div class="truncate font-medium text-foreground">
       encounter
-      <span class="ml-1 font-mono text-[10px] text-foreground/70 tabular-nums" title="encounter clock -- from your first involvement">{fmtActive(meter.duration_ms)}</span>
-      <span class="ml-1 font-mono text-[10px] text-foreground/70" title="allies dealing damage v enemies involved">{meter.ally_count} v {meter.enemy_count}</span>{meter.open ? '' : ' (ended)'}
+      <span class="ml-1 font-mono text-[10px] text-foreground/95 tabular-nums" title="encounter clock -- from your first involvement">{fmtActive(meter.duration_ms)}</span>
+      <span class="ml-1 font-mono text-[10px] text-foreground/95" title="allies dealing damage v enemies involved">{meter.ally_count} v {meter.enemy_count}</span>{meter.open ? '' : ' (ended)'}
     </div>
     {#if meter.current_target}
-      <div class="truncate text-[10px] text-foreground/70">
-        current target: {meter.current_target}{#if meter.scope === 'target'}<span class="ml-1 text-foreground/50" title="Ally side counts only what landed on this mob">· single target</span>{/if}
+      <div class="truncate text-[10px] text-foreground/95">
+        current target: {meter.current_target}{#if meter.scope === 'target'}<span class="ml-1 text-foreground/85" title="Ally side counts only what landed on this mob">· single target</span>{/if}
       </div>
     {/if}
 
