@@ -102,3 +102,85 @@ fn an_explicit_leave_line_empties_the_party_and_later_shared_damage_does_not_und
         dto.party
     );
 }
+
+/// why: rule L10 -- a begin-cast is proof of the ABILITY to cast, so each
+/// one raises the floor and nothing lowers it. Alacrity is ENC 21,
+/// Augmentation ENC 28; a later cheaper cast must not walk it back.
+#[test]
+fn each_cast_raises_the_floor_and_a_cheaper_one_never_lowers_it() {
+    let ing = run(concat!(
+        "[Wed Sep 09 18:40:00 2026] You have entered The Northern Desert of Ro.\n",
+        "[Wed Sep 09 18:40:05 2026] [60 ENC/WIZ/CLR] Manipulator (Human)  ZONE: The Northern Desert of Ro (nro)  \n",
+        "[Wed Sep 09 18:40:10 2026] Maenn has joined the group.\n",
+        "[Wed Sep 09 18:41:00 2026] Maenn begins casting Quickness.\n",
+        "[Wed Sep 09 18:42:00 2026] Maenn begins casting Augmentation.\n",
+        "[Wed Sep 09 18:43:00 2026] Maenn begins casting Alacrity.\n",
+    ));
+    let now = ing.now_ms();
+    let (level, from_who) = ing.ally_level("Maenn", now);
+    assert!(!from_who, "no /who row was printed for Maenn");
+    assert_eq!(
+        level,
+        Some(28),
+        "the highest cast proves 28; a later Alacrity (21) must not lower it"
+    );
+}
+
+/// why: rule L10 -- player level is combo-dependent, so a floor proven in
+/// one zone visit says nothing about the next. Zoning drops it, matching
+/// C2's "evidence is grouped per zone visit" everywhere else.
+#[test]
+fn a_floor_does_not_survive_a_zone_change() {
+    let ing = run(concat!(
+        "[Wed Sep 09 18:40:00 2026] You have entered The Northern Desert of Ro.\n",
+        "[Wed Sep 09 18:40:05 2026] [60 ENC/WIZ/CLR] Manipulator (Human)  ZONE: The Northern Desert of Ro (nro)  \n",
+        "[Wed Sep 09 18:40:10 2026] Maenn has joined the group.\n",
+        "[Wed Sep 09 18:41:00 2026] Maenn begins casting Augmentation.\n",
+        "[Wed Sep 09 19:00:00 2026] You have entered The Greater Faydark.\n",
+    ));
+    assert_eq!(
+        ing.ally_level("Maenn", ing.now_ms()).0,
+        None,
+        "the floor belongs to the visit it was proven in"
+    );
+}
+
+/// why: rule L10's gate -- a class can be proven without any spell at all
+/// (Harm Touch is Shadow Knight, no cast line, no rank), which leaves a
+/// confirmed member with NO floor. That member caps at 0 and is credited
+/// nothing; the old gate waived the check and handed out ranks to 50.
+#[test]
+fn a_class_proven_without_a_cast_has_no_floor_and_is_credited_nothing() {
+    let mut log = String::from(
+        "[Wed Sep 09 18:40:00 2026] You have entered The Northern Desert of Ro.\n\
+         [Wed Sep 09 18:40:05 2026] [60 ENC/WIZ/CLR] Manipulator (Human)  ZONE: The Northern Desert of Ro (nro)  \n\
+         [Wed Sep 09 18:40:10 2026] Maenn has joined the group.\n",
+    );
+    // why: repeated class-only evidence, spread over encounters, is what
+    // clears the detector's bar -- one sighting is a guess
+    for d in 0..6 {
+        let h = 11 + d;
+        log.push_str(&format!(
+            "[Wed Sep 09 {h}:00:00 2026] Maenn begins to cast a spell.\n\
+             [Wed Sep 09 {h}:00:05 2026] Maenn lets loose a Harm Touch on a rock golem for 300 points of damage.\n\
+             [Wed Sep 09 {h}:00:09 2026] You have slain a rock golem!\n"
+        ));
+    }
+    let ing = run(&log);
+    let now = ing.now_ms();
+    let (level, _) = ing.ally_level("Maenn", now);
+    let dto = group_buffs(&ing, &[], None);
+    let credited: Vec<(&str, u32)> = dto
+        .rows
+        .iter()
+        .flat_map(|r| r.lines.iter())
+        .filter(|l| l.casters.iter().any(|c| c.eq_ignore_ascii_case("Maenn")))
+        .map(|l| (l.best_spell.as_str(), l.best_level))
+        .collect();
+    assert_eq!(level, None, "no cast and no /who row means no floor");
+    assert!(
+        credited.iter().all(|&(_, lvl)| lvl == 0),
+        "ranks credited to a member with no proven level: {credited:?} party={:?}",
+        dto.party
+    );
+}

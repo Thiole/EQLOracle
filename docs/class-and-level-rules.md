@@ -266,6 +266,19 @@ readily a written value is revised.
   dings had it at 32.
   Not yet implemented: the cast-time branch. Rank suffix and
   "no click source exists" cover 75,280 of 94,212 real casts today.
+- L10. A begin-cast is proof of the ABILITY to cast, and so of PLAYER
+  level, not of a class level: a 35 Wizard spell puts the caster at
+  player level 35 for every class in the combo, since a 50 Wizard in a
+  three-class combo may stand at 35. The floor is the MINIMUM
+  `spells_us.txt` level among the trio's classes that get the spell
+  (L8/G6) -- WIZ 25 / ENC 33 in a WIZ/ENC trio proves 25, never 33.
+  Kept per zone visit (C2) and monotonic inside it: each cast may raise
+  it, a cheaper cast never lowers it, and the next visit starts over
+  because the combo may have changed. The Group Buff Tracker offers a
+  rank only at or under the caster's confirmed level -- their /who row,
+  else this floor. With neither the ceiling is 0 and nothing is offered;
+  it used to fall through to the server cap and hand out every rank to
+  50.
 - L9. The Character Planner reads the rolling record, not configuration
   level ranges. The old estimator took the highest ding inside the
   sessions of configurations a class was confirmed in, so a class that

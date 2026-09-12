@@ -3,7 +3,8 @@
 //! class combo, is currently on you; else the missing ones and who could
 //! cast them. Party = the group tracker's current roster (pets excluded);
 //! a class is confirmed by a /who row in this chain or by the class
-//! detector's own bar; a level comes from /who only (unknown = any rank).
+//! detector's own bar; a level comes from /who, else the floor this
+//! zone's own casts prove (L8/L10). No confirmed level = no rank offered.
 
 use crate::ingest::Ingest;
 use crate::spelldata::{spells, Spell};
@@ -830,9 +831,15 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
                     // is listed Wizard 55), and an unknown ally level used
                     // to let every one of those through
                     && sc.level.is_none_or(|need| need <= u32::from(LEVEL_CAP))
-                    && member
-                        .level
-                        .is_none_or(|lvl| sc.level.is_none_or(|need| need <= u32::from(lvl)))
+                    // why: rule L10 -- a rank is offered only up to a level
+                    // this ally is CONFIRMED to have: their /who row, else
+                    // the floor their own casts prove in this zone. An
+                    // unknown level used to waive this gate entirely and
+                    // hand out every rank up to the server cap.
+                    && match member.level {
+                        Some(lvl) => sc.level.is_none_or(|need| need <= u32::from(lvl)),
+                        None => sc.level.is_none(),
+                    }
             });
             let Some(sc) = castable else { continue };
             let rank = sc.level.unwrap_or(0);
@@ -915,9 +922,11 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
             let Some(sc) = spell.classes.iter().find(|sc| {
                 my_classes.iter().any(|c| c == &sc.class)
                     && sc.level.is_none_or(|need| need <= u32::from(LEVEL_CAP))
-                    && me
-                        .level
-                        .is_none_or(|lvl| sc.level.is_none_or(|need| need <= u32::from(lvl)))
+                    // why: same L10 gate as the party side above
+                    && match me.level {
+                        Some(lvl) => sc.level.is_none_or(|need| need <= u32::from(lvl)),
+                        None => sc.level.is_none(),
+                    }
             }) else {
                 continue;
             };

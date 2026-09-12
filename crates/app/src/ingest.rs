@@ -1358,7 +1358,13 @@ pub struct Ingest {
     /// why: the lowest level someone must be to have cast what your log
     /// saw them cast -- their own /who row beats it, but without one this
     /// is the only level an ally has. Keyed like the roster (fold case).
-    pub implied_level: HashMap<String, u8>,
+    /// why: (visit, floor) -- the highest level a cast of theirs has PROVEN
+    /// in THIS zone visit (rule L10). Player level is combo-dependent, so a
+    /// floor proven under one loadout says nothing about the next visit;
+    /// evidence is grouped per visit everywhere else too (C2). Monotonic
+    /// within a visit: a begin-cast is proof of ability, a cheaper cast
+    /// never walks it back.
+    pub implied_level: HashMap<String, (Option<usize>, u8)>,
     /// why: keep every row and ping instead of folding finished zones --
     /// off in the app (see the zone cull), on for probes that analyse the
     /// whole log after the fact
@@ -1823,8 +1829,16 @@ impl Ingest {
             .min();
         let Some(level) = lowest else { return };
         let level = level.min(u32::from(u8::MAX)) as u8;
-        let e = self.implied_level.entry(who.to_lowercase()).or_insert(0);
-        *e = (*e).max(level);
+        let visit = self.zone.index_at(ts);
+        let e = self
+            .implied_level
+            .entry(who.to_lowercase())
+            .or_insert((visit, 0));
+        if e.0 == visit {
+            e.1 = e.1.max(level);
+        } else {
+            *e = (visit, level);
+        }
     }
 
     /// why: one class-evidence line about someone who is not you -- their
@@ -2010,7 +2024,15 @@ impl Ingest {
     pub fn ally_level(&self, who: &str, at: Millis) -> (Option<u8>, bool) {
         match self.ally_who(who, at) {
             Some((lvl, _)) => (Some(lvl), true),
-            None => (self.implied_level.get(&who.to_lowercase()).copied(), false),
+            None => {
+                let visit = self.zone.index_at(at);
+                let lvl = self
+                    .implied_level
+                    .get(&who.to_lowercase())
+                    .filter(|(v, _)| *v == visit)
+                    .map(|(_, l)| *l);
+                (lvl, false)
+            }
         }
     }
 
