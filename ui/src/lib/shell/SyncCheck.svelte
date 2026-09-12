@@ -6,7 +6,7 @@
   // health check: what is stale and the command that fixes it.
   import { api, type SyncCheckDto, type SyncRowDto } from '$lib/tauri/api';
   import { copyText } from '$lib/clipboard';
-  import { refreshOn } from '$lib/tauri/events';
+  import { listen } from '$lib/tauri/invoke';
   import { status } from '$lib/stores/status';
   import CopyIcon from '@lucide/svelte/icons/copy';
 
@@ -83,13 +83,18 @@
   });
 
   $effect(() => {
-    // why: `outputfile` is the dump rule's own kind, so this fires the
-    // moment the log picks up a command the player just ran -- the chip
-    // and the open panel both read `check`, so both update in place
-    const stopTrigger = refreshOn(['outputfile'], () => void refresh());
+    // why: pushed, not polled -- the backend emits the whole state the
+    // moment the log carries an Outputfile Complete line, so this costs
+    // nothing per tick and lands whether or not the panel is open
+    let stop: (() => void) | undefined;
+    void listen<SyncCheckDto>('sync-check', (e) => {
+      check = e.payload;
+    }).then((un) => {
+      stop = un;
+    });
     document.addEventListener('pointerdown', onDocPointerDown);
     return () => {
-      stopTrigger();
+      stop?.();
       document.removeEventListener('pointerdown', onDocPointerDown);
     };
   });

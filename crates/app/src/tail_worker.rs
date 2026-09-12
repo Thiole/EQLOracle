@@ -602,6 +602,9 @@ fn emit_tick(
     let recent = std::mem::take(&mut ing.recent);
     let finished = std::mem::take(&mut ing.pending_history);
     let inventory_files = std::mem::take(&mut ing.pending_inventory_files);
+    // why: Sync Check is pushed, not polled -- the log line IS the event,
+    // so the panel updates whether or not anything is looking at it
+    let dump_ts = (!inventory_files.is_empty()).then(|| ing.dump_ts.clone());
     let notifications = std::mem::take(&mut ing.pending_notifications);
     // why: one lock hold; None unless save_profile is on, avoids paying
     // for reconciliation work on every tick when the feature is off
@@ -637,6 +640,22 @@ fn emit_tick(
         }
     }
     // why: only readable dumps notify; frontend fetches via IPC
+    if let Some(dumps) = dump_ts {
+        let base_dir = app
+            .state::<crate::state::AppState>()
+            .config
+            .lock_recover()
+            .as_ref()
+            .map(|c| c.base_dir.clone());
+        let _ = app.emit(
+            "sync-check",
+            crate::outputfiles::sync_check(
+                &dumps,
+                base_dir.as_deref(),
+                crate::outputfiles::log_row(st.file.as_deref(), st.watching),
+            ),
+        );
+    }
     for file in inventory_files.iter().filter(|f| is_inventory_dump(f)) {
         let _ = app.emit(
             "inventory-dump",

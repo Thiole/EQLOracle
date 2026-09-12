@@ -6,10 +6,11 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// why: (kind, filename suffix, command, primary, app reads it). Suffixes
-/// for the first four are confirmed from real Outputfile Complete lines;
-/// the rest are the command's own names and stay unconfirmed until one
-/// is actually written.
+/// why: (kind, filename suffix, command, primary, app reads it).
+/// Confirmed against real Outputfile Complete lines: Inventory,
+/// Achievements, Spellbook, Factions, and missingspells (which has no
+/// fixed suffix at all -- see `file_matches`). The rest are the
+/// command's own names and stay unconfirmed until one is written.
 pub const KINDS: &[(&str, &str, &str, bool, bool)] = &[
     (
         "inventory",
@@ -62,21 +63,68 @@ pub const KINDS: &[(&str, &str, &str, bool, bool)] = &[
         false,
         false,
     ),
+    // why: the game rejects a bare `recipes` -- "Usage: /outputfile
+    // recipes [alchemy | baking | ...]", seen in the real log
     (
         "recipes",
         "-Recipes.txt",
-        "/outputfile recipes",
+        "/outputfile recipes <tradeskill>",
+        false,
+        false,
+    ),
+    // why: writes "<Class> Spells_<server>-<date>-<time>.txt", a new file
+    // per run with no fixed suffix -- confirmed twice in the real log
+    (
+        "missingspells",
+        " Spells_",
+        "/outputfile missingspells",
         false,
         false,
     ),
 ];
+
+/// why: every kind but one is a plain suffix; missingspells stamps the
+/// date into the name, so it needs its own test rather than a fake suffix
+fn file_matches(kind: &str, suffix: &str, name: &str) -> bool {
+    match kind {
+        "missingspells" => name.contains(suffix) && name.ends_with(".txt"),
+        _ => name.ends_with(suffix),
+    }
+}
+
+/// why: built the same way for the on-demand command and the pushed
+/// event, so the two can never disagree about the log's own row
+pub fn log_row(file: Option<&str>, watching: bool) -> SyncRowDto {
+    let (status, detail) = match (file, watching) {
+        (Some(f), true) => ("ok", format!("Tailing {f}.")),
+        (Some(f), false) => (
+            "fix",
+            format!("{f} found but not being watched. Check the folder setting."),
+        ),
+        (None, _) => (
+            "missing",
+            "No log file found. Turn logging on in game with /log on.".to_string(),
+        ),
+    };
+    SyncRowDto {
+        kind: "log".to_string(),
+        label: "Combat log".to_string(),
+        primary: true,
+        status: status.to_string(),
+        file: file.map(str::to_string),
+        modified_ms: None,
+        dumped_at_ms: None,
+        detail,
+        command: Some("/log on".to_string()),
+    }
+}
 
 /// why: which kind a dump filename belongs to -- the Outputfile Complete
 /// line states only the name, and `Ingest` keys its dump clock by kind
 pub fn kind_of(file: &str) -> Option<&'static str> {
     KINDS
         .iter()
-        .find(|(_, suffix, _, _, _)| file.ends_with(suffix))
+        .find(|(kind, suffix, _, _, _)| file_matches(kind, suffix, file))
         .map(|(kind, ..)| *kind)
 }
 
@@ -94,11 +142,15 @@ fn modified_ms(path: &Path) -> Option<Millis> {
     Millis::try_from(d.as_millis()).ok()
 }
 
-fn newest(base_dir: &Path, suffix: &str) -> Option<PathBuf> {
+fn newest_of(base_dir: &Path, kind: &str, suffix: &str) -> Option<PathBuf> {
     std::fs::read_dir(base_dir)
         .ok()?
         .filter_map(Result::ok)
-        .filter(|e| e.file_name().to_str().is_some_and(|n| n.ends_with(suffix)))
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .is_some_and(|n| file_matches(kind, suffix, n))
+        })
         .max_by_key(|e| e.metadata().and_then(|m| m.modified()).ok())
         .map(|e| e.path())
 }
@@ -109,7 +161,7 @@ pub fn list(base_dir: &Path) -> Vec<OutputfileDto> {
         .iter()
         .filter(|(.., reads)| *reads)
         .map(|(kind, suffix, command, _, _)| {
-            let path = newest(base_dir, suffix);
+            let path = newest_of(base_dir, kind, suffix);
             OutputfileDto {
                 kind: kind.to_string(),
                 command: command.to_string(),
@@ -191,6 +243,7 @@ fn label_for(kind: &str) -> String {
         "guild" => "Guild",
         "raid" => "Raid",
         "recipes" => "Recipes",
+        "missingspells" => "Missing spells",
         other => other,
     }
     .to_string()
@@ -234,7 +287,7 @@ pub fn sync_check(
     let found: Vec<(&str, Option<PathBuf>, Option<Millis>)> = KINDS
         .iter()
         .map(|(kind, suffix, ..)| {
-            let path = base_dir.and_then(|d| newest(d, suffix));
+            let path = base_dir.and_then(|d| newest_of(d, kind, suffix));
             let mtime = path.as_deref().and_then(modified_ms);
             (*kind, path, mtime)
         })
@@ -303,19 +356,6 @@ pub fn sync_check(
             command: Some(command.to_string()),
         });
     }
-    // why: the spellbook dump already lists what is scribed, so what is
-    // missing is the complement -- a separate dump would say nothing new
-    rows.push(SyncRowDto {
-        kind: "missingspells".to_string(),
-        label: "Missing spells".to_string(),
-        primary: false,
-        status: "inferred".to_string(),
-        file: None,
-        modified_ms: None,
-        dumped_at_ms: None,
-        detail: "Worked out from the spellbook dump. No separate file needed.".to_string(),
-        command: None,
-    });
     let worst = |s: &str| match s {
         "missing" => 3,
         "fix" => 2,
@@ -384,7 +424,11 @@ mod tests {
         );
         assert_eq!(by("spellbook").status, "missing", "no file at all");
         assert_eq!(by("guild").status, "optional", "secondary, never written");
-        assert_eq!(by("missingspells").status, "inferred");
+        assert_eq!(
+            by("missingspells").status,
+            "optional",
+            "a real dump kind, just not one anything needs"
+        );
         assert_eq!(out.overall, "missing", "worst primary row wins");
         let _ = std::fs::remove_dir_all(&d);
     }

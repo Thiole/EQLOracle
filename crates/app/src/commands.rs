@@ -1670,30 +1670,12 @@ pub fn get_sync_check(state: State<AppState>) -> outputfiles::SyncCheckDto {
         .as_ref()
         .map(|c| c.base_dir.clone());
     let st = state.status.lock_recover().clone();
-    let (status, detail) = match (&st.file, st.watching) {
-        (Some(f), true) => ("ok", format!("Tailing {f}.")),
-        (Some(f), false) => (
-            "fix",
-            format!("{f} found but not being watched. Check the folder setting."),
-        ),
-        (None, _) => (
-            "missing",
-            "No log file found. Turn logging on in game with /log on.".to_string(),
-        ),
-    };
-    let log_row = outputfiles::SyncRowDto {
-        kind: "log".to_string(),
-        label: "Combat log".to_string(),
-        primary: true,
-        status: status.to_string(),
-        file: st.file.clone(),
-        modified_ms: None,
-        dumped_at_ms: None,
-        detail,
-        command: Some("/log on".to_string()),
-    };
     let dumps = state.ingest.lock_recover().dump_ts.clone();
-    outputfiles::sync_check(&dumps, base_dir.as_deref(), log_row)
+    outputfiles::sync_check(
+        &dumps,
+        base_dir.as_deref(),
+        outputfiles::log_row(st.file.as_deref(), st.watching),
+    )
 }
 
 /// why: the visit an assignment keys on -- the viewed fight's own visit,
