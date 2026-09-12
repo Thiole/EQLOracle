@@ -3803,8 +3803,13 @@ mod live_meter_window_tests {
             a.pets.iter().map(|p| (p.name.clone(), p.total)).collect()
         };
         assert_eq!(you.total, 50, "your fire giant stays yours: {mine:?}");
-        let inst = |seq| crate::ingest::charm_instance_name(Some(0), "a fire giant", seq);
-        assert_eq!(parts(you), [(inst(1), 40)]);
+        // why: the id is minted from visit, caster and offset -- what
+        // matters is that each charmer's pet is its OWN instance, not what
+        // the arithmetic spells
+        let your_parts = parts(you);
+        assert_eq!(your_parts.len(), 1, "one pet part: {your_parts:?}");
+        assert_eq!(your_parts[0].1, 40);
+        assert!(your_parts[0].0.starts_with("a fire giant (charmed "));
         assert!(
             !mine.iter().any(|a| a.name == "Sidhe"),
             "Sidhe's later charm must not appear in your fight: {mine:?}"
@@ -3815,7 +3820,13 @@ mod live_meter_window_tests {
             .find(|a| a.name == "Sidhe")
             .unwrap_or_else(|| panic!("Sidhe's row in the later fight: {theirs:?}"));
         assert_eq!(sidhe.total, 50, "and the later one is Sidhe's: {theirs:?}");
-        assert_eq!(parts(sidhe), [(inst(2), 40)], "its own instance");
+        let their_parts = parts(sidhe);
+        assert_eq!(their_parts.len(), 1, "one pet part: {their_parts:?}");
+        assert_eq!(their_parts[0].1, 40);
+        assert_ne!(
+            their_parts[0].0, your_parts[0].0,
+            "Sidhe's charm is its own instance, not yours"
+        );
     }
 
     /// why: right-click > assign to player -- a mob no log line ties to an
@@ -3867,9 +3878,10 @@ mod live_meter_window_tests {
             .expect("the charmer's row");
         assert_eq!(kaeus.total, 90, "50 of his own plus the pet's 40");
         assert_eq!(kaeus.pets.len(), 1, "and the part is kept");
-        assert_eq!(
-            kaeus.pets[0].name,
-            crate::ingest::charm_instance_name(Some(0), "an abhorrent", 1)
+        assert!(
+            kaeus.pets[0].name.starts_with("an abhorrent (charmed "),
+            "the part is the charm instance: {}",
+            kaeus.pets[0].name
         );
         assert_eq!(kaeus.pets[0].total, 40);
         assert!(

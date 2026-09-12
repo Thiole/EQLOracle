@@ -107,6 +107,17 @@ pub struct PartyMemberDto {
     /// why: only meaningful for "weak" -- how many real, gap-separated
     /// occasions of shared-target evidence this crossed
     pub sessions: u32,
+    /// why: what the app believes this member has out right now -- at most
+    /// one charm (the game's rule), plus any summoned or behaviour-matched
+    /// pet still attributed to them
+    pub pets: Vec<PetBeliefDto>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PetBeliefDto {
+    pub name: String,
+    /// why: "charm" | "summoned" | "behaviour" -- which evidence put it here
+    pub kind: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -123,6 +134,9 @@ pub struct GameStateDto {
     pub your_classes: Vec<String>,
     /// why: directly observed from real level.up lines, not a per-class estimate
     pub your_level: Option<u8>,
+    /// why: the other side of the open fights -- what reads enemy and has
+    /// not died yet, so the two columns can be compared at a glance
+    pub enemies: Vec<String>,
 }
 
 /// why: "Game State" debug tab -- a compact, live dump of what the
@@ -133,10 +147,17 @@ pub struct GameStateDto {
 /// a player" is identity, not membership, and stays a count.
 pub fn game_state(ing: &Ingest) -> GameStateDto {
     let now = ing.now_ms();
+    let pets_of = |ing: &Ingest, who: &str| -> Vec<PetBeliefDto> {
+        ing.pets_believed_of(who, now)
+            .into_iter()
+            .map(|(name, kind)| PetBeliefDto { name, kind })
+            .collect()
+    };
     let mut party = vec![PartyMemberDto {
         name: "You".to_string(),
         via: "you",
         sessions: 0,
+        pets: pets_of(ing, "You"),
     }];
 
     // why: GroupTracker's roster, resolved through display_name for real
@@ -149,10 +170,12 @@ pub fn game_state(ing: &Ingest) -> GameStateDto {
         if display.eq_ignore_ascii_case("you") {
             continue;
         }
+        let pets = pets_of(ing, &display);
         party.push(PartyMemberDto {
             name: display,
             via: via.name(),
             sessions,
+            pets,
         });
     }
 
@@ -168,5 +191,6 @@ pub fn game_state(ing: &Ingest) -> GameStateDto {
         known_players: ing.encounters.entities.players().count(),
         your_classes,
         your_level: ing.levels.latest(),
+        enemies: ing.living_enemies(now),
     }
 }

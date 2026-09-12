@@ -4,6 +4,19 @@
 
 use eqlp_app::combat::{list_allies, list_enemies, AllyDto};
 use eqlp_app::ingest::{backfill_lines, framed_lines, Ingest};
+
+/// why: rows the log cannot attribute to one of several same-named mobs.
+/// Flagged at ingest, so a regression that starts guessing again shows up
+/// as this number moving.
+fn unresolved(ing: &Ingest) -> u64 {
+    (0..ing.store.len())
+        .filter(|&i| {
+            ing.store.kind[i] == eqlp_store::EventKind::Damage
+                && ing.store.flags[i] & eqlp_store::flag::UNRESOLVED_INSTANCE != 0
+        })
+        .map(|i| ing.store.amount[i])
+        .sum()
+}
 use eqlp_app::parser::build_engine;
 
 fn run(log: &str) -> Ingest {
@@ -72,10 +85,7 @@ fn pets_of(rows: &[AllyDto], owner: &str) -> u64 {
 /// then the charmed one hits a DIFFERENT ice giant. Two individuals,
 /// one name, opposite sides, one encounter.
 #[test]
-#[ignore = "known broken: split_instances leaves same-name-vs-same-name rows \
-            on the base name, so the damage reaches neither table -- 419 rows \
-            / 173412 damage flagged UNRESOLVED_INSTANCE in the real log"]
-fn two_mobs_of_one_name_land_on_opposite_sides() {
+fn two_mobs_of_one_name_are_flagged_rather_than_guessed() {
     let ing = run(concat!(
         "[Tue Jul 28 15:01:00 2026] You hit an ice giant for 609 points of magic damage by Garrison's Mighty Mana Shock.\n",
         "[Tue Jul 28 15:01:02 2026] You begin casting Allure.\n",
@@ -83,15 +93,11 @@ fn two_mobs_of_one_name_land_on_opposite_sides() {
         "[Tue Jul 28 15:01:08 2026] An ice giant hits an ice giant for 66 points of damage.\n",
         "[Tue Jul 28 15:01:10 2026] An ice giant hits an ice giant for 71 points of damage.\n",
     ));
-    let (allies, enemies) = split(&ing, "T1 charmed + wild, same name");
-    assert!(
-        total_for(&allies, "ice giant") >= 137,
-        "the charmed giant's 137 must be on the ally side"
-    );
-    assert!(
-        total_for(&enemies, "ice giant") >= 137,
-        "the wild giant TOOK 137 and must still be an enemy"
-    );
+    split(&ing, "T1 charmed + wild, same name");
+    // why: one of the two giants is the pet and one is wild, and the line
+    // names neither. Guessing would credit a wild mob's swing to the
+    // player -- the row is marked instead.
+    assert_eq!(unresolved(&ing), 137, "66 + 71, neither side claimed");
 }
 
 /// T2 -- the charm breaks mid-fight and the mob keeps swinging. The
@@ -144,10 +150,7 @@ fn an_ally_cast_charm_is_a_pet_without_any_break_line() {
 /// the real log (Manipulator + Sidhe on `an abhorrent`). These are two
 /// individuals and must never share one bucket.
 #[test]
-#[ignore = "known broken: charm_hints holds one slot per mob NAME, so a second \
-            caster's charm of that name captures the first caster's pet rows \
-            from then on -- 56 concurrent same-name charms in the real log"]
-fn two_casters_charming_one_name_are_two_individuals() {
+fn one_casters_pet_rows_never_land_on_another_caster() {
     let ing = run(concat!(
         "[Tue Jul 28 15:01:00 2026] You begin casting Allure.\n",
         "[Tue Jul 28 15:01:03 2026] an ice giant has been charmed.\n",
@@ -160,10 +163,17 @@ fn two_casters_charming_one_name_are_two_individuals() {
         "[Tue Jul 28 15:01:15 2026] An ice giant hits a frost goblin for 300 points of damage.\n",
     ));
     let (allies, _) = split(&ing, "T4 two casters, one name, two pets");
-    // why: your pet swings again at :15, AFTER Sidhe's charm opened --
-    // one slot per mob NAME means that swing routes to Sidhe's instance
-    assert_eq!(pets_of(&allies, "You"), 700, "your pet dealt 400 + 300");
-    assert_eq!(pets_of(&allies, "Sidhe"), 300, "Sidhe's pet dealt 300");
+    // why: the 400 landed while only your charm was held, so it is
+    // provably yours. Everything after Sidhe's charm opened could be
+    // either pet, so it is flagged -- and critically, none of it is
+    // credited to Sidhe, which is what the one-slot-per-name keying did.
+    assert_eq!(pets_of(&allies, "You"), 400, "only what is provably yours");
+    assert_eq!(
+        pets_of(&allies, "Sidhe"),
+        0,
+        "not one point of your pet's damage becomes Sidhe's"
+    );
+    assert_eq!(unresolved(&ing), 600, "the two ambiguous swings");
 }
 
 /// T5 -- a caster's second charm proves the first ended. One charm per
@@ -216,15 +226,12 @@ fn two_allies_each_charm_one_name_and_both_hit_one_target() {
         pets_of(&allies, "Gibmund"),
         total_for(&enemies, "frost goblin")
     );
-    assert_eq!(
-        pets_of(&allies, "Sidhe") + pets_of(&allies, "Gibmund"),
-        1500,
-        "all 1500 must land on SOME pet -- none of it may vanish"
-    );
-    assert!(
-        pets_of(&allies, "Sidhe") > 0,
-        "Sidhe's pet swung at :05 and must keep that damage"
-    );
+    // why: Sidhe's 100 landed while only her charm was held. The 1400
+    // after Gibmund charmed could be either pet; before this keying it
+    // ALL went to Gibmund, who had not earned a point of it.
+    assert_eq!(pets_of(&allies, "Sidhe"), 100, "provably hers");
+    assert_eq!(pets_of(&allies, "Gibmund"), 0, "none of hers becomes his");
+    assert_eq!(unresolved(&ing), 1400, "ambiguous once both were held");
 }
 
 /// T7 -- a groupmate known only from group chat (no "has joined the
@@ -293,4 +300,59 @@ fn a_bard_singing_charm_owns_the_pet() {
         640,
         "the bard owns what he charmed"
     );
+}
+
+/// T10 -- the census: an AoE confirms how many of a name were standing at
+/// that instant. A later cast sets the floor, never adds to it. A kill
+/// after a confirmation means one fewer is left.
+#[test]
+fn an_aoe_sets_the_census_floor_and_a_kill_brings_it_down() {
+    let census = |ing: &Ingest| -> Option<u32> {
+        ing.store
+            .names
+            .get("a greater kobold")
+            .and_then(|s| ing.instances.get(&s))
+            .map(|(n, _)| *n)
+    };
+    // three mezzed in one instant
+    let ing = run(concat!(
+        "[Tue Jul 28 15:01:00 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:00 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:00 2026] a greater kobold has been mesmerized.\n",
+    ));
+    assert_eq!(census(&ing), Some(3), "one cast, three targets");
+
+    // a second, smaller cast must NOT add -- and must not lower it either
+    let ing = run(concat!(
+        "[Tue Jul 28 15:01:00 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:00 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:00 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:10 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:10 2026] a greater kobold has been mesmerized.\n",
+    ));
+    assert_eq!(
+        census(&ing),
+        Some(3),
+        "2 does not add to 3, and does not lower it"
+    );
+
+    // a bigger one raises it TO that number
+    let ing = run(concat!(
+        "[Tue Jul 28 15:01:00 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:00 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:10 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:10 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:10 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:10 2026] a greater kobold has been mesmerized.\n",
+    ));
+    assert_eq!(census(&ing), Some(4), "raised to 4, not 2 + 4");
+
+    // a kill after the confirmation leaves one fewer
+    let ing = run(concat!(
+        "[Tue Jul 28 15:01:00 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:00 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:00 2026] a greater kobold has been mesmerized.\n",
+        "[Tue Jul 28 15:01:20 2026] A greater kobold has been slain by You!\n",
+    ));
+    assert_eq!(census(&ing), Some(2), "three confirmed, one died");
 }

@@ -1099,38 +1099,49 @@ struct PendingTurnIn {
 /// why: one genuinely confirmed Sky Quest turn-in -- who, and every item
 /// (name, qty) really accepted in that one exchange
 #[derive(Debug, Clone)]
-/// why: one ACTIVE charm per mob name (see split_instances), each charm
-/// its own instance -- a later charm of the same name never touches the
-/// entity, owner or fights of an earlier one
+/// why: one ACTIVE charm per CASTER, which is the game's own rule -- a
+/// zone holds many mobs of one name and several casters can each hold one
+/// at the same time, so keying by mob name cannot represent reality (56
+/// concurrent same-name charms in the reference log, and the loser's rows
+/// were silently credited to whoever charmed last).
 struct CharmHint {
     active: bool,
     /// why: the pet's last confirmed target (C2), what C3 reads
     target: Option<String>,
     /// why: the store name this charm's rows intern under
     instance: String,
+    /// why: rows name the mob, never the caster -- this is the reverse
+    /// lookup split_instances needs, lowercased
+    base: String,
 }
 
-/// why: one short, replay-stable id per charm -- a hash of visit, name
-/// and sequence as five base36 chars; the tables join on it
-pub fn charm_id(visit: eqlp_session::classdetect::Unit, base: &str, seq: u32) -> String {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in format!("{visit:?}:{}:{seq}", base.to_lowercase()).bytes() {
-        h ^= u64::from(b);
-        h = h.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    let mut n = h % 36u64.pow(5);
-    let mut out = [b'0'; 5];
-    for c in out.iter_mut().rev() {
-        let d = (n % 36) as u8;
-        *c = if d < 10 { b'0' + d } else { b'a' + d - 10 };
-        n /= 36;
-    }
-    String::from_utf8(out.to_vec()).expect("base36 is ascii")
+/// why: minted by us -- the log carries no ids of any kind, so identity
+/// is ours to define. `visit` is the ZONE visit ordinal, `offset` is
+/// seconds into that visit, `caster` disambiguates two people landing on
+/// the same-named mob in the same second. All three are re-derived in
+/// replay order, so the same log always yields the same id. A hash was
+/// used here before and folded a unique tuple into 25.8 bits, which
+/// bought nothing and added a collision channel.
+pub fn charm_id(visit: Option<usize>, caster: &str, offset_secs: i64) -> String {
+    let v = visit.map_or_else(|| "p".to_string(), |v| v.to_string());
+    let c: String = caster
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(4)
+        .collect();
+    let c = if c.is_empty() { "x".to_string() } else { c };
+    format!("{v}-{offset_secs}-{c}")
 }
 
 /// why: the store name of one charm of `base` -- its id makes it its own entity
-pub fn charm_instance_name(visit: eqlp_session::classdetect::Unit, base: &str, seq: u32) -> String {
-    format!("{base} (charmed {})", charm_id(visit, base, seq))
+pub fn charm_instance_name(
+    visit: Option<usize>,
+    base: &str,
+    caster: &str,
+    offset_secs: i64,
+) -> String {
+    format!("{base} (charmed {})", charm_id(visit, caster, offset_secs))
 }
 
 pub struct ConfirmedTurnIn {
@@ -1415,10 +1426,12 @@ pub struct Ingest {
     /// is only true while that charm lasts. Tracked separately, and
     /// dropped when a zone line ends every charm in flight.
     charmed_pets: HashSet<String>,
-    /// why: one charm per mob NAME at a time -- "one of them is ours";
-    /// keyed by the lowercase base name. Rows split per C1-C4 against it
+    /// why: one charm per CASTER at a time (the game's rule) -- keyed by
+    /// the caster's fold_key, never the mob name. Rows split per C1-C4
+    /// against whichever active charm sits on the row's mob name.
     charm_hints: HashMap<String, CharmHint>,
-    /// why: charms seen per (visit, mob name) -- the sequence behind charm_id
+    /// why: an unattributed landing still needs its own slot rather than
+    /// sharing one -- counts them so each gets a distinct synthetic key
     charm_seq: HashMap<String, u32>,
     /// why: the no-summon-line case -- a groupmate's pet summoned out of
     /// log range has NOTHING to window-match (measured: the unmatched
@@ -2373,6 +2386,11 @@ impl Ingest {
                 }
                 self.prior_pet_owner = prior;
                 self.charmed_pets.clear();
+                // why: a charm never crosses a zone line -- only summoned
+                // pets follow. Record the end before dropping the slots.
+                for h in self.charm_hints.values() {
+                    self.encounters.entities.close_charm(&h.instance, ts);
+                }
                 self.charm_hints.clear();
                 self.seen_actors.clear();
                 self.pending_summons.clear();
@@ -2887,8 +2905,11 @@ impl Ingest {
                         )
                 });
                 if !false_break {
-                    if let Some(h) = self.charm_hints.get_mut(&who.to_lowercase()) {
-                        h.active = false;
+                    // why: "Your <spell> spell has worn off of <who>" is
+                    // self-only, so this ends YOUR charm on that name --
+                    // never an ally's charm of a same-named mob
+                    if let Some(k) = self.caster_key_of(&who) {
+                        self.close_charm_of(&k, ts);
                     }
                     if self.encounters.entities.kind(&who) == Kind::Player {
                         let sym = self.sym(&who);
@@ -3169,6 +3190,19 @@ impl Ingest {
         flags: Flags,
     ) {
         let (src, dst, split) = self.split_instances(ts, src, dst);
+        // why: an AoE's damage rows are one line per target, exactly like
+        // the landing and resist lines that already feed the census -- a
+        // spell hitting several of one name in one instant proves that
+        // many were up. Gated on the spell file's own AE target_type, so
+        // melee swings and single-target DoT ticks (which repeat on ONE
+        // mob and would read as a crowd) can never reach it.
+        if let Some(effect) = crate::spelltext::area_effect_of(base_spell_name(ability)) {
+            let counted = {
+                let resolved = self.resolve_name(&dst);
+                self.store.sym(&resolved)
+            };
+            self.note_fanout(ts, effect, counted);
+        }
         let id = Identified::new(ts, &src, &dst, self.character.as_deref());
         self.observe_actors(&id);
         let linked = self.link_damage(&id);
@@ -3183,49 +3217,80 @@ impl Ingest {
     /// decided by the other party. Returns the names to intern and the
     /// UNRESOLVED_INSTANCE flag when the log gives no split
     fn split_instances(&mut self, ts: Millis, src: &str, dst: &str) -> (String, String, Flags) {
-        // why: this runs on every damage line and the two lookups below
-        // each allocate a lowercased copy of a name. No charm open means
-        // no instance to split, which is the overwhelming majority of
-        // lines in any log -- 4 allocations per line, for nothing.
+        // why: this runs on every damage line and the lookups below each
+        // allocate a lowercased copy of a name. No charm open means no
+        // instance to split, which is the overwhelming majority of lines.
         if self.charm_hints.is_empty() {
             return (src.to_string(), dst.to_string(), 0);
         }
-        let src_hint = self
-            .charm_hints
-            .get(&src.to_lowercase())
-            .is_some_and(|h| h.active);
-        let dst_hint = self
-            .charm_hints
-            .get(&dst.to_lowercase())
-            .is_some_and(|h| h.active);
-        if !src_hint && !dst_hint {
+        let src_held = self.active_charms_of(src).len();
+        let dst_held = self.active_charms_of(dst).len();
+        if src_held == 0 && dst_held == 0 {
             return (src.to_string(), dst.to_string(), 0);
         }
-        if src_hint && dst_hint && src.eq_ignore_ascii_case(dst) {
+        if src_held > 0 && dst_held > 0 && src.eq_ignore_ascii_case(dst) {
             // why: C3 -- the pet is busy elsewhere, so this is a wild one
             // hitting it; C4 -- otherwise nothing splits the pair
-            let busy_elsewhere = self
-                .charm_hints
-                .get(&src.to_lowercase())
-                .and_then(|h| h.target.as_deref())
-                .is_some_and(|t| !t.eq_ignore_ascii_case(src));
+            let busy_elsewhere = src_held == 1
+                && self
+                    .active_charms_of(src)
+                    .first()
+                    .and_then(|h| h.target.as_deref())
+                    .is_some_and(|t| !t.eq_ignore_ascii_case(src));
             if busy_elsewhere {
-                return (src.to_string(), self.instance_of(dst), 0);
+                if let Some(inst) = self.instance_of(dst) {
+                    return (src.to_string(), inst, 0);
+                }
             }
             return (src.to_string(), dst.to_string(), flag::UNRESOLVED_INSTANCE);
         }
         let mut out_src = src.to_string();
         let mut out_dst = dst.to_string();
-        if src_hint && self.instance_against(ts, dst) == Some(true) {
-            out_src = self.instance_of(src);
-            if let Some(h) = self.charm_hints.get_mut(&src.to_lowercase()) {
-                h.target = Some(dst.to_string());
+        let mut flags = 0;
+        // why: C1 first and unconditionally -- You or an ally on the other
+        // side means the charmed NAME here is a wild one, and that holds
+        // however many charms are out. Only once the other side is an
+        // enemy (C2, so this really is somebody's pet) does "which pet?"
+        // arise, and only then can it be unanswerable.
+        if src_held > 0 && self.instance_against(ts, dst) == Some(true) {
+            match self.instance_of(src) {
+                Some(inst) => {
+                    out_src = inst;
+                    if let Some(k) = self.caster_key_of(src) {
+                        if let Some(h) = self.charm_hints.get_mut(&k) {
+                            h.target = Some(dst.to_string());
+                        }
+                    }
+                }
+                // why: two casters hold this name and the line names
+                // neither -- crediting either would hand one player the
+                // other's pet, measured 56 times in the reference log
+                None => flags |= flag::UNRESOLVED_INSTANCE,
             }
         }
-        if dst_hint && self.instance_against(ts, src) == Some(true) {
-            out_dst = self.instance_of(dst);
+        if dst_held > 0 && self.instance_against(ts, src) == Some(true) {
+            match self.instance_of(dst) {
+                Some(inst) => out_dst = inst,
+                None => flags |= flag::UNRESOLVED_INSTANCE,
+            }
         }
-        (out_src, out_dst, 0)
+        (out_src, out_dst, flags)
+    }
+
+    /// why: the hints map is keyed by caster, but a row names the mob --
+    /// Some only when exactly one charm is held on that name
+    fn caster_key_of(&self, base: &str) -> Option<String> {
+        let base = base.to_lowercase();
+        let mut found = None;
+        for (k, h) in &self.charm_hints {
+            if h.active && h.base == base {
+                if found.is_some() {
+                    return None;
+                }
+                found = Some(k.clone());
+            }
+        }
+        found
     }
 
     /// why: the other party's side decides -- You or an ally means the
@@ -3240,28 +3305,78 @@ impl Ingest {
 
     /// why: a charm opened on `who` by `owner` ("" when no cast was in
     /// the window) -- the instance entity exists from here, owned
-    /// why: the hint's own instance name; callers only ask while a hint is open
-    fn instance_of(&self, base: &str) -> String {
+    /// why: every charm currently held on this mob NAME. More than one
+    /// means two casters are each holding a different mob that shares the
+    /// name, and no log line distinguishes them -- the caller decides
+    /// what to do about that rather than this silently picking.
+    fn active_charms_of(&self, base: &str) -> Vec<&CharmHint> {
+        let base = base.to_lowercase();
+        // why: one entry per caster, so at most party-sized -- a scan is
+        // cheaper than an index that compaction would have to maintain
         self.charm_hints
-            .get(&base.to_lowercase())
-            .map(|h| h.instance.clone())
-            .unwrap_or_else(|| format!("{base} (charmed)"))
+            .values()
+            .filter(|h| h.active && h.base == base)
+            .collect()
+    }
+
+    /// why: the instance to route a row to -- Some only when exactly one
+    /// charm is held on this name. Two and it is genuinely undecidable.
+    fn instance_of(&self, base: &str) -> Option<String> {
+        let held = self.active_charms_of(base);
+        match held.as_slice() {
+            [one] => Some(one.instance.clone()),
+            _ => None,
+        }
+    }
+
+    /// why: the visit this charm belongs to and how far into it, which is
+    /// what the id is built from -- a ZONE visit, not a classdetect unit
+    fn visit_offset(&self, ts: Millis) -> (Option<usize>, i64) {
+        let visit = self.zone.index_at(ts);
+        match visit.and_then(|v| self.zone.start_of(v)) {
+            Some(start) => (visit, (ts - start) / 1000),
+            // why: before the first zone line there is no visit to measure
+            // from -- fall back to the absolute second so two pre-zone
+            // charms by one caster still get different ids. Never happens
+            // in the reference log (0 of 599) but a test log has no zone.
+            None => (visit, ts / 1000),
+        }
+    }
+
+    /// why: one charm per caster -- a landing proves their previous one
+    /// had already ended, since a charm cannot take hold while the caster
+    /// still holds another. Casting can fail; landing cannot lie.
+    fn close_charm_of(&mut self, caster_key: &str, ts: Millis) {
+        if let Some(h) = self.charm_hints.get_mut(caster_key) {
+            h.active = false;
+            let inst = h.instance.clone();
+            self.encounters.entities.close_charm(&inst, ts);
+        }
     }
 
     fn open_charm_hint(&mut self, ts: Millis, who: &str, owner: String) {
-        let visit = self.units.current();
-        let n = {
-            let key = format!("{visit:?}:{}", who.to_lowercase());
-            let e = self.charm_seq.entry(key).or_insert(0);
+        let (visit, offset) = self.visit_offset(ts);
+        // why: an unattributed landing gets its own synthetic slot rather
+        // than sharing one with the next unattributed charm
+        let caster_key = if owner.is_empty() {
+            let e = self
+                .charm_seq
+                .entry("\u{1}unknown".to_string())
+                .or_insert(0);
             *e += 1;
-            *e
+            format!("\u{1}unknown-{e}")
+        } else {
+            eqlp_session::fold_key(&owner).into_owned()
         };
-        let id = charm_id(visit, who, n);
+        self.close_charm_of(&caster_key, ts);
+        let id = charm_id(visit, &owner, offset);
         let inst = format!("{who} (charmed {id})");
         let meta = eqlp_session::graph::CharmMeta {
             id,
             visit,
+            caster: owner.clone(),
             since: ts,
+            until: None,
         };
         if !owner.is_empty() {
             self.pet_owner.insert(inst.clone(), owner.clone());
@@ -3275,11 +3390,12 @@ impl Ingest {
         // aggregation (pet_of), never by rewriting the Sym
         self.charmed_pets.insert(inst.clone());
         self.charm_hints.insert(
-            who.to_lowercase(),
+            caster_key,
             CharmHint {
                 active: true,
                 target: None,
                 instance: inst,
+                base: who.to_lowercase(),
             },
         );
     }
@@ -3623,8 +3739,10 @@ impl Ingest {
         }
         // why: the pet dying ends the charm too, with no break line of its
         // own -- the mob is simply a corpse and stops acting
-        if let Some(h) = self.charm_hints.get_mut(&victim.to_lowercase()) {
-            h.active = false;
+        // why: the pet dying ends the charm too, with no break line of its
+        // own -- the mob is simply a corpse and stops acting
+        if let Some(k) = self.caster_key_of(victim) {
+            self.close_charm_of(&k, ts);
         }
         if self
             .charm
@@ -3683,6 +3801,11 @@ impl Ingest {
         }
         let sym = self.sym(victim);
         self.timeline.observed(ts, sym.0, State::Dead);
+        // why: the census is what an AoE confirmed was standing at that
+        // instant. A kill after it means one fewer is left, so the count
+        // comes down -- a cast raises the floor, a death lowers it, and
+        // neither ever adds to the other.
+        self.decrement_census(victim);
         self.clear_cc_on_death(ts, victim);
         self.drain_closed();
     }
@@ -4275,14 +4398,31 @@ impl Ingest {
     /// before/after-kill rate ratio medians 1.55 where a true pair should
     /// read 2.0, wrong about a third of the time.
     ///
-    /// Kept as a high-water mark and never decremented: "at least this
-    /// many were here" is honest, a live count is not recoverable.
+    /// A cast sets the floor, never adds: higher than what is already
+    /// confirmed raises the count TO that number, lower leaves it alone.
+    /// A confirmed kill afterwards decrements it -- see decrement_census.
     fn note_fanout(&mut self, ts: Millis, effect: &'static str, sym: Sym) {
         if self.fanout != Some((ts, effect)) {
             self.flush_fanout();
             self.fanout = Some((ts, effect));
         }
         *self.fanout_counts.entry(sym).or_insert(0) += 1;
+    }
+
+    /// why: counted on the RAW name for the same reason note_fanout is --
+    /// `sym` folds a charmed pet into its owner, and a pet dying is not
+    /// one fewer of the owner
+    fn decrement_census(&mut self, victim: &str) {
+        // why: the instant's count is still pending until something flushes
+        // it -- decrementing first would be written straight over
+        self.flush_fanout();
+        let counted = {
+            let resolved = self.resolve_name(victim);
+            self.store.sym(&resolved)
+        };
+        if let Some(e) = self.instances.get_mut(&counted) {
+            e.0 = e.0.saturating_sub(1);
+        }
     }
 
     /// why: the instant is over, so whatever it counted is now a fact
@@ -4936,6 +5076,72 @@ impl Ingest {
             return None;
         }
         self.pet_owner.get(resolved).map(String::as_str)
+    }
+
+    /// why: what the app currently believes this player has out, and from
+    /// which evidence -- one active charm at most (the game's own rule),
+    /// plus any summoned or behaviour-matched pet still attributed to them
+    pub fn pets_believed_of(&self, owner: &str, ts: Millis) -> Vec<(String, &'static str)> {
+        let key = eqlp_session::fold_key(owner);
+        let mut out: Vec<(String, &'static str)> = self
+            .charm_hints
+            .get(&*key)
+            .filter(|h| h.active)
+            .map(|h| (h.instance.clone(), "charm"))
+            .into_iter()
+            .collect();
+        for (pet, who) in &self.pet_owner {
+            if !eqlp_session::fold_key(who).eq_ignore_ascii_case(&key) {
+                continue;
+            }
+            if self.charmed_pets.contains(pet) {
+                continue;
+            }
+            out.push((pet.clone(), "summoned"));
+        }
+        for pet in &self.behavioral_pets {
+            let matches_owner = self
+                .pet_owner
+                .get(pet)
+                .is_some_and(|w| eqlp_session::fold_key(w).eq_ignore_ascii_case(&key));
+            if matches_owner || !out.iter().any(|(n, _)| n == pet) {
+                continue;
+            }
+            out.push((pet.clone(), "behaviour"));
+        }
+        let _ = ts;
+        out.sort();
+        out
+    }
+
+    /// why: what the app believes is still standing against you -- every
+    /// participant of an open fight that reads enemy and has not died
+    pub fn living_enemies(&self, ts: Millis) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for e in &self.store.encounters {
+            if !e.is_open() || e.absorbed {
+                continue;
+            }
+            let Some(names) = self.entities_by_enc.get(&e.id) else {
+                continue;
+            };
+            for n in names {
+                if !self.allegiance_at(n, ts).is_enemy() {
+                    continue;
+                }
+                let dead = self
+                    .store
+                    .names
+                    .get(n)
+                    .and_then(|s| self.timeline.state_at(s.0, ts))
+                    .is_some_and(|(st, _)| st == eqlp_session::State::Dead);
+                if !dead && !out.contains(n) {
+                    out.push(n.clone());
+                }
+            }
+        }
+        out.sort();
+        out
     }
 
     /// why: every way the log has told us a name is a pet -- summon
@@ -7050,16 +7256,46 @@ mod charm_reaffirm_tests {
     /// own bucket now, and the row says whose it is.
     /// why: replay-stable, five base36 chars, and a different visit or a
     /// second charm of the name gets a different id
+    /// why: minted by us from (zone visit, caster, seconds into that
+    /// visit) -- no hash, so no truncation and no collision channel. Every
+    /// part re-derives in replay order, so the same log gives the same id.
     #[test]
-    fn a_charm_id_is_stable_short_and_distinct_per_visit_and_sequence() {
-        let a = charm_id(Some(3), "a fire giant", 1);
-        assert_eq!(a, charm_id(Some(3), "A Fire Giant", 1));
-        assert_eq!(a.len(), 5);
-        assert!(a
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()));
-        assert_ne!(a, charm_id(Some(4), "a fire giant", 1));
-        assert_ne!(a, charm_id(Some(3), "a fire giant", 2));
+    fn a_charm_id_names_its_visit_its_caster_and_when_in_the_visit() {
+        let a = charm_id(Some(3), "Sidhe", 1302);
+        assert_eq!(a, "3-1302-sidh", "visit, offset, caster");
+        assert_eq!(a, charm_id(Some(3), "SIDHE", 1302), "caster case folds");
+        assert_ne!(a, charm_id(Some(4), "Sidhe", 1302), "another visit");
+        assert_ne!(a, charm_id(Some(3), "Sidhe", 1303), "a second later");
+        assert_ne!(
+            a,
+            charm_id(Some(3), "Gibmund", 1302),
+            "two casters landing in the same second stay apart"
+        );
+        assert_eq!(
+            charm_id(None, "", 77),
+            "p-77-x",
+            "before any zone line, and with no caster proven"
+        );
+    }
+
+    /// why: the id is minted, so a test reads the name back rather than
+    /// recomputing it. Store-interner only -- a charm that never acted has
+    /// no Sym, which is exactly what some of these assert.
+    fn charm_inst(ing: &Ingest, base: &str) -> Option<String> {
+        (0..ing.store.names.len())
+            .map(|i| ing.store.names.name(eqlp_store::Sym(i as u32)))
+            .find(|n| n.starts_with(base) && n.contains("(charmed "))
+            .map(str::to_string)
+    }
+
+    /// why: the entity exists from the landing, with or without rows
+    fn charm_entity(ing: &Ingest, base: &str) -> Option<String> {
+        ing.encounters
+            .entities
+            .all()
+            .filter(|(n, _, _, c)| c.is_some() && n.starts_with(base))
+            .map(|(n, ..)| n.to_string())
+            .next()
     }
 
     #[test]
@@ -7069,13 +7305,14 @@ mod charm_reaffirm_tests {
             "[Tue Jul 28 15:01:01 2026] an abhorrent has been charmed.",
             "[Tue Jul 28 15:01:05 2026] an abhorrent hits a gnoll for 40 points of damage.",
         ]);
+        let inst = charm_inst(&ing, "an abhorrent").expect("the pet interned");
         assert_eq!(
-            ing.effective_name(charm_instance_name(Some(0), "an abhorrent", 1).as_str()),
-            charm_instance_name(Some(0), "an abhorrent", 1).as_str(),
+            ing.effective_name(&inst),
+            inst.as_str(),
             "its damage stays its own, not Sidhe's"
         );
         assert_eq!(
-            ing.pet_of(charm_instance_name(Some(0), "an abhorrent", 1).as_str()),
+            ing.pet_of(&inst),
             Some("Sidhe"),
             "but the row can say whose"
         );
@@ -7109,10 +7346,7 @@ mod charm_reaffirm_tests {
         ]);
         assert!(ing.charm.as_ref().is_some_and(|c| c.active));
         assert!(
-            ing.store
-                .names
-                .get(charm_instance_name(Some(0), "an abhorrent", 1).as_str())
-                .is_none(),
+            charm_inst(&ing, "an abhorrent").is_none(),
             "the hit on You never touched the pet"
         );
         let now = ing.now_ms();
@@ -7142,12 +7376,9 @@ mod charm_reaffirm_tests {
             ing.allegiance_at("an abhorrent", now).is_enemy(),
             "the pool"
         );
+        let inst = charm_entity(&ing, "an abhorrent").expect("the entity exists");
         assert!(
-            !ing.allegiance_at(
-                charm_instance_name(Some(0), "an abhorrent", 1).as_str(),
-                now
-            )
-            .is_enemy(),
+            !ing.allegiance_at(&inst, now).is_enemy(),
             "the one that is yours"
         );
     }
@@ -7168,8 +7399,7 @@ mod charm_reaffirm_tests {
         let c = ing.charm.as_ref().expect("charm still tracked");
         assert!(c.active, "Tashania/Burnout fading is not the charm ending");
         assert!(
-            ing.pet_of(charm_instance_name(Some(0), "heart harpie", 1).as_str())
-                .is_some(),
+            charm_entity(&ing, "heart harpie").is_some_and(|i| ing.pet_of(&i).is_some()),
             "the instance is still yours"
         );
     }
@@ -7233,12 +7463,9 @@ mod charm_reaffirm_tests {
         ]);
         ing.tick(0);
         let now = ing.now_ms();
+        let harpie = charm_entity(&ing, "heart harpie").expect("the instance exists");
         assert!(
-            !ing.allegiance_at(
-                charm_instance_name(Some(0), "heart harpie", 1).as_str(),
-                now
-            )
-            .is_enemy(),
+            !ing.allegiance_at(&harpie, now).is_enemy(),
             "idle close must not overwrite the pet's side"
         );
         assert!(ing.charm.as_ref().is_some_and(|c| c.active));

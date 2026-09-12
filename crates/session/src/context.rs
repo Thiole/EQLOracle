@@ -51,6 +51,12 @@ impl Spans {
         }
     }
 
+    /// why: a charm id is minted as seconds into its own visit, so the
+    /// visit's own start is what that offset is measured from
+    pub fn start_of(&self, index: usize) -> Option<Millis> {
+        self.starts.get(index).copied()
+    }
+
     /// why: prior span's label, feeds the Maps module's entrance guess
     pub fn label_before(&self, ts: Millis) -> Option<&str> {
         let i = self.index_at(ts)?;

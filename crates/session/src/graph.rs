@@ -116,13 +116,20 @@ fn pet_owner(name: &str) -> Option<&str> {
     (!owner.is_empty()).then_some(owner)
 }
 
-/// why: what one charm instance is keyed by -- the id the tables join on,
-/// the visit it belongs to, and when it opened
+/// why: what one charm instance is keyed by. `visit` is a ZONE visit
+/// (`Spans`), not a classdetect unit -- those are two index spaces and
+/// keying on the wrong one is why charm rows never joined the visit
+/// tables. `caster` is the identity a charm actually belongs to: a mob
+/// name is shared by many mobs, a caster is one person holding one charm.
 #[derive(Debug, Clone)]
 pub struct CharmMeta {
     pub id: String,
     pub visit: Option<usize>,
+    pub caster: String,
     pub since: Millis,
+    /// why: None while the charm is still held -- set when it breaks, the
+    /// caster charms something else, or a zone line ends everything
+    pub until: Option<Millis>,
 }
 
 /// why: classification is monotonic -- evidence promotes, never demotes
@@ -168,6 +175,14 @@ impl Entities {
             }
         }
         self.charms.insert(key.into_owned(), meta);
+    }
+
+    /// why: a charm is an interval, not an instant -- the end is what
+    /// says whose rows after it are no longer this pet's
+    pub fn close_charm(&mut self, name: &str, ts: Millis) {
+        if let Some(m) = self.charms.get_mut(&*fold_key(name)) {
+            m.until.get_or_insert(ts);
+        }
     }
 
     /// why: NPCs never use player-only channels -- reliable player proof

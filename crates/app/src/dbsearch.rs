@@ -295,8 +295,14 @@ fn table_values(ing: &Ingest, table: &str) -> Option<Vec<Value>> {
                     "kind": format!("{k:?}"),
                     "owner": o,
                     "charm": c.map(|c| c.id.as_str()),
+                    // why: a ZONE visit now, so this joins zones/zone
+                    // visits -- it used to be a classdetect unit, which
+                    // shares the type and index space with nothing here
                     "visit": c.and_then(|c| c.visit),
+                    "charm_caster": c.map(|c| c.caster.as_str()),
                     "since_ms": c.map(|c| c.since),
+                    // why: a charm is an interval -- null while still held
+                    "until_ms": c.and_then(|c| c.until),
                 })
             })
             .collect(),

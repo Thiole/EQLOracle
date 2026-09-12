@@ -1,10 +1,13 @@
 <script lang="ts">
   // why: compact live dump of current backend belief -- not a polished
-  // feature, a scratchpad view of in-progress state (GroupTracker today,
-  // more later) worth eyeballing without a dedicated UI for it yet
+  // feature, a scratchpad view of in-progress state worth eyeballing. Two
+  // columns so the two sides of the open fights can be compared at a
+  // glance: who the app thinks is with you (and what each has out) against
+  // what it thinks is still standing.
   import { Card, CardContent } from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
   import { gameState, refreshGameState } from '$lib/stores/debug';
+  import { refreshOn } from '$lib/tauri/events';
   import type { PartyMemberDto } from '$lib/tauri/api';
 
   let refreshing = $state(false);
@@ -16,6 +19,11 @@
       refreshing = false;
     }
   }
+
+  // why: this is a live belief dump, so it follows the log rather than a
+  // button. '*' is any parsed line -- a quiet tick costs nothing, and the
+  // fan-out upstream is already coalesced to one pass per window.
+  $effect(() => refreshOn('*', () => void refreshGameState()));
 
   // why: labels the evidence channel behind each row -- see
   // eqlp_session::group's own doc for what each channel actually means
@@ -42,8 +50,8 @@
       </Button>
     </div>
     <p class="mb-2 text-[11px] text-muted-foreground">
-      What the backend currently believes -- party membership (GroupTracker) and "You"'s own class/level assumption. Grows
-      as more backend state becomes worth watching live; not meant to be pretty.
+      What the backend currently believes, following the log as it parses. Left is your side -- party membership
+      (GroupTracker) with each member's pets indented under them. Right is what it thinks is still alive against you.
     </p>
     {#if !$gameState}
       <p class="text-[12px] text-muted-foreground">Loading…</p>
@@ -62,28 +70,57 @@
           <div class="stat-label">party members</div>
         </div>
         <div class="flex-1 px-3 py-1.5">
+          <div class="stat-figure">{$gameState.enemies.length}</div>
+          <div class="stat-label">enemies alive</div>
+        </div>
+        <div class="flex-1 px-3 py-1.5">
           <div class="stat-figure">{$gameState.known_players}</div>
           <div class="stat-label">known players (whole log)</div>
         </div>
       </div>
-      <table class="w-full text-[11px]">
-        <thead>
-          <tr class="border-b border-border text-left text-muted-foreground">
-            <th class="px-2 py-0.5 font-normal">name</th>
-            <th class="px-2 py-0.5 font-normal">via</th>
-            <th class="px-2 py-0.5 text-right font-normal">sessions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each $gameState.party as p (p.name)}
-            <tr class="border-b border-border/50">
-              <td class="px-2 py-0.5 text-primary">{p.name}</td>
-              <td class="px-2 py-0.5 text-muted-foreground">{viaLabel(p.via)}</td>
-              <td class="px-2 py-0.5 text-right tabular-nums text-muted-foreground">{p.via === 'weak' ? p.sessions : '—'}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+
+      <!-- why: stacks below 900px, where two columns leave ~288px each and
+           a charm instance name alone overflows that -->
+      <div class="grid grid-cols-1 gap-3 min-[900px]:grid-cols-2">
+        <div class="rounded-sm border border-border">
+          <p class="border-b border-border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            your side
+          </p>
+          <ul class="px-2 py-1 text-[11px]">
+            {#each $gameState.party as p (p.name)}
+              <li class="border-b border-border/50 py-0.5 last:border-0">
+                <div class="flex items-baseline justify-between gap-2">
+                  <span class="text-primary">{p.name}</span>
+                  <span class="shrink-0 text-muted-foreground">
+                    {viaLabel(p.via)}{p.via === 'weak' ? ` · ${p.sessions}` : ''}
+                  </span>
+                </div>
+                {#each p.pets as pet (pet.name)}
+                  <div class="flex items-baseline justify-between gap-2 pl-4 text-muted-foreground">
+                    <span class="font-mono">{pet.name}</span>
+                    <span class="shrink-0">{pet.kind}</span>
+                  </div>
+                {/each}
+              </li>
+            {/each}
+          </ul>
+        </div>
+
+        <div class="rounded-sm border border-border">
+          <p class="border-b border-border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            still alive against you
+          </p>
+          {#if !$gameState.enemies.length}
+            <p class="px-2 py-1 text-[11px] text-muted-foreground">No open fight.</p>
+          {:else}
+            <ul class="px-2 py-1 text-[11px]">
+              {#each $gameState.enemies as e (e)}
+                <li class="border-b border-border/50 py-0.5 font-mono last:border-0">{e}</li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+      </div>
     {/if}
   </CardContent>
 </Card>

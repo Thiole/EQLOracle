@@ -1829,7 +1829,16 @@ export interface UnmatchedCoverageDto {
 export interface PartyMemberDto {
   name: string;
   via: 'you' | 'joined' | 'strong' | 'weak';
+  /** why: what the app believes they have out right now */
+  pets: PetBeliefDto[];
   sessions: number;
+}
+
+/** why: what the backend believes a member has out -- kind says which
+ * evidence put it there: "charm" | "summoned" | "behaviour" */
+export interface PetBeliefDto {
+  name: string;
+  kind: string;
 }
 
 export interface GameStateDto {
@@ -1839,6 +1848,8 @@ export interface GameStateDto {
   known_players: number;
   your_classes: string[];
   your_level: number | null;
+  /** why: the other side of the open fights -- reads enemy and not dead yet */
+  enemies: string[];
 }
 
 export const api = {
