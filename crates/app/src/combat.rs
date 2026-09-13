@@ -1341,7 +1341,13 @@ fn list_side(
             .encounters
             .entities
             .owner_of(&name)
-            .map(|o| ing.as_you(o));
+            .map(|o| ing.as_you(o))
+            // why: a pet is on its OWNER's side, and mobs charm too --
+            // crediting a mob's charmed pet to it put the mob itself on
+            // the ally side (real: "A watchful guard" and "An icy terror"
+            // both own a charm in the reference log). An owner that reads
+            // enemy keeps its pet's damage where the pet already is.
+            .filter(|o| ing.allegiance_at(o, now).is_enemy() == want_enemies);
         let is_pet_row = owner.is_some();
         let credited = owner.unwrap_or_else(|| name.clone());
         // why: a possessive pet is a slice under its owner exactly like

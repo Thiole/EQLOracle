@@ -356,3 +356,31 @@ fn an_aoe_sets_the_census_floor_and_a_kill_brings_it_down() {
     ));
     assert_eq!(census(&ing), Some(2), "three confirmed, one died");
 }
+
+/// T11 -- mobs charm too. Crediting a mob's charmed pet to it put the mob
+/// itself on the ally side: real in the reference log, where "A watchful
+/// guard" and "An icy terror" each own a charm.
+#[test]
+fn a_mob_that_charms_does_not_become_an_ally() {
+    let ing = run(concat!(
+        "[Tue Jul 28 15:01:00 2026] A watchful guard begins casting Allure.\n",
+        "[Tue Jul 28 15:01:03 2026] an ice giant has been charmed.\n",
+        "[Tue Jul 28 15:01:06 2026] An ice giant hits YOU for 300 points of damage.\n",
+        "[Tue Jul 28 15:01:08 2026] You hit A watchful guard for 90 points of magic damage by Shock.\n",
+    ));
+    let (allies, enemies) = split(&ing, "T11 a mob owns the charm");
+    assert_eq!(
+        total_for(&allies, "watchful guard"),
+        0,
+        "the guard is an enemy, whatever it has charmed"
+    );
+    assert!(
+        !allies.iter().any(|a| a.name.contains("watchful guard")),
+        "and it must not get an ally row at all: {:?}",
+        allies.iter().map(|a| &a.name).collect::<Vec<_>>()
+    );
+    assert!(
+        total_for(&enemies, "ice giant") > 0 || total_for(&enemies, "watchful guard") > 0,
+        "its side keeps the damage: {enemies:?}"
+    );
+}
