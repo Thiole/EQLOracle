@@ -1362,20 +1362,19 @@ pub struct Ingest {
     pub units: UnitTrack,
     /// why: the lowest level someone must be to have cast what your log
     /// saw them cast -- their own /who row beats it, but without one this
-    /// is the only level an ally has. Keyed like the roster (fold case).
-    /// why: (visit, floor) -- the highest level a cast of theirs has PROVEN
-    /// in THIS zone visit (rule L10). Player level is combo-dependent, so a
-    /// floor proven under one loadout says nothing about the next visit;
-    /// evidence is grouped per visit everywhere else too (C2). Monotonic
-    /// within a visit: a begin-cast is proof of ability, a cheaper cast
-    /// never walks it back.
-    pub implied_level: HashMap<String, (Option<usize>, u8)>,
-    /// why: the same floor, best-ever instead of per-visit. `implied_level`
-    /// is scoped to the zone visit on purpose (rule L10), which is right
-    /// for "what has this zone proved" and wrong for "how high can this
-    /// ally cast" -- a level never goes back down, and the Group Buff
-    /// Tracker was losing every rank gate at each zone line.
-    pub implied_level_ever: HashMap<String, u8>,
+    /// is the only level an ally has. Keyed like the roster (fold case),
+    /// then by the CLASS that proved the floor.
+    ///
+    /// Player level is combo-dependent, which is why this used to be
+    /// scoped to the zone visit (rule L10) -- a floor proven under one
+    /// loadout says nothing about the next. Keying by class says the same
+    /// thing more precisely and without throwing the evidence away at
+    /// every zone line: the floor dies when the class that earned it
+    /// does, and survives everything else. Spencer: "the highest spell
+    /// becomes the possible floor until new evidence". Real case: Kaeus
+    /// read 42 as Bard/Monk/Rogue off a 42 he earned as an Enchanter.
+    /// Monotonic per class -- a cheaper cast never walks a floor back.
+    pub implied_level: HashMap<String, HashMap<String, u8>>,
     /// why: keep every row and ping instead of folding finished zones --
     /// off in the app (see the zone cull), on for probes that analyse the
     /// whole log after the fact
@@ -1603,7 +1602,6 @@ impl Default for Ingest {
             fanout_counts: HashMap::new(),
             spell_file: None,
             implied_level: HashMap::new(),
-            implied_level_ever: HashMap::new(),
             stance_pool: None,
             invocation_pool: None,
             ally_pending_leave: HashMap::new(),
@@ -1819,44 +1817,86 @@ impl Ingest {
     }
 
     /// why: a spell someone cast puts a floor under their level -- the
-    /// cheapest class that gets it, restricted to their own trio when the
-    /// detector knows it. "Est. level" for anyone with no /who row, and
-    /// what keeps the Group Buff Tracker from offering a rank they
-    /// cannot cast (Spencer: "should show best *usable* spell").
+    /// highest such floor stands until new evidence moves it. "Est.
+    /// level" for anyone with no /who row, and what keeps the Group Buff
+    /// Tracker from offering a rank they cannot cast (Spencer: "should
+    /// show best *usable* spell").
+    ///
+    /// A MULTICLASS spell proves nothing until the classes are verified:
+    /// "Improved Invisibility" is Wizard and Enchanter, and reading it
+    /// off an unverified guess put allies at 50 who were not 40 (real:
+    /// 148 of 1114 peak floors came from a class nobody had confirmed).
+    /// Verified means CONFIRMED -- a /who row or the detector's own bar,
+    /// never a prior, which is the guess this is meant to stop trusting.
+    /// A single-class spell proves its own class by being cast at all.
+    ///
+    /// The floor is kept per class that proved it, so a loadout swap
+    /// takes the old class's floor with it rather than carrying a level
+    /// the new classes never earned.
     fn note_implied_level(&mut self, ts: Millis, who: &str, spell: &str) {
         if who.eq_ignore_ascii_case("You") || self.is_pet(who) {
             return;
         }
-        let Some(sp) = crate::spelldata::spell_by_name(base_spell_name(spell)) else {
+        // why: the install's own per-class levels first (spell_class_levels),
+        // and the RANK as cast -- "Clarity II" is its own row, and the base
+        // rank's level is not what casting the higher one proves
+        let mut pairs = self.spell_class_levels(spell);
+        if pairs.is_empty() {
+            pairs = self.spell_class_levels(base_spell_name(spell));
+        }
+        if pairs.is_empty() {
+            return;
+        }
+        let view = self.class_chain(who, ts);
+        let verified: Vec<String> = view
+            .as_ref()
+            .map(|v| match &v.who {
+                Some((_, trio)) => trio.clone(),
+                None => v.confirmed.clone(),
+            })
+            .unwrap_or_default();
+        let usable: Vec<&(String, u8)> = pairs
+            .iter()
+            .filter(|(c, _)| verified.iter().any(|v| v == c))
+            .collect();
+        // why: one class, one answer -- only that class casts it. Several,
+        // and the cheapest VERIFIED one is the floor; none verified and
+        // there is nothing honest to say yet.
+        let proven = if pairs.len() == 1 {
+            Some((&pairs[0].0, pairs[0].1))
+        } else {
+            usable.iter().min_by_key(|(_, l)| *l).map(|(c, l)| (c, *l))
+        };
+        let Some((class, level)) = proven else {
             return;
         };
-        let trio = self
-            .class_chain(who, ts)
-            .map(|v| v.trio())
-            .unwrap_or_default();
-        let lowest = sp
-            .classes
-            .iter()
-            .filter(|c| trio.is_empty() || trio.contains(&c.class))
-            .filter_map(|c| c.level)
-            .min();
-        let Some(level) = lowest else { return };
-        let level = level.min(u32::from(u8::MAX)) as u8;
-        let visit = self.zone.index_at(ts);
-        let ever = self
-            .implied_level_ever
-            .entry(who.to_lowercase())
-            .or_insert(0);
-        *ever = (*ever).max(level);
-        let e = self
+        // why: the spell tables carry Live's levels (Improved Invisibility
+        // is listed Wizard 55) and nobody on this server is above the cap
+        // -- a requirement past it says the row is wrong, not that the
+        // ally is max level
+        if level > eqlp_session::classdetect::LEVEL_CAP {
+            return;
+        }
+        let f = self
             .implied_level
             .entry(who.to_lowercase())
-            .or_insert((visit, 0));
-        if e.0 == visit {
-            e.1 = e.1.max(level);
-        } else {
-            *e = (visit, level);
-        }
+            .or_default()
+            .entry(class.clone())
+            .or_insert(0);
+        *f = (*f).max(level);
+    }
+
+    /// why: the floors that still apply to the classes an ally is believed
+    /// to have -- a floor earned on a class they no longer run is not
+    /// evidence about the ones they do. No classes known yet, so nothing
+    /// to exclude: the highest floor any of their casts proved.
+    pub fn implied_level_for(&self, who: &str, classes: &[String]) -> Option<u8> {
+        let floors = self.implied_level.get(&who.to_lowercase())?;
+        floors
+            .iter()
+            .filter(|(c, _)| classes.is_empty() || classes.iter().any(|k| k == *c))
+            .map(|(_, l)| *l)
+            .max()
     }
 
     /// why: one class-evidence line about someone who is not you -- their
@@ -2043,13 +2083,11 @@ impl Ingest {
         match self.ally_who(who, at) {
             Some((lvl, _)) => (Some(lvl), true),
             None => {
-                let visit = self.zone.index_at(at);
-                let lvl = self
-                    .implied_level
-                    .get(&who.to_lowercase())
-                    .filter(|(v, _)| *v == visit)
-                    .map(|(_, l)| *l);
-                (lvl, false)
+                let classes = self
+                    .class_chain(who, at)
+                    .map(|v| v.trio())
+                    .unwrap_or_default();
+                (self.implied_level_for(who, &classes), false)
             }
         }
     }
@@ -3497,7 +3535,13 @@ impl Ingest {
         if tags & tag::SPELL != 0 {
             let classes = class_evidence_for_damage(ability);
             self.note_class_evidence(ts, src, classes);
-            self.note_implied_level(ts, src, ability);
+            // why: the SAME exclusion the class evidence just applied -- an
+            // item click and a weapon proc cast a spell nobody had to be
+            // any level to own, and reading a floor off one put allies at
+            // the spell's class requirement instead of their own level
+            if !classes.is_empty() {
+                self.note_implied_level(ts, src, ability);
+            }
         } else if tags & tag::MELEE != 0 {
             if let Some(class) = class_only_melee(ability) {
                 self.note_class_evidence(ts, src, &[class.to_string()]);

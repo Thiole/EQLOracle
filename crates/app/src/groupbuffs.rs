@@ -771,28 +771,25 @@ fn remembered_classes(ing: &Ingest, name: &str, now: Millis) -> (Vec<String>, bo
     };
     let current = ing.class_chain(name, now);
     let (mut classes, who_level) = current.as_ref().map(&answer).unwrap_or_default();
-    let mut remembered_who: Option<u8> = None;
+    // why: "assume its 3, unless evidence says otherwise ... its open to
+    // changing, but its still confirmed as 3". The chains this visit did
+    // not contradict -- a remembered set that MISSES something this visit
+    // has proved is the contradiction, and that ally really did swap.
+    // Walking through a zone line is not (the chain was cut for presence).
+    let past: Vec<(Vec<String>, Option<u8>)> = ing
+        .store
+        .names
+        .get(name)
+        .map(|sym| ing.classes.chains(sym.0))
+        .unwrap_or_default()
+        .iter()
+        .rev()
+        .map(&answer)
+        .filter(|(c, _)| !c.is_empty() && classes.iter().all(|x| c.contains(x)))
+        .collect();
     // why: a /who row is ground truth, and a visit that has re-proved all
-    // three needs nothing remembered
+    // three needs no classes remembered -- the LEVEL still does, below
     if who_level.is_none() && classes.len() < full {
-        // why: "assume its 3, unless evidence says otherwise ... its open
-        // to changing, but its still confirmed as 3". The last full trio
-        // stands until this visit proves a class that trio does not
-        // contain -- THAT is the evidence a swap happened. Walking
-        // through a zone line is not (the chain was cut for presence).
-        let past: Vec<(Vec<String>, Option<u8>)> = ing
-            .store
-            .names
-            .get(name)
-            .map(|sym| ing.classes.chains(sym.0))
-            .unwrap_or_default()
-            .iter()
-            .rev()
-            .map(&answer)
-            // why: a remembered set that MISSES something this visit has
-            // proved is the contradiction -- that ally really did swap
-            .filter(|(c, _)| !c.is_empty() && classes.iter().all(|x| c.contains(x)))
-            .collect();
         // why: the newest full trio first ("assume its 3"), else the
         // newest partial one -- an ally who never showed three classes
         // still knew two of them a zone ago
@@ -803,19 +800,32 @@ fn remembered_classes(ing: &Ingest, name: &str, now: Millis) -> (Vec<String>, bo
         {
             classes = best.clone();
         }
-        // why: the /who row that named them is remembered with the trio it
-        // named -- without this a chain cut for presence dropped a known
-        // level back to "unknown", and the rank gate fails closed
-        remembered_who = past.iter().find_map(|(_, l)| *l);
     }
+    // why: the /who row that named them, remembered with the trio it
+    // named -- a chain cut for presence dropped a known level back to
+    // "unknown" (real: Zlad 50 -> 18 with all three classes still held)
+    // and every rank gated on it went with it
+    let remembered_who = past.iter().find_map(|(_, l)| *l);
     classes.sort();
     // why: their /who row if one printed in this chain, else the floor
     // their own casts proved -- the HIGHEST such floor, from any visit.
     // ally_level reads only the current visit, so a zone line dropped the
     // level to whatever the new zone had re-proved (real: 28 -> 12), and
     // every rank gated on it went with it. A level never goes down.
-    let implied = ing.implied_level_ever.get(&name.to_lowercase()).copied();
-    let level = match (ing.ally_level(name, now).0.or(remembered_who), implied) {
+    // why: a floor is only evidence for the CLASS that proved it -- an
+    // ally who swapped away from it never earned that level on what they
+    // are now. Read against the REMEMBERED classes, not the visit's.
+    let implied = ing.implied_level_for(name, &classes);
+    // why: ally_level's own fallback reads floors against the CURRENT
+    // chain's trio, priors included -- a guessed class lifted the level
+    // before a zone line and stopped lifting it after (real: Zlad 50 ->
+    // 18 with all three classes held). Here the /who row is the only
+    // thing taken from it; the floors are read against the remembered
+    // classes above, which is the one class set this function believes.
+    let level = match (
+        ing.ally_who(name, now).map(|(l, _)| l).or(remembered_who),
+        implied,
+    ) {
         (Some(a), Some(b)) => Some(a.max(b)),
         (a, b) => a.or(b),
     };

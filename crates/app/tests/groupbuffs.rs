@@ -126,11 +126,12 @@ fn each_cast_raises_the_floor_and_a_cheaper_one_never_lowers_it() {
     );
 }
 
-/// why: rule L10 -- player level is combo-dependent, so a floor proven in
-/// one zone visit says nothing about the next. Zoning drops it, matching
-/// C2's "evidence is grouped per zone visit" everywhere else.
+/// why: the floor is keyed to the CLASS that proved it, not to the zone
+/// visit -- "the highest spell becomes the possible floor until new
+/// evidence". A zone line is presence, not new evidence, and dropping the
+/// floor there failed the rank gate for every line after it.
 #[test]
-fn a_floor_does_not_survive_a_zone_change() {
+fn a_floor_survives_a_zone_line() {
     let ing = run(concat!(
         "[Wed Sep 09 18:40:00 2026] You have entered The Northern Desert of Ro.\n",
         "[Wed Sep 09 18:40:05 2026] [60 ENC/WIZ/CLR] Manipulator (Human)  ZONE: The Northern Desert of Ro (nro)  \n",
@@ -140,9 +141,62 @@ fn a_floor_does_not_survive_a_zone_change() {
     ));
     assert_eq!(
         ing.ally_level("Maenn", ing.now_ms()).0,
-        None,
-        "the floor belongs to the visit it was proven in"
+        Some(28),
+        "walking through a zone line is not evidence they forgot the spell"
     );
+}
+
+/// why: Spencer -- "if its a multiclass spell, dont verify until classes
+/// are verified". Alacrity is Enchanter 21 and Shaman 42; reading the
+/// Shaman price off an unconfirmed guess put allies at 42 who were not
+/// 40. Measured on the real log: 148 of 1114 peak floors came from a
+/// class nobody had confirmed.
+#[test]
+fn a_multiclass_spell_proves_no_level_until_the_classes_are_verified() {
+    let ing = run(concat!(
+        "[Wed Sep 09 18:40:00 2026] You have entered The Northern Desert of Ro.\n",
+        "[Wed Sep 09 18:40:05 2026] [60 ENC/WIZ/CLR] Manipulator (Human)  ZONE: The Northern Desert of Ro (nro)  \n",
+        "[Wed Sep 09 18:40:10 2026] Maenn has joined the group.\n",
+        "[Wed Sep 09 18:41:00 2026] Maenn begins casting Alacrity.\n",
+    ));
+    assert_eq!(
+        ing.ally_level("Maenn", ing.now_ms()).0,
+        None,
+        "either class could have cast it, and neither is confirmed"
+    );
+}
+
+/// why: the single-class half of the same rule -- only an Enchanter casts
+/// Augmentation, so casting it verifies the class by itself. The
+/// multiclass cast alongside it still contributes nothing.
+#[test]
+fn a_single_class_spell_proves_its_own_class_and_sets_the_floor() {
+    let ing = run(concat!(
+        "[Wed Sep 09 18:40:00 2026] You have entered The Northern Desert of Ro.\n",
+        "[Wed Sep 09 18:40:05 2026] [60 ENC/WIZ/CLR] Manipulator (Human)  ZONE: The Northern Desert of Ro (nro)  \n",
+        "[Wed Sep 09 18:40:10 2026] Maenn has joined the group.\n",
+        "[Wed Sep 09 18:41:00 2026] Maenn begins casting Alacrity.\n",
+        "[Wed Sep 09 18:42:00 2026] Maenn begins casting Augmentation.\n",
+    ));
+    assert_eq!(
+        ing.ally_level("Maenn", ing.now_ms()).0,
+        Some(28),
+        "Augmentation is Enchanter 28; Alacrity's Shaman 42 is not theirs to claim"
+    );
+}
+
+/// why: the spell tables carry Live's levels -- Clarity II is listed
+/// Enchanter 54, above this server's cap of 50 -- and a requirement past
+/// the cap says the row is wrong, not that the ally is max level
+#[test]
+fn a_requirement_above_the_level_cap_is_bad_data_and_sets_no_floor() {
+    let ing = run(concat!(
+        "[Wed Sep 09 18:40:00 2026] You have entered The Northern Desert of Ro.\n",
+        "[Wed Sep 09 18:40:05 2026] [60 ENC/WIZ/CLR] Manipulator (Human)  ZONE: The Northern Desert of Ro (nro)  \n",
+        "[Wed Sep 09 18:40:10 2026] Maenn has joined the group.\n",
+        "[Wed Sep 09 18:41:00 2026] Maenn begins casting Clarity II.\n",
+    ));
+    assert_eq!(ing.ally_level("Maenn", ing.now_ms()).0, None);
 }
 
 /// why: rule L10's gate -- a class can be proven without any spell at all
