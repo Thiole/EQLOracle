@@ -97,9 +97,34 @@ pub fn restore(app: &AppHandle) {
 }
 
 /// why: the in-memory half -- managed state so the event handler and the
-/// close hook share one value without a global
+/// close hook share one value without a global. `dirty` exists because a
+/// killed or crashed run never reaches CloseRequested, and losing the
+/// geometry that way looks exactly like the bug this module fixes.
 #[derive(Default)]
-pub struct Tracked(pub std::sync::Mutex<Option<WindowState>>);
+pub struct Tracked(
+    pub std::sync::Mutex<Option<WindowState>>,
+    pub std::sync::atomic::AtomicBool,
+);
+
+/// why: a move fires per pixel, so the write is deferred instead of
+/// dropped -- one flush on a slow timer costs nothing and survives a kill
+pub fn mark_dirty(app: &AppHandle) {
+    app.state::<Tracked>()
+        .1
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// why: called on a timer; `save` already compares before writing, so a
+/// spurious flag costs one read
+pub fn flush_if_dirty(app: &AppHandle) {
+    if app
+        .state::<Tracked>()
+        .1
+        .swap(false, std::sync::atomic::Ordering::Relaxed)
+    {
+        save(app);
+    }
+}
 
 #[cfg(test)]
 mod tests {

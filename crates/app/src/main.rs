@@ -108,6 +108,7 @@ fn main() {
                 tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_)
             ) {
                 windowstate::track(window.app_handle());
+                windowstate::mark_dirty(window.app_handle());
             }
             // why: close is the only guaranteed write, and a killed or
             // crashed run never reaches it -- losing the geometry looks
@@ -147,6 +148,16 @@ fn main() {
             // dropping the frame on Windows re-lays-out the window, so a
             // size set before it would be the one that gets adjusted
             windowstate::restore(app.handle());
+            // why: a drag must not touch the disk per pixel, but a kill
+            // must not lose it either -- flush a pending geometry change
+            // on a slow timer so neither happens
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_secs(2));
+                    windowstate::flush_if_dirty(&handle);
+                });
+            }
             // why: a borderless game that raises itself topmost wins the
             // z-fight until someone raises back (both sit in the same
             // topmost band, last raise wins) -- re-raise every overlay
