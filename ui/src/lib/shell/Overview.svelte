@@ -12,6 +12,7 @@
   import { groupBuffs, ensureGroupBuffs, refreshGroupBuffs } from '$lib/stores/groupBuffs';
   import { zoneContext, refreshZoneContext } from '$lib/stores/maps';
   import BellOffIcon from '@lucide/svelte/icons/bell-off';
+  import EyeOffIcon from '@lucide/svelte/icons/eye-off';
   import { toggleMutedBuffLine } from '$lib/stores/settings';
   import { activeModule } from '$lib/stores/shell';
   import { race, activeClasses, defaultClasses, classConfigurations, loadCharacterModule } from '$lib/stores/character';
@@ -98,8 +99,47 @@
       : [],
   );
   const neededBuffs = $derived([...missingOwn, ...missingParty]);
+  // why: what you HAVE, with how long the estimate says it has left --
+  // a buff whose caster left the group keeps its row with no lines, so
+  // this is also where an orphaned buff stays visible
+  const buffsOnYou = $derived(
+    $groupBuffs
+      ? [
+          ...$groupBuffs.rows.filter((r) => r.active).map((r) => ({
+            name: r.active!,
+            label: r.label,
+            left: r.active_remaining_ms,
+            overdue: r.active_overdue,
+          })),
+          ...$groupBuffs.innates.filter((i) => i.active).map((i) => ({
+            name: i.active!,
+            label: i.label,
+            left: i.active_remaining_ms,
+            overdue: i.active_overdue,
+          })),
+        ]
+      : [],
+  );
+  // why: an estimate, so minutes -- seconds would claim a precision the
+  // AA rank and the caster's own level do not support
+  function timeLeft(ms: number | null, overdue: boolean): string {
+    if (ms === null) return '';
+    if (overdue) return 'overdue';
+    const m = Math.round(ms / 60000);
+    if (m <= 0) return 'due';
+    return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m}m`;
+  }
   async function muteLine(line: string) {
     await toggleMutedBuffLine(line);
+    void refreshGroupBuffs();
+  }
+  // why: the mute's softer neighbour -- gone until that line lands again
+  async function ignoreLine(line: string) {
+    await api.ignoreBuffLine(line);
+    void refreshGroupBuffs();
+  }
+  async function resetBuffs() {
+    await api.resetBuffs();
     void refreshGroupBuffs();
   }
 
@@ -385,11 +425,23 @@
         <CardContent class="px-3 py-2.5">
           <div class="mb-1.5 flex items-center justify-between">
             <h2 class="stat-figure text-[18px]">Group Buffs</h2>
-            <!-- why: the mute is one-way from here -- the full line list,
-                 muted entries included, lives in the Overlay module -->
-            <button type="button" class="text-[11px] text-brand-soft hover:text-primary hover:underline" onclick={() => goto('overlay')}>
-              Settings →
-            </button>
+            <div class="flex items-center gap-2">
+              <!-- why: the ledger is only what the log let us see; when it
+                   is wrong the player needs a way to say so -->
+              <button
+                type="button"
+                class="text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                title="Forget every buff the tracker thinks is on you"
+                onclick={() => void resetBuffs()}
+              >
+                Reset buffs
+              </button>
+              <!-- why: the mute is one-way from here -- the full line list,
+                   muted entries included, lives in the Overlay module -->
+              <button type="button" class="text-[11px] text-brand-soft hover:text-primary hover:underline" onclick={() => goto('overlay')}>
+                Settings →
+              </button>
+            </div>
           </div>
           {#if !$groupBuffs}
             <p class="text-[11px] text-muted-foreground">Loading…</p>
@@ -417,6 +469,17 @@
                            always visible -- reported as "I dont see any
                            bells in that section", which hover-to-reveal
                            earns: an affordance nobody finds is not one. -->
+                      <!-- why: the temporary one -- for a line that IS
+                           covered by something the log never showed us.
+                           Comes back on its own the next time it lands. -->
+                      <button
+                        type="button"
+                        class="rounded-sm p-0.5 text-muted-foreground/60 hover:text-foreground"
+                        title="Ignore {b.line} for now -- back when it next lands on you"
+                        onclick={() => void ignoreLine(b.line)}
+                      >
+                        <EyeOffIcon class="size-3" />
+                      </button>
                       <button
                         type="button"
                         class="rounded-sm p-0.5 text-muted-foreground/60 hover:text-bad"
@@ -436,6 +499,33 @@
             {#if missingParty.length}
               {@render buffList(missingParty, 'others missing -- expected from your party')}
             {/if}
+          {/if}
+          <!-- why: what you HAVE and roughly how long it has left. The
+               time is an estimate off the rank's own duration in the game
+               file plus the duration AA, so it reads in minutes and never
+               takes a buff off by itself -- only a wear-off line, a death
+               or a class swap does. A row with no line to replace it is a
+               buff whose caster has gone. -->
+          {#if buffsOnYou.length}
+            <p class="mt-2 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">on you</p>
+            <ul class="flex flex-col gap-0.5 text-[11px]">
+              {#each buffsOnYou as b}
+                <li class="flex items-center justify-between gap-2">
+                  <span class="truncate text-foreground">{b.name}</span>
+                  <span class="flex shrink-0 items-center gap-1.5">
+                    <span class="text-muted-foreground">{b.label}</span>
+                    <span class="font-mono {b.overdue ? 'text-caution' : 'text-muted-foreground'}">
+                      {timeLeft(b.left, b.overdue)}
+                    </span>
+                  </span>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+          {#if $groupBuffs?.ignored?.length}
+            <p class="mt-1.5 text-[10px] text-muted-foreground">
+              ignoring for now: {$groupBuffs.ignored.join(', ')}
+            </p>
           {/if}
         </CardContent>
       </Card>

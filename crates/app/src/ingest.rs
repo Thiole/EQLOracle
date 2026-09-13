@@ -1350,6 +1350,11 @@ pub struct Ingest {
     /// expires at; None = permanent). From the catalog's own landing
     /// text on you; a wear-off text ends one early (groupbuffs.rs)
     pub self_buffs: HashMap<String, (Millis, Option<Millis>)>,
+    /// why: lines the player is ignoring for now -- "as if the line
+    /// currently has a higher buff, but its not being picked up". Not a
+    /// mute: never persisted, and cleared the moment that line lands on
+    /// you again ("until next buff cycle")
+    pub ignored_buff_lines: HashSet<String>,
     /// why: spell.granted timestamps within GRANT_CLUSTER_MS -- see `note_spell_granted`
     recent_grants: Vec<Millis>,
     last_level_up: Option<Millis>,
@@ -1365,6 +1370,12 @@ pub struct Ingest {
     /// within a visit: a begin-cast is proof of ability, a cheaper cast
     /// never walks it back.
     pub implied_level: HashMap<String, (Option<usize>, u8)>,
+    /// why: the same floor, best-ever instead of per-visit. `implied_level`
+    /// is scoped to the zone visit on purpose (rule L10), which is right
+    /// for "what has this zone proved" and wrong for "how high can this
+    /// ally cast" -- a level never goes back down, and the Group Buff
+    /// Tracker was losing every rank gate at each zone line.
+    pub implied_level_ever: HashMap<String, u8>,
     /// why: keep every row and ping instead of folding finished zones --
     /// off in the app (see the zone cull), on for probes that analyse the
     /// whole log after the fact
@@ -1578,6 +1589,7 @@ impl Default for Ingest {
             ally_last_seen: HashMap::new(),
             ally_cuts: HashMap::new(),
             self_buffs: HashMap::new(),
+            ignored_buff_lines: HashSet::new(),
             recent_grants: Vec::new(),
             last_level_up: None,
             symphonic_aura: false,
@@ -1591,6 +1603,7 @@ impl Default for Ingest {
             fanout_counts: HashMap::new(),
             spell_file: None,
             implied_level: HashMap::new(),
+            implied_level_ever: HashMap::new(),
             stance_pool: None,
             invocation_pool: None,
             ally_pending_leave: HashMap::new(),
@@ -1830,6 +1843,11 @@ impl Ingest {
         let Some(level) = lowest else { return };
         let level = level.min(u32::from(u8::MAX)) as u8;
         let visit = self.zone.index_at(ts);
+        let ever = self
+            .implied_level_ever
+            .entry(who.to_lowercase())
+            .or_insert(0);
+        *ever = (*ever).max(level);
         let e = self
             .implied_level
             .entry(who.to_lowercase())
@@ -4704,10 +4722,27 @@ impl Ingest {
             if crate::groupbuffs::is_party_buff(spell)
                 || spell.target_type.as_deref() == Some("Self")
             {
-                let expires = crate::groupbuffs::expiry_for(spell, ts);
-                self.self_buffs.insert(name.to_string(), (ts, expires));
+                let expires = crate::groupbuffs::expiry_for(self.spell_file.as_ref(), spell, ts);
+                self.note_buff_landed(name, ts, expires);
             }
         }
+    }
+
+    /// why: one door into the buff ledger -- a landing both records the
+    /// buff and ends any temporary ignore on its line, which is what
+    /// "until the next buff cycle" means
+    fn note_buff_landed(&mut self, name: &str, ts: Millis, expires: Option<Millis>) {
+        self.self_buffs.insert(name.to_string(), (ts, expires));
+        for key in crate::groupbuffs::line_keys_of(name) {
+            self.ignored_buff_lines.remove(&key);
+        }
+    }
+
+    /// why: the Group Buffs "reset" button -- the ledger is evidence the
+    /// log gave us, and the player can say it is wrong
+    pub fn reset_buffs(&mut self) {
+        self.self_buffs.clear();
+        self.ignored_buff_lines.clear();
     }
 
     /// why: shared by the live path (flavor_evidence_for) and backfill's
@@ -4725,8 +4760,9 @@ impl Ingest {
                 if crate::groupbuffs::is_party_buff(spell)
                     || spell.target_type.as_deref() == Some("Self")
                 {
-                    let expires = crate::groupbuffs::expiry_for(spell, ts);
-                    self.self_buffs.insert(m.spell.to_string(), (ts, expires));
+                    let expires =
+                        crate::groupbuffs::expiry_for(self.spell_file.as_ref(), spell, ts);
+                    self.note_buff_landed(m.spell, ts, expires);
                 }
             }
         }

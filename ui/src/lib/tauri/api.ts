@@ -56,6 +56,11 @@ export interface BuffRowDto {
   active: string | null;
   /** why: its own rank level, against best_level -- a lower rank is an upgrade, not coverage */
   active_level: number | null;
+  /** why: estimated ms left on what is on you -- negative once past the
+   * estimate. The estimate never ends a buff; only the log does. */
+  active_remaining_ms: number | null;
+  /** why: past the estimate and its slack -- still on, shown as stale */
+  active_overdue: boolean;
   upgrade: boolean;
   /** why: how much this kind is worth to your own classes -- rows arrive ordered by it */
   relevance: number;
@@ -83,6 +88,8 @@ export interface SelfBuffDto {
   best_spell: string;
   best_level: number;
   active: string | null;
+  active_remaining_ms: number | null;
+  active_overdue: boolean;
 }
 
 export interface GroupBuffsDto {
@@ -100,6 +107,8 @@ export interface GroupBuffsDto {
    * what Settings -> Overlay -> Group Buffs lists to mute from */
   catalog: string[];
   extra_active: string[];
+  /** why: lines temporarily ignored right now -- not muted, not persisted */
+  ignored: string[];
 }
 
 export interface ChangelogSection {
@@ -1933,6 +1942,10 @@ export const api = {
   getSession: () => invoke<SessionDto>('get_session'),
   /** why: the Group Buff Tracker overlay -- see groupbuffs.rs */
   getGroupBuffs: () => invoke<GroupBuffsDto>('get_group_buffs'),
+  /** why: clears the tracker's ledger of what is on you -- see reset_buffs */
+  resetBuffs: () => invoke<void>('reset_buffs'),
+  /** why: hides one line until it lands on you again -- never persisted */
+  ignoreBuffLine: (line: string) => invoke<void>('ignore_buff_line', { line }),
 
   /** why: Overview Session card's own "restart" button -- see Ingest::reset_session's own doc */
   resetSession: () => invoke<SessionDto>('reset_session'),

@@ -449,6 +449,13 @@ pub struct BuffRowDto {
     /// (Spencer: "you should not have breeze on when a 30ish one should
     /// be available")
     pub active_level: Option<u32>,
+    /// why: estimated time left on what is ON you, negative once the
+    /// estimate is past -- see `expiry_for`. None when the buff has no
+    /// duration, or nothing of this kind is up.
+    pub active_remaining_ms: Option<i64>,
+    /// why: past the estimate AND its slack. Still counted as on -- only
+    /// the log ends a buff -- but shown as stale rather than as a clock
+    pub active_overdue: bool,
     pub upgrade: bool,
     /// why: how much this kind is worth to your own classes -- rows are
     /// ordered by it, most relevant first (see `relevance`)
@@ -501,6 +508,9 @@ pub struct GroupBuffsDto {
     /// why: buffs on you the party can't account for (someone outside
     /// the group, or an unknown class) -- listed, never counted against
     pub extra_active: Vec<String>,
+    /// why: lines temporarily ignored right now -- the card shows what it
+    /// is holding back, so an ignore cannot quietly turn into a mute
+    pub ignored: Vec<String>,
 }
 
 /// why: "Clarity II" and "Clarity" are one line -- a trailing roman
@@ -554,6 +564,17 @@ pub fn rank_line(name: &str) -> String {
         }
         _ => stripped.to_string(),
     }
+}
+
+/// why: the two keys a line is ever named by -- the rows key on the
+/// numeral-stripped name, the innates on the rank vocabulary. Folded
+/// lowercase so a temporary ignore, whichever key the UI sent, is found
+/// again when that spell lands.
+pub fn line_keys_of(spell_name: &str) -> [String; 2] {
+    [
+        base_name(spell_name).to_lowercase(),
+        rank_line(spell_name).to_lowercase(),
+    ]
 }
 
 /// why: a buff is only an upgrade over a DIFFERENT buff. Reported live as
@@ -717,6 +738,89 @@ pub struct SelfBuffDto {
     pub best_level: u32,
     /// why: what of this line is on you right now, if anything
     pub active: Option<String>,
+    /// why: same estimate the party rows carry -- see BuffRowDto
+    pub active_remaining_ms: Option<i64>,
+    pub active_overdue: bool,
+}
+
+/// why: what is on you of one kind, with enough to say how long it has
+/// left -- the name and level the row shows, plus the landing and the
+/// estimate `remaining_of` reads
+#[derive(Debug, Clone)]
+struct ActiveBuff {
+    name: String,
+    level: u32,
+    landed: Millis,
+    expires: Option<Millis>,
+}
+
+/// why: your own zone line cuts every ally's evidence chain (a PRESENCE
+/// cut, not a swap -- see cut_ally_chain_if_absent) and the level their
+/// casts implied is kept per zone visit. Both are right for the class
+/// detector and wrong here: a groupmate who never left the group did not
+/// change classes by walking through a zone line, and their buffs on you
+/// did not drop. So the cut is SOFT for this reader -- the current chain
+/// first, else the last chain that ever confirmed anything, and a level
+/// from any visit. Anything that really does change their classes (a
+/// swap, a contradiction) still reaches us as a new confirmed answer.
+fn remembered_classes(ing: &Ingest, name: &str, now: Millis) -> (Vec<String>, bool, Option<u8>) {
+    let full = eqlp_session::classdetect::CLASS_COUNT;
+    let answer = |view: &eqlp_session::classdetect::ChainView| match view.who.clone() {
+        Some((lvl, trio)) => (trio, Some(lvl)),
+        None => (view.confirmed.clone(), None),
+    };
+    let current = ing.class_chain(name, now);
+    let (mut classes, who_level) = current.as_ref().map(&answer).unwrap_or_default();
+    let mut remembered_who: Option<u8> = None;
+    // why: a /who row is ground truth, and a visit that has re-proved all
+    // three needs nothing remembered
+    if who_level.is_none() && classes.len() < full {
+        // why: "assume its 3, unless evidence says otherwise ... its open
+        // to changing, but its still confirmed as 3". The last full trio
+        // stands until this visit proves a class that trio does not
+        // contain -- THAT is the evidence a swap happened. Walking
+        // through a zone line is not (the chain was cut for presence).
+        let past: Vec<(Vec<String>, Option<u8>)> = ing
+            .store
+            .names
+            .get(name)
+            .map(|sym| ing.classes.chains(sym.0))
+            .unwrap_or_default()
+            .iter()
+            .rev()
+            .map(&answer)
+            // why: a remembered set that MISSES something this visit has
+            // proved is the contradiction -- that ally really did swap
+            .filter(|(c, _)| !c.is_empty() && classes.iter().all(|x| c.contains(x)))
+            .collect();
+        // why: the newest full trio first ("assume its 3"), else the
+        // newest partial one -- an ally who never showed three classes
+        // still knew two of them a zone ago
+        if let Some((best, _)) = past
+            .iter()
+            .find(|(c, _)| c.len() == full)
+            .or_else(|| past.first())
+        {
+            classes = best.clone();
+        }
+        // why: the /who row that named them is remembered with the trio it
+        // named -- without this a chain cut for presence dropped a known
+        // level back to "unknown", and the rank gate fails closed
+        remembered_who = past.iter().find_map(|(_, l)| *l);
+    }
+    classes.sort();
+    // why: their /who row if one printed in this chain, else the floor
+    // their own casts proved -- the HIGHEST such floor, from any visit.
+    // ally_level reads only the current visit, so a zone line dropped the
+    // level to whatever the new zone had re-proved (real: 28 -> 12), and
+    // every rank gated on it went with it. A level never goes down.
+    let implied = ing.implied_level_ever.get(&name.to_lowercase()).copied();
+    let level = match (ing.ally_level(name, now).0.or(remembered_who), implied) {
+        (Some(a), Some(b)) => Some(a.max(b)),
+        (a, b) => a.or(b),
+    };
+    let confirmed = !classes.is_empty();
+    (classes, confirmed, level)
 }
 
 /// why: `muted` -- line names the player switched off in Overlay
@@ -729,17 +833,30 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
         .names
         .get("You")
         .map(|y| {
+            // why: your own trio is read per zone visit, and the visit you
+            // just walked into has not proved all three classes yet -- so
+            // a zone line narrowed `benefits` and rows vanished with it,
+            // "even though the combination didnt change". A PARTIAL answer
+            // yields to the last full configuration that agrees with it;
+            // a partial answer that contradicts it is a real swap and stands.
             let by_visit = ing.classes.configuration_of_visit(y.0, ing.unit_at(now));
-            if by_visit.is_empty() {
-                ing.classes
-                    .configurations_of(y.0)
-                    .into_iter()
-                    .next()
-                    .map(|(c, _)| c)
-                    .unwrap_or_default()
-            } else {
-                by_visit
+            if by_visit.len() == eqlp_session::classdetect::CLASS_COUNT {
+                return by_visit;
             }
+            ing.classes
+                .chains(y.0)
+                .iter()
+                .rev()
+                .map(|v| {
+                    let mut t = v.trio();
+                    t.sort();
+                    t
+                })
+                .find(|t| {
+                    t.len() == eqlp_session::classdetect::CLASS_COUNT
+                        && by_visit.iter().all(|c| t.contains(c))
+                })
+                .unwrap_or(by_visit)
         })
         .unwrap_or_default();
 
@@ -755,14 +872,7 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
         // why: one class model -- a /who row is ground truth (trio and
         // level), else the chain's own confirmed classes; a class still
         // short of the bar is a guess and does not decide a buff
-        let (level, _from_who) = ing.ally_level(&name, now);
-        let (classes, confirmed) = match ing.class_chain(&name, now) {
-            Some(view) => match view.who.clone() {
-                Some((_, trio)) => (trio, true),
-                None => (view.confirmed.clone(), !view.confirmed.is_empty()),
-            },
-            None => (Vec::new(), false),
-        };
+        let (classes, confirmed, level) = remembered_classes(ing, &name, now);
         let buffs = buffs_on(ing, &name, now)
             .into_iter()
             .map(|k| k.label().to_string())
@@ -859,13 +969,13 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
         }
     }
 
-    // why: what's on you, by kind
-    let mut active_by_kind: HashMap<BuffKind, (String, u32)> = HashMap::new();
+    // why: what's on you, by kind. Nothing is dropped for being past its
+    // estimate -- the estimate is an estimate, and only the log ends a
+    // buff (a wear-off line, your death, a loadout swap). Past the slack
+    // it reads as overdue instead.
+    let mut active_by_kind: HashMap<BuffKind, ActiveBuff> = HashMap::new();
     let mut extra_active: Vec<String> = Vec::new();
-    for (spell_name, (_, expires)) in &ing.self_buffs {
-        if expires.is_some_and(|e| e < now) {
-            continue;
-        }
+    for (spell_name, (landed, expires)) in &ing.self_buffs {
         let Some(spell) = crate::spelldata::spell_by_name(spell_name) else {
             continue;
         };
@@ -890,11 +1000,15 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
                     .unwrap_or(0);
                 let file = ing.spell_file();
                 let value = |name: &str, lvl: u32| line_value(file, k, base_name(name), name, lvl);
-                let e = active_by_kind
-                    .entry(k)
-                    .or_insert_with(|| (spell_name.clone(), lvl));
-                if value(spell_name, lvl) > value(&e.0, e.1) {
-                    *e = (spell_name.clone(), lvl);
+                let now_one = ActiveBuff {
+                    name: spell_name.clone(),
+                    level: lvl,
+                    landed: *landed,
+                    expires: *expires,
+                };
+                let e = active_by_kind.entry(k).or_insert_with(|| now_one.clone());
+                if value(spell_name, lvl) > value(&e.name, e.level) {
+                    *e = now_one;
                 }
             }
             None => extra_active.push(spell_name.clone()),
@@ -962,11 +1076,10 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
     // `active_by_kind` answers the latter, and using it read "armor class:
     // covered" off a party AC buff while your own Shielding was down.
     // A lower rank of your own still counts.
-    let active_self_by_line: HashMap<String, String> = ing
+    let active_self_by_line: HashMap<String, (String, Millis, Option<Millis>)> = ing
         .self_buffs
         .iter()
-        .filter(|(_, (_, expires))| !expires.is_some_and(|e| e < now))
-        .filter_map(|(name, _)| {
+        .filter_map(|(name, (landed, expires))| {
             let sp = crate::spelldata::spell_by_name(name)?;
             // why: an ILLUSION never satisfies an innate. Wearing a Dry
             // Bone form covers the maybe, not the "keep Lesser Familiar
@@ -975,7 +1088,7 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
             (is_self_buff(sp) && !is_recourse(sp) && !is_illusion(sp)).then_some(())?;
             // why: by LINE -- a lower rank of the same line still counts
             // as on, and two stacking spells stay two answers
-            Some((rank_line(&sp.name), name.clone()))
+            Some((rank_line(&sp.name), (name.clone(), *landed, *expires)))
         })
         .collect();
     // why: you can only wear one form at a time, so a single active
@@ -983,14 +1096,10 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
     // active, discount all other illusion suggestions". Kind-by-kind was
     // wrong here: wearing a wolf covers the ATK maybe but left the Dry
     // Bone and Earth Elemental ones still asking to be cast.
-    let active_illusion: Option<String> = ing
-        .self_buffs
-        .iter()
-        .filter(|(_, (_, expires))| !expires.is_some_and(|e| e < now))
-        .find_map(|(name, _)| {
-            let sp = crate::spelldata::spell_by_name(name)?;
-            is_illusion(sp).then(|| name.clone())
-        });
+    let active_illusion: Option<String> = ing.self_buffs.iter().find_map(|(name, _)| {
+        let sp = crate::spelldata::spell_by_name(name)?;
+        is_illusion(sp).then(|| name.clone())
+    });
     let (mut innates, mut maybes) = (Vec::new(), Vec::new());
     for entry in fold_conflicting_lines(innate_by_line, ing.spell_file()) {
         let FoldedLine {
@@ -1005,27 +1114,35 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
         } else {
             key.clone()
         };
-        let active = if illusion {
+        let active: Option<(String, Millis, Option<Millis>)> = if illusion {
             // why: any illusion covers them all
-            active_illusion.clone()
+            active_illusion.clone().map(|n| (n, now, None))
         } else if crate::spelldata::spell_by_name(&best_spell)
             .and_then(|sp| kind_of_with(sp, ing.spell_file()))
             == Some(BuffKind::Familiar)
         {
             // why: a familiar lands no buff message -- "You summon forth a
             // lesser familiar." is the only confirmation it is out
-            ing.familiar_since_ms.map(|_| best_spell.clone())
+            ing.familiar_since_ms
+                .map(|_| (best_spell.clone(), now, None))
         } else {
             // why: any member rank of the folded line counts as on
             members
                 .iter()
                 .find_map(|m| active_self_by_line.get(m).cloned())
         };
+        let (active_remaining_ms, active_overdue) = active
+            .as_ref()
+            .map_or((None, false), |(_, landed, expires)| {
+                remaining_of(*expires, *landed, now)
+            });
         let label = crate::spelldata::spell_by_name(&best_spell)
             .and_then(|sp| kind_of_with(sp, ing.spell_file()))
             .map_or("", |k| k.label());
         let dto = SelfBuffDto {
-            active,
+            active: active.map(|(n, _, _)| n),
+            active_remaining_ms,
+            active_overdue,
             line,
             label,
             best_spell,
@@ -1077,7 +1194,10 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
             });
             let best_level = lines.first().map(|(r, _)| *r).unwrap_or(0);
             let on_you = active_by_kind.get(&kind).cloned();
-            let active_level = on_you.as_ref().map(|(_, l)| *l);
+            let active_level = on_you.as_ref().map(|b| b.level);
+            let (active_remaining_ms, active_overdue) = on_you
+                .as_ref()
+                .map_or((None, false), |b| remaining_of(b.expires, b.landed, now));
             // why: covered means the BEST usable rank is up -- Breeze
             // while the party's Enchanter can cast Clarity is an upgrade.
             //
@@ -1094,9 +1214,9 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
             // why: with a file, the game's own magnitudes decide; without
             // one, the level-and-override rule the tests pin
             let upgrade = match (file, &on_you) {
-                (Some(f), Some((name, lvl))) => upgrade_available(f, kind, name, *lvl, &lines),
+                (Some(f), Some(b)) => upgrade_available(f, kind, &b.name, b.level, &lines),
                 (None, _) => is_upgrade(
-                    on_you.as_ref().map(|(n, l)| (n.as_str(), *l)),
+                    on_you.as_ref().map(|b| (b.name.as_str(), b.level)),
                     lines.first().map(|(_, l)| l.best_spell.as_str()),
                     best_level,
                 ),
@@ -1105,8 +1225,10 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
             BuffRowDto {
                 kind,
                 label: kind.label(),
-                active: on_you.map(|(n, _)| n),
+                active: on_you.map(|b| b.name),
                 active_level,
+                active_remaining_ms,
+                active_overdue,
                 upgrade,
                 relevance: relevance(kind, &my_classes),
                 lines: lines.into_iter().map(|(_, l)| l).collect(),
@@ -1116,6 +1238,30 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
             }
         })
         .collect();
+    // why: a buff you HAVE whose caster is gone -- they left the group or
+    // died, so no current source can cast the line and the kind had no
+    // row at all: the buff simply vanished off the display while it was
+    // still on you. Spencer: "just notate its on, but theres no suitable
+    // replacement". No lines, so nothing reads as missing and nothing
+    // counts against the verdict.
+    for (kind, b) in &active_by_kind {
+        if rows.iter().any(|r| r.kind == *kind) {
+            continue;
+        }
+        let (active_remaining_ms, active_overdue) = remaining_of(b.expires, b.landed, now);
+        rows.push(BuffRowDto {
+            kind: *kind,
+            label: kind.label(),
+            active: Some(b.name.clone()),
+            active_level: Some(b.level),
+            active_remaining_ms,
+            active_overdue,
+            upgrade: false,
+            relevance: relevance(*kind, &my_classes),
+            lines: Vec::new(),
+            others: false,
+        });
+    }
     // why: most relevant to your own classes first -- what is missing at
     // the top is what actually costs you
     rows.sort_by(|a, b| {
@@ -1134,7 +1280,16 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
         .collect();
     catalog.sort();
     catalog.dedup();
-    retain_unmuted(&mut rows, &mut innates, &mut maybes, muted);
+    // why: a temporary ignore hides a line exactly the way a mute does --
+    // out of the rows, the checklist and the verdict together -- it just
+    // is not written down anywhere and ends on its own
+    let ignored: Vec<String> = ing.ignored_buff_lines.iter().cloned().collect();
+    let hidden: Vec<String> = muted
+        .iter()
+        .cloned()
+        .chain(ignored.iter().cloned())
+        .collect();
+    retain_unmuted(&mut rows, &mut innates, &mut maybes, &hidden);
     for r in &mut rows {
         r.others = cast_by_others(&r.lines);
     }
@@ -1146,6 +1301,8 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
         && innates.iter().all(|i| i.active.is_some())
         && upgrades == 0;
     extra_active.sort();
+    let mut ignored = ignored;
+    ignored.sort();
     GroupBuffsDto {
         good,
         upgrades,
@@ -1156,6 +1313,7 @@ pub fn group_buffs(ing: &Ingest, muted: &[String], ceiling: Option<usize>) -> Gr
         maybes,
         catalog,
         extra_active,
+        ignored,
     }
 }
 
@@ -1283,7 +1441,8 @@ fn buffs_on(ing: &Ingest, name: &str, now: Millis) -> Vec<BuffKind> {
         let Some(kind) = kind_of_with(spell, ing.spell_file()) else {
             continue;
         };
-        if expiry_for(spell, ping.ts).is_none_or(|e| e >= now) {
+        let (_, overdue) = remaining_of(expiry_for(ing.spell_file(), spell, ping.ts), ping.ts, now);
+        if !overdue {
             kinds.insert(kind);
         }
     }
@@ -1292,20 +1451,119 @@ fn buffs_on(ing: &Ingest, name: &str, now: Millis) -> Vec<BuffKind> {
     v
 }
 
-/// why: how long a landed buff stays counted -- the catalog's duration
-/// (the top of a leveled range), else an hour; a wear-off line ends it early
-pub fn expiry_for(spell: &Spell, landed_at: Millis) -> Option<Millis> {
+/// why: Spell Casting Reinforcement maxed -- its four ranks are
+/// 5/15/30/50% on beneficial spells, and Spencer's rule is to assume the
+/// AA is bought ("assume they have the AA")
+const AA_DURATION_MULT: f64 = 1.5;
+
+/// why: the estimate is an estimate -- the caster's own AA rank, a rank
+/// of the line we misread, a recast we never saw. A buff is only OVERDUE
+/// past this much slack, and even then it stays counted until the log
+/// actually ends it ("be a bit forgiving")
+const DURATION_SLACK: f64 = 1.30;
+
+/// why: how long a landed buff is ESTIMATED to last -- the game file's
+/// own duration for that exact rank ("Clarity V is 5th level clarity, so
+/// base duration"), read at the cap so the answer is the rank's base and
+/// not a guess at the caster's level, times the AA bonus. The wiki
+/// catalog is the fallback for an install with no spell file. Nothing
+/// here ENDS a buff: a wear-off line, a death or a loadout swap does.
+pub fn expiry_for(
+    file: Option<&crate::spelltimers::SpellFile>,
+    spell: &Spell,
+    landed_at: Millis,
+) -> Option<Millis> {
+    if let Some(entry) = file.and_then(|f| crate::spelltimers::entry_of(f, &spell.name)) {
+        let ticks = entry.duration_ticks(MAINTAINED_AT_LEVEL);
+        if ticks == 0 {
+            return None;
+        }
+        let secs = f64::from(ticks) * 6.0 * AA_DURATION_MULT;
+        return Some(landed_at + (secs * 1000.0) as Millis);
+    }
     let d = crate::spelleffect::parse_duration(spell.duration.as_deref());
     if d.is_permanent {
         return None;
     }
-    let secs = d.max_secs.or(d.min_secs).unwrap_or(3600.0);
+    let secs = d.max_secs.or(d.min_secs).unwrap_or(3600.0) * AA_DURATION_MULT;
     Some(landed_at + (secs * 1000.0) as Millis)
+}
+
+/// why: what the row shows -- time left on the estimate (negative once it
+/// is past) and whether it is past the slack window as well
+fn remaining_of(expires: Option<Millis>, landed: Millis, now: Millis) -> (Option<i64>, bool) {
+    let Some(expires) = expires else {
+        return (None, false);
+    };
+    let left = expires - now;
+    let slack = ((expires - landed) as f64 * (DURATION_SLACK - 1.0)) as i64;
+    (Some(left), left < -slack)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// why: the duration estimate -- the rank's OWN row in the game file
+    /// read at the cap ("Clarity V is 5th level clarity, so base
+    /// duration"), times the maxed duration AA. Clarity is formula 3
+    /// (level*30) capped at 270 ticks: 270 * 6s * 1.5 = 40.5 min. The
+    /// wiki catalog is only the fallback, and an instant is never a buff.
+    #[test]
+    fn a_buff_lasts_its_own_ranks_file_duration_plus_the_aa() {
+        let row = |name: &str, formula: u32, base: u32| {
+            let mut f = vec!["0".to_string(); 60];
+            f[1] = name.to_string();
+            f[11] = formula.to_string();
+            f[12] = base.to_string();
+            f.join("^")
+        };
+        let file = crate::spelltimers::parse_text(&format!(
+            "{}\n{}\n{}",
+            row("Clarity", 3, 270),
+            row("Clarity II", 3, 350),
+            row("Harvest", 0, 0),
+        ));
+        let spell = |n: &str| Spell {
+            name: n.to_string(),
+            ..Spell::default()
+        };
+        let mins = |n: &str| expiry_for(Some(&file), &spell(n), 0).map(|e| e as f64 / 60_000.0);
+        assert_eq!(mins("Clarity"), Some(40.5));
+        assert_eq!(
+            mins("Clarity II"),
+            Some(52.5),
+            "the rank carries its own row"
+        );
+        assert_eq!(mins("Harvest"), None, "an instant has no expiry");
+        // why: unknown to the file -- the wiki duration, same AA bonus
+        assert_eq!(
+            expiry_for(
+                Some(&file),
+                &Spell {
+                    name: "Nothing".to_string(),
+                    duration: Some("10 minutes".to_string()),
+                    ..Spell::default()
+                },
+                0
+            ),
+            Some(900_000),
+        );
+    }
+
+    /// why: "be a bit forgiving" -- past the estimate a buff is still ON,
+    /// it just stops claiming a clock, and only past the slack window
+    /// does it read as overdue. Nothing here ever removes a buff.
+    #[test]
+    fn a_buff_is_overdue_only_past_the_slack_window() {
+        let (left, overdue) = remaining_of(Some(1_000_000), 0, 900_000);
+        assert_eq!(left, Some(100_000));
+        assert!(!overdue);
+        // why: 10% past a 1000s estimate is inside the 30% window
+        assert!(!remaining_of(Some(1_000_000), 0, 1_100_000).1);
+        assert!(remaining_of(Some(1_000_000), 0, 1_400_000).1, "40% past");
+        assert_eq!(remaining_of(None, 0, 9_999_999), (None, false));
+    }
 
     /// why: "Hand rank exceptions but default higher level is better" --
     /// the override is the only thing that outranks a level, and a line
@@ -1372,6 +1630,8 @@ mod tests {
             label: kind.label(),
             active: None,
             active_level: None,
+            active_remaining_ms: None,
+            active_overdue: false,
             upgrade: false,
             relevance: 0,
             lines,
@@ -1382,6 +1642,8 @@ mod tests {
             best_spell: n.to_string(),
             best_level: 1,
             active: None,
+            active_remaining_ms: None,
+            active_overdue: false,
         };
         let mut rows = vec![
             row(BuffKind::Resist, vec![line("Cure Disease")]),

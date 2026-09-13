@@ -1563,6 +1563,27 @@ pub fn get_group_buffs(app: AppHandle, state: State<AppState>) -> crate::groupbu
     )
 }
 
+/// why: "a reset buffs at the top of group buffs which clears all known
+/// current buffs" -- the ledger is only what the log let us see, and a
+/// buff the app believes in but the player does not have has no other
+/// way out
+#[tauri::command]
+pub fn reset_buffs(state: State<AppState>) {
+    state.ingest.lock_recover().reset_buffs();
+}
+
+/// why: "a per line temporary ignore ... but it shouldnt be IGNORED
+/// permanently" -- unlike a mute this is never written to preferences,
+/// and the line's own next landing clears it
+#[tauri::command]
+pub fn ignore_buff_line(state: State<AppState>, line: String) {
+    state
+        .ingest
+        .lock_recover()
+        .ignored_buff_lines
+        .insert(line.to_lowercase());
+}
+
 /// why: the "what's new" page -- the changelog sections between the
 /// version the user last acknowledged and the running one. A fresh
 /// install (no last_seen) acknowledges the current version silently.

@@ -26,6 +26,24 @@
     Magician: 'MAG', Enchanter: 'ENC', Beastlord: 'BST', Berserker: 'BER',
   };
   const abbr = (c: string) => ABBR[c] ?? c.slice(0, 3).toUpperCase();
+  // why: an estimate off the rank's own duration plus the duration AA --
+  // minutes, never seconds, and never a reason to drop a buff
+  const timeLeft = (ms: number | null, overdue: boolean) => {
+    if (ms === null) return '';
+    if (overdue) return 'overdue';
+    const m = Math.round(ms / 60000);
+    if (m <= 0) return 'due';
+    return m >= 60 ? `${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : `${m}m`;
+  };
+  // why: the shortest clock in the group is what you act on -- one number
+  // next to the verdict beats reading every row
+  const soonest = $derived.by(() => {
+    if (!data) return null;
+    const left = [...data.rows, ...data.innates]
+      .filter((r) => r.active && !r.active_overdue && r.active_remaining_ms !== null)
+      .map((r) => r.active_remaining_ms!);
+    return left.length ? Math.min(...left) : null;
+  });
   const missingRows = $derived(data ? data.rows.filter((r) => !r.active) : []);
   const missing = $derived(missingRows.length);
   // why: name them -- "missing 2" makes you go looking, "missing Clarity,
@@ -110,7 +128,9 @@
                 upgrades ? `${upgrades} upgradeable` : '',
               ].filter(Boolean).join(', ')}
       </span>
-      <span class="truncate font-mono text-[10px] text-foreground/90" title="your classes">{data.my_classes.map(abbr).join('/')}</span>
+      <span class="truncate font-mono text-[10px] text-foreground/90" title="your classes">
+        {#if soonest !== null}<span class="text-foreground/70" title="shortest buff left on you">{timeLeft(soonest, false)} · </span>{/if}{data.my_classes.map(abbr).join('/')}
+      </span>
     </div>
     {#if missing || upgrades || missingInnates.length || maybes.length}
     <div class="truncate font-mono text-[10px] text-foreground/90" title="party -- confirmed classes count; ? means not confirmed yet">

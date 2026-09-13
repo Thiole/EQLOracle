@@ -22,7 +22,7 @@ pub struct SpellSlot {
     pub effect: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct Spell {
     pub id: String,
     pub name: String,

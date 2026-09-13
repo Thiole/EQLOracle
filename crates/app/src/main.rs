@@ -379,6 +379,8 @@ fn main() {
             commands::get_app_version,
             commands::get_whats_new,
             commands::get_group_buffs,
+            commands::reset_buffs,
+            commands::ignore_buff_line,
             commands::ack_whats_new,
             commands::get_changelog,
         ])

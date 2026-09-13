@@ -11,7 +11,7 @@ and need the service layer described in README.md before external
 exposure. Parameters shown are the real API surface -- Tauri plumbing
 (`State`, `AppHandle`, `Window`) is elided.
 
-133 commands: 27 pure, 106 stateful.
+135 commands: 27 pure, 108 stateful.
 
 ## `get_changelog` (pure)
 why: the Info panel's own "what's new" -- every section, newest first
@@ -509,6 +509,12 @@ why: Maps module's zone-identity + entrance-guess input; `current_map_zones` con
 - args: none
 - returns: `ZoneContextDto`
 
+## `ignore_buff_line` (stateful)
+why: "a per line temporary ignore ... but it shouldnt be IGNORED permanently" -- unlike a mute this is never written to preferences, and the line's own next landing clears it
+
+- args: `line: String`
+- returns: `()`
+
 ## `import_achievements` (stateful)
 why: Import > Achievements -- reads the dump now, answers how many are complete
 
@@ -626,6 +632,12 @@ why: "where is my X" -- GdLink's own locate affordance, wherever an item name al
 why: "where did that window go" -- a click-through, semi-transparent, always-on-top widget is easy to lose track of, especially right after a reposition or a display change. Brings it to front (a click-through window never gets real focus/raise from clicking through it) and emits an event carrying the target widget; OverlayApp.svelte owns the actual flash effect and filters to its own identity -- see set_overlay_opacity's own doc on why the payload carries the widget now instead of trusting emit_to alone. No-op if the widget's window isn't open.
 
 - args: `widget: String`
+- returns: `()`
+
+## `reset_buffs` (stateful)
+why: "a reset buffs at the top of group buffs which clears all known current buffs" -- the ledger is only what the log let us see, and a buff the app believes in but the player does not have has no other way out
+
+- args: none
 - returns: `()`
 
 ## `reset_session` (stateful)
