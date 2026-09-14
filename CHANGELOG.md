@@ -1,5 +1,48 @@
 # Changelog
 
+## 2026-09-13 (0.25.0)
+
+### Group Buff Tracker
+
+- The tracker holds what it knows across a zone line. Your own zone line cuts every ally's class evidence for presence, your own trio is read per visit, and the level an ally's casts proved was kept per visit too -- so walking into the next zone emptied the card even though nobody's classes had changed. The last full trio now stands until a visit proves a class that trio does not contain, a partial answer yields to the last full one that agrees with it, and a level floor never goes back down. On a real log, zone crossings that lost the tracker's data went from 115 of 214 to 7, every one of the seven a real loadout change.
+- Each buff says how long it has left. The estimate is the rank's own duration in the game's spell file -- Clarity II is not Clarity -- times the 50% from a maxed Spell Casting Reinforcement, which is assumed bought. Nothing expires on the estimate: a buff stays counted until the log says otherwise with a wear-off line, your death or a loadout swap, and past the estimate plus a 30% window it reads "overdue" rather than vanishing.
+- A buff whose caster left the group or died keeps its row. Rows were built only from what the current party can cast, so the buff disappeared while it was still on you. It now shows as on, with no replacement offered and nothing counted against the verdict.
+- "Reset buffs" in the card header forgets everything the tracker thinks is on you, for when the log never showed it wearing off.
+- A per-line temporary ignore beside the mute, for a line something already covers that the log cannot see. It is never written to disk and comes back on its own the next time that line lands on you.
+
+### Class detection
+
+- A cast proves player level, not class level: a level 35 Wizard spell puts the caster at 35 for every class in their combo. The floor takes the lowest requirement among the classes that get the spell, and each cast may raise it while a cheaper one never walks it back.
+- A multiclass spell proves nothing until the classes are verified. The estimator used to price one off whichever class was cheapest, filtered by a trio that includes unconfirmed guesses, so allies read 40+ who were not 39 -- 148 of 1114 peak floors on a real log came from a class nobody had confirmed. A single-class spell still proves its own class by being cast at all.
+- Levels come from the install's own spell file first, at the rank as cast. The wiki's tables carry Live's numbers (Improved Invisibility is listed Wizard 55), and a requirement above the server's cap now sets no floor rather than reading as max level.
+- An item click or a weapon proc no longer sets a level floor. The class evidence already excluded them; the level estimator was called anyway, pricing the ally at that spell's class requirement.
+- A floor belongs to the class that earned it. It survives a zone line, and it goes when that class does, instead of being thrown away at every zone and carried onto classes that never earned it.
+- The Group Buff Tracker offers a rank only at or under a level the caster is confirmed to have.
+
+### Combat
+
+- Each charm belongs to its caster, one at a time, which is the game's own rule. Identity was keyed on the mob's name, and a zone holds many mobs of one name with several casters each holding one: 56 concurrent same-name charms in the reference log, with whoever charmed last silently taking every row. 1.9M points of one player's pet damage was credited to another.
+- A charmed pet no longer drags its owner onto the other side. Mobs charm too, and crediting their pets put the mobs themselves on the ally side.
+- The two-column layout begins where the panes actually stop fitting rather than at 1024 CSS px, which a default window at 110% zoom fell just under -- the fight tree took the whole width with the data below it. Narrower than that, the data comes first and owns the width and the tree becomes a spine on the left edge that slides out on hover or focus.
+- Past-parse loadouts hold one order instead of reshuffling on every call, and every column sorts.
+
+### Group tracker
+
+- A member who left the group stays gone until the game says otherwise. Shared damage seconds later re-qualified them, which is exactly what an ungrouped stranger in the same zone produces. A rejoin line, group chat, an accepted invite or a group-scoped Quick Buff still bring them back.
+
+### Sync Check
+
+- A new toolbar panel: each /outputfile dump is usable only while the log still covers the span since it was written, so a kind whose dump line never appears in the replayed log is one whose changes nothing can account for. Ok / Fix / Missing, plus "unsure" when a dump was written that this log never saw, and "optional" for the kinds nothing reads. It updates the moment the log picks up a command, without polling.
+
+### Overlay
+
+- The overlay draws its text in flat white. The themed off-white is tuned for an opaque panel and read grey over the game at real overlay opacity. A dark shadow carries the glyphs over whatever the game draws behind them.
+
+### Window
+
+- The main window opens where it was left, at the size it was left, maximized if it was. A point that no longer lands on any monitor is dropped. Geometry is written on close, on focus loss, and on a slow timer, so a kill or a crash no longer loses it.
+- The whole title bar drags, not just its empty middle -- a long log file name used to shrink the only draggable part to 16px. A replay no longer floods the IPC channel with eight round trips per progress tick.
+
 ## 2026-09-10 (0.24.0)
 
 ### Combat
